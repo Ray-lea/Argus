@@ -11,7 +11,8 @@
     "peak": "最高 {value}%",
     "total": "共 {value} GB",
     "charging": "充電 {value}",
-    "discharging": "放電 {value}"
+    "discharging": "放電 {value}",
+    "average": "平均 {value}%"
   },
   "exited": "{name}（PID {pid}）已經結束。",
   "copied": {
@@ -37,5 +38,8 @@
   "noRecordAt": "該時刻無記錄",
   "earliest": "最早的記錄",
   "note": "每 5 秒記錄 CPU、記憶體、I/O、GPU 和網路佔用最高的處理程序（最小化或背景常駐時的重新整理間隔更長時依該間隔），保留 7 天。",
-  "off": "歷程記錄已關閉，不再記錄新的資料。<link>開啟設定</link>"
+  "off": "歷程記錄已關閉，不再記錄新的資料。<link>開啟設定</link>",
+  "instanceUnavailable": "處理程序 {name}（PID {pid}）的記錄執行個體已結束，或無法確認其身分。",
+  "showCpuPeak": "檢視 CPU 峰值影格",
+  "cpuSummary": "區間 CPU 平均 {average}%，峰值 {peak}%；峰值記錄影格：{time}。影格內處理程序讀數為平均值，無法據此確定瞬間峰值的原因。"
 }

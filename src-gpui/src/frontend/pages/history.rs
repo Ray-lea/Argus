@@ -2,6 +2,7 @@
 //! charts are drawn once per query; pointing at them only moves the cursor marks.
 use super::*;
 use charts::GIB;
+use widgets::Tone;
 
 pub(super) const RANGES: [(&str, i64); 4] = [
     ("1h", 3_600_000),
@@ -23,6 +24,44 @@ const ROW_GAP: f32 = 8.;
 const AXIS: f32 = 22.;
 const BORDER: f32 = 1.;
 const TABLE_ROW: f32 = 28.;
+
+/// Old frames have no creation time: a matching PID and name cannot establish
+/// identity, even if the live process is older than the frame. A process may
+/// start inside the five-second frame, but never after it.
+pub(super) fn recorded_target(row: &Value, frame: Option<i64>, live: &[Value]) -> Option<Value> {
+    let created = row["createTime"].as_i64().filter(|time| *time > 0)?;
+    let end = frame?.checked_add(argus_core::history::FRAME_MS)?;
+    if created >= end {
+        return None;
+    }
+    live.iter()
+        .find(|process| {
+            process["pid"] == row["pid"]
+                && process["createTime"].as_i64() == Some(created)
+                && text(process, "name") == text(row, "name")
+        })
+        .map(|process| {
+            json!({"pid": process["pid"], "createTime": created,
+            "name": process["name"], "historyFrame": frame})
+        })
+}
+
+/// Choose a recorded frame, never the average timestamp between distant frames.
+fn frame_at(records: &[Value], cursor: Option<i64>, peak: bool) -> Option<i64> {
+    let point = match cursor {
+        Some(at) => {
+            if peak && records.iter().any(|p| p["cpuPeakTs"].as_i64() == Some(at)) {
+                return Some(at);
+            }
+            let Some(point) = records.iter().find(|p| p["ts"].as_i64() == Some(at)) else {
+                return Some(at);
+            };
+            point
+        }
+        None => records.last()?,
+    };
+    point["frameTs"].as_i64().or_else(|| point["ts"].as_i64())
+}
 
 pub(super) fn range_label(id: &str) -> String {
     let hours = RANGES
@@ -331,7 +370,16 @@ impl Desktop {
             self.request("history_range", json!({}), Some("historyRange"), window, cx);
         }
         // A kept moment keeps its processes: they are read again only for another moment.
-        let moment = self.history_cursor.unwrap_or(now);
+        let records = self
+            .data
+            .get("historySeries")
+            .map(values)
+            .unwrap_or_default();
+        let peak = self
+            .history_cursor
+            .is_some_and(|at| self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at));
+        let moment = frame_at(records, self.history_cursor, peak)
+            .unwrap_or(self.history_cursor.unwrap_or(now));
         if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
             self.request(
@@ -357,8 +405,8 @@ impl Desktop {
         let cursor = kept(self.history_cursor, from, to);
         if cursor != self.history_cursor {
             self.history_cursor = cursor;
-            self.load_history(window, cx);
         }
+        self.load_history(window, cx);
     }
     /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
     /// tenth), Home and End jump to either end, Escape returns to the newest data. Steps
@@ -375,6 +423,7 @@ impl Desktop {
                 return false;
             }
             self.history_cursor = None;
+            self.data.remove("historyPeakAt");
             self.load_history(window, cx);
             cx.notify();
             return true;
@@ -397,6 +446,7 @@ impl Desktop {
             return true;
         };
         self.history_cursor = Some(at);
+        self.data.remove("historyPeakAt");
         self.load_history(window, cx);
         cx.notify();
         true
@@ -479,7 +529,8 @@ impl Desktop {
             let value_of = |r: &Value| r[metric.field].as_f64();
             let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
             let value_text = reading.map(|(_, v)| match metric.field {
-                "cpu" | "gpu" => format!("{}%", theme::cpu(v)),
+                "cpu" => tr!("history.metric.average", value = theme::cpu(v)),
+                "gpu" => format!("{}%", theme::cpu(v)),
                 "memUsed" => crate::regional::number!("{:.1} GB", v / GIB),
                 "disk" => charts::byte_rate(v),
                 "net" => charts::net_rate(v, bits),
@@ -821,6 +872,7 @@ impl Desktop {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     if let Some(at) = click_time(event.position) {
                         this.history_cursor = Some(at);
+                        this.data.remove("historyPeakAt");
                         this.load_history(window, cx);
                         cx.notify();
                     }
@@ -889,11 +941,32 @@ impl Desktop {
             Some(time) => tr!("history.busiestAt", time = moment_label(time)),
             None => label("history.busiest"),
         };
+        let selected_point = match self.history_cursor {
+            Some(at) => records.iter().find(|point| {
+                point["ts"].as_i64() == Some(at) || point["cpuPeakTs"].as_i64() == Some(at)
+            }),
+            None => records.last(),
+        };
+        let peak_at = selected_point.and_then(|point| point["cpuPeakTs"].as_i64());
+        let summary = selected_point.and_then(|point| {
+            Some(tr!(
+                "history.cpuSummary",
+                average = theme::cpu(point["cpu"].as_f64()?),
+                peak = theme::cpu(point["cpuPeak"].as_f64()?),
+                time = moment_label(point["cpuPeakTs"].as_i64()?)
+            ))
+        });
         let earliest = self
             .data
             .get("historyRange")
             .and_then(|range| range[0].as_i64());
-        let table = self.history_table(values(&moment["processes"]), bits, window, cx);
+        let table = self.history_table(
+            values(&moment["processes"]),
+            moment["system"]["ts"].as_i64(),
+            bits,
+            window,
+            cx,
+        );
         let foot = div()
             .flex()
             .flex_wrap()
@@ -963,6 +1036,21 @@ impl Desktop {
                     .pt(px(10.))
                     .px(px(14.))
                     .pb(px(4.))
+                    .when_some(peak_at, |d, at| {
+                        d.child(
+                            self.btn_small(
+                                "history-peak",
+                                label("history.showCpuPeak"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.preference("historyPeak", json!(at), window, cx);
+                                },
+                            )),
+                        )
+                    })
                     .child(
                         div()
                             .text_size(theme::font(14.))
@@ -980,6 +1068,16 @@ impl Desktop {
                             })),
                     ),
             )
+            .when_some(summary, |d, text| {
+                d.child(
+                    div()
+                        .px(px(14.))
+                        .pb(px(4.))
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(text),
+                )
+            })
             .child(table)
             .child(foot);
         let page = window
@@ -1008,6 +1106,7 @@ impl Desktop {
     fn history_table(
         &self,
         processes: &[Value],
+        frame: Option<i64>,
         bits: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1161,15 +1260,12 @@ impl Desktop {
         for (index, row) in rows.iter().enumerate() {
             let name = text(row, "name").to_owned();
             let pid = row["pid"].clone();
-            let key = format!("{name}:{pid}");
+            let key = format!("{name}:{pid}:{}", row["createTime"]);
             let current = selected_key.as_deref() == Some(key.as_str());
-            // A reused PID is not the recorded process: the name must match too.
-            let running = live
-                .iter()
-                .find(|process| process["pid"] == pid)
-                .is_some_and(|process| text(process, "name") == name);
-            let reveal = Action::Preference("revealProcess".into(), json!({"pid": pid}));
-            let exited = tr!("history.exited", name = name, pid = pid);
+            let target = recorded_target(row, frame, live);
+            let running = target.is_some();
+            let reveal = Action::Preference("revealProcess".into(), target.unwrap_or(Value::Null));
+            let exited = tr!("history.instanceUnavailable", name = name, pid = pid);
             let menu = vec![
                 MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
                 MenuItem::new(
@@ -1269,11 +1365,69 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, refresh_every, span_of, stepped,
+        DAY, HOUR, MINUTE, frame_at, joins, kept, plan_load, point_at, recorded_target,
+        refresh_every, span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn buckets_open_real_frames_without_reaching_across_gaps() {
+        let points = vec![json!({"ts":NOW + 300000,"frameTs":NOW,"cpuPeakTs":NOW + 600000})];
+        assert_eq!(frame_at(&points, Some(NOW + 300000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&points, Some(NOW + 600000), true),
+            Some(NOW + 600000)
+        );
+        assert_eq!(frame_at(&points, None, false), Some(NOW));
+        // An actual empty location keeps the normal limited moment lookup.
+        assert_eq!(
+            frame_at(&points, Some(NOW + 900000), false),
+            Some(NOW + 900000)
+        );
+        assert_eq!(frame_at(&[], None, false), None);
+        assert_eq!(frame_at(&[json!({"ts":NOW})], None, false), Some(NOW));
+        let collision = vec![json!({"ts":NOW+5000,"frameTs":NOW,"cpuPeakTs":NOW+5000})];
+        assert_eq!(frame_at(&collision, Some(NOW + 5000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&collision, Some(NOW + 5000), true),
+            Some(NOW + 5000)
+        );
+    }
+
+    #[test]
+    fn history_navigation_requires_the_recorded_instance() {
+        let recorded = json!({"pid":42,"name":"worker.exe","createTime":NOW - 1000});
+        let live = vec![recorded.clone()];
+        let target = recorded_target(&recorded, Some(NOW), &live).unwrap();
+        assert_eq!(target["createTime"], NOW - 1000);
+        assert!(recorded_target(&target, Some(NOW), &live).is_some());
+        let mut replacement = recorded.clone();
+        replacement["createTime"] = json!(NOW + 60_000);
+        assert!(recorded_target(&recorded, Some(NOW), &[replacement.clone()]).is_none());
+        assert!(
+            recorded_target(&replacement, Some(NOW), std::slice::from_ref(&replacement)).is_none()
+        );
+        let legacy = json!({"pid":42,"name":"worker.exe"});
+        assert!(recorded_target(&legacy, Some(NOW), &live).is_none());
+        assert!(recorded_target(&recorded, Some(NOW), &[]).is_none());
+        let mut renamed = recorded.clone();
+        renamed["name"] = json!("other.exe");
+        assert!(recorded_target(&recorded, Some(NOW), &[renamed]).is_none());
+        for unknown in [Value::Null, json!(0), json!(-1)] {
+            let mut pending = recorded.clone();
+            pending["createTime"] = unknown;
+            assert!(recorded_target(&pending, Some(NOW), &live).is_none());
+        }
+        // The timestamp is the frame's start, not the last sample's time.
+        let mut inside = recorded;
+        inside["createTime"] = json!(NOW + 4999);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_some());
+        inside["createTime"] = json!(NOW + 5000);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_none());
+        assert!(recorded_target(&inside, None, &live).is_none());
+    }
 
     /// The last query sent, as `load_history` stores it.
     fn sent(range: &str, at: i64) -> Value {

@@ -19,7 +19,8 @@
     "peak": "Pico {value} %",
     "total": "de {value} GB",
     "charging": "Cargando {value}",
-    "discharging": "Descargando {value}"
+    "discharging": "Descargando {value}",
+    "average": "Media {value}%"
   },
   "exited": "{name} (PID {pid}) ha finalizado.",
   "copied": {
@@ -45,5 +46,8 @@
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
   "note": "Registra cada 5 segundos los procesos con mayor uso de CPU, memoria, I/O, GPU y red; si el intervalo al minimizar o permanecer en la bandeja es mayor, utiliza ese intervalo. Conserva los registros durante 7 días.",
-  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>"
+  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
+  "instanceUnavailable": "La instancia registrada de {name} (PID {pid}) ha finalizado o no se puede confirmar su identidad.",
+  "showCpuPeak": "Ver fotograma del pico CPU",
+  "cpuSummary": "CPU: media {average}%, máximo {peak}%; fotograma del pico: {time}. Los valores de procesos son medias por fotograma y no prueban la causa de un pico breve."
 }
