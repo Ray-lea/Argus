@@ -193,7 +193,7 @@ impl Desktop {
         }
         if let Some(wheel) = control.get("wheel") {
             // A mouse-wheel notch at a point (test only): {"x":…,"y":…,"lines":…}.
-            let event = ScrollWheelEvent {
+            let event = ScrollEvent {
                 position: point(px(number(wheel, "x") as f32), px(number(wheel, "y") as f32)),
                 delta: ScrollDelta::Lines(point(
                     number(wheel, "linesX") as f32,
@@ -204,12 +204,13 @@ impl Desktop {
                     ..Default::default()
                 },
                 touch_phase: TouchPhase::Moved,
+                source: ScrollSource::Pointer,
             };
             window.defer(cx, move |window, cx| {
                 if let Some(ms) = scrollbar::trace_ms() {
                     println!("{}", json!({"event":"wheel","ms":ms}));
                 }
-                window.dispatch_event(PlatformInput::ScrollWheel(event), cx);
+                window.dispatch_event(PlatformInput::Scroll(event), cx);
             });
         }
         if let Some(ms) = control["scrollTrace"].as_u64() {
@@ -743,7 +744,7 @@ impl Desktop {
             let strokes = keys
                 .iter()
                 .filter_map(Value::as_str)
-                .filter_map(|k| Keystroke::parse(k).ok())
+                .filter_map(|k| Keystroke::parse_with_os(k, OperatingSystem::Windows).ok())
                 .collect::<Vec<_>>();
             window.defer(cx, move |window, cx| {
                 for stroke in strokes {

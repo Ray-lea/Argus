@@ -621,7 +621,7 @@ impl Desktop {
             .id("menu-layer")
             .w(viewport.width)
             .h(viewport.height)
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .on_scroll(|_, _, cx| cx.stop_propagation())
             .child(self.menu_surface(
                 popup,
                 &popup.items,

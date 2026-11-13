@@ -303,7 +303,7 @@ impl Render for TipLayer {
                         pressed.dismiss(window, cx);
                     }
                 });
-                window.on_mouse_event(move |_: &ScrollWheelEvent, phase, window, cx| {
+                window.on_mouse_event(move |_: &ScrollEvent, phase, window, cx| {
                     if phase == DispatchPhase::Capture {
                         tips.dismiss(window, cx);
                     }

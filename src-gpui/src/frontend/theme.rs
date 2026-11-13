@@ -757,15 +757,18 @@ mod tests {
         assert!(!strings.is_empty());
         let mut ideograph_breaks = 0;
         for text in &strings {
-            let chars: Vec<char> = text.chars().collect();
-            let at = |i: usize| chars.get(i).copied().unwrap_or('\0');
-            for i in 1..chars.len() {
-                let (before, after) = (at(i - 1), at(i));
-                if before == ' ' {
+            let breaks: std::collections::HashSet<usize> =
+                LineWrapper::break_indices(text).collect();
+            let mut previous = None;
+            for (index, after) in text.char_indices() {
+                let Some(before) = previous.replace(after) else {
+                    continue;
+                };
+                // A space or a line feed always ends its line.
+                if before == ' ' || before == '\n' {
                     continue;
                 }
-                let before2 = if i >= 2 { at(i - 2) } else { '\0' };
-                let allowed = LineWrapper::is_wrap_opportunity(before2, before, after, at(i + 1));
+                let allowed = breaks.contains(&index);
                 assert!(
                     !(allowed && "。，、）」』】》”：；！？…".contains(after)),
                     "a line may start with {after:?} in {text:?}"
@@ -781,5 +784,31 @@ mod tests {
             }
         }
         assert!(ideograph_breaks > 0);
+    }
+
+    /// The normal break rules for Chinese and Japanese text: small kana and
+    /// the prolonged sound mark may start a line, a quotation mark stays with
+    /// the text it encloses, ellipses and dashes stay together, and ideographs
+    /// break from Latin words without a space.
+    #[test]
+    fn cjk_breaks_follow_the_normal_rules() {
+        let allowed = |text: &str, before: &str| {
+            assert!(text.starts_with(before));
+            LineWrapper::break_indices(text).any(|index| index == before.len())
+        };
+        assert!(allowed("きゃく", "き"));
+        assert!(allowed("カード", "カ"));
+        let quoted = "选择“跟随系统”时";
+        assert!(!allowed(quoted, "选择“"));
+        assert!(allowed(quoted, "选择“跟"));
+        assert!(!allowed(quoted, "选择“跟随系统"));
+        assert!(!allowed("请稍候……完成", "请稍候"));
+        assert!(!allowed("请稍候……完成", "请稍候…"));
+        assert!(allowed("请稍候……完成", "请稍候……"));
+        assert!(allowed("中文——中文", "中文"));
+        assert!(!allowed("中文——中文", "中文—"));
+        assert!(allowed("使用GPU加速", "使用"));
+        assert!(allowed("使用GPU加速", "使用GPU"));
+        assert!(!allowed("使用GPU加速", "使用G"));
     }
 }

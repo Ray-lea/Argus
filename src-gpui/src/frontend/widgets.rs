@@ -1553,7 +1553,7 @@ impl Desktop {
             .opacity(opacity)
             .text_size(theme::font(13.))
             .text_color(p.ink)
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .on_scroll(|_, _, cx| cx.stop_propagation())
             .children(open.options.iter().enumerate().map(|(index, option)| {
                 let selected = Some(index) == open.selected;
                 div()
@@ -1610,7 +1610,7 @@ impl Desktop {
                                 cx.notify();
                             }),
                         )
-                        .on_scroll_wheel(cx.listener(|this, _, window, cx| {
+                        .on_scroll(cx.listener(|this, _, window, cx| {
                             this.close_select();
                             window.refresh();
                             cx.notify();

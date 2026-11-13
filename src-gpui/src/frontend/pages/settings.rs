@@ -945,7 +945,7 @@ impl Desktop {
             .pt(px(4.))
             .pb(px(32.))
             .children(sections)
-            .on_scroll_wheel(cx.listener(|this, _, _, _| this.ui.settings_picked = false))
+            .on_scroll(cx.listener(|this, _, _, _| this.ui.settings_picked = false))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.ui.settings_picked = false),
