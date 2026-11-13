@@ -22,7 +22,7 @@
 
 实时托盘图标（`shell/tray_icon.rs`）在托盘线程中按 `SM_CXSMICON` 的尺寸绘制：眼睛与负载条以有符号距离加一像素边缘绘出，数字由 GDI 灰度抗锯齿文字取覆盖率；新样本画出的像素与当前图标相同时沿用原图标，不调用 Shell。字形颜色读取 `SystemUsesLightTheme`，在 `WM_SETTINGCHANGE` 时更新。图标添加后切换到 `NOTIFYICON_VERSION_4`：回调的低位为事件、`wParam` 为锚点坐标，右键单击以 `WM_CONTEXTMENU` 到达，悬停以 `NIN_POPUPOPEN` / `NIN_POPUPCLOSE` 到达；开启悬停卡片时不设 `NIF_SHOWTIP`，系统提示让位于卡片，提示文字仍供读屏使用。
 
-悬停卡片与快捷面板（`frontend/tray.rs`）各是一个 GPUI 弹出窗口（`WindowKind::PopUp`），打开时创建、淡出后移除，不打开时没有常驻开销。宿主以 `Shell_NotifyIconGetRect` 和所在显示器的工作区计算锚点（`shell/tray_anchor.rs`），弹出窗口先以完全透明显示并完成布局，再按内容高度与客户区（不含不可见边框）定位到托盘图标旁、离任务栏 12 px 处，然后以分层窗口的不透明度淡入；面板在测试实例外取得前台，失去激活时关闭。打开期间采样器的窗口探针按“显示”计算间隔，读数随前台刷新频率更新。
+悬停卡片与快捷面板（`frontend/tray.rs`）共用一个 GPUI 弹出窗口（`WindowKind::PopUp`），提前创建并在两次使用之间隐藏：新建窗口要建立渲染器、交换链和字形图集，开发构建还要现场编译着色器，在 i5-13500HX 上发布构建约 30 ms、开发构建约 0.6 s，而显示已有窗口到开始淡入约 10–20 ms。托盘图标收到指针移动（`WM_MOUSEMOVE`）时立即创建，窗口隐藏到托盘或以托盘方式启动后 1.5 s 创建；创建后在屏幕外以完全透明排一次快捷面板，预先完成文字排版、字形栅格化并记下高度。隐藏的窗口约占 13 MB 私有内存，随“隐藏时释放内存”一并释放，之后由指针移到托盘图标时重新创建。宿主以 `Shell_NotifyIconGetRect` 和所在显示器的工作区计算锚点（`shell/tray_anchor.rs`），弹出窗口先以上次的高度完全透明显示并完成布局，高度不同时按内容高度与客户区（不含不可见边框）重新定位到托盘图标旁、离任务栏 12 px 处，然后以分层窗口的不透明度淡入；窗口不受非活动窗口的帧率上限约束，淡入淡出按显示器刷新率绘制。面板在测试实例外取得前台，失去激活时关闭。打开期间采样器的窗口探针按“显示”计算间隔，读数随前台刷新频率更新。
 
 托盘 GUID 由应用标识和规范化的程序路径稳定派生，创建、修改、Explorer 重建和删除均携带同一 `guidItem` 与 `NIF_GUID`。版本、提示文字、语言和更新角标不参与标识计算；同路径覆盖升级沿用已有标识，开发／测试标识和不同程序位置相互隔离。Windows 将托盘 GUID 与程序路径绑定，参见 [NOTIFYICONDATA 的标识与路径规则](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-notifyicondataw#troubleshooting)。
 
