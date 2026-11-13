@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Actualisation dans la zone de notification",
-      "desc": "Intervalle de collecte lorsque la fenêtre est masquée dans la zone de notification ; l’infobulle suit le même rythme. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder les règles pour les nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Intervalle de collecte lorsque la fenêtre est masquée dans la zone de notification ; l’icône et son infobulle suivent le même rythme. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder les règles pour les nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
     },
     "background": {
       "error": "Impossible d’enregistrer le taux de rafraîchissement : {error}"

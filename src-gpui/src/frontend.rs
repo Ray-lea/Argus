@@ -30,6 +30,7 @@ mod tables;
 mod test_control;
 mod theme;
 mod tips;
+mod tray;
 mod type_search;
 mod users;
 mod visibility;
@@ -57,22 +58,23 @@ use theme::{Palette, icon, label};
 /// Minutes hidden before the window gives its memory back; 0 for never.
 const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
 const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
-const PAGES: [(&str, &str); 8] = [
+const PAGES: [(&str, &str); 9] = [
     ("processes", "ProcessesIcon"),
     ("performance", "PulseIcon"),
     ("services", "ServicesIcon"),
     ("startup", "PowerIcon"),
     ("network", "GlobeIcon"),
     ("history", "HistoryIcon"),
+    ("components", "ComponentsIcon"),
     ("settings", "SettingsIcon"),
     ("about", "InfoIcon"),
 ];
 /// The pages a start can open on (the `startPage` preference): all but
-/// Settings and About.
+/// Components, Settings and About.
 fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
     PAGES
         .iter()
-        .filter(|(page, _)| !matches!(*page, "settings" | "about"))
+        .filter(|(page, _)| !matches!(*page, "components" | "settings" | "about"))
 }
 /// The page a start opens on: the saved `startPage` when it names one of
 /// `start_pages`, the process page otherwise.
@@ -259,6 +261,7 @@ struct Desktop {
     /// The columns the logical processors' grid was last arranged in.
     core_columns: Cell<usize>,
     settings_scroll: ScrollHandle,
+    components_scroll: ScrollHandle,
     about_scroll: ScrollHandle,
     device_scroll: ScrollHandle,
     settings_target: Option<usize>,
@@ -379,6 +382,8 @@ struct Desktop {
     history_cursor: Option<i64>,
     history_hover: Option<i64>,
     settings_section: String,
+    /// The tray's open flyouts (`tray`).
+    tray: tray::Flyouts,
 }
 impl Desktop {
     fn process_image(&self, id: u32) -> Option<Arc<Image>> {
@@ -437,6 +442,7 @@ impl Desktop {
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
             core_columns: Cell::new(0),
             settings_scroll: ScrollHandle::new(),
+            components_scroll: ScrollHandle::new(),
             about_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),
             settings_target: None,
@@ -549,6 +555,7 @@ impl Desktop {
             history_cursor: None,
             history_hover: None,
             settings_section: "language".into(),
+            tray: tray::Flyouts::default(),
             ui_scale: appearance::SCALE.load(&prefs),
             font_size: appearance::FONT_SIZE.load(&prefs),
             prefs,
@@ -874,7 +881,7 @@ mod tests {
 
     #[test]
     fn a_start_opens_a_saved_page_other_than_settings() {
-        // Every page can be chosen except Settings itself.
+        // Every page can be chosen except Components, Settings and About.
         let choices = start_pages().map(|(page, _)| *page).collect::<Vec<_>>();
         assert_eq!(
             choices,
@@ -895,6 +902,7 @@ mod tests {
         for saved in [
             Value::Null,
             json!("settings"),
+            json!("components"),
             json!("Performance"),
             json!(""),
             json!(2),

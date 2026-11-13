@@ -12,6 +12,7 @@
     "startup": "Autostart",
     "network": "Verbindungen",
     "history": "Verlauf",
+    "components": "Komponenten",
     "settings": "Einstellungen",
     "about": "Info"
   },

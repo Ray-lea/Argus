@@ -345,7 +345,8 @@ impl Desktop {
                 owner.clone(),
             ));
         for (index, (page, glyph)) in PAGES.iter().enumerate() {
-            if *page == "settings" {
+            // Components, Settings and About sit apart at the end.
+            if *page == "components" {
                 items = items.child(div().flex_1());
             }
             items = items.child(entry(index, page, glyph));

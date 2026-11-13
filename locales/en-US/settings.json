@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Refresh rate in the tray",
-      "desc": "How often Argus samples while it's hidden in the tray; the tray tooltip updates at the same pace. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+      "desc": "How often Argus samples while it's hidden in the tray; the tray icon and its tooltip update at the same pace. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
     },
     "background": {
       "error": "Couldn't save the refresh rate: {error}"

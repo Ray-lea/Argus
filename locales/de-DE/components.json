@@ -1,0 +1,61 @@
+{
+  "sections": {
+    "tray": "Infobereich",
+    "planned": "Weitere Komponenten"
+  },
+  "tray": {
+    "icon": {
+      "title": "Symbol im Infobereich",
+      "desc": "Balken und Zahl folgen der CPU-Auslastung live und werden ab 80 % bernsteinfarben.",
+      "logo": "App-Symbol",
+      "load": "Lastbalken",
+      "number": "Zahl"
+    },
+    "card": {
+      "title": "Hoverkarte",
+      "desc": "Zeigt aktuelle Werte für CPU, Arbeitsspeicher, GPU und Netzwerk, solange der Mauszeiger auf dem Symbol ruht. Ausgeschaltet erscheint die QuickInfo des Systems."
+    },
+    "menu": {
+      "title": "Rechtsklick auf das Symbol",
+      "desc": "Das Schnellfenster zeigt aktuelle Werte, die aktivsten Prozesse und häufige Aktionen; das Menü nur die häufigen Aktionen.",
+      "panel": "Schnellfenster",
+      "menu": "Menü"
+    },
+    "moved": {
+      "title": "Infobereich und Komponenten",
+      "desc": "Symbol, Schnellfenster, Verhalten beim Schließen und das Intervall im Infobereich befinden sich jetzt auf der Seite „Komponenten“.",
+      "open": "Komponenten öffnen"
+    }
+  },
+  "planned": {
+    "state": "Geplant",
+    "desktop": {
+      "title": "Desktopanzeige",
+      "desc": "Ein Widget, das ausgewählte Werte dauerhaft auf dem Desktop zeigt."
+    },
+    "taskbar": {
+      "title": "Taskleistenanzeige",
+      "desc": "CPU, Arbeitsspeicher und Netzwerkraten direkt in der Taskleiste."
+    },
+    "island": {
+      "title": "Dynamic Island",
+      "desc": "Aktuelle Werte und Benachrichtigungen in einer Kapsel am oberen Bildschirmrand."
+    }
+  },
+  "panel": {
+    "label": "Argus-Schnellfenster",
+    "open": "Argus öffnen",
+    "busiest": "Höchste Auslastung",
+    "update": "Version {version} ist bereit",
+    "updateHint": "Neuerungen ansehen und installieren",
+    "install": "Aktualisieren",
+    "settings": "Einstellungen für den Infobereich",
+    "quit": "Argus beenden"
+  },
+  "card": {
+    "click": "Klicken: Fenster ein- oder ausblenden",
+    "rightPanel": "Rechtsklick: Schnellfenster öffnen",
+    "rightMenu": "Rechtsklick: Menü öffnen",
+    "update": "Version {version}"
+  }
+}

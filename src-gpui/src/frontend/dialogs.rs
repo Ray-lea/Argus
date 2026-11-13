@@ -1808,7 +1808,8 @@ impl Desktop {
                         move |this: &mut Desktop,
                               window: &mut Window,
                               cx: &mut Context<Desktop>| {
-                            this.locate_setting("data", field, window, cx)
+                            let section = if tray { "components" } else { "data" };
+                            this.locate_setting(section, field, window, cx)
                         },
                     ),
                 ),

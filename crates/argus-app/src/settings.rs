@@ -84,6 +84,70 @@ impl From<Theme> for String {
     }
 }
 
+/// What the tray icon shows: the app's icon, or the Argus eye with the CPU
+/// load as a bar or as a figure. Stored as its name; one this version does
+/// not know reads as the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum TrayIcon {
+    Logo,
+    #[default]
+    Load,
+    Number,
+}
+
+impl From<String> for TrayIcon {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "logo" => TrayIcon::Logo,
+            "number" => TrayIcon::Number,
+            _ => TrayIcon::Load,
+        }
+    }
+}
+
+impl From<TrayIcon> for String {
+    fn from(icon: TrayIcon) -> Self {
+        match icon {
+            TrayIcon::Logo => "logo",
+            TrayIcon::Load => "load",
+            TrayIcon::Number => "number",
+        }
+        .into()
+    }
+}
+
+/// What a right click on the tray icon opens. Stored as its name; one this
+/// version does not know reads as the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum TrayMenu {
+    /// The quick panel: readings, the busiest processes and common actions.
+    #[default]
+    Panel,
+    /// The system menu with the common actions only.
+    Menu,
+}
+
+impl From<String> for TrayMenu {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "menu" => TrayMenu::Menu,
+            _ => TrayMenu::Panel,
+        }
+    }
+}
+
+impl From<TrayMenu> for String {
+    fn from(menu: TrayMenu) -> Self {
+        match menu {
+            TrayMenu::Panel => "panel",
+            TrayMenu::Menu => "menu",
+        }
+        .into()
+    }
+}
+
 /// Which releases count as updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +184,13 @@ pub struct Settings {
     pub seen_version: String,
     /// Closing the window keeps Argus running in the tray.
     pub close_to_tray: bool,
+    /// What the tray icon shows.
+    pub tray_icon: TrayIcon,
+    /// Hovering the tray icon shows a card of live readings; off, the
+    /// system tooltip shows them.
+    pub tray_card: bool,
+    /// What a right click on the tray icon opens.
+    pub tray_menu: TrayMenu,
     /// How often to sample while the window is minimized, ms; one of
     /// `BACKGROUND_INTERVALS`.
     pub minimized_interval: u64,
@@ -156,6 +227,9 @@ impl Default for Settings {
             onboarding: 0,
             seen_version: String::new(),
             close_to_tray: true,
+            tray_icon: TrayIcon::default(),
+            tray_card: true,
+            tray_menu: TrayMenu::default(),
             minimized_interval: DEFAULT_BACKGROUND_INTERVAL,
             tray_interval: DEFAULT_BACKGROUND_INTERVAL,
             hotkey: DEFAULT_HOTKEY.into(),
@@ -391,6 +465,39 @@ mod tests {
         settings.migrate();
         assert_eq!(settings.hotkey, "Ctrl+Alt+KeyK");
         assert!(settings.hotkey_enabled);
+    }
+
+    #[test]
+    fn tray_choices_round_trip_and_unknown_names_read_as_defaults() {
+        // Settings saved before the tray choices existed.
+        let settings: Settings = serde_json::from_str(r#"{"closeToTray": false}"#).unwrap();
+        assert_eq!(settings.tray_icon, TrayIcon::Load);
+        assert!(settings.tray_card);
+        assert_eq!(settings.tray_menu, TrayMenu::Panel);
+        // Names from a newer version keep the other settings.
+        let settings: Settings = serde_json::from_str(
+            r#"{"trayIcon": "sparkline", "trayMenu": "wheel", "closeToTray": false}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.tray_icon, TrayIcon::Load);
+        assert_eq!(settings.tray_menu, TrayMenu::Panel);
+        assert!(!settings.close_to_tray);
+        for icon in [TrayIcon::Logo, TrayIcon::Load, TrayIcon::Number] {
+            for menu in [TrayMenu::Panel, TrayMenu::Menu] {
+                let saved = Settings {
+                    tray_icon: icon,
+                    tray_card: false,
+                    tray_menu: menu,
+                    ..Settings::default()
+                };
+                let read: Settings =
+                    serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+                assert_eq!(
+                    (read.tray_icon, read.tray_card, read.tray_menu),
+                    (icon, false, menu)
+                );
+            }
+        }
     }
 
     #[test]

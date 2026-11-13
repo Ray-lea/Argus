@@ -560,7 +560,7 @@ impl Desktop {
         )
     }
 
-    fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::frontend) fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
         let modes = ["current", "default"];
         let current = self.prefs.get::<String>("trayPage", "current".into());
         let select = self.select(
@@ -579,7 +579,7 @@ impl Desktop {
         );
         self.setting_text(
             "trayPage",
-            "TrayIcon",
+            "AppIcon",
             "settings.startup.trayPage.title",
             "settings.startup.trayPage.desc",
             vec![select],
@@ -846,7 +846,14 @@ impl Desktop {
         if self.modal.as_ref().is_some_and(|m| m.kind == "filelock") {
             self.close_overlay(window, cx);
         }
-        self.preference("settingsSection", json!(section), window, cx);
+        // The tray's settings are on the Components page, in its first section.
+        if section == "components" {
+            if self.page != "components" {
+                self.act(Action::Page("components".into()), window, cx);
+            }
+        } else {
+            self.preference("settingsSection", json!(section), window, cx);
+        }
         self.ui.located = Some((item.to_owned(), Instant::now()));
     }
 
@@ -1215,22 +1222,8 @@ impl Desktop {
                     vec![autostart],
                 ));
                 cards.push(self.start_page_setting(cx));
-                cards.push(self.tray_page_setting(cx));
-                let tray = self.setting_toggle(
-                    "closeToTray",
-                    boolean(settings, "closeToTray"),
-                    "set_close_to_tray",
-                    "value",
-                    window,
-                    cx,
-                );
-                cards.push(self.setting_text(
-                    "closeToTray",
-                    "TrayIcon",
-                    "settings.startup.closeToTray.title",
-                    "settings.startup.closeToTray.desc",
-                    vec![tray],
-                ));
+                // The tray's settings are on the Components page.
+                cards.push(self.components_link(cx));
             }
             "hotkey" => {
                 cards.push(self.hotkey_card(settings, window, cx));
@@ -1902,20 +1895,15 @@ impl Desktop {
             "settings.data.intervalDesc",
             vec![interval],
         ));
-        for (away, glyph) in [("minimized", "MinimizeIcon"), ("tray", "TrayIcon")] {
-            let select = self.background_select("settings", away, cx);
-            cards.push(self.setting_text(
-                if away == "minimized" {
-                    "minimizedInterval"
-                } else {
-                    "trayInterval"
-                },
-                glyph,
-                &format!("settings.data.{away}.title"),
-                &format!("settings.data.{away}.desc"),
-                vec![select],
-            ));
-        }
+        // The tray's interval is on the Components page.
+        let select = self.background_select("settings", "minimized", cx);
+        cards.push(self.setting_text(
+            "minimizedInterval",
+            "MinimizeIcon",
+            "settings.data.minimized.title",
+            "settings.data.minimized.desc",
+            vec![select],
+        ));
         let minutes = self.release_hidden_minutes();
         let release = self.select(
             "settings-release-hidden",

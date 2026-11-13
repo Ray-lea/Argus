@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Actualización en la bandeja",
-      "desc": "Intervalo de muestreo al ocultar la ventana en la bandeja; el texto emergente se actualiza al mismo ritmo. Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
+      "desc": "Intervalo de muestreo al ocultar la ventana en la bandeja; el icono de la bandeja y su texto emergente se actualizan al mismo ritmo. Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
     },
     "background": {
       "error": "No se pudo guardar la frecuencia de actualización: {error}"

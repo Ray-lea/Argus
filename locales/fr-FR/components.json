@@ -1,0 +1,61 @@
+{
+  "sections": {
+    "tray": "Zone de notification",
+    "planned": "Autres composants"
+  },
+  "tray": {
+    "icon": {
+      "title": "Icône de la zone de notification",
+      "desc": "La barre et le chiffre suivent l’utilisation du CPU en temps réel et passent à l’ambre à partir de 80 %.",
+      "logo": "Icône de l’application",
+      "load": "Barre de charge",
+      "number": "Chiffre"
+    },
+    "card": {
+      "title": "Carte au survol",
+      "desc": "Affiche les mesures en temps réel du CPU, de la mémoire, du GPU et du réseau tant que le pointeur reste sur l’icône. Désactivée, l’info-bulle du système s’affiche."
+    },
+    "menu": {
+      "title": "Clic droit sur l’icône",
+      "desc": "Le panneau rapide affiche les mesures en temps réel, les processus les plus actifs et les actions courantes ; le menu n’affiche que les actions courantes.",
+      "panel": "Panneau rapide",
+      "menu": "Menu"
+    },
+    "moved": {
+      "title": "Zone de notification et composants",
+      "desc": "L’icône, le panneau rapide, le comportement à la fermeture de la fenêtre et l’actualisation dans la zone de notification se trouvent désormais sur la page Composants.",
+      "open": "Ouvrir Composants"
+    }
+  },
+  "planned": {
+    "state": "Prévu",
+    "desktop": {
+      "title": "Moniteur de bureau",
+      "desc": "Un widget qui garde les mesures choisies sur le bureau."
+    },
+    "taskbar": {
+      "title": "Moniteur de barre des tâches",
+      "desc": "CPU, mémoire et débits réseau directement dans la barre des tâches."
+    },
+    "island": {
+      "title": "Îlot dynamique",
+      "desc": "Mesures en temps réel et notifications dans une capsule en haut de l’écran."
+    }
+  },
+  "panel": {
+    "label": "Panneau rapide d’Argus",
+    "open": "Ouvrir Argus",
+    "busiest": "Les plus actifs",
+    "update": "La version {version} est prête",
+    "updateHint": "Voir les nouveautés et installer",
+    "install": "Mettre à jour",
+    "settings": "Paramètres de la zone de notification",
+    "quit": "Quitter Argus"
+  },
+  "card": {
+    "click": "Clic : afficher ou masquer la fenêtre",
+    "rightPanel": "Clic droit : ouvrir le panneau rapide",
+    "rightMenu": "Clic droit : ouvrir le menu",
+    "update": "Version {version}"
+  }
+}

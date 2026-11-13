@@ -211,6 +211,7 @@ impl Desktop {
                 "update-status" => {
                     changed |= self.data.get("updates") != Some(&event.value);
                     self.data.insert("updates".into(), event.value);
+                    self.refresh_tray(cx);
                 }
                 "argus-theme" => {
                     self.set_theme(event.value.as_bool().unwrap_or(false), window, cx);
@@ -225,6 +226,8 @@ impl Desktop {
                 "argus-restored" => self.restored(&event.value, window, cx),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
+                "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
+                "argus-tray-card" => self.tray_card(&event.value, window, cx),
                 "argus-files-dropped" => {
                     if let Ok(paths) = serde_json::from_value::<Vec<String>>(event.value) {
                         changed = true;
@@ -315,6 +318,7 @@ impl Desktop {
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
                         this.accept_snapshot_prepared(model, rows, window, cx);
+                        this.refresh_tray(cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);
@@ -363,7 +367,7 @@ impl Desktop {
     ) {
         let status_only = matches!(
             self.page.as_str(),
-            "services" | "startup" | "network" | "about"
+            "services" | "startup" | "network" | "components" | "about"
         ) || (self.page == "settings"
             && values(&self.data["settings"]["rules"]).is_empty());
         let visible = self.host.get_window("main").is_some_and(|window| {

@@ -48,7 +48,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         host.state::<AppState>()
             .sampler
             .send(Control::SetWindowProbe(Box::new(move || {
-                crate::shell::window_state(windows::Win32::Foundation::HWND(hwnd as _))
+                crate::shell::sampling_state(windows::Win32::Foundation::HWND(hwnd as _))
             })));
         if !options.test {
             crate::hotkey::init(host, &native);

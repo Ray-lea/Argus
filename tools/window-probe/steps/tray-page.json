@@ -4,7 +4,7 @@
     {"control":{"page":"network","preference":{"startPage":"processes"}},"wait":400},
     {"probe":"hide","wait":250},
     {"probe":"show","wait":500,"inspect":"layout","label":"keep-by-default","expect":{"page":"network"}},
-    {"control":{"page":"settings","settingsSection":"startup"},"wait":500,"capture":"startup-settings"},
+    {"control":{"page":"components"},"wait":500,"capture":"tray-settings"},
     {"control":{"clickAnchor":"settings-tray-page"},"wait":250,"capture":"tray-page-options"},
     {"control":{"keys":["down","enter"]},"wait":250},
     {"control":{"page":"network","preference":{"notice.trayRate":true}},"wait":300},
@@ -32,6 +32,6 @@
     {"control":{"page":"history","preference":{"trayPage":"current"}},"wait":300},
     {"probe":"hide","wait":250},
     {"probe":"show","wait":500,"inspect":"layout","label":"disabled-immediately","expect":{"page":"history"}},
-    {"control":{"page":"settings","settingsSection":"startup"},"probe":"size 640 480","wait":500,"capture":"startup-small"}
+    {"control":{"page":"components"},"probe":"size 640 480","wait":500,"capture":"tray-settings-small"}
   ]
 }

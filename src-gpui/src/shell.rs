@@ -1,10 +1,12 @@
 //! Native window lifecycle, backdrop, tray and visibility-driven sampling.
 mod tray;
+mod tray_anchor;
+mod tray_icon;
 mod tray_identity;
 use crate::{
     native_runtime::{Host, NativeWindow},
     sampler::{Control, WindowState},
-    settings::{SettingsStore, Theme},
+    settings::{Settings, SettingsStore, Theme, TrayIcon, TrayMenu},
 };
 use argus_core::tr;
 use std::sync::{
@@ -12,6 +14,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::Instant;
+pub(crate) use tray_anchor::Anchor;
 use windows::{
     Win32::{
         Foundation::*,
@@ -27,6 +30,15 @@ static HAS_SHOWN: AtomicBool = AtomicBool::new(false);
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
 static TRAY: Mutex<Option<Arc<tray::Worker>>> = Mutex::new(None);
+/// The tray icon's identity, for finding it on screen.
+static TRAY_ID: OnceLock<GUID> = OnceLock::new();
+/// The shell took `NOTIFYICON_VERSION_4`: callbacks carry the event in the
+/// low word and the anchor point in `wParam`, and a right click arrives as
+/// `WM_CONTEXTMENU`.
+static VERSION_4: AtomicBool = AtomicBool::new(false);
+/// When the keyboard last selected the icon; the shell can report one
+/// press twice.
+static KEY_SELECT: Mutex<Option<Instant>> = Mutex::new(None);
 const TRAY_MESSAGE: u32 = WM_APP + 82;
 const BADGE_COLOR: [u8; 4] = [0x38, 0xBD, 0xF8, 0xFF];
 
@@ -165,6 +177,143 @@ unsafe fn create_badged_icon(base: HICON) -> Option<HICON> {
         icon
     }
 }
+/// An icon from straight RGBA pixels, `size` square.
+fn icon_from_rgba(rgba: &[u8], size: u32) -> Option<HICON> {
+    unsafe {
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size as i32,
+                biHeight: -(size as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let color = CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+        if bits.is_null() || rgba.len() != (size * size * 4) as usize {
+            let _ = DeleteObject(color.into());
+            return None;
+        }
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u8>(), rgba.len());
+        for (to, from) in pixels
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(rgba.as_chunks::<4>().0)
+        {
+            *to = [from[2], from[1], from[0], from[3]];
+        }
+        let mask = CreateBitmap(size as i32, size as i32, 1, 1, None);
+        let icon = CreateIconIndirect(&ICONINFO {
+            fIcon: windows::core::BOOL(1),
+            xHotspot: 0,
+            yHotspot: 0,
+            hbmMask: mask,
+            hbmColor: color,
+        })
+        .ok();
+        let _ = DeleteObject(mask.into());
+        let _ = DeleteObject(color.into());
+        icon
+    }
+}
+
+/// The coverage of `text` set in bold Segoe UI of `font` pixels, centred in
+/// `rect` on a `size` square: grey-scale antialiasing drawn white on black,
+/// one byte per pixel.
+fn text_coverage(text: &str, size: u32, rect: tray_icon::Rect, font: f32) -> Option<Vec<u8>> {
+    unsafe {
+        let dc = CreateCompatibleDC(None);
+        if dc.is_invalid() {
+            return None;
+        }
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size as i32,
+                biHeight: -(size as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            return None;
+        };
+        let face = wide("Segoe UI");
+        let mut name = [0u16; 32];
+        name[..face.len()].copy_from_slice(&face);
+        let font = CreateFontIndirectW(&LOGFONTW {
+            lfHeight: -(font.round() as i32).max(1),
+            lfWeight: FW_BOLD.0 as i32,
+            lfQuality: ANTIALIASED_QUALITY,
+            lfFaceName: name,
+            ..Default::default()
+        });
+        let old_bitmap = SelectObject(dc, bitmap.into());
+        let old_font = SelectObject(dc, font.into());
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, COLORREF(0x00ff_ffff));
+        let mut area = RECT {
+            left: rect[0].round() as i32,
+            top: rect[1].round() as i32,
+            right: rect[2].round() as i32,
+            bottom: rect[3].round() as i32,
+        };
+        let mut text: Vec<u16> = text.encode_utf16().collect();
+        DrawTextW(
+            dc,
+            &mut text,
+            &mut area,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+        );
+        let _ = GdiFlush();
+        let coverage = (!bits.is_null()).then(|| {
+            std::slice::from_raw_parts(bits.cast::<u8>(), (size * size * 4) as usize)
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|pixel| pixel[1])
+                .collect()
+        });
+        SelectObject(dc, old_font);
+        SelectObject(dc, old_bitmap);
+        let _ = DeleteObject(font.into());
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(dc);
+        coverage
+    }
+}
+
+/// Whether the taskbar is light (`SystemUsesLightTheme`; dark when unset,
+/// as on Windows 10 by default).
+fn taskbar_light() -> bool {
+    use windows::Win32::System::Registry::*;
+    let mut light = 0u32;
+    let mut bytes = 4;
+    unsafe {
+        let _ = RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"),
+            w!("SystemUsesLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&raw mut light).cast()),
+            Some(&mut bytes),
+        );
+    }
+    light != 0
+}
+
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
@@ -407,20 +556,30 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
         worker.recreate();
         return Ok(());
     }
+    let guid = tray_identity::guid(&app.config().identifier, &std::env::current_exe()?);
+    let _ = TRAY_ID.set(guid);
     let mut native = NativeTray {
         hwnd,
-        guid: tray_identity::guid(&app.config().identifier, &std::env::current_exe()?),
+        guid,
         badge: None,
         generation: None,
+        live: None,
     };
-    let worker = tray::Worker::spawn(app_title(), move |update| native.write(update)).inspect_err(
-        |error| {
+    let settings = app.state::<SettingsStore>().get();
+    let initial = tray::Update {
+        title: app_title(),
+        look: settings.tray_icon,
+        tip: !settings.tray_card,
+        light: taskbar_light(),
+        ..Default::default()
+    };
+    let worker =
+        tray::Worker::spawn(initial, move |update| native.write(update)).inspect_err(|error| {
             argus_core::diagnostics::warn(
                 "tray worker creation",
                 argus_core::diagnostics::io(error),
             )
-        },
-    )?;
+        })?;
     worker.badge(UPDATE.lock().unwrap().is_some());
     *slot = Some(Arc::new(worker));
     Ok(())
@@ -435,6 +594,37 @@ pub fn set_tray_tooltip(_app: &Host, text: &str) {
         worker.title(text);
     }
 }
+/// A tray flyout is open: it shows live readings, so sampling keeps the
+/// shown window's pace meanwhile.
+static FLYOUT: AtomicBool = AtomicBool::new(false);
+pub fn set_flyout_open(open: bool) {
+    FLYOUT.store(open, Ordering::Relaxed);
+}
+/// The window's state as the sampler paces itself by it.
+pub fn sampling_state(hwnd: HWND) -> WindowState {
+    if FLYOUT.load(Ordering::Relaxed) {
+        WindowState::Shown
+    } else {
+        window_state(hwnd)
+    }
+}
+/// A new sample for the tray: its tooltip and the CPU load a live icon shows.
+pub fn set_tray_reading(_app: &Host, text: &str, cpu: f64) {
+    if let Some(worker) = TRAY.lock().unwrap().clone() {
+        worker.reading(text, cpu.round().clamp(0., 100.) as u8);
+    }
+}
+/// The tray icon's look, its hover card and what a right click opens.
+pub fn apply_tray(settings: &Settings) {
+    if let Some(worker) = TRAY.lock().unwrap().clone() {
+        worker.style(settings.tray_icon, !settings.tray_card);
+    }
+    if !settings.tray_card
+        && let Some(app) = HOST.get()
+    {
+        let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
+    }
+}
 pub fn set_tray_update(_app: &Host, version: Option<&str>) {
     *UPDATE.lock().unwrap() = version.map(str::to_owned);
     if let Some(worker) = TRAY.lock().unwrap().clone() {
@@ -442,11 +632,24 @@ pub fn set_tray_update(_app: &Host, version: Option<&str>) {
     }
 }
 
+/// The icon a tray update shows.
+enum Live {
+    /// The app's icon (with its badge).
+    Logo,
+    /// The live icon already shown.
+    Same(HICON),
+    /// A newly drawn live icon and its pixels.
+    New(HICON, Vec<u8>),
+}
+
 struct NativeTray {
     hwnd: isize,
     guid: GUID,
     badge: Option<isize>,
     generation: Option<u64>,
+    /// The live icon shown, and the pixels it was made from: a sample that
+    /// draws the same pixels keeps it.
+    live: Option<(isize, Vec<u8>)>,
 }
 
 impl NativeTray {
@@ -478,35 +681,116 @@ impl NativeTray {
         let Ok(base) = (unsafe { base_tray_icon() }) else {
             return;
         };
-        if update.badge && self.badge.is_none() {
-            self.badge = unsafe { create_badged_icon(base) }.map(|icon| icon.0 as isize);
-        }
-        data.hIcon = if update.badge {
-            self.badge.map(|icon| HICON(icon as _)).unwrap_or(base)
-        } else {
-            base
+        // A new live icon replaces the one shown only after the shell took it.
+        let mut replaced = None;
+        data.hIcon = match self.live_icon(&update) {
+            Live::New(icon, pixels) => {
+                replaced = Some((icon, pixels));
+                icon
+            }
+            Live::Same(icon) => icon,
+            Live::Logo => {
+                if update.badge && self.badge.is_none() {
+                    self.badge = unsafe { create_badged_icon(base) }.map(|icon| icon.0 as isize);
+                }
+                if update.badge {
+                    self.badge.map(|icon| HICON(icon as _)).unwrap_or(base)
+                } else {
+                    base
+                }
+            }
         };
         data.uFlags |= NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        if update.tip {
+            data.uFlags |= NIF_SHOWTIP;
+        }
         data.uCallbackMessage = TRAY_MESSAGE;
         let title = wide(&update.title);
         let length = title.len().saturating_sub(1).min(data.szTip.len() - 1);
         data.szTip[..length].copy_from_slice(&title[..length]);
-        let (first, retry) = if self.generation == Some(update.generation) {
+        let known = self.generation == Some(update.generation);
+        let (first, retry) = if known {
             (NIM_MODIFY, NIM_ADD)
         } else {
             (NIM_ADD, NIM_MODIFY)
         };
-        if notify(first, &data) || notify(retry, &data) {
-            self.generation = Some(update.generation);
+        let added = if notify(first, &data) {
+            Some(!known)
+        } else if notify(retry, &data) {
+            Some(known)
         } else {
-            self.generation = None;
-            argus_core::diagnostics::warn("tray update", "Shell_NotifyIconW returned false");
+            None
+        };
+        match replaced {
+            Some((icon, pixels)) if added.is_some() => {
+                self.set_live(Some((icon.0 as isize, pixels)))
+            }
+            Some((icon, _)) => unsafe {
+                let _ = DestroyIcon(icon);
+            },
+            // Back to the app's icon: the live one is no longer shown.
+            None if added.is_some() && update.look == TrayIcon::Logo => self.set_live(None),
+            None => {}
+        }
+        match added {
+            Some(added) => {
+                if added {
+                    // Version 4: the hover card, and the anchor point with each click.
+                    let mut version = self.data();
+                    version.Anonymous.uVersion = NOTIFYICON_VERSION_4;
+                    VERSION_4.store(notify(NIM_SETVERSION, &version), Ordering::Relaxed);
+                }
+                self.generation = Some(update.generation);
+            }
+            None => {
+                self.generation = None;
+                argus_core::diagnostics::warn("tray update", "Shell_NotifyIconW returned false");
+            }
+        }
+    }
+
+    /// The live icon for `update`: a new one when its pixels changed, the
+    /// one shown when they did not.
+    fn live_icon(&mut self, update: &tray::Update) -> Live {
+        let look = match update.look {
+            TrayIcon::Logo => return Live::Logo,
+            TrayIcon::Load => tray_icon::Look::Load,
+            TrayIcon::Number => tray_icon::Look::Number,
+        };
+        let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
+        let spec = tray_icon::Spec {
+            look,
+            load: update.load,
+            light: update.light,
+            badge: update.badge,
+        };
+        let pixels = tray_icon::render(spec, size, &|text, rect, font| {
+            text_coverage(text, size, rect, font)
+        });
+        if let Some((icon, shown)) = &self.live
+            && *shown == pixels
+        {
+            return Live::Same(HICON(*icon as _));
+        }
+        match icon_from_rgba(&pixels, size) {
+            Some(icon) => Live::New(icon, pixels),
+            // Without a drawn icon the app's stands in.
+            None => Live::Logo,
+        }
+    }
+
+    fn set_live(&mut self, live: Option<(isize, Vec<u8>)>) {
+        if let Some((icon, _)) = std::mem::replace(&mut self.live, live) {
+            unsafe {
+                let _ = DestroyIcon(HICON(icon as _));
+            }
         }
     }
 }
 
 impl Drop for NativeTray {
     fn drop(&mut self) {
+        self.set_live(None);
         if let Some(icon) = self.badge.take() {
             unsafe {
                 let _ = DestroyIcon(HICON(icon as _));
@@ -518,9 +802,11 @@ impl Drop for NativeTray {
 #[cfg(test)]
 mod tray_tests {
     use super::{NativeTray, tray, tray_identity};
+    use crate::settings::TrayIcon;
     use std::path::Path;
     use windows::Win32::UI::Shell::{
-        NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+        NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+        NIM_SETVERSION,
     };
 
     #[test]
@@ -534,13 +820,18 @@ mod tray_tests {
             guid,
             badge: None,
             generation: None,
+            live: None,
         };
         let mut calls = Vec::new();
-        for (title, badge, generation, closed) in [
-            ("initial", false, 0, false),
-            ("changed tooltip", true, 0, false),
-            ("Explorer restarted", false, 1, false),
-            ("", false, 1, true),
+        let mut icons = Vec::new();
+        let mut adds = 0;
+        for (title, badge, generation, closed, look, tip) in [
+            ("initial", false, 0, false, TrayIcon::Load, false),
+            ("changed tooltip", true, 0, false, TrayIcon::Load, false),
+            ("Explorer restarted", false, 1, false, TrayIcon::Load, false),
+            ("same pixels", false, 1, false, TrayIcon::Load, true),
+            ("app icon", false, 1, false, TrayIcon::Logo, true),
+            ("", false, 1, true, TrayIcon::Logo, true),
         ] {
             icon.write_with(
                 tray::Update {
@@ -548,31 +839,88 @@ mod tray_tests {
                     badge,
                     generation,
                     closed,
+                    look,
+                    load: Some(35),
+                    tip,
+                    ..Default::default()
                 },
                 |message, data| {
                     assert_eq!(data.guidItem, guid);
                     assert!(data.uFlags.contains(NIF_GUID));
-                    if message != NIM_DELETE {
+                    if message == NIM_ADD || message == NIM_MODIFY {
                         assert!(data.uFlags.contains(NIF_ICON | NIF_MESSAGE | NIF_TIP));
+                        assert_eq!(data.uFlags.contains(NIF_SHOWTIP), tip);
+                        icons.push(data.hIcon.0 as isize);
                     }
                     calls.push(message);
                     // Exercise the NIM_ADD -> NIM_MODIFY retry after recreation.
-                    calls.len() != 3
+                    if message == NIM_ADD {
+                        adds += 1;
+                        return adds != 2;
+                    }
+                    true
                 },
             );
         }
         assert_eq!(
             calls,
-            [NIM_ADD, NIM_MODIFY, NIM_ADD, NIM_MODIFY, NIM_DELETE]
+            [
+                NIM_ADD,
+                NIM_SETVERSION,
+                NIM_MODIFY,
+                NIM_ADD,
+                NIM_MODIFY,
+                NIM_MODIFY,
+                NIM_MODIFY,
+                NIM_DELETE
+            ]
         );
+        // The badge drew new pixels; the same pixels keep the icon shown.
+        assert_ne!(icons[0], icons[1]);
+        assert_eq!(icons[3], icons[4]);
+        assert!(icon.live.is_none(), "the app's icon replaced the live one");
         let restarted = NativeTray {
             hwnd: 2,
             guid,
             badge: None,
             generation: None,
+            live: None,
         };
         assert_eq!(restarted.data().guidItem, icon.data().guidItem);
         assert_ne!(restarted.data().hWnd, icon.data().hWnd);
+    }
+}
+
+#[cfg(test)]
+mod tray_action_tests {
+    use super::{NIN_KEYSELECT, TrayAction, tray_action};
+    use windows::Win32::UI::Shell::{NIN_POPUPCLOSE, NIN_POPUPOPEN};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WM_CONTEXTMENU, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONUP,
+    };
+
+    #[test]
+    fn a_right_click_opens_once_with_either_callback_version() {
+        assert_eq!(tray_action(WM_RBUTTONUP, true), None);
+        assert_eq!(tray_action(WM_CONTEXTMENU, true), Some(TrayAction::Context));
+        assert_eq!(tray_action(WM_RBUTTONUP, false), Some(TrayAction::Context));
+        for version_4 in [true, false] {
+            assert_eq!(
+                tray_action(WM_LBUTTONUP, version_4),
+                Some(TrayAction::Toggle)
+            );
+            assert_eq!(tray_action(WM_LBUTTONDOWN, version_4), None);
+            assert_eq!(tray_action(WM_MOUSEMOVE, version_4), None);
+        }
+        assert_eq!(
+            tray_action(NIN_KEYSELECT, true),
+            Some(TrayAction::KeyToggle)
+        );
+        assert_eq!(tray_action(NIN_POPUPOPEN, true), Some(TrayAction::CardOpen));
+        assert_eq!(
+            tray_action(NIN_POPUPCLOSE, true),
+            Some(TrayAction::CardClose)
+        );
     }
 }
 
@@ -634,6 +982,149 @@ fn tray_menu(app: &Host, hwnd: HWND) {
         }
     }
 }
+/// `NIN_SELECT | NINF_KEY`, which the `windows` crate does not export.
+const NIN_KEYSELECT: u32 = WM_USER | 1;
+
+/// What a tray callback asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrayAction {
+    /// A click: show or hide the window.
+    Toggle,
+    /// Enter or Space on the icon.
+    KeyToggle,
+    /// A right click or the menu key: the quick panel or the menu.
+    Context,
+    /// The pointer rests on the icon / left it.
+    CardOpen,
+    CardClose,
+}
+
+/// The action of a tray callback's event. With version 4 a right click
+/// comes as `WM_CONTEXTMENU` after `WM_RBUTTONUP`; before it, only the latter.
+fn tray_action(event: u32, version_4: bool) -> Option<TrayAction> {
+    match event {
+        WM_LBUTTONUP => Some(TrayAction::Toggle),
+        NIN_KEYSELECT => Some(TrayAction::KeyToggle),
+        WM_CONTEXTMENU => Some(TrayAction::Context),
+        WM_RBUTTONUP if !version_4 => Some(TrayAction::Context),
+        NIN_POPUPOPEN => Some(TrayAction::CardOpen),
+        NIN_POPUPCLOSE => Some(TrayAction::CardClose),
+        _ => None,
+    }
+}
+
+/// The tray icon and its display; when the shell cannot say where the icon
+/// is, a one-pixel icon at `point`.
+fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+    let id = NOTIFYICONIDENTIFIER {
+        cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32,
+        hWnd: hwnd,
+        uID: 1,
+        guidItem: TRAY_ID.get().copied().unwrap_or_default(),
+    };
+    let icon = unsafe { Shell_NotifyIconGetRect(&id) }.unwrap_or(RECT {
+        left: point.x,
+        top: point.y,
+        right: point.x + 1,
+        bottom: point.y + 1,
+    });
+    let monitor = unsafe { MonitorFromRect(&icon, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let _ = unsafe { GetMonitorInfoW(monitor, &mut info) };
+    let (mut dpi_x, mut dpi_y) = (96u32, 96u32);
+    let _ = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
+    let corners = |r: RECT| [r.left, r.top, r.right, r.bottom];
+    Anchor {
+        icon: corners(icon),
+        work: corners(info.rcWork),
+        monitor: corners(info.rcMonitor),
+        scale: dpi_x.max(96) as f32 / 96.,
+    }
+}
+
+/// Where a tray icon near the right end of the primary display's taskbar
+/// would be, for test instances, which open the flyouts without the shell.
+pub fn sample_anchor() -> Anchor {
+    let monitor = unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let _ = unsafe { GetMonitorInfoW(monitor, &mut info) };
+    let scale = |logical: i32| {
+        logical * unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() }.max(96) as i32 / 96
+    };
+    let (work, whole) = (info.rcWork, info.rcMonitor);
+    Anchor {
+        icon: [
+            work.right - scale(160),
+            whole.bottom - scale(40),
+            work.right - scale(136),
+            whole.bottom - scale(8),
+        ],
+        work: [work.left, work.top, work.right, work.bottom],
+        monitor: [whole.left, whole.top, whole.right, whole.bottom],
+        scale: unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() }.max(96) as f32 / 96.,
+    }
+}
+
+fn tray_callback(app: &Host, hwnd: HWND, w: WPARAM, l: LPARAM) {
+    let version_4 = VERSION_4.load(Ordering::Relaxed);
+    let Some(action) = tray_action((l.0 as u32) & 0xffff, version_4) else {
+        return;
+    };
+    // Version 4 gives the anchor point with the event; otherwise the pointer.
+    let point = if version_4 {
+        POINT {
+            x: (w.0 & 0xffff) as u16 as i16 as i32,
+            y: ((w.0 >> 16) & 0xffff) as u16 as i16 as i32,
+        }
+    } else {
+        let mut point = POINT::default();
+        let _ = unsafe { GetCursorPos(&mut point) };
+        point
+    };
+    let close_card = || {
+        let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
+    };
+    match action {
+        TrayAction::Toggle => {
+            close_card();
+            toggle_main(app);
+        }
+        TrayAction::KeyToggle => {
+            let mut last = KEY_SELECT.lock().unwrap();
+            if last.is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(300)) {
+                return;
+            }
+            *last = Some(Instant::now());
+            drop(last);
+            toggle_main(app);
+        }
+        TrayAction::Context => {
+            close_card();
+            if app.state::<SettingsStore>().get().tray_menu == TrayMenu::Menu {
+                tray_menu(app, hwnd);
+            } else {
+                let _ = app.emit("argus-tray-panel", tray_anchor(hwnd, point));
+            }
+        }
+        TrayAction::CardOpen => {
+            if app.state::<SettingsStore>().get().tray_card {
+                let _ = app.emit(
+                    "argus-tray-card",
+                    serde_json::json!({ "open": true, "anchor": tray_anchor(hwnd, point) }),
+                );
+            }
+        }
+        TrayAction::CardClose => close_card(),
+    }
+}
+
 unsafe extern "system" fn procedure(
     hwnd: HWND,
     message: u32,
@@ -650,11 +1141,7 @@ unsafe extern "system" fn procedure(
             worker.recreate();
         }
         if message == TRAY_MESSAGE {
-            match l.0 as u32 {
-                WM_LBUTTONUP => toggle_main(app),
-                WM_RBUTTONUP | WM_CONTEXTMENU => tray_menu(app, hwnd),
-                _ => {}
-            }
+            tray_callback(app, hwnd, w, l);
             return LRESULT(0);
         }
         if message == WM_CLOSE {
@@ -678,6 +1165,10 @@ unsafe extern "system" fn procedure(
         }
         if message == WM_SETTINGCHANGE {
             apply_theme(app, app.state::<SettingsStore>().get().theme);
+            // The taskbar's theme can change apart from the apps'.
+            if let Some(worker) = TRAY.lock().unwrap().clone() {
+                worker.taskbar(taskbar_light());
+            }
         }
     }
     let result = unsafe { DefSubclassProc(hwnd, message, w, l) };

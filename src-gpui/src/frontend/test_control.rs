@@ -18,6 +18,21 @@ impl Desktop {
                 }
             }
         }
+        // The tray's flyouts, opened where the shell would put them but never
+        // activated: "card", "panel", or anything else to close them.
+        if let Some(flyout) = control.get("trayFlyout") {
+            let anchor = json!(crate::shell::sample_anchor());
+            match flyout.as_str() {
+                Some("card") => {
+                    self.tray_card(&json!({"open": true, "anchor": anchor}), window, cx)
+                }
+                Some("panel") => self.tray_panel(&anchor, window, cx),
+                _ => {
+                    self.tray_card(&json!({"open": false}), window, cx);
+                    self.close_tray_panel(cx);
+                }
+            }
+        }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")
         {

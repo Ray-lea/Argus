@@ -1,0 +1,61 @@
+{
+  "sections": {
+    "tray": "Bandeja del sistema",
+    "planned": "Más componentes"
+  },
+  "tray": {
+    "icon": {
+      "title": "Icono de la bandeja",
+      "desc": "La barra y la cifra siguen el uso de CPU en tiempo real y se vuelven ámbar a partir del 80 %.",
+      "logo": "Icono de la aplicación",
+      "load": "Barra de carga",
+      "number": "Cifra"
+    },
+    "card": {
+      "title": "Tarjeta al pasar el puntero",
+      "desc": "Muestra las lecturas en tiempo real de CPU, memoria, GPU y red mientras el puntero está sobre el icono. Desactivada, aparece la información sobre herramientas del sistema."
+    },
+    "menu": {
+      "title": "Clic derecho en el icono",
+      "desc": "El panel rápido muestra lecturas en tiempo real, los procesos más activos y las acciones habituales; el menú solo muestra las acciones habituales.",
+      "panel": "Panel rápido",
+      "menu": "Menú"
+    },
+    "moved": {
+      "title": "Bandeja y componentes",
+      "desc": "El icono de la bandeja, el panel rápido, lo que ocurre al cerrar la ventana y la actualización en la bandeja están ahora en la página Componentes.",
+      "open": "Abrir Componentes"
+    }
+  },
+  "planned": {
+    "state": "Previsto",
+    "desktop": {
+      "title": "Monitor de escritorio",
+      "desc": "Un widget que mantiene en el escritorio las lecturas elegidas."
+    },
+    "taskbar": {
+      "title": "Monitor en la barra de tareas",
+      "desc": "CPU, memoria y velocidad de red directamente en la barra de tareas."
+    },
+    "island": {
+      "title": "Isla dinámica",
+      "desc": "Lecturas en tiempo real y notificaciones en una cápsula en la parte superior de la pantalla."
+    }
+  },
+  "panel": {
+    "label": "Panel rápido de Argus",
+    "open": "Abrir Argus",
+    "busiest": "Más activos",
+    "update": "La versión {version} está lista",
+    "updateHint": "Ver las novedades e instalar",
+    "install": "Actualizar",
+    "settings": "Configuración de la bandeja",
+    "quit": "Salir de Argus"
+  },
+  "card": {
+    "click": "Clic: mostrar u ocultar la ventana",
+    "rightPanel": "Clic derecho: abrir el panel rápido",
+    "rightMenu": "Clic derecho: abrir el menú",
+    "update": "Versión {version}"
+  }
+}

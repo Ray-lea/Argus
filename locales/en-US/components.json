@@ -1,0 +1,61 @@
+{
+  "sections": {
+    "tray": "System tray",
+    "planned": "More components"
+  },
+  "tray": {
+    "icon": {
+      "title": "Tray icon",
+      "desc": "The bar and the number follow CPU usage live and turn amber from 80%.",
+      "logo": "App icon",
+      "load": "Load bar",
+      "number": "Number"
+    },
+    "card": {
+      "title": "Hover card",
+      "desc": "Shows live CPU, memory, GPU and network readings while the pointer rests on the tray icon. When off, the system tooltip shows instead."
+    },
+    "menu": {
+      "title": "Right-clicking the tray icon",
+      "desc": "The quick panel shows live readings, the busiest processes and common actions; the menu lists the common actions only.",
+      "panel": "Quick panel",
+      "menu": "Menu"
+    },
+    "moved": {
+      "title": "Tray and components",
+      "desc": "The tray icon, the quick panel, what closing the window does and the refresh rate in the tray are now on the Components page.",
+      "open": "Open Components"
+    }
+  },
+  "planned": {
+    "state": "Planned",
+    "desktop": {
+      "title": "Desktop monitor",
+      "desc": "A widget that keeps chosen readings on the desktop."
+    },
+    "taskbar": {
+      "title": "Taskbar monitor",
+      "desc": "CPU, memory and network rates right on the taskbar."
+    },
+    "island": {
+      "title": "Dynamic island",
+      "desc": "Live readings and notifications in a capsule at the top of the screen."
+    }
+  },
+  "panel": {
+    "label": "Argus quick panel",
+    "open": "Open Argus",
+    "busiest": "Busiest",
+    "update": "Version {version} is ready",
+    "updateHint": "See what changed and install",
+    "install": "Update",
+    "settings": "Tray settings",
+    "quit": "Exit Argus"
+  },
+  "card": {
+    "click": "Click: show or hide the window",
+    "rightPanel": "Right-click: open the quick panel",
+    "rightMenu": "Right-click: open the menu",
+    "update": "Version {version}"
+  }
+}

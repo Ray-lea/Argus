@@ -1,0 +1,61 @@
+{
+  "sections": {
+    "tray": "托盘",
+    "planned": "更多组件"
+  },
+  "tray": {
+    "icon": {
+      "title": "托盘图标",
+      "desc": "负载条与数字随 CPU 占用实时变化，占用达到 80% 时变为琥珀色。",
+      "logo": "应用图标",
+      "load": "负载条",
+      "number": "数字"
+    },
+    "card": {
+      "title": "悬停卡片",
+      "desc": "指针停留在托盘图标上时显示 CPU、内存、GPU 与网络的实时读数；关闭后显示系统提示。"
+    },
+    "menu": {
+      "title": "右键单击托盘图标",
+      "desc": "快捷面板显示实时读数、占用最高的进程与常用操作；菜单仅列出常用操作。",
+      "panel": "快捷面板",
+      "menu": "菜单"
+    },
+    "moved": {
+      "title": "托盘与组件",
+      "desc": "托盘图标、快捷面板、关闭窗口时的行为与后台常驻时的刷新间隔已移至“组件”页。",
+      "open": "打开组件页"
+    }
+  },
+  "planned": {
+    "state": "规划中",
+    "desktop": {
+      "title": "桌面监控",
+      "desc": "在桌面上常驻显示所选指标的小组件。"
+    },
+    "taskbar": {
+      "title": "任务栏监控",
+      "desc": "在任务栏上直接显示 CPU、内存与网络速率。"
+    },
+    "island": {
+      "title": "灵动岛",
+      "desc": "在屏幕顶部以胶囊形式显示实时读数与通知。"
+    }
+  },
+  "panel": {
+    "label": "Argus 快捷面板",
+    "open": "打开 Argus",
+    "busiest": "占用最高",
+    "update": "新版本 {version} 已就绪",
+    "updateHint": "查看更新说明并安装",
+    "install": "更新",
+    "settings": "托盘设置",
+    "quit": "退出 Argus"
+  },
+  "card": {
+    "click": "单击：显示或隐藏窗口",
+    "rightPanel": "右键单击：打开快捷面板",
+    "rightMenu": "右键单击：打开菜单",
+    "update": "新版本 {version}"
+  }
+}

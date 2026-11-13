@@ -10,6 +10,7 @@ pub fn register() {
                     $tag,
                     "actions",
                     "common",
+                    "components",
                     "connections",
                     "details",
                     "fileLock",
