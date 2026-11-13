@@ -338,7 +338,7 @@ fn cell(row: &Row, field: &Field) -> String {
 }
 
 fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
-    if field.kind == CellKind::NetworkRate {
+    let value = if field.kind == CellKind::NetworkRate {
         row.metric(field.key)
             .map(|value| {
                 if value < 1. {
@@ -350,7 +350,18 @@ fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
             .unwrap_or_else(|| label("format.missing"))
     } else {
         cell(row, field)
+    };
+    if row.metric(field.key).is_some()
+        && let Some(state) = row.measurement(field.key)
+    {
+        if row.retained(field.key) {
+            return format!("≈ {value}");
+        }
+        if state.partial {
+            return format!("≥ {value}");
+        }
     }
+    value
 }
 pub(super) struct NativeTable {
     owner: WeakEntity<Desktop>,
@@ -2089,19 +2100,13 @@ impl Desktop {
                 if gpus.is_empty() {
                     String::new()
                 } else {
-                    format!(
-                        "{}%",
-                        gpus.iter()
-                            .map(|g| number(g, "util"))
-                            .fold(0., f64::max)
-                            .round()
-                    )
+                    model::gpu_total(&self.snapshot["hardware"])
+                        .display(|value| format!("{}%", value.round()))
                 }
             }
-            "io" => theme::bytes(
-                number(sys, "ioRead") + number(sys, "ioWrite") + number(sys, "ioOther"),
-                true,
-            ),
+            "io" => {
+                model::process_total(processes, "io").display(|value| theme::bytes(value, true))
+            }
             "diskRead" | "diskWrite" => processes
                 .iter()
                 .filter_map(|p| p[key].as_f64())
@@ -2116,15 +2121,13 @@ impl Desktop {
                 .unwrap_or_else(|| label("format.missing")),
             "net" => {
                 let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
-                let total = processes
-                    .iter()
-                    .map(|p| number(p, "netSent") + number(p, "netReceived"))
-                    .sum::<f64>();
-                if total < 1. {
-                    "0".into()
-                } else {
-                    theme::network(total, bits)
-                }
+                model::process_total(processes, "net").display(|total| {
+                    if total < 1. {
+                        "0".into()
+                    } else {
+                        theme::network(total, bits)
+                    }
+                })
             }
             "threads" => theme::count(number(sys, "threadCount")),
             "handles" => theme::count(number(sys, "handleCount")),

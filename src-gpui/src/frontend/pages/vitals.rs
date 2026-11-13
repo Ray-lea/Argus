@@ -463,18 +463,19 @@ impl Desktop {
         // The busiest GPU; the first one listed while they are equally busy.
         let gpu = values(&hw["gpus"])
             .iter()
+            .filter(|g| {
+                model::device_reading(g, "util", "utilState")
+                    .value
+                    .is_some()
+            })
             .fold(None::<&Value>, |busiest, g| match busiest {
                 Some(b) if number(g, "util") <= number(b, "util") => Some(b),
                 _ => Some(g),
-            });
-        let rx = values(&hw["nics"])
-            .iter()
-            .map(|n| number(n, "rx"))
-            .sum::<f64>();
-        let tx = values(&hw["nics"])
-            .iter()
-            .map(|n| number(n, "tx"))
-            .sum::<f64>();
+            })
+            .or_else(|| values(&hw["gpus"]).first());
+        let rx = model::network_total(hw, Some("rx"));
+        let tx = model::network_total(hw, Some("tx"));
+        let net = model::network_total(hw, None);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         // Overview charts share throughput steps with device and history charts.
         let peak = |key: &str| {
@@ -487,7 +488,7 @@ impl Desktop {
         let gb = |bytes: f64| crate::regional::number!("{:.1}", bytes / 1073741824.);
         let split = |value: String| -> (String, String) {
             value
-                .split_once(' ')
+                .rsplit_once(' ')
                 .map(|(figure, unit)| (figure.to_owned(), unit.to_owned()))
                 .unwrap_or((value, String::new()))
         };
@@ -501,15 +502,17 @@ impl Desktop {
             })
             .unwrap_or_else(|| label("format.missing")),
         );
-        let net_value = split(if rx + tx < 1. {
-            if bits {
-                "0 Kbps".into()
+        let net_value = split(net.display(|total| {
+            if total < 1. {
+                if bits {
+                    "0 Kbps".into()
+                } else {
+                    "0 KB/s".into()
+                }
             } else {
-                "0 KB/s".into()
+                theme::network(total, bits)
             }
-        } else {
-            theme::network(rx + tx, bits)
-        });
+        }));
         let mem_total = number(sys, "memTotal").max(1.);
         let mem_percent = (number(sys, "memUsed") / mem_total * 100.).round();
         let disk_top = charts::rate_ceiling(peak("totals.disk"), charts::RateScale::Disk);
@@ -595,8 +598,8 @@ impl Desktop {
                 readings: Readings::Detail(
                     tr!(
                         "processes.vitals.netRates",
-                        received = theme::network(rx, bits),
-                        sent = theme::network(tx, bits)
+                        received = rx.display(|value| theme::network(value, bits)),
+                        sent = tx.display(|value| theme::network(value, bits))
                     ),
                     Some(label("processes.vitals.netTitle")),
                 ),
@@ -623,8 +626,12 @@ impl Desktop {
                 color: p.gpu,
                 top: 100.,
                 scale: "100%".into(),
-                figure: format!("{}", number(gpu, "util").round()),
-                unit: "%".into(),
+                figure: model::gpu_total(hw).display(|value| format!("{}", value.round())),
+                unit: if model::gpu_total(hw).value.is_some() {
+                    "%".into()
+                } else {
+                    String::new()
+                },
                 readings: known(vec![
                     (
                         "vital-gpu-temperature",

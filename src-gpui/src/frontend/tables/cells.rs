@@ -182,7 +182,10 @@ impl NativeTable {
                     _ => false,
                 };
                 let delayed = row.native_pending(field.key)
-                    && row.members.iter().any(|member| boolean(member, "stale"));
+                    && (row.members.iter().any(|member| boolean(member, "stale"))
+                        || row.measurement(field.key).is_some_and(|state| {
+                            state.missing & argus_core::measurement::STALE != 0
+                        }));
                 element = element
                     .when(dim || delayed, |d| d.text_color(faint))
                     .child(value);
@@ -237,6 +240,39 @@ impl NativeTable {
     /// The hover hint for a cell other than the first, if any.
     pub(super) fn cell_hint(&self, row: &Row, field: &Field, cx: &App) -> Option<String> {
         let raw = &row.raw;
+        if self.page == "processes"
+            && let Some(state) = row.measurement(field.key)
+        {
+            let mut parts = Vec::new();
+            if state.partial {
+                parts.push(label("history.coverage.partial"));
+            }
+            for (flag, key) in [
+                (
+                    argus_core::measurement::UNAVAILABLE,
+                    "history.coverage.reasons.unavailable",
+                ),
+                (
+                    argus_core::measurement::ACCESS_DENIED,
+                    "history.coverage.reasons.denied",
+                ),
+                (
+                    argus_core::measurement::STALE,
+                    "history.coverage.reasons.stale",
+                ),
+                (
+                    argus_core::measurement::BASELINE,
+                    "history.coverage.reasons.baseline",
+                ),
+            ] {
+                if state.missing & flag != 0 {
+                    parts.push(label(key));
+                }
+            }
+            if !parts.is_empty() {
+                return Some(parts.join(" · "));
+            }
+        }
         if self.page == "processes"
             && row.native_pending(field.key)
             && row.metric(field.key).is_none()

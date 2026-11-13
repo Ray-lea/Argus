@@ -2,6 +2,7 @@
 //! charts are drawn once per query; pointing at them only moves the cursor marks.
 use super::*;
 use charts::GIB;
+use widgets::Tone;
 
 pub(super) const RANGES: [(&str, i64); 4] = [
     ("1h", 3_600_000),
@@ -23,6 +24,166 @@ const ROW_GAP: f32 = 8.;
 const AXIS: f32 = 22.;
 const BORDER: f32 = 1.;
 const TABLE_ROW: f32 = 28.;
+
+#[derive(Debug, PartialEq, Eq)]
+enum CoverageState {
+    Legacy,
+    Missing,
+    Partial,
+    Available,
+}
+
+fn coverage_state(coverage: &Value) -> CoverageState {
+    if !coverage.is_object() {
+        return CoverageState::Legacy;
+    }
+    let valid = coverage["valid"].as_u64().unwrap_or(0);
+    if valid == 0 {
+        CoverageState::Missing
+    } else if valid < coverage["samples"].as_u64().unwrap_or(0)
+        || number(coverage, "partial") > 0.
+        || number(coverage, "legacyFrames") > 0.
+    {
+        CoverageState::Partial
+    } else {
+        CoverageState::Available
+    }
+}
+
+fn covered_value(row: &Value, field: &str, coverage: &str) -> Option<f64> {
+    (coverage_state(&row[coverage]) != CoverageState::Missing)
+        .then(|| row[field].as_f64())
+        .flatten()
+}
+
+fn coverage_hint(coverage: &Value) -> String {
+    let mut hint = match coverage_state(coverage) {
+        CoverageState::Legacy => label("history.coverage.legacy"),
+        CoverageState::Missing => label("history.coverage.missing"),
+        state => tr!(
+            "history.coverage.samples",
+            state = label(if state == CoverageState::Partial {
+                "history.coverage.partial"
+            } else {
+                "history.coverage.available"
+            }),
+            valid = coverage["valid"],
+            total = coverage["samples"]
+        ),
+    };
+    let reasons = coverage["missing"].as_u64().unwrap_or(0) as u8;
+    for (flag, key) in [
+        (
+            argus_core::measurement::UNAVAILABLE,
+            "history.coverage.reasons.unavailable",
+        ),
+        (
+            argus_core::measurement::ACCESS_DENIED,
+            "history.coverage.reasons.denied",
+        ),
+        (
+            argus_core::measurement::STALE,
+            "history.coverage.reasons.stale",
+        ),
+        (
+            argus_core::measurement::BASELINE,
+            "history.coverage.reasons.baseline",
+        ),
+    ] {
+        if reasons & flag != 0 {
+            hint.push_str(" · ");
+            hint.push_str(&label(key));
+        }
+    }
+    hint
+}
+
+fn covered_text(
+    row: &Value,
+    field: &str,
+    coverage: &str,
+    format: impl FnOnce(f64) -> String,
+) -> String {
+    let value = covered_value(row, field, coverage)
+        .map(format)
+        .unwrap_or_else(|| label("format.missing"));
+    if coverage_state(&row[coverage]) == CoverageState::Legacy {
+        format!("{value} ?")
+    } else {
+        value
+    }
+}
+
+fn coverage_brief(coverage: &Value) -> String {
+    if coverage_state(coverage) == CoverageState::Missing {
+        let missing = coverage["missing"].as_u64().unwrap_or(0) as u8;
+        for (flag, key) in [
+            (
+                argus_core::measurement::ACCESS_DENIED,
+                "history.coverage.reasons.denied",
+            ),
+            (
+                argus_core::measurement::STALE,
+                "history.coverage.reasons.stale",
+            ),
+            (
+                argus_core::measurement::BASELINE,
+                "history.coverage.reasons.baseline",
+            ),
+            (
+                argus_core::measurement::UNAVAILABLE,
+                "history.coverage.reasons.unavailable",
+            ),
+        ] {
+            if missing & flag != 0 {
+                return label(key);
+            }
+        }
+    }
+    let mut without_reasons = coverage.clone();
+    if without_reasons.is_object() {
+        without_reasons["missing"] = json!(0);
+    }
+    coverage_hint(&without_reasons)
+}
+
+/// Old frames have no creation time: a matching PID and name cannot establish
+/// identity, even if the live process is older than the frame. A process may
+/// start inside the five-second frame, but never after it.
+pub(super) fn recorded_target(row: &Value, frame: Option<i64>, live: &[Value]) -> Option<Value> {
+    let created = row["createTime"].as_i64().filter(|time| *time > 0)?;
+    let end = frame?.checked_add(argus_core::history::FRAME_MS)?;
+    if created >= end {
+        return None;
+    }
+    live.iter()
+        .find(|process| {
+            process["pid"] == row["pid"]
+                && process["createTime"].as_i64() == Some(created)
+                && text(process, "name") == text(row, "name")
+        })
+        .map(|process| {
+            json!({"pid": process["pid"], "createTime": created,
+            "name": process["name"], "historyFrame": frame})
+        })
+}
+
+/// Choose a recorded frame, never the average timestamp between distant frames.
+fn frame_at(records: &[Value], cursor: Option<i64>, peak: bool) -> Option<i64> {
+    let point = match cursor {
+        Some(at) => {
+            if peak && records.iter().any(|p| p["cpuPeakTs"].as_i64() == Some(at)) {
+                return Some(at);
+            }
+            let Some(point) = records.iter().find(|p| p["ts"].as_i64() == Some(at)) else {
+                return Some(at);
+            };
+            point
+        }
+        None => records.last()?,
+    };
+    point["frameTs"].as_i64().or_else(|| point["ts"].as_i64())
+}
 
 pub(super) fn range_label(id: &str) -> String {
     let hours = RANGES
@@ -300,6 +461,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.load_watch(window, cx);
         let now = now_ms();
         let span = self.history_span();
         let buckets = ((span as f64 / FRAME).ceil() as i64)
@@ -331,7 +493,22 @@ impl Desktop {
             self.request("history_range", json!({}), Some("historyRange"), window, cx);
         }
         // A kept moment keeps its processes: they are read again only for another moment.
-        let moment = self.history_cursor.unwrap_or(now);
+        let records = self
+            .data
+            .get("historySeries")
+            .map(values)
+            .unwrap_or_default();
+        let peak = self
+            .history_cursor
+            .is_some_and(|at| self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at));
+        let exact = self
+            .data
+            .get("historyExactAt")
+            .and_then(Value::as_i64)
+            .filter(|at| Some(*at) == self.history_cursor);
+        let moment = exact
+            .or_else(|| frame_at(records, self.history_cursor, peak))
+            .unwrap_or(self.history_cursor.unwrap_or(now));
         if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
             self.request(
@@ -342,6 +519,7 @@ impl Desktop {
                 cx,
             );
         }
+        self.load_cpu_interval(window, cx);
     }
     /// A series answer is on screen. A moment picked on the previous window while it was
     /// queried (pointer or keys) stays picked only if the new window contains it.
@@ -357,8 +535,8 @@ impl Desktop {
         let cursor = kept(self.history_cursor, from, to);
         if cursor != self.history_cursor {
             self.history_cursor = cursor;
-            self.load_history(window, cx);
         }
+        self.load_history(window, cx);
     }
     /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
     /// tenth), Home and End jump to either end, Escape returns to the newest data. Steps
@@ -375,6 +553,8 @@ impl Desktop {
                 return false;
             }
             self.history_cursor = None;
+            self.data.remove("historyExactAt");
+            self.data.remove("historyPeakAt");
             self.load_history(window, cx);
             cx.notify();
             return true;
@@ -397,6 +577,8 @@ impl Desktop {
             return true;
         };
         self.history_cursor = Some(at);
+        self.data.remove("historyExactAt");
+        self.data.remove("historyPeakAt");
         self.load_history(window, cx);
         cx.notify();
         true
@@ -476,16 +658,25 @@ impl Desktop {
             .gap(px(ROW_GAP));
         let mut charts_column = Vec::new();
         for metric in &metrics {
-            let value_of = |r: &Value| r[metric.field].as_f64();
+            let value_of = |r: &Value| match metric.field {
+                "disk" => covered_value(r, "disk", "diskCoverage"),
+                "gpu" => covered_value(r, "gpu", "gpuCoverage"),
+                "net" => covered_value(r, "net", "netCoverage"),
+                _ => r[metric.field].as_f64(),
+            };
             let reading = readout.and_then(|r| value_of(r).map(|v| (r, v)));
             let value_text = reading.map(|(_, v)| match metric.field {
-                "cpu" | "gpu" => format!("{}%", theme::cpu(v)),
+                "cpu" => tr!("history.metric.average", value = theme::cpu(v)),
+                "gpu" => format!("{}%", theme::cpu(v)),
                 "memUsed" => crate::regional::number!("{:.1} GB", v / GIB),
                 "disk" => charts::byte_rate(v),
                 "net" => charts::net_rate(v, bits),
                 _ => format!("{}%", v.round()),
             });
-            let detail = reading.and_then(|(r, _)| match metric.field {
+            let detail = readout.and_then(|r| match metric.field {
+                "disk" => Some(coverage_brief(&r["diskCoverage"])),
+                "gpu" => Some(coverage_brief(&r["gpuCoverage"])),
+                "net" => Some(coverage_brief(&r["netCoverage"])),
                 "cpu" => r["cpuPeak"]
                     .as_f64()
                     .map(|peak| tr!("history.metric.peak", value = theme::cpu(peak))),
@@ -821,6 +1012,8 @@ impl Desktop {
                 cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     if let Some(at) = click_time(event.position) {
                         this.history_cursor = Some(at);
+                        this.data.remove("historyExactAt");
+                        this.data.remove("historyPeakAt");
                         this.load_history(window, cx);
                         cx.notify();
                     }
@@ -889,12 +1082,49 @@ impl Desktop {
             Some(time) => tr!("history.busiestAt", time = moment_label(time)),
             None => label("history.busiest"),
         };
+        let selected_point = match self.history_cursor {
+            Some(at) => records.iter().find(|point| {
+                point["ts"].as_i64() == Some(at) || point["cpuPeakTs"].as_i64() == Some(at)
+            }),
+            None => records.last(),
+        };
+        let peak_at = selected_point.and_then(|point| point["cpuPeakTs"].as_i64());
+        let summary = selected_point.and_then(|point| {
+            Some(tr!(
+                "history.cpuSummary",
+                average = theme::cpu(point["cpu"].as_f64()?),
+                peak = theme::cpu(point["cpuPeak"].as_f64()?),
+                time = moment_label(point["cpuPeakTs"].as_i64()?)
+            ))
+        });
         let earliest = self
             .data
             .get("historyRange")
             .and_then(|range| range[0].as_i64());
-        let table = self.history_table(values(&moment["processes"]), bits, window, cx);
+        let table = self.history_table(
+            values(&moment["processes"]),
+            moment["system"]["ts"].as_i64(),
+            bits,
+            window,
+            cx,
+        );
+        let quality = moment["system"].is_object().then(|| {
+            let disk = tr!(
+                "history.coverage.disk",
+                status = coverage_hint(&moment["system"]["diskCoverage"])
+            );
+            format!(
+                "{disk} · {}: {} · {}: {}",
+                label("common.resource.gpu"),
+                coverage_hint(&moment["system"]["gpuCoverage"]),
+                label("common.resource.network"),
+                coverage_hint(&moment["system"]["netCoverage"])
+            )
+        });
         let foot = div()
+            .w_full()
+            .min_w_0()
+            .flex_shrink_0()
             .flex()
             .flex_wrap()
             .justify_between()
@@ -906,6 +1136,9 @@ impl Desktop {
             .border_color(p.stroke)
             .text_size(theme::font(12.))
             .text_color(p.muted)
+            .when_some(quality, |d, text| {
+                d.child(div().w_full().min_w_0().whitespace_normal().child(text))
+            })
             .when_some(earliest, |d, ts| {
                 d.child(
                     div().flex().gap_1().child(label("history.earliest")).child(
@@ -941,10 +1174,16 @@ impl Desktop {
                     .child(after.to_owned())
                     .into_any_element()
             } else {
-                div().child(label("history.note")).into_any_element()
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .whitespace_normal()
+                    .child(label("history.note"))
+                    .into_any_element()
             });
         let moment_card = div()
-            .flex_1()
+            .flex_grow(1.)
+            .flex_shrink_0()
             .min_h(px(36. + 30. + TABLE_ROW * 3. + 34.))
             .flex()
             .flex_col()
@@ -963,6 +1202,21 @@ impl Desktop {
                     .pt(px(10.))
                     .px(px(14.))
                     .pb(px(4.))
+                    .when_some(peak_at, |d, at| {
+                        d.child(
+                            self.btn_small(
+                                "history-peak",
+                                label("history.showCpuPeak"),
+                                None,
+                                Tone::Plain,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.preference("historyPeak", json!(at), window, cx);
+                                },
+                            )),
+                        )
+                    })
                     .child(
                         div()
                             .text_size(theme::font(14.))
@@ -971,6 +1225,9 @@ impl Desktop {
                     )
                     .child(
                         div()
+                            .w_full()
+                            .min_w_0()
+                            .whitespace_normal()
                             .text_size(theme::font(12.))
                             .text_color(p.faint)
                             .child(label(if self.history_cursor.is_none() {
@@ -979,6 +1236,22 @@ impl Desktop {
                                 "history.hint.move"
                             })),
                     ),
+            )
+            .when_some(summary, |d, text| {
+                d.child(
+                    div()
+                        .px(px(14.))
+                        .pb(px(4.))
+                        .text_size(theme::font(12.))
+                        .text_color(p.muted)
+                        .child(text),
+                )
+            })
+            .child(
+                div()
+                    .px(px(14.))
+                    .pb(px(8.))
+                    .child(self.interval_markers(cx)),
             )
             .child(table)
             .child(foot);
@@ -999,7 +1272,15 @@ impl Desktop {
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
+            .when(
+                self.data.get("processWatch").is_some_and(Value::is_object)
+                    || self.data.contains_key("watchError"),
+                |d| d.child(self.watch_card(window, cx)),
+            )
             .child(graphs)
+            .when(self.data.contains_key("intervalStart"), |d| {
+                d.child(self.interval_card(cx))
+            })
             .child(moment_card)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .into_any_element()
@@ -1008,6 +1289,7 @@ impl Desktop {
     fn history_table(
         &self,
         processes: &[Value],
+        frame: Option<i64>,
         bits: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1020,8 +1302,10 @@ impl Desktop {
         let selected = window.use_keyed_state("history-selected", cx, |_, _| None::<String>);
         let stored = sort.read(cx).clone();
         let selected_key = selected.read(cx).clone();
-        // Per-process network needs administrator rights; without it the column is all zeros.
-        let has_net = processes.iter().any(|row| number(row, "net") > 0.);
+        // Keep unavailable and idle network readings distinguishable, including legacy files.
+        let has_net = processes
+            .iter()
+            .any(|row| row.get("netCoverage").is_some() || number(row, "net") > 0.);
         let mut columns: Vec<(&str, String, f32, Option<&str>)> = vec![
             ("name", label("common.name"), 0., None),
             ("pid", label("processes.column.pid.label"), 72., None),
@@ -1161,15 +1445,12 @@ impl Desktop {
         for (index, row) in rows.iter().enumerate() {
             let name = text(row, "name").to_owned();
             let pid = row["pid"].clone();
-            let key = format!("{name}:{pid}");
+            let key = format!("{name}:{pid}:{}", row["createTime"]);
             let current = selected_key.as_deref() == Some(key.as_str());
-            // A reused PID is not the recorded process: the name must match too.
-            let running = live
-                .iter()
-                .find(|process| process["pid"] == pid)
-                .is_some_and(|process| text(process, "name") == name);
-            let reveal = Action::Preference("revealProcess".into(), json!({"pid": pid}));
-            let exited = tr!("history.exited", name = name, pid = pid);
+            let target = recorded_target(row, frame, live);
+            let running = target.is_some();
+            let reveal = Action::Preference("revealProcess".into(), target.unwrap_or(Value::Null));
+            let exited = tr!("history.instanceUnavailable", name = name, pid = pid);
             let menu = vec![
                 MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
                 MenuItem::new(
@@ -1220,12 +1501,49 @@ impl Desktop {
                         .child(row["pid"].to_string()),
                 )
                 .child(cell(70., true).child(theme::cpu(number(row, "cpu"))))
-                .child(cell(96., true).child(theme::memory(number(row, "mem"))))
-                .child(cell(92., true).child(quiet_rate(number(row, "io"))));
+                .child(cell(96., true).child(theme::memory(number(row, "mem"))));
+            let io_hint = format!(
+                "{}\n{}",
+                coverage_hint(&row["ioCoverage"]),
+                label("history.coverage.help")
+            );
+            line = line.child(
+                cell(92., true)
+                    .id(("history-io", index))
+                    .child(covered_text(row, "io", "ioCoverage", quiet_rate))
+                    .tooltip(move |window, cx| {
+                        widgets::wrapping_tooltip(io_hint.clone().into(), px(360.), window, cx)
+                    }),
+            );
             if has_net {
-                line = line.child(cell(92., true).child(quiet_net(number(row, "net"), bits)));
+                let hint = format!(
+                    "{}\n{}",
+                    coverage_hint(&row["netCoverage"]),
+                    label("history.coverage.help")
+                );
+                let value = covered_text(row, "net", "netCoverage", |value| quiet_net(value, bits));
+                line = line.child(
+                    cell(92., true)
+                        .id(("history-net", index))
+                        .child(value)
+                        .tooltip(move |window, cx| {
+                            widgets::wrapping_tooltip(hint.clone().into(), px(360.), window, cx)
+                        }),
+                );
             }
-            line = line.child(cell(70., true).child(theme::cpu(number(row, "gpu"))));
+            let gpu_hint = format!(
+                "{}\n{}",
+                coverage_hint(&row["gpuCoverage"]),
+                label("history.coverage.help")
+            );
+            line = line.child(
+                cell(70., true)
+                    .id(("history-gpu", index))
+                    .child(covered_text(row, "gpu", "gpuCoverage", theme::cpu))
+                    .tooltip(move |window, cx| {
+                        widgets::wrapping_tooltip(gpu_hint.clone().into(), px(360.), window, cx)
+                    }),
+            );
             let select = selected.clone();
             let select_menu = selected.clone();
             let row_key = key.clone();
@@ -1253,7 +1571,7 @@ impl Desktop {
         }
         div()
             .flex_1()
-            .min_h_0()
+            .min_h(px(30. + TABLE_ROW * 3.))
             .flex()
             .flex_col()
             .child(header)
@@ -1269,11 +1587,88 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, joins, kept, plan_load, point_at, refresh_every, span_of, stepped,
+        CoverageState, DAY, HOUR, MINUTE, coverage_state, covered_value, frame_at, joins, kept,
+        plan_load, point_at, recorded_target, refresh_every, span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn metric_coverage_keeps_idle_missing_partial_and_legacy_distinct() {
+        let mut row =
+            json!({"disk":0,"diskCoverage":{"samples":1,"valid":1,"partial":0,"legacyFrames":0}});
+        assert_eq!(covered_value(&row, "disk", "diskCoverage"), Some(0.));
+        assert_eq!(
+            coverage_state(&row["diskCoverage"]),
+            CoverageState::Available
+        );
+        row["diskCoverage"]["valid"] = json!(0);
+        assert_eq!(covered_value(&row, "disk", "diskCoverage"), None);
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Missing);
+        row["diskCoverage"]["valid"] = json!(1);
+        row["diskCoverage"]["partial"] = json!(1);
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Partial);
+        row["diskCoverage"] = Value::Null;
+        assert_eq!(coverage_state(&row["diskCoverage"]), CoverageState::Legacy);
+    }
+
+    #[test]
+    fn buckets_open_real_frames_without_reaching_across_gaps() {
+        let points = vec![json!({"ts":NOW + 300000,"frameTs":NOW,"cpuPeakTs":NOW + 600000})];
+        assert_eq!(frame_at(&points, Some(NOW + 300000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&points, Some(NOW + 600000), true),
+            Some(NOW + 600000)
+        );
+        assert_eq!(frame_at(&points, None, false), Some(NOW));
+        // An actual empty location keeps the normal limited moment lookup.
+        assert_eq!(
+            frame_at(&points, Some(NOW + 900000), false),
+            Some(NOW + 900000)
+        );
+        assert_eq!(frame_at(&[], None, false), None);
+        assert_eq!(frame_at(&[json!({"ts":NOW})], None, false), Some(NOW));
+        let collision = vec![json!({"ts":NOW+5000,"frameTs":NOW,"cpuPeakTs":NOW+5000})];
+        assert_eq!(frame_at(&collision, Some(NOW + 5000), false), Some(NOW));
+        assert_eq!(
+            frame_at(&collision, Some(NOW + 5000), true),
+            Some(NOW + 5000)
+        );
+    }
+
+    #[test]
+    fn history_navigation_requires_the_recorded_instance() {
+        let recorded = json!({"pid":42,"name":"worker.exe","createTime":NOW - 1000});
+        let live = vec![recorded.clone()];
+        let target = recorded_target(&recorded, Some(NOW), &live).unwrap();
+        assert_eq!(target["createTime"], NOW - 1000);
+        assert!(recorded_target(&target, Some(NOW), &live).is_some());
+        let mut replacement = recorded.clone();
+        replacement["createTime"] = json!(NOW + 60_000);
+        assert!(recorded_target(&recorded, Some(NOW), &[replacement.clone()]).is_none());
+        assert!(
+            recorded_target(&replacement, Some(NOW), std::slice::from_ref(&replacement)).is_none()
+        );
+        let legacy = json!({"pid":42,"name":"worker.exe"});
+        assert!(recorded_target(&legacy, Some(NOW), &live).is_none());
+        assert!(recorded_target(&recorded, Some(NOW), &[]).is_none());
+        let mut renamed = recorded.clone();
+        renamed["name"] = json!("other.exe");
+        assert!(recorded_target(&recorded, Some(NOW), &[renamed]).is_none());
+        for unknown in [Value::Null, json!(0), json!(-1)] {
+            let mut pending = recorded.clone();
+            pending["createTime"] = unknown;
+            assert!(recorded_target(&pending, Some(NOW), &live).is_none());
+        }
+        // The timestamp is the frame's start, not the last sample's time.
+        let mut inside = recorded;
+        inside["createTime"] = json!(NOW + 4999);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_some());
+        inside["createTime"] = json!(NOW + 5000);
+        assert!(recorded_target(&inside, Some(NOW), &[inside.clone()]).is_none());
+        assert!(recorded_target(&inside, None, &live).is_none());
+    }
 
     /// The last query sent, as `load_history` stores it.
     fn sent(range: &str, at: i64) -> Value {

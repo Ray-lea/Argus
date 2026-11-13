@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::channel::Channel;
 use argus_core::history::{self, HistoryRecorder};
+use argus_core::watch::{WatchAction, WatchError, WatchRecorder, WatchView};
 use argus_core::{Collector, Snapshot};
 use argus_service::{DiskClient, NetworkClient, RuleRunner, SensorClient};
 
@@ -66,6 +67,11 @@ pub enum Control {
     /// Deletes the history in this folder; replies once the files are gone.
     /// Goes through this thread so no frame is being written meanwhile.
     ClearHistory(PathBuf, Sender<io::Result<()>>),
+    Watch(
+        PathBuf,
+        WatchAction,
+        Sender<Result<Option<WatchView>, WatchError>>,
+    ),
 }
 
 pub struct Sampler {
@@ -190,6 +196,7 @@ impl Sampler {
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut window: Option<Probe> = None;
                 let mut history: Option<HistoryRecorder> = None;
+                let mut watch: Option<WatchRecorder> = None;
                 let mut interval = DEFAULT_INTERVAL;
                 let mut minimized = BACKGROUND_INTERVAL;
                 let mut tray = BACKGROUND_INTERVAL;
@@ -241,11 +248,32 @@ impl Sampler {
                             history = dir.map(HistoryRecorder::new);
                             continue;
                         }
-                        Ok(Control::ClearHistory(dir, reply)) => {
-                            let result = match &mut history {
-                                Some(recorder) => recorder.clear(),
-                                None => history::clear(&dir),
+                        Ok(Control::Watch(dir, action, reply)) => {
+                            let result = if let Some(recorder) = &mut watch {
+                                recorder.action(action)
+                            } else if matches!(action, WatchAction::Delete) {
+                                WatchRecorder::delete_saved(&dir).map(|()| None)
+                            } else {
+                                WatchRecorder::open(dir).and_then(|mut recorder| {
+                                    let result = recorder.action(action);
+                                    watch = Some(recorder);
+                                    result
+                                })
                             };
+                            let _ = reply.send(result);
+                            continue;
+                        }
+                        Ok(Control::ClearHistory(dir, reply)) => {
+                            let observed = match &mut watch {
+                                Some(recorder) => recorder.action(WatchAction::Delete).map(|_| ()),
+                                None => WatchRecorder::delete_saved(&dir),
+                            };
+                            let result = observed
+                                .map_err(|_| io::Error::other("process observation cleanup failed"))
+                                .and_then(|()| match &mut history {
+                                    Some(recorder) => recorder.clear(),
+                                    None => history::clear(&dir),
+                                });
                             let _ = reply.send(result);
                             continue;
                         }
@@ -281,6 +309,14 @@ impl Sampler {
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
+                    }
+                    if let Some(recorder) = &mut watch
+                        && recorder.record(&snapshot).is_err()
+                    {
+                        argus_core::diagnostics::warn(
+                            "process observation",
+                            "recording interrupted",
+                        );
                     }
                     // A paused view stays as it is, except right after an action.
                     let send =

@@ -592,8 +592,55 @@ pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMome
     history::moment(&dir.0, ts)
 }
 
+pub fn history_cpu_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+) -> Option<history::CpuInterval> {
+    history::cpu_interval(&dir.0, from, to)
+}
+
+pub fn history_interval(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    metric: argus_core::history::IntervalMetric,
+) -> Option<history::IntervalReport> {
+    history::interval(&dir.0, from, to, metric)
+}
+
 pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
-    history::usage(&dir.0)
+    let mut usage = history::usage(&dir.0);
+    usage.bytes = usage
+        .bytes
+        .saturating_add(argus_core::watch::WatchRecorder::storage_bytes(&dir.0));
+    usage
+}
+
+/// Explicit observation runs on the sampler, where its file and instance handle live.
+pub fn watch_process(
+    state: State<'_, AppState>,
+    dir: State<'_, HistoryDir>,
+    action: argus_core::watch::WatchAction,
+) -> Result<Option<argus_core::watch::WatchView>, String> {
+    use argus_core::watch::WatchError;
+    let (tx, rx) = std::sync::mpsc::channel();
+    state
+        .sampler
+        .send(Control::Watch(dir.0.clone(), action, tx));
+    let result = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| tr!("history.watch.error.unavailable"))?;
+    result.map_err(|error| {
+        argus_core::i18n::text(match error {
+            WatchError::Identity => "history.watch.error.identity",
+            WatchError::Access => "history.watch.error.access",
+            WatchError::Existing => "history.watch.error.existing",
+            WatchError::Missing => "history.watch.error.missing",
+            WatchError::Storage => "history.watch.error.storage",
+            WatchError::Invalid => "history.watch.error.invalid",
+        })
+    })
 }
 
 /// Starts or stops recording; what is already recorded stays until it expires.

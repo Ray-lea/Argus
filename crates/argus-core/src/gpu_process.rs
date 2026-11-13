@@ -10,6 +10,7 @@ use windows::Win32::System::Performance::PDH_HCOUNTER;
 use windows::core::w;
 
 use crate::hardware::pretty_engine;
+use crate::measurement::{Measurement, UNAVAILABLE};
 use crate::pdh::{self, Query};
 use crate::util::AlignedBuf;
 
@@ -27,6 +28,7 @@ pub struct ProcessGpu {
     pub dedicated: Option<u64>,
     pub shared: Option<u64>,
     pub engines: Vec<ProcessGpuEngine>,
+    pub state: Measurement,
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +59,8 @@ pub struct GpuProcessTracker {
     names: HashMap<String, Arc<str>>,
     memory_available: [bool; 2],
     memory: HashMap<(u32, u64, u32), Option<u64>>,
+    util_state: Measurement,
+    engine_init: Measurement,
 }
 
 // PDH handles are process-wide; the sampler uses them from one thread at a time.
@@ -67,6 +71,11 @@ impl GpuProcessTracker {
     pub fn new() -> Option<Self> {
         let query = Query::open()?;
         let engines = query.add(w!(r"\GPU Engine(*)\Utilization Percentage"));
+        let engine_init = if engines.is_some() {
+            Measurement::ready()
+        } else {
+            Measurement::failure(query.last_status())
+        };
         // Local/Non Local Usage report resident budget usage. Dedicated/Shared Usage
         // are committed counters and can inflate on affected Windows/driver versions.
         let dedicated = query.add(w!(r"\GPU Process Memory(*)\Local Usage"));
@@ -85,6 +94,8 @@ impl GpuProcessTracker {
             names: HashMap::new(),
             memory_available: [false; 2],
             memory: HashMap::new(),
+            util_state: Measurement::default(),
+            engine_init,
         })
     }
 
@@ -92,20 +103,39 @@ impl GpuProcessTracker {
     pub fn sample(&mut self) -> HashMap<u32, ProcessGpu> {
         let mut out: HashMap<u32, ProcessGpu> = HashMap::new();
         self.memory_available = [false; 2];
+        self.util_state = self.engine_init;
         if !self.query.collect() {
+            self.util_state = Measurement::failure(self.query.last_status());
             return out;
         }
         let (buf, names) = (&mut self.buf, &mut self.names);
         if let Some(c) = self.engines {
             // One instance per process and engine node; the busiest node wins,
             // as for the adapter-wide figures.
-            pdh::each(c, buf, |instance, value| {
+            let mut valid = false;
+            let mut invalid = false;
+            let collected = pdh::each_value(c, buf, |instance, value| {
+                let Some(i) = parse(instance) else { return };
+                let Some(node) = i.node else { return };
+                let entry = out.entry(i.pid).or_insert_with(|| ProcessGpu {
+                    state: Measurement {
+                        valid: false,
+                        partial: false,
+                        missing: 0,
+                    },
+                    ..Default::default()
+                });
+                let value = value.filter(|v| v.is_finite() && *v >= 0.0);
+                let Some(value) = value else {
+                    invalid = true;
+                    entry.state.missing |= UNAVAILABLE;
+                    return;
+                };
+                valid = true;
+                entry.state.valid = true;
                 let Some(util) = utilization(value) else {
                     return;
                 };
-                let Some(i) = parse(instance) else { return };
-                let entry = out.entry(i.pid).or_default();
-                let Some(node) = i.node else { return };
                 let name = match names.get(i.engine) {
                     Some(n) => n.clone(),
                     None => {
@@ -134,6 +164,18 @@ impl GpuProcessTracker {
                     entry.engine = Some((i.luid, name));
                 }
             });
+            self.util_state = if collected && valid {
+                Measurement {
+                    valid: true,
+                    partial: invalid,
+                    missing: if invalid { UNAVAILABLE } else { 0 },
+                }
+            } else {
+                Measurement::missing(UNAVAILABLE)
+            };
+            for entry in out.values_mut() {
+                entry.state.partial = entry.state.valid && entry.state.missing != 0;
+            }
         }
         // Retain distinct physical adapters, but count duplicate instances once.
         for (index, counter) in [self.dedicated, self.shared].into_iter().enumerate() {
@@ -158,6 +200,7 @@ impl GpuProcessTracker {
             }
             for (pid, value) in totals {
                 let entry = out.entry(pid).or_insert_with(|| ProcessGpu {
+                    state: self.util_state,
                     dedicated: self.memory_available[0].then_some(0),
                     shared: self.memory_available[1].then_some(0),
                     ..Default::default()
@@ -174,6 +217,10 @@ impl GpuProcessTracker {
 
     pub fn memory_available(&self) -> [bool; 2] {
         self.memory_available
+    }
+
+    pub fn utilization_state(&self) -> Measurement {
+        self.util_state
     }
 }
 
