@@ -19,7 +19,8 @@ impl Desktop {
             }
         }
         // The tray's flyouts, opened where the shell would put them but never
-        // activated: "card", "panel", or anything else to close them.
+        // activated: "card", "panel", "warm" to make their window ahead of
+        // use, or anything else to close them.
         if let Some(flyout) = control.get("trayFlyout") {
             let anchor = json!(crate::shell::sample_anchor());
             match flyout.as_str() {
@@ -27,6 +28,7 @@ impl Desktop {
                     self.tray_card(&json!({"open": true, "anchor": anchor}), window, cx)
                 }
                 Some("panel") => self.tray_panel(&anchor, window, cx),
+                Some("warm") => self.warm_tray(window, cx),
                 _ => {
                     self.tray_card(&json!({"open": false}), window, cx);
                     self.close_tray_panel(cx);

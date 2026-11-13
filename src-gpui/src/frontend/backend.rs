@@ -228,6 +228,9 @@ impl Desktop {
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
                 "argus-tray-card" => self.tray_card(&event.value, window, cx),
+                "argus-tray-warm" => {
+                    self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
+                }
                 "argus-files-dropped" => {
                     if let Ok(paths) = serde_json::from_value::<Vec<String>>(event.value) {
                         changed = true;
@@ -492,6 +495,8 @@ impl Desktop {
         }
         self.hidden_since = Some((since, true));
         charts::release_textures(window, cx);
+        // The pointer reaching the tray icon makes it again before a click.
+        self.release_tray(cx);
         crate::memory_pressure::release_process_memory();
     }
     /// The chosen `memory.releaseHidden`; a hand edit to a value on offer

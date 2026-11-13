@@ -1,13 +1,17 @@
 //! The tray's flyouts: the card that shows while the pointer rests on the
-//! tray icon, and the quick panel a right click opens. Each is a window of
-//! its own, made when it opens and removed once it has faded out, so the
-//! tray costs nothing while neither shows. They show the desktop's latest
-//! sample and recent history and act through the desktop.
+//! tray icon, and the quick panel a right click opens. Both use one window,
+//! made ahead of time (when the pointer first reaches the tray icon, when
+//! the main window goes to the tray, or when Argus starts there) and kept
+//! hidden between uses: making a window costs far more than showing one
+//! (a new renderer, swap chain and glyph atlas; in development builds the
+//! shaders are compiled too), and a right click must answer at once. They
+//! show the desktop's latest sample and recent history and act through the
+//! desktop.
 //!
-//! A flyout is shown fully transparent at a first guess of its size, laid
-//! out, moved to its measured size beside the icon (`shell::Anchor`), and
-//! then faded in by its window's opacity; it fades out the same way before
-//! it is removed. Without window motion it appears and goes at once.
+//! A flyout is shown fully transparent at the height it last had, laid out,
+//! fitted to its content beside the icon (`shell::Anchor`) if that changed,
+//! and then faded in by its window's opacity; it fades out the same way and
+//! is hidden. Without window motion it appears and goes at once.
 use super::*;
 use crate::shell::Anchor;
 use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT};
@@ -17,8 +21,9 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HWND_TOPMOST, LWA_ALPHA,
-    SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes,
-    SetWindowLongPtrW, SetWindowPos, WS_EX_LAYERED,
+    SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+    SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
+    WS_EX_LAYERED,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,18 +39,24 @@ impl Kind {
             Kind::Panel => 360.,
         }
     }
-    /// The height before the content was laid out.
+    /// The height before the content was first laid out.
     fn guess(self) -> f32 {
         match self {
             Kind::Card => 170.,
             Kind::Panel => 480.,
         }
     }
+    fn index(self) -> usize {
+        self as usize
+    }
 }
 
 /// A request for the panel this soon after it went by itself is the click
 /// that sent it away.
 const REOPEN: Duration = Duration::from_millis(500);
+/// How long after going to the tray the flyout window is made: after the
+/// window's own fade, before the pointer can reach the icon.
+const WARM_DELAY: Duration = Duration::from_millis(1500);
 /// How far a flyout keeps from the taskbar and the work area's edges.
 const GAP: f32 = 12.;
 const FADE_IN: f32 = 0.167;
@@ -105,6 +116,8 @@ enum Ask {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Phase {
+    /// Not on screen; the window waits for the next flyout.
+    Hidden,
     /// Shown fully transparent until its content was laid out.
     Placing,
     Entering(Instant),
@@ -112,25 +125,27 @@ enum Phase {
     Leaving(Instant),
 }
 
-/// An open flyout and its window.
+/// The flyout window.
 #[derive(Clone)]
 pub(in crate::frontend) struct Open {
     window: AnyWindowHandle,
     flyout: Entity<Flyout>,
 }
 
-/// The open flyouts of the desktop.
+/// The desktop's flyout window, once made.
 #[derive(Default)]
 pub(in crate::frontend) struct Flyouts {
-    card: Option<Open>,
-    panel: Option<Open>,
+    open: Option<Open>,
     /// When the panel last went by itself (another window took the
     /// foreground). A right click on the tray icon does that on its way
     /// down, so the click that follows closes rather than reopens.
     panel_left: Option<Instant>,
+    /// The window is to be made once the interface is idle.
+    warming: bool,
 }
 
 pub(in crate::frontend) struct Flyout {
+    /// What shows, or showed last.
     kind: Kind,
     anchor: Anchor,
     readings: Readings,
@@ -147,8 +162,29 @@ pub(in crate::frontend) struct Flyout {
     measured: Rc<Cell<f32>>,
     /// The height the window was last given.
     placed: f32,
+    /// Each kind's height as last laid out: a flyout opens at it, so it
+    /// usually needs no second placement.
+    heights: [Option<f32>; 2],
+    /// Laid out off screen once after the window was made, so the first
+    /// panel finds its text shaped, its glyphs drawn and its height known.
+    priming: bool,
     focus: FocusHandle,
     _activation: Subscription,
+    /// When the flyout was asked for, frames drawn while it faded in, and
+    /// whether to report its timings (test instances, `tray-flyout` events).
+    requested: Instant,
+    frames: u32,
+    trace: bool,
+}
+
+/// Reports how long a flyout took to reach `phase` since it was asked for.
+fn trace(trace: bool, kind: Kind, phase: &str, requested: Instant, frames: u32) {
+    if trace {
+        println!(
+            "{}",
+            json!({"event":"tray-flyout","kind":format!("{kind:?}"),"phase":phase,"ms":requested.elapsed().as_secs_f64()*1000.,"frames":frames})
+        );
+    }
 }
 
 fn hwnd_of(window: &Window) -> HWND {
@@ -181,20 +217,16 @@ fn set_alpha(hwnd: HWND, alpha: Option<u8>) {
 }
 
 impl Flyout {
-    #[allow(clippy::too_many_arguments)]
     fn new(
-        kind: Kind,
-        anchor: Anchor,
-        readings: Readings,
         desktop: WeakEntity<Desktop>,
         desktop_window: AnyWindowHandle,
         host: Host,
         activate: bool,
+        trace: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let hwnd = hwnd_of(window);
-        let fade = crate::window_motion::enabled() && crate::shell::animations_enabled();
         unsafe {
             let round = DWMWCP_ROUND;
             let _ = DwmSetWindowAttribute(
@@ -204,6 +236,8 @@ impl Flyout {
                 size_of_val(&round) as u32,
             );
         }
+        // Transparent from the start: the first show lays it out unseen.
+        set_alpha(hwnd, Some(0));
         // The panel goes when another window takes the foreground.
         let activation = cx.observe_window_activation(window, |this: &mut Self, window, cx| {
             if this.kind == Kind::Panel
@@ -214,27 +248,84 @@ impl Flyout {
                 this.close(window, cx);
             }
         });
-        cx.defer_in(window, |this: &mut Self, window, cx| {
-            // Shown at once but fully transparent, so it is laid out.
-            set_alpha(this.hwnd, Some(0));
-            this.place(this.kind.guess(), window, cx);
-        });
         Self {
-            kind,
-            anchor,
-            readings,
+            kind: Kind::Card,
+            anchor: Anchor {
+                icon: [0; 4],
+                work: [0; 4],
+                monitor: [0; 4],
+                scale: 1.,
+            },
+            readings: Readings::default(),
             desktop,
             desktop_window,
             host,
             hwnd,
-            phase: Phase::Placing,
-            fade,
+            phase: Phase::Hidden,
+            fade: false,
             activate,
             measured: Rc::new(Cell::new(0.)),
             placed: 0.,
+            heights: [None; 2],
+            priming: false,
             focus: cx.focus_handle(),
             _activation: activation,
+            requested: Instant::now(),
+            frames: 0,
+            trace,
         }
+    }
+
+    /// Whether a flyout of `kind` is on screen (or on its way).
+    fn showing(&self, kind: Option<Kind>) -> bool {
+        !self.priming
+            && matches!(
+                self.phase,
+                Phase::Placing | Phase::Entering(_) | Phase::Shown
+            )
+            && kind.is_none_or(|kind| kind == self.kind)
+    }
+
+    /// Whether a flyout of `kind` is fading out.
+    fn leaving(&self, kind: Kind) -> bool {
+        matches!(self.phase, Phase::Leaving(_)) && self.kind == kind
+    }
+
+    /// Lays the panel out once, transparent and off screen, then hides it.
+    fn prime(&mut self, readings: Readings, window: &mut Window, cx: &mut Context<Self>) {
+        self.kind = Kind::Panel;
+        self.readings = readings;
+        self.requested = Instant::now();
+        self.priming = true;
+        self.phase = Phase::Placing;
+        set_alpha(self.hwnd, Some(0));
+        self.place(Kind::Panel.guess(), window, cx);
+        cx.notify();
+    }
+
+    /// Shows the flyout `kind` beside the icon: transparent at the height
+    /// it last had, until its content was laid out (`settle`).
+    fn show(
+        &mut self,
+        kind: Kind,
+        anchor: Anchor,
+        readings: Readings,
+        requested: Instant,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.kind = kind;
+        self.anchor = anchor;
+        self.readings = readings;
+        self.requested = requested;
+        self.priming = false;
+        self.frames = 0;
+        self.fade = crate::window_motion::enabled() && crate::shell::animations_enabled();
+        self.phase = Phase::Placing;
+        set_alpha(self.hwnd, Some(0));
+        let height = self.heights[kind.index()].unwrap_or(kind.guess());
+        self.place(height, window, cx);
+        cx.notify();
     }
 
     /// Gives the window `height` logical pixels beside the icon, and shows it.
@@ -242,7 +333,11 @@ impl Flyout {
         let scale = window.scale_factor();
         let width = (self.kind.width() * scale).round() as i32;
         let tall = (height * scale).round() as i32;
-        let (x, y) = self.anchor.place(width, tall, (GAP * scale).round() as i32);
+        let (x, y) = if self.priming {
+            (-32000, -32000)
+        } else {
+            self.anchor.place(width, tall, (GAP * scale).round() as i32)
+        };
         // The window keeps an invisible frame around its client area: the
         // client area is what shows, so the frame goes around the place.
         let (mut frame, mut client, mut origin) =
@@ -270,13 +365,29 @@ impl Flyout {
     /// The content was laid out: fit the window to it, then fade in.
     fn settle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let measured = self.measured.get();
-        if measured <= 0. {
+        if measured <= 0. || self.phase == Phase::Hidden {
             return;
         }
+        self.heights[self.kind.index()] = Some(measured);
         if (measured - self.placed).abs() > 0.5 {
+            // Laid out again at the new size before it shows.
             self.place(measured, window, cx);
+            return;
+        }
+        if self.priming {
+            self.priming = false;
+            trace(self.trace, self.kind, "primed", self.requested, self.frames);
+            self.hide(window, cx);
+            return;
         }
         if self.phase == Phase::Placing {
+            trace(
+                self.trace,
+                self.kind,
+                "visible",
+                self.requested,
+                self.frames,
+            );
             if self.fade {
                 self.phase = Phase::Entering(Instant::now());
             } else {
@@ -293,26 +404,43 @@ impl Flyout {
         }
     }
 
-    /// Fades out and removes the window.
+    /// Fades out and hides the window.
     pub(in crate::frontend) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.phase, Phase::Leaving(_)) {
-            return;
-        }
-        if self.fade && !matches!(self.phase, Phase::Placing) {
-            self.phase = Phase::Leaving(Instant::now());
-            window.refresh();
-        } else {
-            self.remove(window, cx);
+        match self.phase {
+            Phase::Hidden | Phase::Leaving(_) => {}
+            Phase::Entering(_) | Phase::Shown if self.fade => {
+                self.phase = Phase::Leaving(Instant::now());
+                window.refresh();
+            }
+            _ => self.hide(window, cx),
         }
     }
 
-    fn remove(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Takes the window off screen, transparent for the next flyout.
+    fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let kind = self.kind;
+        let was_shown = self.phase != Phase::Placing;
+        self.phase = Phase::Hidden;
+        set_alpha(self.hwnd, Some(0));
+        let hwnd = self.hwnd;
+        // Hidden after this frame: the window is busy drawing now.
+        window.defer(cx, move |window, cx| {
+            unsafe {
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+                );
+            }
+            window.bounds_changed(cx);
+        });
         let desktop = self.desktop.clone();
-        let entity = cx.entity();
-        window.remove_window();
         cx.defer(move |cx| {
-            let _ = desktop.update(cx, |desktop, _| desktop.tray_closed(kind, &entity));
+            let _ = desktop.update(cx, |desktop, _| desktop.tray_closed(kind, was_shown));
         });
     }
 
@@ -320,10 +448,12 @@ impl Flyout {
     fn step(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         match self.phase {
             Phase::Entering(start) => {
+                self.frames += 1;
                 let t = (start.elapsed().as_secs_f32() / FADE_IN).min(1.);
                 if t >= 1. {
                     set_alpha(self.hwnd, None);
                     self.phase = Phase::Shown;
+                    trace(self.trace, self.kind, "shown", self.requested, self.frames);
                     return false;
                 }
                 set_alpha(self.hwnd, Some((theme::ease_out(t) * 255.).round() as u8));
@@ -332,8 +462,7 @@ impl Flyout {
             Phase::Leaving(start) => {
                 let t = (start.elapsed().as_secs_f32() / FADE_OUT).min(1.);
                 if t >= 1. {
-                    set_alpha(self.hwnd, Some(0));
-                    self.remove(window, cx);
+                    self.hide(window, cx);
                     return false;
                 }
                 set_alpha(
@@ -838,12 +967,16 @@ impl Flyout {
 
 impl Render for Flyout {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.phase == Phase::Hidden {
+            return div().id("tray-flyout").size_full();
+        }
         if self.step(window, cx) {
             window.request_animation_frame();
         }
         let p = Palette::current(cx);
         let measured = self.measured.clone();
         let owner = cx.entity().downgrade();
+        let placing = self.phase == Phase::Placing;
         let content = match self.kind {
             Kind::Card => self.card(p),
             Kind::Panel => self.panel(p, cx),
@@ -872,7 +1005,8 @@ impl Render for Flyout {
                     canvas(
                         move |bounds, window, cx| {
                             let height = f32::from(bounds.size.height);
-                            if (measured.replace(height) - height).abs() > 0.5 {
+                            // Placing, every layout settles; shown, a change of height.
+                            if (measured.replace(height) - height).abs() > 0.5 || placing {
                                 let owner = owner.clone();
                                 window.defer(cx, move |window, cx| {
                                     let _ = owner.update(cx, |this, cx| this.settle(window, cx));
@@ -1011,18 +1145,25 @@ impl Desktop {
         }
     }
 
-    fn open_tray(
-        &mut self,
-        kind: Kind,
-        anchor: Anchor,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Open> {
-        let readings = self.tray_readings();
+    /// Whether the tray uses a flyout at all: the hover card, or the panel
+    /// on a right click.
+    fn tray_flyouts_used(&self) -> bool {
+        let settings = &self.data["settings"];
+        settings["trayCard"].as_bool().unwrap_or(true)
+            || settings["trayMenu"].as_str() != Some("menu")
+    }
+
+    /// Makes the flyout window, hidden, unless it exists: a flyout then only
+    /// has to be shown.
+    pub(in crate::frontend) fn warm_tray(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.tray.open.is_some() || !self.tray_flyouts_used() {
+            return;
+        }
+        let started = Instant::now();
         let desktop = cx.entity().downgrade();
         let desktop_window = window.window_handle();
         let host = self.host.clone();
-        let activate = !self.options.test;
+        let (activate, test) = (!self.options.test, self.options.test);
         let options = WindowOptions {
             titlebar: None,
             focus: false,
@@ -1035,64 +1176,115 @@ impl Desktop {
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {
-            cx.new(|cx| {
-                Flyout::new(
-                    kind,
-                    anchor,
-                    readings,
-                    desktop,
-                    desktop_window,
-                    host,
-                    activate,
-                    window,
-                    cx,
-                )
-            })
+            cx.new(|cx| Flyout::new(desktop, desktop_window, host, activate, test, window, cx))
         });
         match opened {
             Ok((window, flyout)) => {
-                crate::shell::set_flyout_open(true);
-                // A fresh sample now; the sampler keeps the shown window's pace meanwhile.
-                self.host
-                    .state::<AppState>()
-                    .sampler
-                    .send(crate::sampler::Control::Refresh);
-                Some(Open { window, flyout })
+                if test {
+                    println!(
+                        "{}",
+                        json!({"event":"tray-flyout","phase":"made","ms":started.elapsed().as_secs_f64()*1000.})
+                    );
+                }
+                let readings = self.tray_readings();
+                let _ = window.update(cx, |_, window, cx| {
+                    flyout.update(cx, |flyout, cx| flyout.prime(readings, window, cx))
+                });
+                self.tray.open = Some(Open { window, flyout });
             }
-            Err(error) => {
-                argus_core::diagnostics::warn(
-                    "tray flyout creation",
-                    argus_core::diagnostics::error_chain(error.as_ref()),
-                );
-                None
-            }
+            Err(error) => argus_core::diagnostics::warn(
+                "tray flyout creation",
+                argus_core::diagnostics::error_chain(error.as_ref()),
+            ),
         }
     }
 
-    /// Closes a flyout, with its fade, in its own window.
-    fn close_tray(open: Option<Open>, cx: &mut App) {
-        if let Some(Open { window, flyout }) = open {
+    /// The shell asks for the flyout window ahead of use: now when a flyout
+    /// may be asked for in a moment, otherwise a little later, when the
+    /// window has gone to the tray or Argus has just started there.
+    pub(in crate::frontend) fn schedule_tray_warm(
+        &mut self,
+        soon: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.tray.open.is_some() {
+            return;
+        }
+        if soon {
+            self.warm_tray(window, cx);
+            return;
+        }
+        if std::mem::replace(&mut self.tray.warming, true) {
+            return;
+        }
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(WARM_DELAY).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.tray.warming = false;
+                this.warm_tray(window, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Gives the flyout window back, unless a flyout shows: Argus has been
+    /// hidden long enough to return its memory (`memory.releaseHidden`).
+    pub(in crate::frontend) fn release_tray(&mut self, cx: &mut Context<Self>) {
+        let Some(Open { window, flyout }) = self.tray.open.clone() else {
+            return;
+        };
+        if flyout.read(cx).showing(None) {
+            return;
+        }
+        self.tray.open = None;
+        let _ = window.update(cx, |_, window, _| window.remove_window());
+    }
+
+    /// Shows the flyout `kind`, making its window first if need be.
+    fn open_tray(
+        &mut self,
+        kind: Kind,
+        anchor: Anchor,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let requested = Instant::now();
+        self.warm_tray(window, cx);
+        let Some(Open { window, flyout }) = self.tray.open.clone() else {
+            return;
+        };
+        let readings = self.tray_readings();
+        let _ = window.update(cx, |_, window, cx| {
+            flyout.update(cx, |flyout, cx| {
+                flyout.show(kind, anchor, readings, requested, window, cx)
+            })
+        });
+        crate::shell::set_flyout_open(true);
+        // A fresh sample now; the sampler keeps the shown window's pace meanwhile.
+        self.host
+            .state::<AppState>()
+            .sampler
+            .send(crate::sampler::Control::Refresh);
+    }
+
+    /// Closes the flyout, if `kind` (or any) shows, with its fade.
+    fn close_tray(&mut self, kind: Option<Kind>, cx: &mut App) {
+        if let Some(Open { window, flyout }) = self.tray.open.clone()
+            && flyout.read(cx).showing(kind)
+        {
             let _ = window.update(cx, |_, window, cx| {
                 flyout.update(cx, |flyout, cx| flyout.close(window, cx))
             });
         }
     }
 
-    /// A flyout has gone: forget it, and let the sampler slow down again
-    /// once none is open.
-    fn tray_closed(&mut self, kind: Kind, entity: &Entity<Flyout>) {
-        let slot = match kind {
-            Kind::Card => &mut self.tray.card,
-            Kind::Panel => &mut self.tray.panel,
-        };
-        if slot.as_ref().is_some_and(|open| open.flyout == *entity) {
-            *slot = None;
-            if kind == Kind::Panel {
-                self.tray.panel_left = Some(Instant::now());
-            }
-        }
-        if self.tray.card.is_none() && self.tray.panel.is_none() {
-            crate::shell::set_flyout_open(false);
+    /// The flyout has gone: the sampler slows down again, and a panel that
+    /// went by itself remembers when.
+    fn tray_closed(&mut self, kind: Kind, was_shown: bool) {
+        crate::shell::set_flyout_open(false);
+        if kind == Kind::Panel && was_shown {
+            self.tray.panel_left = Some(Instant::now());
         }
     }
 
@@ -1103,9 +1295,20 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        Self::close_tray(self.tray.card.take(), cx);
-        if let Some(panel) = self.tray.panel.take() {
-            Self::close_tray(Some(panel), cx);
+        let (panel, leaving) = self.tray.open.as_ref().map_or((false, false), |open| {
+            let flyout = open.flyout.read(cx);
+            (
+                flyout.showing(Some(Kind::Panel)),
+                flyout.leaving(Kind::Panel),
+            )
+        });
+        if panel {
+            self.tray.panel_left = None;
+            self.close_tray(Some(Kind::Panel), cx);
+            return;
+        }
+        // Going away because this click took the foreground from it.
+        if leaving {
             return;
         }
         if self
@@ -1119,12 +1322,12 @@ impl Desktop {
         let Ok(anchor) = serde_json::from_value::<Anchor>(anchor.clone()) else {
             return;
         };
-        self.tray.panel = self.open_tray(Kind::Panel, anchor, window, cx);
+        self.open_tray(Kind::Panel, anchor, window, cx);
     }
 
     /// Closes the quick panel if it is open.
     pub(in crate::frontend) fn close_tray_panel(&mut self, cx: &mut Context<Self>) {
-        Self::close_tray(self.tray.panel.take(), cx);
+        self.close_tray(Some(Kind::Panel), cx);
     }
 
     /// The pointer rests on the tray icon, or left it.
@@ -1135,28 +1338,34 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if event["open"].as_bool() != Some(true) {
-            Self::close_tray(self.tray.card.take(), cx);
+            self.close_tray(Some(Kind::Card), cx);
             return;
         }
-        if self.tray.panel.is_some() || self.tray.card.is_some() {
+        // The panel, or the card already, shows.
+        if self
+            .tray
+            .open
+            .as_ref()
+            .is_some_and(|open| open.flyout.read(cx).showing(None))
+        {
             return;
         }
         let Ok(anchor) = serde_json::from_value::<Anchor>(event["anchor"].clone()) else {
             return;
         };
-        self.tray.card = self.open_tray(Kind::Card, anchor, window, cx);
+        self.open_tray(Kind::Card, anchor, window, cx);
     }
 
-    /// A new sample, an update or a pause: the open flyouts follow.
+    /// A new sample, an update or a pause: a flyout that shows follows.
     pub(in crate::frontend) fn refresh_tray(&mut self, cx: &mut Context<Self>) {
-        if self.tray.card.is_none() && self.tray.panel.is_none() {
+        let Some(open) = self.tray.open.clone() else {
+            return;
+        };
+        if !open.flyout.read(cx).showing(None) {
             return;
         }
         let readings = self.tray_readings();
-        for open in [&self.tray.card, &self.tray.panel].into_iter().flatten() {
-            let readings = readings.clone();
-            open.flyout
-                .update(cx, |flyout, cx| flyout.set_readings(readings, cx));
-        }
+        open.flyout
+            .update(cx, |flyout, cx| flyout.set_readings(readings, cx));
     }
 }

@@ -429,6 +429,28 @@ pub fn resync_visibility(hwnd: HWND) {
         }
     } else {
         *AWAY.lock().unwrap() = Some((next == WindowState::Hidden, Some(Instant::now())));
+        // In the tray, the tray's flyouts are the window: have theirs ready.
+        if next == WindowState::Hidden {
+            warm_flyouts(false);
+        }
+    }
+}
+/// When the interface was last asked to make the flyout window ahead of use.
+static WARMED: Mutex<Option<Instant>> = Mutex::new(None);
+/// Asks the interface to make the tray's flyout window ahead of use: `soon`
+/// when one may be asked for in a moment (the pointer reached the icon),
+/// otherwise once it is idle. A pointer moving over the icon asks at most
+/// once a second; the interface ignores the request once the window exists.
+fn warm_flyouts(soon: bool) {
+    if soon {
+        let mut warmed = WARMED.lock().unwrap();
+        if warmed.is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(1)) {
+            return;
+        }
+        *warmed = Some(Instant::now());
+    }
+    if let Some(app) = HOST.get() {
+        let _ = app.emit("argus-tray-warm", serde_json::json!({ "soon": soon }));
     }
 }
 pub fn follow_visibility(window: &NativeWindow) {
@@ -582,6 +604,11 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
         })?;
     worker.badge(UPDATE.lock().unwrap().is_some());
     *slot = Some(Arc::new(worker));
+    drop(slot);
+    // Started in the tray: have the flyout window ready.
+    if !window.is_visible().unwrap_or(true) {
+        warm_flyouts(false);
+    }
     Ok(())
 }
 pub fn shutdown(_app: &Host) {
@@ -910,7 +937,7 @@ mod tray_action_tests {
                 Some(TrayAction::Toggle)
             );
             assert_eq!(tray_action(WM_LBUTTONDOWN, version_4), None);
-            assert_eq!(tray_action(WM_MOUSEMOVE, version_4), None);
+            assert_eq!(tray_action(WM_MOUSEMOVE, version_4), Some(TrayAction::Warm));
         }
         assert_eq!(
             tray_action(NIN_KEYSELECT, true),
@@ -997,6 +1024,8 @@ enum TrayAction {
     /// The pointer rests on the icon / left it.
     CardOpen,
     CardClose,
+    /// The pointer moved over the icon: a flyout may follow.
+    Warm,
 }
 
 /// The action of a tray callback's event. With version 4 a right click
@@ -1009,6 +1038,7 @@ fn tray_action(event: u32, version_4: bool) -> Option<TrayAction> {
         WM_RBUTTONUP if !version_4 => Some(TrayAction::Context),
         NIN_POPUPOPEN => Some(TrayAction::CardOpen),
         NIN_POPUPCLOSE => Some(TrayAction::CardClose),
+        WM_MOUSEMOVE => Some(TrayAction::Warm),
         _ => None,
     }
 }
@@ -1122,6 +1152,7 @@ fn tray_callback(app: &Host, hwnd: HWND, w: WPARAM, l: LPARAM) {
             }
         }
         TrayAction::CardClose => close_card(),
+        TrayAction::Warm => warm_flyouts(true),
     }
 }
 
