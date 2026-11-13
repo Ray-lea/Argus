@@ -16,9 +16,9 @@
   "name": "Имя",
   "status": "Состояние",
   "command": "Команда",
-  "copyName": "Копировать имя",
-  "copyPath": "Копировать путь",
-  "openFileLocation": "Открыть расположение файла",
+  "copyName": "Скопировать имя",
+  "copyPath": "Скопировать путь",
+  "openFileLocation": "Открыть папку с файлом",
   "goToProcess": "Перейти к процессу",
   "endProcess": "Снять задачу",
   "endProcessTree": "Завершить дерево процессов",
@@ -26,11 +26,11 @@
   "privilegedService": "Привилегированная служба",
   "listSeparator": ", ",
   "resource": {
-    "cpu": "CPU",
+    "cpu": "ЦП",
     "memory": "Память",
     "disk": "Диск",
     "network": "Сеть",
-    "gpu": "GPU",
+    "gpu": "ГП",
     "battery": "Батарея",
     "temperature": "Температура"
   },
@@ -40,7 +40,7 @@
   },
   "edit": {
     "cut": "Вырезать",
-    "copy": "Копировать",
+    "copy": "Скопировать",
     "paste": "Вставить",
     "selectAll": "Выделить всё"
   },
@@ -68,6 +68,6 @@
   "build": {
     "development": "Версия для разработки",
     "test": "Бета",
-    "stable": "Стабильный"
+    "stable": "Стабильная"
   }
 }
