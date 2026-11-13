@@ -203,6 +203,12 @@ Argus использует следующие проекты с открытым
 
 Благодарим сообщество [LINUX DO](https://linux.do/) за поддержку.
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-ru-dark.svg"><img src="docs/images/supporters/bronyaicu-ru-light.svg" width="720" alt="Поддержка проекта &amp; особая благодарность: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 <a id="license"></a>
 
 ## 📄 Лицензия

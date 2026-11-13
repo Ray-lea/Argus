@@ -203,6 +203,12 @@ La liste complète des composants tiers et de leurs licences figure dans [THIRD-
 
 Merci à la communauté [LINUX DO](https://linux.do/) pour son soutien.
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-fr-dark.svg"><img src="docs/images/supporters/bronyaicu-fr-light.svg" width="720" alt="Soutien au projet &amp; remerciements particuliers: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 <a id="license"></a>
 
 ## 📄 Licence

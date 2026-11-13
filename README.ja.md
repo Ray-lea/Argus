@@ -203,6 +203,12 @@ Argus は次のオープンソース プロジェクトを利用しています�
 
 [LINUX DO](https://linux.do/) コミュニティの支援に感謝します。
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-ja-dark.svg"><img src="docs/images/supporters/bronyaicu-ja-light.svg" width="720" alt="プロジェクト支援 &amp; スペシャルサンクス：bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 <a id="license"></a>
 
 ## 📄 ライセンス

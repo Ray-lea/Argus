@@ -193,6 +193,12 @@ Argus 建構於以下開放原始碼專案之上，謹致謝忱：
 
 感謝 [LINUX DO](https://linux.do/) 社群的支持。
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-zh-TW-dark.svg"><img src="docs/images/supporters/bronyaicu-zh-TW-light.svg" width="720" alt="專案支持 &amp; 特別致謝：bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 ## 📄 授權條款
 
 Argus 為自由軟體，依據 [GNU Affero General Public License](LICENSE) 第 3 版或任何更新版本（`AGPL-3.0-or-later`）發布。

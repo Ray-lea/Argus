@@ -203,6 +203,12 @@ Alle Drittkomponenten und ihre Lizenzhinweise sind in [THIRD-PARTY-NOTICES.txt](
 
 Vielen Dank an die Community [LINUX DO](https://linux.do/) für ihre Unterstützung.
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-de-dark.svg"><img src="docs/images/supporters/bronyaicu-de-light.svg" width="720" alt="Projektunterstützung &amp; besonderer Dank: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 <a id="license"></a>
 
 ## 📄 Lizenz

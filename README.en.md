@@ -177,6 +177,12 @@ All third-party components and their license notices are listed in [THIRD-PARTY-
 
 Thanks to the [LINUX DO](https://linux.do/) community for its support.
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-en-dark.svg"><img src="docs/images/supporters/bronyaicu-en-light.svg" width="720" alt="Project support &amp; special thanks: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 ## 📄 License
 
 Argus is free software, released under the [GNU Affero General Public License](LICENSE), version 3 or (at your option) any later version (`AGPL-3.0-or-later`).

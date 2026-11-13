@@ -203,6 +203,12 @@ La lista completa de componentes de terceros y sus avisos de licencia se encuent
 
 Gracias a la comunidad [LINUX DO](https://linux.do/) por su apoyo.
 
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-es-dark.svg"><img src="docs/images/supporters/bronyaicu-es-light.svg" width="720" alt="Apoyo al proyecto &amp; agradecimiento especial: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
+
 <a id="license"></a>
 
 ## 📄 Licencia
