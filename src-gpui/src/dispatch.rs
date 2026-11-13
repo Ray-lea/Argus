@@ -175,6 +175,11 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))
                 .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
         }
+        "set_confirm_end" => {
+            crate::commands::set_confirm_end(host.clone(), argument::<bool>(&args, "value")?)
+                .map(|value| serde_json::to_value(value).expect("serializable command response"))
+                .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
+        }
         "set_background_intervals" => crate::commands::set_background_intervals(
             host.clone(),
             host.state(),

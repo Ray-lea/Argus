@@ -32,6 +32,10 @@
     "on": "Always group",
     "off": "Never group"
   },
+  "confirmEnd": {
+    "title": "Confirm before ending processes",
+    "desc": "Ask for confirmation before ending a process or process tree. When off, processes end immediately; unsaved data will be lost."
+  },
   "language": {
     "title": "Display language",
     "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",
@@ -87,7 +91,7 @@
     "searchTitle": "Search processes",
     "search": "Go to process search. The / key also works when not typing, and on the Processes page typing a letter or digit starts a search.",
     "pause": "Hold to pause updates on Processes or Performance; release to resume. A manual pause stays in effect.",
-    "end": "End the selected process or app group, with confirmation.",
+    "end": "End the selected process or app group.",
     "taskManager": "Open Argus when Task Manager replacement is enabled.",
     "close": "Close reference",
     "table": "When a list has focus",
@@ -96,7 +100,7 @@
     "ends": "Select the first / last item",
     "expand": "Processes: collapse / expand a group or category, or select a parent / child",
     "details": "Processes: open details",
-    "endTable": "Processes: end the selection, with confirmation",
+    "endTable": "Processes: end the selection",
     "endDirect": "Processes: end the selection without confirmation",
     "clear": "Clear selection; clear the process search first if one is active.",
     "history": "When the history chart has focus",

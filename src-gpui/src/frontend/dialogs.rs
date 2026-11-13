@@ -352,6 +352,11 @@ impl Desktop {
         let pid = first["pid"].to_string();
         // Process actions that apply at once, or ask first.
         match kind {
+            // Ending without confirmation skips the modal entirely.
+            "end" | "endTree" if !boolean(&self.data["settings"], "confirmEnd") => {
+                self.process_batch(kind, &args, window, cx);
+                return;
+            }
             "priority" if text(&args, "priority") != "realtime" => {
                 self.process_batch("priority", &args, window, cx);
                 return;

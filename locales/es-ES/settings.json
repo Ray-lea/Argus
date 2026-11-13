@@ -32,6 +32,10 @@
     "on": "Agrupar siempre",
     "off": "No agrupar nunca"
   },
+  "confirmEnd": {
+    "title": "Confirmar antes de finalizar procesos",
+    "desc": "Pide confirmación antes de finalizar un proceso o un árbol de procesos. Si se desactiva, los procesos se finalizan de inmediato; se perderán los datos sin guardar."
+  },
   "language": {
     "title": "Idioma de la interfaz",
     "desc": "Se aplica al instante, también a los menús y mensajes de la bandeja. «Igual que Windows» utiliza el idioma de visualización de Windows.",
@@ -87,7 +91,7 @@
     "searchTitle": "Buscar procesos",
     "search": "Ir a búsqueda de procesos. La tecla / también funciona cuando no se escribe y, en la página Procesos, al escribir una letra o un dígito se inicia una búsqueda.",
     "pause": "Mantenga presionado para pausar las actualizaciones de Procesos o Rendimiento; suelte para reanudar. Una pausa manual permanece vigente.",
-    "end": "Finaliza el proceso o grupo de aplicaciones seleccionado, con confirmación.",
+    "end": "Finaliza el proceso o grupo de aplicaciones seleccionado.",
     "taskManager": "Abrir Argus cuando está activado «Sustituir el Administrador de tareas».",
     "close": "Cerrar referencia",
     "table": "Cuando una lista tiene el foco",
@@ -96,7 +100,7 @@
     "ends": "Seleccione el primer/último elemento",
     "expand": "Procesos: contraer/expandir un grupo o categoría, o seleccionar un padre/hijo",
     "details": "Procesos: abrir detalles",
-    "endTable": "Procesos: finalizar la selección, con confirmación",
+    "endTable": "Procesos: finalizar la selección",
     "endDirect": "Procesos: finalizar la selección sin confirmación",
     "clear": "Borrar selección; borre primero la búsqueda de procesos si hay alguna activa.",
     "history": "Cuando el gráfico histórico tiene foco",

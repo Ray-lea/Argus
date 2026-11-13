@@ -1197,6 +1197,21 @@ impl Desktop {
                     "settings.userGroups.desc",
                     vec![self.user_grouping_setting(cx)],
                 ));
+                let confirm_end = self.setting_toggle(
+                    "confirmEnd",
+                    boolean(settings, "confirmEnd"),
+                    "set_confirm_end",
+                    "value",
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "confirmEnd",
+                    "EndIcon",
+                    "settings.confirmEnd.title",
+                    "settings.confirmEnd.desc",
+                    vec![confirm_end],
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(

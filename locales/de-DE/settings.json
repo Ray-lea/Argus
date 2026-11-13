@@ -32,6 +32,10 @@
     "on": "Immer gruppieren",
     "off": "Nie gruppieren"
   },
+  "confirmEnd": {
+    "title": "Vor dem Beenden von Prozessen bestätigen",
+    "desc": "Frag vor dem Beenden eines Prozesses oder einer Prozessstruktur nach. Ist die Option aus, werden Prozesse sofort beendet; nicht gespeicherte Daten gehen verloren."
+  },
   "language": {
     "title": "Anzeigesprache",
     "desc": "Gilt sofort, auch für das Menü im Infobereich und Meldungen. „Wie Windows“ übernimmt die Windows-Anzeigesprache.",
@@ -87,7 +91,7 @@
     "searchTitle": "Prozesse suchen",
     "search": "Gehen Sie zur Prozesssuche. Die /-Taste funktioniert auch, wenn Sie nichts eingeben. Wenn Sie auf der Seite „Prozesse“ einen Buchstaben oder eine Ziffer eingeben, wird eine Suche gestartet.",
     "pause": "Halten Sie gedrückt, um Aktualisierungen von Prozessen oder Leistung anzuhalten; loslassen, um fortzufahren. Eine manuelle Pause bleibt bestehen.",
-    "end": "Beenden Sie den ausgewählten Prozess oder die ausgewählte App-Gruppe mit Bestätigung.",
+    "end": "Beenden Sie den ausgewählten Prozess oder die ausgewählte App-Gruppe.",
     "taskManager": "Öffnen Sie Argus, wenn die Task-Manager-Ersetzung aktiviert ist.",
     "close": "Übersicht schließen",
     "table": "Wenn eine Liste den Fokus hat",
@@ -96,7 +100,7 @@
     "ends": "Wählen Sie das erste / letzte Element aus",
     "expand": "Prozesse: Reduzieren/Erweitern einer Gruppe oder Kategorie oder Auswählen eines übergeordneten/untergeordneten Elements",
     "details": "Prozesse: Details öffnen",
-    "endTable": "Prozesse: Auswahl beenden, mit Bestätigung",
+    "endTable": "Prozesse: Auswahl beenden",
     "endDirect": "Prozesse: Auswahl ohne Bestätigung beenden",
     "clear": "Auswahl löschen; löschen Sie zuerst die Prozesssuche, falls eine aktiv ist.",
     "history": "Wenn das Verlaufsdiagramm den Fokus hat",

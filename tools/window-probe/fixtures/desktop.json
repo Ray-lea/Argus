@@ -4714,6 +4714,7 @@
     "hotkey": "Ctrl+Alt+Escape",
     "hotkeyEnabled": true,
     "rules": [],
+    "confirmEnd": true,
     "history": true,
     "kernelSensors": false,
     "updateCheck": true,

@@ -480,6 +480,18 @@ pub fn set_close_to_tray(
     Ok(settings_view(&app))
 }
 
+/// Whether ending a process or process tree asks first; the dialogs read it
+/// when they open, so nothing else has to happen now.
+pub fn set_confirm_end(
+    app: crate::native_runtime::Host,
+    value: bool,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.confirm_end = value)
+        .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
 /// How often to sample while minimized and while in the tray, ms; takes
 /// effect at once.
 pub fn set_background_intervals(
