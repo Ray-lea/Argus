@@ -300,6 +300,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.load_watch(window, cx);
         let now = now_ms();
         let span = self.history_span();
         let buckets = ((span as f64 / FRAME).ceil() as i64)
@@ -999,6 +1000,11 @@ impl Desktop {
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
+            .when(
+                self.data.get("processWatch").is_some_and(Value::is_object)
+                    || self.data.contains_key("watchError"),
+                |d| d.child(self.watch_card(window, cx)),
+            )
             .child(graphs)
             .child(moment_card)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))

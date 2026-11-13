@@ -35,6 +35,7 @@ pub mod startup;
 pub mod system;
 pub mod theme;
 mod util;
+pub mod watch;
 mod webview;
 
 pub use collector::{Collector, Snapshot};

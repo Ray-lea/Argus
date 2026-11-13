@@ -237,6 +237,13 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             serde_json::to_value(crate::commands::history_usage(host.state()))
                 .expect("serializable command response"),
         ),
+        "watch_process" => crate::commands::watch_process(
+            host.state(),
+            host.state(),
+            argument::<argus_core::watch::WatchAction>(&args, "action")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "set_history_enabled" => crate::commands::set_history_enabled(
             host.clone(),
             host.state(),

@@ -43,5 +43,47 @@
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
   "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds (or at the minimized or tray refresh rate when that is slower) and keeps them for 7 days.",
-  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>"
+  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
+  "watch": {
+    "title": "Process observation",
+    "empty": "Choose “Watch this instance” in the details of a single process to record memory even below the top list.",
+    "start": "Watch this instance",
+    "target": "Watching {name} (PID {pid})",
+    "stop": "Stop recording",
+    "delete": "Delete recording",
+    "note": "This instance only; up to 1 hour, 720 points and 1 MiB. Samples are usually 5 seconds apart; slower background sampling may leave gaps. Working set growth alone does not prove a memory leak. Stop keeps data; Delete stops and removes this recording.",
+    "metric": {
+      "memory": "Private working set",
+      "commit": "Private commit"
+    },
+    "state": {
+      "recording": "Recording",
+      "gap": "No valid sample",
+      "exited": "This instance exited",
+      "stopped": "Recording stopped",
+      "interrupted": "Recording interrupted; not resumed",
+      "limit": "Recording limit reached"
+    },
+    "error": {
+      "unavailable": "The sampler did not reply in time. The outcome is unknown; check recording status before retrying.",
+      "identity": "The selected instance could not be confirmed. Refresh and try again.",
+      "access": "This instance cannot be read with current permissions.",
+      "existing": "An observation already exists. Stop and delete it before starting another.",
+      "missing": "No observation exists.",
+      "storage": "The recording could not be read or written. Recording has stopped.",
+      "invalid": "The recording is damaged or uses an unsupported format. It can be deleted."
+    },
+    "startProgram": "Watch future launches",
+    "chooseRun": "Choose a launch",
+    "run": "{started} · PID {pid} · {state}",
+    "runSummary": "Showing {shown}/{total} launches; {points} saved points in this launch",
+    "earlier": "Earlier points",
+    "latest": "Latest points",
+    "programNote": "Current and future launches at this image path are recorded separately. Up to 7 days, 131072 points and 9 MiB; the first limit reached removes oldest data. Up to 512 concurrent instances. The list shows the latest 256 launches; each page shows up to 1000 saved points plus gap markers. Earlier points remain browsable. Samples are usually 5 seconds apart; slower sampling leaves gaps. Working set growth does not prove a leak. Stop keeps data; Delete removes it. Restarting Argus does not resume recording.",
+    "damaged": "Some stored records failed integrity checks; missing intervals remain gaps.",
+    "earlierRuns": "Earlier launches",
+    "latestRuns": "Latest launches",
+    "waiting": "Waiting for another launch",
+    "unconfirmed": "Could not confirm {count} same-named instances; retrying once per minute."
+  }
 }
