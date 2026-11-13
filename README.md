@@ -48,23 +48,35 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 
 ## ✨ 特性
 
-| | 功能 | 说明 |
-|:---:|---|---|
-| 🧮 | **进程** | 支持按应用、进程树或列表三种视图浏览，实时呈现各进程的 CPU、内存、磁盘读写、网络流量与 GPU 占用。支持排序、搜索、结束进程或整个进程树；详细信息面板展示命令行、所属用户与完整性级别等。 |
-| ⚡ | **优先级与效率模式** | 可通过右键菜单即时调整，也可建立规则，在目标程序每次启动时自动应用。 |
-| 📈 | **性能** | 全方位监控 CPU（每核心、性能核与能效核、频率、温度、功耗）、内存、磁盘（含健康状况与 SMART 属性）、网络、GPU 与电池状态。 |
-| 🧩 | **服务与启动项** | 启动、停止服务及修改启动类型；启用或禁用开机启动项，状态与系统任务管理器保持同步。 |
-| 🌐 | **连接与端口** | 列出活动的 TCP 与 UDP 端点及其所属进程，支持按端口精确搜索与断开连接。 |
-| 🔍 | **文件占用** | 将文件或文件夹拖放到窗口即可定位占用进程，结合 Restart Manager 与句柄枚举（涵盖进程当前工作目录）进行排查。 |
-| 🕘 | **历史回溯** | 自动记录最近 7 天的资源占用曲线，单击任意时刻即可回看当时最繁忙的进程。 |
-| 📌 | **常驻托盘** | 支持通过全局快捷键随时显示或隐藏窗口；隐藏时资源开销极低，最小化与后台常驻时的刷新间隔可分别设置。 |
-| 🔄 | **应用内更新** | 提供稳定版与测试版双通道，新版本在后台静默下载并于标题栏提示，更新前后均可查看版本变更说明；下载默认依次连接 GitHub、官方镜像与加速代理，可在设置中调整。 |
-| 🎨 | **原生外观** | Windows 11 22H2 及以上采用 Mica 云母材质，Windows 11 21H2 与 Windows 10 使用实色背景；系统强调色及浅色、深色主题默认跟随系统，也可在设置中单独指定。 |
-| 🌍 | **多语言** | 支持简体中文、繁体中文、英文、西班牙文、德文、日文、法文和俄文，默认跟随 Windows 显示语言；提供首次启动引导，协助完成常用设置。 |
-| 👤 | **无需管理员权限** | 在标准权限下即可完整查看全部进程的路径与各项资源占用。 |
-| 🔐 | **可选管理员运行** | 在设置或首次启动引导中完成一次授权后，登录启动、快捷方式和任务管理器入口即可统一以管理员身份运行，且可随时关闭。 |
-| 🛡️ | **可选特权服务** | 经一次管理员授权安装后，即使界面保持标准权限运行，也能管理系统进程、检查高权限进程的文件占用、自动应用规则、控制服务与断开连接，并统计每进程网络流量（在 Windows 10 及 Windows 11 24H2 之前的版本上亦包括磁盘读写）；可在设置中随时卸载。 |
-| 🪟 | **任务与系统集成** | 支持[替换系统默认任务管理器](docs/architecture/task-manager.md)，从任意页面运行新任务（可选管理员权限），或重新启动当前桌面的 Windows 资源管理器。 |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-zh-CN-dark.svg"><img src="docs/images/features/processes-zh-CN-light.svg" width="390" alt="进程页从按应用视图切换到进程树，再搜索 code，筛选出 Visual Studio Code 及其子进程"></picture><br><b>进程</b>：按应用、进程树或列表查看，支持搜索、排序与结束进程树</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-zh-CN-dark.svg"><img src="docs/images/features/performance-zh-CN-light.svg" width="390" alt="性能页显示 CPU 利用率、速度、温度与功耗，以及每个性能核与能效核的曲线"></picture><br><b>性能</b>：CPU 每核心、频率、温度与功耗，以及内存、磁盘、网络与 GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-CN-dark.svg"><img src="docs/images/features/history-zh-CN-light.svg" width="390" alt="在历史页的 7 天曲线上先后单击两个时刻，下方列出各时刻最忙的进程"></picture><br><b>历史回溯</b>：单击 7 天曲线上的任意时刻，查看当时最忙的进程</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-zh-CN-dark.svg"><img src="docs/images/features/files-zh-CN-light.svg" width="390" alt="将表格文件拖入窗口后，对话框列出占用它的 Excel 与资源管理器，并结束其中一个进程"></picture><br><b>文件占用</b>：将文件或文件夹拖入窗口，列出占用它的进程</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-zh-CN-dark.svg"><img src="docs/images/features/rules-zh-CN-light.svg" width="390" alt="右键单击 HandBrake，将优先级设为低，再开启效率模式"></picture><br><b>右键调整</b>：设置优先级、开启效率模式，或添加规则在每次启动时应用</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-zh-CN-dark.svg"><img src="docs/images/features/ports-zh-CN-light.svg" width="390" alt="在连接页搜索 8080，找到监听该端口与连接该端口的进程，并断开连接"></picture><br><b>连接与端口</b>：按端口查找连接及所属进程，可直接断开</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>服务与启动项</b><br>启停服务、修改启动类型，启用或禁用启动项</td>
+<td width="50%" valign="top"><b>常驻托盘</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 随时显示或隐藏窗口，隐藏时资源开销极低</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>替换任务管理器</b><br>可<a href="docs/architecture/task-manager.md">替换系统任务管理器</a>并响应 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>；可运行新任务、重新启动资源管理器</td>
+<td width="50%" valign="top"><b>外观与语言</b><br>Mica 材质，跟随系统强调色与深浅主题；支持 8 种界面语言</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>应用内更新</b><br>稳定版与测试版通道，后台下载，可查看更新说明</td>
+<td width="50%" valign="top"><b>权限</b><br>标准权限即可查看全部进程；特权服务与管理员运行可按需开启</td>
+</tr>
+</table>
 
 ## 📦 下载
 

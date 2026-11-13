@@ -54,23 +54,35 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 
 ## ✨ Funktionen
 
-| | Funktion | Beschreibung |
-|:---:|---|---|
-| 🧮 | **Prozesse** | Ansichten nach App, Prozessstruktur oder als flache Liste, mit Echtzeitwerten für CPU, Arbeitsspeicher, Datenträgerzugriffe, Netzwerk und GPU. Prozesse lassen sich sortieren, suchen und einzeln oder als ganze Struktur beenden. Der Detailbereich zeigt unter anderem Befehlszeile, Benutzer und Integritätsstufe. |
-| ⚡ | **Priorität und Effizienzmodus** | Direkt im Kontextmenü anpassen oder Regeln erstellen, die bei jedem Programmstart automatisch angewendet werden. |
-| 📈 | **Leistung** | Detaillierte Überwachung von CPU —Last je Kern, P- und E-Kerne, Takt, Temperatur und Leistungsaufnahme—, Arbeitsspeicher, Datenträgern einschließlich Zustand und SMART-Attributen, Netzwerk, GPU und Akku. |
-| 🧩 | **Dienste und Autostart-Apps** | Windows-Dienste starten und beenden, deren Starttyp ändern sowie Autostart-Apps aktivieren oder deaktivieren. Der Zustand bleibt mit dem Windows-Task-Manager synchron. |
-| 🌐 | **Verbindungen und Ports** | Aktive TCP- und UDP-Endpunkte mit ihren Prozessen anzeigen, nach exakten Portnummern filtern und Verbindungen schließen. |
-| 🔍 | **Dateisperren** | Dateien oder Ordner auf das Fenster ziehen, um verwendende Prozesse zu finden. Kombiniert Restart Manager mit der Handle-Auflistung und berücksichtigt auch die Arbeitsverzeichnisse von Prozessen. |
-| 🕘 | **Verlauf** | Zeichnet die Ressourcennutzung der letzten 7 Tage automatisch auf. Ein Klick auf einen Zeitpunkt zeigt die damals aktivsten Prozesse. |
-| 📌 | **Infobereich** | Das Fenster lässt sich jederzeit über eine globale Tastenkombination ein- oder ausblenden. Im ausgeblendeten Zustand ist der Ressourcenbedarf gering; die Intervalle bei minimiertem Fenster und im Infobereich sind getrennt einstellbar. |
-| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Downloadquelle kann in den Einstellungen angepasst werden. |
-| 🎨 | **Native Oberfläche** | Mica-Hintergrund ab Windows 11 22H2 und einfarbiger Hintergrund unter Windows 11 21H2 sowie Windows 10. Akzentfarbe sowie helles oder dunkles Design folgen standardmäßig Windows; das Design kann in den Einstellungen separat gewählt werden. |
-| 🌍 | **Sprachen** | Verfügbar auf vereinfachtem und traditionellem Chinesisch, Englisch, Spanisch, Deutsch, Japanisch, Französisch und Russisch. Die Erstauswahl folgt Windows; eine Einführung hilft beim ersten Start mit den wichtigsten Einstellungen. |
-| 👤 | **Ohne Administratorrechte nutzbar** | Programmpfade und Ressourcenverbrauch aller Prozesse lassen sich mit Standardrechten anzeigen. |
-| 🔐 | **Optionaler Administratorstart** | Nach einmaliger Freigabe in den Einstellungen oder der Einführung startet Argus bei der Anmeldung, über Verknüpfungen und über Task-Manager-Aufrufe als Administrator. Die Option lässt sich jederzeit deaktivieren. |
-| 🛡️ | **Optionaler privilegierter Dienst** | Nach einer Installation mit Administratorfreigabe kann die Oberfläche mit Standardrechten Systemprozesse verwalten, Dateisperren erhöhter Prozesse prüfen, Regeln anwenden, Dienste steuern, Verbindungen schließen und den Netzwerkverkehr je Prozess messen. Unter Windows 10 und Windows 11 vor 24H2 ermöglicht der Dienst auch die Messung der Datenträgerzugriffe je Prozess. Er kann jederzeit in den Einstellungen deinstalliert werden. |
-| 🪟 | **Aufgaben und Systemintegration** | Unterstützt das [Ersetzen des Windows-Task-Managers](docs/architecture/task-manager.md) —Dokumentation auf Chinesisch—, neue Aufgaben von jeder Seite aus, optional mit Administratorrechten, und den Neustart des Windows-Explorers des aktuellen Desktops. |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-de-dark.svg"><img src="docs/images/features/processes-de-light.svg" width="390" alt="Die Seite Prozesse wechselt von der App-Ansicht zur Prozessstruktur; eine Suche nach code lässt Visual Studio Code und seine untergeordneten Prozesse übrig"></picture><br><b>Prozesse</b>: Ansicht nach App, als Prozessstruktur oder Liste; suchen, sortieren und ganze Strukturen beenden</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-de-dark.svg"><img src="docs/images/features/performance-de-light.svg" width="390" alt="Die Seite Leistung zeigt Auslastung, Geschwindigkeit, Temperatur und Leistung der CPU mit einem Diagramm je P- und E-Kern"></picture><br><b>Leistung</b>: CPU-Last je Kern, Takt, Temperatur und Leistungsaufnahme sowie Arbeitsspeicher, Datenträger, Netzwerk und GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-de-dark.svg"><img src="docs/images/features/history-de-light.svg" width="390" alt="Auf der Seite Verlauf werden zwei Zeitpunkte in den 7-Tage-Diagrammen angeklickt; darunter erscheinen jeweils die aktivsten Prozesse"></picture><br><b>Verlauf</b>: ein Klick auf einen Zeitpunkt der 7-Tage-Diagramme zeigt die damals aktivsten Prozesse</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-de-dark.svg"><img src="docs/images/features/files-de-light.svg" width="390" alt="Nach dem Ziehen einer Tabelle auf das Fenster listet ein Dialog Excel und den Windows-Explorer als verwendende Prozesse auf; einer davon wird beendet"></picture><br><b>Dateisperren</b>: Datei oder Ordner auf das Fenster ziehen, um die verwendenden Prozesse aufzulisten</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-de-dark.svg"><img src="docs/images/features/rules-de-light.svg" width="390" alt="Per Rechtsklick auf HandBrake wird die Priorität auf Niedrig gesetzt und danach der Effizienzmodus aktiviert"></picture><br><b>Kontextmenü</b>: Priorität festlegen, Effizienzmodus aktivieren oder eine Regel für jeden Start hinzufügen</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-de-dark.svg"><img src="docs/images/features/ports-de-light.svg" width="390" alt="Eine Suche nach 8080 auf der Seite Verbindungen findet den Prozess, der den Port abhört, und den damit verbundenen Prozess; die Verbindung wird geschlossen"></picture><br><b>Verbindungen und Ports</b>: Verbindungen und ihre Prozesse nach Port finden und schließen</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>Dienste und Autostart-Apps</b><br>Dienste starten und beenden, den Starttyp ändern, Autostart-Apps aktivieren oder deaktivieren</td>
+<td width="50%" valign="top"><b>Infobereich</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> blendet das Fenster jederzeit ein oder aus; ausgeblendet mit geringem Ressourcenbedarf</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Task-Manager ersetzen</b><br>Kann den <a href="docs/architecture/task-manager.md">Windows-Task-Manager ersetzen</a> —Dokumentation auf Chinesisch— und auf <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> öffnen; führt neue Aufgaben aus und startet den Windows-Explorer neu</td>
+<td width="50%" valign="top"><b>Oberfläche und Sprachen</b><br>Mica-Hintergrund, Akzentfarbe sowie helles oder dunkles Design folgen Windows; 8 Oberflächensprachen</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Updates in der Anwendung</b><br>Stabile und Beta-Versionen, Download im Hintergrund, Änderungen in der Anwendung einsehbar</td>
+<td width="50%" valign="top"><b>Berechtigungen</b><br>Alle Prozesse sind mit Standardrechten sichtbar; privilegierter Dienst und Administratorstart sind optional</td>
+</tr>
+</table>
 
 <a id="download"></a>
 

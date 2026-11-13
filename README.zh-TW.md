@@ -50,23 +50,35 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 ## ✨ 功能
 
-| | 功能 | 說明 |
-|:---:|---|---|
-| 🧮 | **處理程序** | 可依應用程式、處理程序樹或清單瀏覽，即時顯示各處理程序的 CPU、記憶體、磁碟讀寫、網路流量與 GPU 使用量。支援排序、搜尋、結束處理程序或整個處理程序樹；詳細資料窗格顯示命令列、所屬使用者與完整性等級等資訊。 |
-| ⚡ | **優先順序與效率模式** | 可透過快顯功能表立即調整，亦可建立規則，在目標程式每次啟動時自動套用。 |
-| 📈 | **效能** | 監控 CPU（各核心、效能核心與效率核心、時脈、溫度、功耗）、記憶體、磁碟（含健康狀態與 SMART 屬性）、網路、GPU 與電池狀態。 |
-| 🧩 | **服務與啟動項目** | 啟動、停止服務及修改啟動類型；啟用或停用啟動項目，狀態與 Windows 工作管理員同步。 |
-| 🌐 | **連線與連接埠** | 列出使用中的 TCP 與 UDP 端點及所屬處理程序，可依連接埠精確搜尋及中斷連線。 |
-| 🔍 | **檔案使用狀況** | 將檔案或資料夾拖放至視窗，即可查詢使用它的處理程序，結合 Restart Manager 與控制代碼列舉（涵蓋處理程序目前的工作目錄）進行排查。 |
-| 🕘 | **歷程記錄** | 自動記錄最近 7 天的資源使用折線，按一下任意時刻即可檢視當時最忙碌的處理程序。 |
-| 📌 | **常駐系統匣** | 可透過全域快速鍵隨時顯示或隱藏視窗；隱藏時資源負擔極低，最小化與背景常駐的重新整理間隔可分別設定。 |
-| 🔄 | **應用程式內更新** | 提供穩定版與測試版通道，新版本在背景下載並於標題列提示，更新前後均可檢視更新內容；下載預設依序連線 GitHub、官方鏡像與加速 Proxy，可在設定中調整。 |
-| 🎨 | **原生外觀** | Windows 11 22H2 及以上使用 Mica 雲母材質，Windows 11 21H2 與 Windows 10 使用實色背景；強調色及淺色、深色佈景主題預設跟隨系統，也可在設定中單獨指定佈景主題。 |
-| 🌍 | **多語言** | 支援簡體中文、繁體中文、英文、西班牙文、德文、日文、法文與俄文，預設跟隨 Windows 顯示語言；首次啟動導覽可協助完成常用設定。 |
-| 👤 | **無需系統管理員權限** | 以標準權限即可檢視全部處理程序的路徑與各項資源使用量。 |
-| 🔐 | **選用系統管理員執行** | 在設定或首次啟動導覽中完成一次授權後，登入啟動、捷徑和工作管理員入口即可統一以系統管理員身分執行，並可隨時關閉。 |
-| 🛡️ | **選用特殊權限服務** | 經一次系統管理員授權安裝後，介面以標準權限執行時，也能管理系統處理程序、檢查高權限處理程序的檔案使用狀況、自動套用規則、控制服務與中斷連線，並統計各處理程序的網路流量（在 Windows 10 及 Windows 11 24H2 之前的版本上亦包括磁碟讀寫）；可隨時在設定中解除安裝。 |
-| 🪟 | **工作與系統整合** | 支援[取代 Windows 工作管理員](docs/architecture/task-manager.md)，從任意頁面執行新工作（可選用系統管理員權限），或重新啟動目前桌面的 Windows 檔案總管。連結文件為簡體中文。 |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-zh-TW-dark.svg"><img src="docs/images/features/processes-zh-TW-light.svg" width="390" alt="處理程序頁從依應用程式檢視切換到處理程序樹，再搜尋 code，篩選出 Visual Studio Code 及其子處理程序"></picture><br><b>處理程序</b>：依應用程式、處理程序樹或清單檢視，支援搜尋、排序與結束處理程序樹</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-zh-TW-dark.svg"><img src="docs/images/features/performance-zh-TW-light.svg" width="390" alt="效能頁顯示 CPU 使用率、速度、溫度與功耗，以及每個效能核心與效率核心的折線"></picture><br><b>效能</b>：CPU 各核心、時脈、溫度與功耗，以及記憶體、磁碟、網路與 GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-TW-dark.svg"><img src="docs/images/features/history-zh-TW-light.svg" width="390" alt="在歷程記錄頁的 7 天折線上先後按一下兩個時刻，下方列出各時刻最忙碌的處理程序"></picture><br><b>歷程記錄</b>：按一下 7 天折線上的任意時刻，檢視當時最忙碌的處理程序</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-zh-TW-dark.svg"><img src="docs/images/features/files-zh-TW-light.svg" width="390" alt="將試算表檔案拖放至視窗後，對話方塊列出使用它的 Excel 與檔案總管，並結束其中一個處理程序"></picture><br><b>檔案使用狀況</b>：將檔案或資料夾拖放至視窗，列出使用它的處理程序</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-zh-TW-dark.svg"><img src="docs/images/features/rules-zh-TW-light.svg" width="390" alt="以滑鼠右鍵按一下 HandBrake，將優先順序設為低，再開啟效率模式"></picture><br><b>快顯功能表</b>：設定優先順序、開啟效率模式，或新增規則於每次啟動時套用</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-zh-TW-dark.svg"><img src="docs/images/features/ports-zh-TW-light.svg" width="390" alt="在連線頁搜尋 8080，找到接聽與連線該連接埠的處理程序，並中斷連線"></picture><br><b>連線與連接埠</b>：依連接埠尋找連線及所屬處理程序，可直接中斷</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>服務與啟動項目</b><br>啟動、停止服務並修改啟動類型，啟用或停用啟動項目</td>
+<td width="50%" valign="top"><b>常駐系統匣</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 隨時顯示或隱藏視窗，隱藏時資源負擔極低</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>取代工作管理員</b><br>可<a href="docs/architecture/task-manager.md">取代 Windows 工作管理員</a>並回應 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>（連結文件為簡體中文）；可執行新工作、重新啟動檔案總管</td>
+<td width="50%" valign="top"><b>外觀與語言</b><br>Mica 材質，跟隨系統強調色與淺色、深色佈景主題；支援 8 種介面語言</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>應用程式內更新</b><br>穩定版與測試版通道，背景下載，可檢視更新內容</td>
+<td width="50%" valign="top"><b>權限</b><br>以標準權限即可檢視全部處理程序；特殊權限服務與系統管理員執行可依需要開啟</td>
+</tr>
+</table>
 
 <a id="download"></a>
 

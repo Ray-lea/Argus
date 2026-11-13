@@ -54,23 +54,35 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 
 ## ✨ Funciones
 
-| | Función | Descripción |
-|:---:|---|---|
-| 🧮 | **Procesos** | Vistas por aplicación, árbol de procesos o lista, con uso de CPU, memoria, lectura y escritura de disco, tráfico de red y GPU en tiempo real. Permite ordenar, buscar y finalizar procesos o árboles completos; el panel de detalles muestra la línea de comandos, el usuario, el nivel de integridad y otros datos. |
-| ⚡ | **Prioridad y modo de eficiencia** | Ajustes inmediatos desde el menú contextual o mediante reglas que se aplican cada vez que se inicia un programa. |
-| 📈 | **Rendimiento** | Supervisión detallada de CPU —carga por núcleo, núcleos P y E, frecuencia, temperatura y potencia—, memoria, discos —incluidos estado y atributos SMART—, red, GPU y batería. |
-| 🧩 | **Servicios y aplicaciones de inicio** | Iniciar y detener servicios de Windows, cambiar su tipo de inicio y activar o desactivar aplicaciones de inicio, con el mismo estado que el Administrador de tareas de Windows. |
-| 🌐 | **Conexiones y puertos** | Consultar los extremos TCP y UDP activos y sus procesos, filtrar por un puerto exacto y cerrar conexiones. |
-| 🔍 | **Archivos en uso** | Arrastrar un archivo o carpeta a la ventana para encontrar los procesos que lo utilizan. Combina Restart Manager con la enumeración de identificadores, incluidos los directorios de trabajo de los procesos. |
-| 🕘 | **Historial** | Registra automáticamente el uso de recursos de los últimos 7 días. Al seleccionar un instante se muestran los procesos con mayor actividad en ese momento. |
-| 📌 | **Bandeja del sistema** | Un atajo global permite mostrar u ocultar la ventana. El consumo de recursos es mínimo mientras está oculta; los intervalos de actualización al minimizar y al permanecer en la bandeja se configuran por separado. |
-| 🔄 | **Actualizaciones integradas** | Canales Estable y Beta. Las versiones nuevas se descargan en segundo plano y se anuncian en la barra de título; sus cambios pueden consultarse antes y después de actualizar. La ruta predeterminada prueba GitHub, el servidor espejo oficial y después los proxies de GitHub; puede cambiarse en Configuración. |
-| 🎨 | **Aspecto nativo** | Fondo Mica en Windows 11 22H2 y versiones posteriores; fondo de color sólido en Windows 11 21H2 y Windows 10. El color de énfasis y el tema claro u oscuro siguen Windows de forma predeterminada; el tema también puede elegirse en Configuración. |
-| 🌍 | **Idiomas** | Interfaz en chino simplificado y tradicional, inglés, español, alemán, japonés, francés y ruso, con selección inicial según Windows. Una guía de bienvenida permite configurar las opciones principales en el primer inicio. |
-| 👤 | **Uso sin derechos de administrador** | Consultar las rutas de los ejecutables y el uso de recursos de todos los procesos con una cuenta estándar. |
-| 🔐 | **Inicio como administrador opcional** | Una autorización en Configuración o en la guía de bienvenida permite iniciar Argus como administrador al acceder a Windows, desde accesos directos y desde las entradas del Administrador de tareas. Puede desactivarse en cualquier momento. |
-| 🛡️ | **Servicio privilegiado opcional** | Tras instalarlo con autorización de administrador, la interfaz con derechos estándar puede gestionar procesos del sistema, consultar archivos utilizados por procesos elevados, aplicar reglas, controlar servicios, cerrar conexiones y medir el tráfico de red de cada proceso. En Windows 10 y Windows 11 anteriores a 24H2 también permite medir las lecturas y escrituras de disco por proceso. Puede desinstalarse desde Configuración. |
-| 🪟 | **Tareas e integración con el sistema** | Permite [sustituir el Administrador de tareas de Windows](docs/architecture/task-manager.md) —documentación en chino—, ejecutar tareas nuevas desde cualquier página, opcionalmente como administrador, y reiniciar el Explorador de Windows del escritorio actual. |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-es-dark.svg"><img src="docs/images/features/processes-es-light.svg" width="390" alt="La página Procesos pasa de la vista de aplicaciones al árbol de procesos; después, una búsqueda de code deja Visual Studio Code y sus procesos secundarios"></picture><br><b>Procesos</b>: vistas por aplicación, árbol de procesos o lista; buscar, ordenar y finalizar árboles completos</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-es-dark.svg"><img src="docs/images/features/performance-es-light.svg" width="390" alt="La página Rendimiento muestra el uso, la velocidad, la temperatura y la potencia de la CPU, con un gráfico por cada núcleo P y E"></picture><br><b>Rendimiento</b>: carga por núcleo, velocidad, temperatura y potencia de la CPU, además de memoria, discos, red y GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-es-dark.svg"><img src="docs/images/features/history-es-light.svg" width="390" alt="Se hace clic en dos momentos de los gráficos de 7 días de la página Historial y debajo aparecen los procesos más ocupados de cada uno"></picture><br><b>Historial</b>: al hacer clic en un momento de los gráficos de 7 días se muestran los procesos más ocupados</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-es-dark.svg"><img src="docs/images/features/files-es-light.svg" width="390" alt="Al arrastrar una hoja de cálculo a la ventana, un cuadro de diálogo indica que la utilizan Excel y el Explorador de Windows, y se finaliza uno de ellos"></picture><br><b>Archivos en uso</b>: al arrastrar un archivo o carpeta a la ventana se muestran los procesos que lo utilizan</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-es-dark.svg"><img src="docs/images/features/rules-es-light.svg" width="390" alt="Se hace clic con el botón derecho en HandBrake, se establece la prioridad Baja y se activa el modo de eficiencia"></picture><br><b>Menú contextual</b>: establecer la prioridad, activar el modo de eficiencia o añadir una regla para cada inicio</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-es-dark.svg"><img src="docs/images/features/ports-es-light.svg" width="390" alt="Una búsqueda de 8080 en la página Conexiones encuentra el proceso que escucha en el puerto y el que está conectado a él, y se cierra la conexión"></picture><br><b>Conexiones y puertos</b>: buscar conexiones y sus procesos por puerto, y cerrarlas</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>Servicios y aplicaciones de inicio</b><br>Iniciar y detener servicios, cambiar su tipo de inicio y activar o desactivar aplicaciones de inicio</td>
+<td width="50%" valign="top"><b>Bandeja del sistema</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> muestra u oculta la ventana; consumo mínimo mientras está oculta</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Sustitución del Administrador de tareas</b><br>Puede <a href="docs/architecture/task-manager.md">sustituir el Administrador de tareas de Windows</a> —documentación en chino— y abrirse con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; ejecuta tareas nuevas y reinicia el Explorador de Windows</td>
+<td width="50%" valign="top"><b>Aspecto e idiomas</b><br>Fondo Mica, color de énfasis y tema claro u oscuro según Windows; 8 idiomas de interfaz</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Actualizaciones integradas</b><br>Canales Estable y Beta, descarga en segundo plano y notas de la versión en la aplicación</td>
+<td width="50%" valign="top"><b>Permisos</b><br>Todos los procesos son visibles con una cuenta estándar; el servicio privilegiado y el inicio como administrador son opcionales</td>
+</tr>
+</table>
 
 <a id="download"></a>
 

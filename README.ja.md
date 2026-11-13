@@ -54,23 +54,35 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 ## ✨ 機能
 
-| | 機能 | 内容 |
-|:---:|---|---|
-| 🧮 | **プロセス** | アプリ別、プロセス ツリー、一覧の 3 種類の表示に対応。各プロセスの CPU、メモリ、ディスクの読み書き、ネットワーク通信量、GPU 使用率をリアルタイムで表示します。並べ替え、検索、プロセスやツリー全体の終了が可能で、詳細ペインではコマンド ライン、ユーザー、整合性レベルなどを確認できます。 |
-| ⚡ | **優先度と効率モード** | 右クリック メニューから変更でき、プログラムの起動時に自動適用するルールも作成できます。 |
-| 📈 | **パフォーマンス** | CPU のコア別負荷、P コアと E コア、周波数、温度、消費電力に加え、メモリ、ディスクの正常性と SMART 属性、ネットワーク、GPU、バッテリーを詳しく表示します。 |
-| 🧩 | **サービスとスタートアップ** | Windows サービスの開始・停止とスタートアップの種類の変更、スタートアップ アプリの有効化・無効化に対応。状態は Windows タスク マネージャーと共通です。 |
-| 🌐 | **接続とポート** | 使用中の TCP・UDP エンドポイントと関連するプロセスを表示し、ポート番号による完全一致検索や接続の切断ができます。 |
-| 🔍 | **ファイルの使用状況** | ファイルやフォルダーをウィンドウにドロップすると、使用中のプロセスを検索します。Restart Manager とハンドル列挙を組み合わせ、プロセスの作業ディレクトリも調べます。 |
-| 🕘 | **履歴** | 過去 7 日間のリソース使用量を自動記録します。グラフ上の時刻を選択すると、その時点で負荷の高かったプロセスを確認できます。 |
-| 📌 | **通知領域への常駐** | グローバル ショートカットでウィンドウを表示・非表示にできます。非表示中は少ないリソースで動作し、最小化中と通知領域に常駐中の更新間隔を個別に設定できます。 |
-| 🔄 | **アプリ内更新** | 安定版とベータ版の更新チャネルを提供。新しいバージョンをバックグラウンドでダウンロードし、タイトル バーで通知します。更新内容は更新前後に確認できます。既定のダウンロード経路は GitHub、公式ミラー、GitHub プロキシの順で接続し、設定から変更できます。 |
-| 🎨 | **ネイティブな外観** | Windows 11 22H2 以降では Mica 背景、Windows 11 21H2 と Windows 10 では単色背景を使用します。アクセント カラーとライト・ダーク テーマは Windows に従い、テーマは設定から個別に選択できます。 |
-| 🌍 | **多言語対応** | 簡体字中国語、繁体字中国語、英語、スペイン語、ドイツ語、日本語、フランス語、ロシア語に対応。初期設定では Windows の表示言語に従います。初回設定ガイドから基本設定を行えます。 |
-| 👤 | **管理者権限なしで利用可能** | 標準ユーザー権限で、全プロセスの実行ファイルのパスとリソース使用量を確認できます。 |
-| 🔐 | **管理者としての起動を選択可能** | 設定または初回設定ガイドで一度承認すると、サインイン時、ショートカット、タスク マネージャーの起動操作から管理者として実行できます。いつでも無効にできます。 |
-| 🛡️ | **任意の特権サービス** | 管理者の承認を受けてインストールすると、画面を標準権限で実行したまま、システム プロセスの管理、高い権限のプロセスによるファイル使用状況の確認、ルールの自動適用、サービス操作、接続の切断、プロセス別通信量の取得が可能になります。Windows 10 と Windows 11 24H2 より前のバージョンでは、プロセス別のディスク読み書きも取得します。設定からいつでもアンインストールできます。 |
-| 🪟 | **タスクとシステム連携** | [Windows タスク マネージャーの置き換え](docs/architecture/task-manager.md)（説明は中国語）、任意のページからの新しいタスクの実行、管理者としての実行、現在のデスクトップのエクスプローラーの再起動に対応します。 |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-ja-dark.svg"><img src="docs/images/features/processes-ja-light.svg" width="390" alt="プロセス ページでアプリ別表示からプロセス ツリーに切り替え、code を検索して Visual Studio Code と子プロセスに絞り込む"></picture><br><b>プロセス</b>：アプリ別、プロセス ツリー、一覧で表示。検索、並べ替え、ツリー全体の終了に対応</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-ja-dark.svg"><img src="docs/images/features/performance-ja-light.svg" width="390" alt="パフォーマンス ページに CPU の使用率、速度、温度、消費電力と、P コア・E コアごとのグラフが表示される"></picture><br><b>パフォーマンス</b>：CPU のコア別負荷、速度、温度、消費電力に加え、メモリ、ディスク、ネットワーク、GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-ja-dark.svg"><img src="docs/images/features/history-ja-light.svg" width="390" alt="履歴ページの 7 日間のグラフで 2 つの時刻をクリックし、それぞれの時点で最もビジーなプロセスが下に表示される"></picture><br><b>履歴</b>：7 日間のグラフ上の時刻をクリックすると、その時点で最もビジーなプロセスを表示</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-ja-dark.svg"><img src="docs/images/features/files-ja-light.svg" width="390" alt="スプレッドシートをウィンドウにドロップすると、使用中の Excel とエクスプローラーがダイアログに表示され、その一方を終了する"></picture><br><b>ファイルの使用状況</b>：ファイルやフォルダーをウィンドウにドロップすると、使用中のプロセスを一覧表示</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-ja-dark.svg"><img src="docs/images/features/rules-ja-light.svg" width="390" alt="HandBrake を右クリックして優先度を低に設定し、続けて効率モードを有効にする"></picture><br><b>右クリック メニュー</b>：優先度の設定、効率モードの有効化、起動のたびに適用するルールの追加</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-ja-dark.svg"><img src="docs/images/features/ports-ja-light.svg" width="390" alt="接続ページで 8080 を検索し、ポートを待ち受けるプロセスと接続中のプロセスを見つけて接続を閉じる"></picture><br><b>接続とポート</b>：ポート番号で接続と関連プロセスを検索し、切断できます</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>サービスとスタートアップ</b><br>サービスの開始・停止とスタートアップの種類の変更、スタートアップ アプリの有効化・無効化</td>
+<td width="50%" valign="top"><b>通知領域への常駐</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> でいつでも表示・非表示。非表示中は少ないリソースで動作</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>タスク マネージャーの置き換え</b><br><a href="docs/architecture/task-manager.md">Windows タスク マネージャーを置き換え</a>（説明は中国語）、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> で開けます。新しいタスクの実行とエクスプローラーの再起動にも対応</td>
+<td width="50%" valign="top"><b>外観と言語</b><br>Mica 背景。アクセント カラーとライト・ダーク テーマは Windows に連動。8 言語に対応</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>アプリ内更新</b><br>安定版とベータ版のチャネル、バックグラウンドでのダウンロード、アプリ内での更新内容の確認</td>
+<td width="50%" valign="top"><b>権限</b><br>標準ユーザー権限で全プロセスを表示。特権サービスと管理者としての起動は任意</td>
+</tr>
+</table>
 
 <a id="download"></a>
 

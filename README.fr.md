@@ -54,23 +54,35 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 
 ## ✨ Fonctionnalités
 
-| | Fonctionnalité | Description |
-|:---:|---|---|
-| 🧮 | **Processus** | Affichage par application, arborescence ou liste, avec l’utilisation en temps réel du CPU, de la mémoire, des lectures et écritures disque, du réseau et du GPU. Permet de trier, rechercher et terminer un processus ou son arborescence. Le volet de détails affiche notamment la ligne de commande, l’utilisateur et le niveau d’intégrité. |
-| ⚡ | **Priorité et mode d’efficacité** | Réglage immédiat depuis le menu contextuel ou au moyen de règles appliquées automatiquement à chaque démarrage d’un programme. |
-| 📈 | **Performances** | Suivi détaillé du CPU —charge par cœur, cœurs P et E, fréquence, température et puissance—, de la mémoire, des disques avec leur état de santé et leurs attributs SMART, du réseau, du GPU et de la batterie. |
-| 🧩 | **Services et applications au démarrage** | Démarrer ou arrêter les services Windows, modifier leur type de démarrage et activer ou désactiver les applications au démarrage, avec un état synchronisé avec le Gestionnaire des tâches Windows. |
-| 🌐 | **Connexions et ports** | Afficher les points de terminaison TCP et UDP actifs et les processus associés, filtrer par numéro de port exact et fermer des connexions. |
-| 🔍 | **Fichiers utilisés** | Déposer un fichier ou un dossier sur la fenêtre pour trouver les processus qui l’utilisent. Combine Restart Manager et l’énumération des handles, y compris les répertoires de travail des processus. |
-| 🕘 | **Historique** | Enregistre automatiquement les 7 derniers jours d’utilisation des ressources. Un clic sur un instant affiche les processus les plus actifs à ce moment-là. |
-| 📌 | **Zone de notification** | Afficher ou masquer la fenêtre avec un raccourci global. La consommation de ressources reste faible lorsque la fenêtre est masquée ; les intervalles d’actualisation à l’état réduit et dans la zone de notification sont réglables séparément. |
-| 🔄 | **Mises à jour intégrées** | Canaux Stable et Bêta. Les nouvelles versions sont téléchargées en arrière-plan et signalées dans la barre de titre ; leurs modifications peuvent être consultées avant et après la mise à jour. Le téléchargement essaie par défaut GitHub, le miroir officiel, puis les proxys GitHub. Ce choix peut être modifié dans les paramètres. |
-| 🎨 | **Aspect natif** | Arrière-plan Mica sous Windows 11 22H2 et versions ultérieures, et couleur unie sous Windows 11 21H2 et Windows 10. La couleur d’accentuation et le thème clair ou sombre suivent Windows par défaut ; le thème peut aussi être choisi dans les paramètres. |
-| 🌍 | **Langues** | Interface en chinois simplifié et traditionnel, anglais, espagnol, allemand, japonais, français et russe, choisie initialement selon Windows. Un guide de démarrage aide à configurer les options essentielles lors du premier lancement. |
-| 👤 | **Utilisable sans droits d’administrateur** | Consulter les chemins des exécutables et l’utilisation des ressources de tous les processus avec des droits standard. |
-| 🔐 | **Lancement administrateur facultatif** | Une autorisation dans les paramètres ou le guide de démarrage permet de lancer Argus en tant qu’administrateur à l’ouverture de session, depuis les raccourcis et par les points d’entrée du Gestionnaire des tâches. Cette option peut être désactivée à tout moment. |
-| 🛡️ | **Service privilégié facultatif** | Après une installation autorisée par un administrateur, l’interface peut conserver des droits standard tout en gérant les processus système, en consultant les fichiers utilisés par les processus élevés, en appliquant des règles, en contrôlant les services, en fermant des connexions et en mesurant le trafic réseau par processus. Sous Windows 10 et Windows 11 avant 24H2, le service fournit aussi les lectures et écritures disque par processus. Il peut être désinstallé dans les paramètres. |
-| 🪟 | **Tâches et intégration système** | Permet de [remplacer le Gestionnaire des tâches Windows](docs/architecture/task-manager.md) —documentation en chinois—, de lancer une nouvelle tâche depuis n’importe quelle page, éventuellement en tant qu’administrateur, et de redémarrer l’Explorateur Windows du bureau actuel. |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-fr-dark.svg"><img src="docs/images/features/processes-fr-light.svg" width="390" alt="La page Processus passe de l’affichage par application à l’arborescence, puis une recherche de code ne garde que Visual Studio Code et ses processus enfants"></picture><br><b>Processus</b> : affichage par application, arborescence ou liste ; rechercher, trier et terminer une arborescence entière</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-fr-dark.svg"><img src="docs/images/features/performance-fr-light.svg" width="390" alt="La page Performances affiche l’utilisation, la vitesse, la température et la puissance du CPU, avec un graphique par cœur P et E"></picture><br><b>Performances</b> : charge par cœur, vitesse, température et puissance du CPU, ainsi que mémoire, disques, réseau et GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-fr-dark.svg"><img src="docs/images/features/history-fr-light.svg" width="390" alt="Deux instants sont sélectionnés sur les graphiques sur 7 jours de la page Historique ; les processus les plus chargés de chacun s’affichent dessous"></picture><br><b>Historique</b> : un clic sur un instant des graphiques sur 7 jours affiche les processus les plus chargés à ce moment-là</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-fr-dark.svg"><img src="docs/images/features/files-fr-light.svg" width="390" alt="Après le dépôt d’un classeur sur la fenêtre, une boîte de dialogue indique qu’Excel et l’Explorateur Windows l’utilisent, et l’un d’eux est terminé"></picture><br><b>Fichiers utilisés</b> : déposer un fichier ou un dossier sur la fenêtre affiche les processus qui l’utilisent</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-fr-dark.svg"><img src="docs/images/features/rules-fr-light.svg" width="390" alt="Un clic droit sur HandBrake règle sa priorité sur Basse, puis active le mode d’efficacité"></picture><br><b>Menu contextuel</b> : définir la priorité, activer le mode d’efficacité ou ajouter une règle appliquée à chaque démarrage</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-fr-dark.svg"><img src="docs/images/features/ports-fr-light.svg" width="390" alt="Une recherche de 8080 dans la page Connexions trouve le processus à l’écoute sur ce port et celui qui y est connecté, puis la connexion est fermée"></picture><br><b>Connexions et ports</b> : trouver les connexions et leurs processus par port, et les fermer</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>Services et applications au démarrage</b><br>Démarrer ou arrêter les services, modifier leur type de démarrage, activer ou désactiver les applications au démarrage</td>
+<td width="50%" valign="top"><b>Zone de notification</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> affiche ou masque la fenêtre ; consommation faible lorsqu’elle est masquée</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Remplacement du Gestionnaire des tâches</b><br>Peut <a href="docs/architecture/task-manager.md">remplacer le Gestionnaire des tâches Windows</a> —documentation en chinois— et s’ouvrir avec <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> ; lance de nouvelles tâches et redémarre l’Explorateur Windows</td>
+<td width="50%" valign="top"><b>Aspect et langues</b><br>Arrière-plan Mica, couleur d’accentuation et thème clair ou sombre selon Windows ; 8 langues d’interface</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Mises à jour intégrées</b><br>Canaux Stable et Bêta, téléchargement en arrière-plan et notes de version dans l’application</td>
+<td width="50%" valign="top"><b>Autorisations</b><br>Tous les processus sont visibles avec des droits standard ; le service privilégié et le lancement administrateur sont facultatifs</td>
+</tr>
+</table>
 
 <a id="download"></a>
 
