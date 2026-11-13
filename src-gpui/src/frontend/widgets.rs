@@ -1506,26 +1506,24 @@ impl Desktop {
         const GAP: f32 = 4.;
         const MARGIN: f32 = 8.;
         let reduce = cx.reduce_motion();
-        let leaving = self
-            .ui
-            .select_leaving
-            .as_ref()
-            .filter(|(_, at)| !reduce && at.elapsed().as_secs_f32() < 0.083);
+        // A closed list rolls up toward its control over 83 ms, without taking
+        // input. It does not fade out: see `menus::rolled`.
+        let leaving = self.ui.select_leaving.as_ref().and_then(|(open, at)| {
+            let left = 1. - at.elapsed().as_secs_f32() / 0.083;
+            (!reduce && left > 0.).then_some((open, left))
+        });
         let interactive = self.ui.select.is_some();
-        let (open, opacity) = match (&self.ui.select, leaving) {
-            // Grows in over 167 ms, decelerating (`flyout-in`; its slight
-            // scale is left out).
-            (Some(open), _) => (
-                open,
-                if reduce {
-                    1.
-                } else {
-                    theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
-                },
-            ),
-            // Fades out over 83 ms, linear (`fade-out`), without taking input.
-            (None, Some((open, at))) => (open, 1. - at.elapsed().as_secs_f32() / 0.083),
+        let (open, shown) = match (&self.ui.select, leaving) {
+            (Some(open), _) => (open, 1.),
+            (None, Some((open, left))) => (open, left),
             (None, None) => return None,
+        };
+        // Grows in over 167 ms, decelerating (`flyout-in`; its slight scale is
+        // left out). One closed meanwhile goes on fading in.
+        let opacity = if reduce {
+            1.
+        } else {
+            theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
         };
         let p = self.palette;
         let viewport = window.viewport_size();
@@ -1545,16 +1543,13 @@ impl Desktop {
             .left()
             .min(viewport.width - px(MARGIN) - anchor.size.width)
             .max(px(MARGIN));
-        if opacity < 1. {
+        if opacity < 1. || shown < 1. {
             window.request_animation_frame();
         }
         let list = div()
             .id("select-list")
             .track_scroll(&open.scroll)
             .when(interactive, |d| d.occlude())
-            .absolute()
-            .left(left)
-            .top(top)
             .min_w(anchor.size.width)
             .max_h(px(max_height))
             .overflow_y_scroll()
@@ -1611,6 +1606,22 @@ impl Desktop {
                     }))
             }))
             .child(scrollbar::scrollbar("select-scrollbar", &open.scroll, p.dark).border(1.));
+        let list = if shown < 1. {
+            // What is left of the list, from the edge at its control (the
+            // bottom of a list above it), with the list drawn where it was.
+            let clip = px(height * shown);
+            let hidden = if up { px(height) - clip } else { px(0.) };
+            div()
+                .absolute()
+                .left(left)
+                .top(top + hidden)
+                .h(clip)
+                .overflow_hidden()
+                .child(list.mt(px(-f32::from(hidden))))
+                .into_any_element()
+        } else {
+            list.absolute().left(left).top(top).into_any_element()
+        };
         Some(
             deferred(
                 anchored().position(point(px(0.), px(0.))).child(
