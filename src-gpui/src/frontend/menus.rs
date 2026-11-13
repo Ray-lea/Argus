@@ -47,6 +47,15 @@ struct Submenu {
     opened: Instant,
 }
 
+/// A surface of a menu.
+#[derive(Clone, Copy, PartialEq)]
+enum Part {
+    Menu,
+    Submenu,
+    /// The submenu that closed or gave way to another, fading out.
+    Closed,
+}
+
 /// An open context menu.
 pub(super) struct Popup {
     items: Vec<MenuItem>,
@@ -60,6 +69,9 @@ pub(super) struct Popup {
     focus_visible: bool,
     hovered: Option<Entry>,
     sub: Option<Submenu>,
+    /// The submenu that closed or gave way to another, and when: it fades
+    /// out as the menu itself does.
+    sub_leaving: Option<(Submenu, Instant)>,
     /// The pending hover change of the submenu.
     timer: Option<Task<()>>,
 }
@@ -135,6 +147,22 @@ fn toggle_in_place(popup: &mut Popup, entry: Entry) {
             }
         }
     }
+}
+
+/// How much shows of a surface that opened at `since` (`flyout-in`).
+fn entered(since: Instant, reduce: bool) -> f32 {
+    if reduce {
+        1.
+    } else {
+        theme::ease_out((since.elapsed().as_secs_f32() / ENTER_SECONDS).min(1.))
+    }
+}
+
+/// How much is left of a surface that closed at `since`, fading out linearly:
+/// nothing once that is through, or at once under reduced motion.
+fn remaining(since: Instant, reduce: bool) -> Option<f32> {
+    let left = 1. - since.elapsed().as_secs_f32() / LEAVE_SECONDS;
+    (!reduce && left > 0.).then_some(left)
 }
 
 /// Whether a menu of `rows` items fits a window `height` tall. A menu does
@@ -281,6 +309,7 @@ impl Desktop {
             focus_visible: false,
             hovered: None,
             sub: None,
+            sub_leaving: None,
             timer: None,
         });
         window.refresh();
@@ -387,10 +416,12 @@ impl Desktop {
             return;
         };
         if popup.sub.as_ref().is_none_or(|sub| sub.owner != owner) {
-            popup.sub = Some(Submenu {
-                owner,
-                opened: Instant::now(),
-            });
+            let now = Instant::now();
+            let opened = Submenu { owner, opened: now };
+            // Another item's submenu gives way to this one.
+            if let Some(closed) = popup.sub.replace(opened) {
+                popup.sub_leaving = Some((closed, now));
+            }
         }
         let first = enabled(popup.children()).next();
         if focus && let Some(first) = first {
@@ -403,7 +434,11 @@ impl Desktop {
         let Some(popup) = &mut self.popup else {
             return;
         };
-        let owner = popup.sub.take().map(|sub| sub.owner);
+        let closed = popup.sub.take();
+        let owner = closed.as_ref().map(|sub| sub.owner);
+        if let Some(closed) = closed {
+            popup.sub_leaving = Some((closed, Instant::now()));
+        }
         popup.hovered = popup.hovered.filter(|entry| matches!(entry, Entry::Top(_)));
         match (refocus, owner) {
             (true, Some(owner)) => popup.focus = MenuFocus::Top(owner),
@@ -578,88 +613,49 @@ impl Desktop {
         cx.notify();
     }
 
-    /// The open menu and its submenu, or the one fading out, over everything.
+    /// The open menu and its submenu over everything, and under them the menu
+    /// that closed while it fades out.
     pub(in crate::frontend) fn menu_overlay(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let reduce = cx.reduce_motion();
-        let fade_in = |since: Instant| {
-            if reduce {
-                1.
-            } else {
-                theme::ease_out((since.elapsed().as_secs_f32() / ENTER_SECONDS).min(1.))
-            }
-        };
-        let leaving = self
+        let closed = self
             .popup_leaving
             .as_ref()
-            .filter(|(_, at)| !reduce && at.elapsed().as_secs_f32() < LEAVE_SECONDS);
-        let (popup, opacity, interactive) = match (&self.popup, leaving) {
-            (Some(popup), _) => (popup, fade_in(popup.opened), true),
-            // Fades out linearly, without taking input; its submenu goes at once.
-            (None, Some((popup, at))) => (
-                popup,
-                1. - at.elapsed().as_secs_f32() / LEAVE_SECONDS,
-                false,
-            ),
-            (None, None) => return None,
-        };
+            .and_then(|(popup, at)| Some((popup, remaining(*at, reduce)?)));
+        if self.popup.is_none() && closed.is_none() {
+            return None;
+        }
         let viewport = window.viewport_size();
-        let placed = |size: Size<Pixels>| {
-            if reduce {
-                size
-            } else {
-                gpui_kit::size(size.width * ENTER_SCALE, size.height * ENTER_SCALE)
-            }
-        };
-        let layout = measure(&popup.items, window, cx);
-        let origin = menu_origin(popup.position, placed(layout.size), viewport);
-        let mut animating = opacity < 1.;
+        let mut animating = false;
         let mut layer = div()
             .id("menu-layer")
             .w(viewport.width)
             .h(viewport.height)
-            .on_scroll(|_, _, cx| cx.stop_propagation())
-            .child(self.menu_surface(
-                popup,
-                &popup.items,
-                false,
-                origin,
-                &layout,
-                opacity,
-                interactive,
-                cx,
-            ));
-        if interactive {
-            // A press anywhere else closes the menu and still reaches what is there.
-            layer = layer.on_any_mouse_down(cx.listener(|this, _, window, cx| {
-                this.close_menu(window, cx);
-            }));
-            if let Some(sub) = &popup.sub {
-                let children = popup.children();
-                let sub_layout = measure(children, window, cx);
-                let sub_origin = submenu_origin(
-                    origin,
-                    layout.size,
-                    layout.tops[sub.owner],
-                    placed(sub_layout.size),
-                    viewport,
-                );
-                let sub_opacity = fade_in(sub.opened);
-                animating |= sub_opacity < 1.;
-                layer = layer.child(self.menu_surface(
-                    popup,
-                    children,
-                    true,
-                    sub_origin,
-                    &sub_layout,
-                    sub_opacity,
-                    true,
-                    cx,
-                ));
-            }
+            .on_scroll(|_, _, cx| cx.stop_propagation());
+        if let Some((popup, left)) = closed {
+            animating = true;
+            // Its surfaces are named as those of a menu opened meanwhile: kept
+            // apart from them, and under them.
+            layer = layer.child(
+                div()
+                    .id("menu-leaving")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .children(self.menu_surfaces(popup, Some(left), &mut animating, window, cx)),
+            );
+        }
+        if let Some(popup) = &self.popup {
+            layer = layer
+                // A press anywhere else closes the menu and still reaches what is there.
+                .on_any_mouse_down(cx.listener(|this, _, window, cx| {
+                    this.close_menu(window, cx);
+                }))
+                .children(self.menu_surfaces(popup, None, &mut animating, window, cx));
         }
         if animating {
             window.request_animation_frame();
@@ -671,13 +667,84 @@ impl Desktop {
         )
     }
 
+    /// A menu's surfaces, lowest first: the menu, the submenu that closed
+    /// while it fades out, and the open submenu. `closing` is how much is left
+    /// of a closed menu: all of them fade with it, without taking input.
+    /// `animating` is set while any of them fades.
+    fn menu_surfaces(
+        &self,
+        popup: &Popup,
+        closing: Option<f32>,
+        animating: &mut bool,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> Vec<Stateful<Div>> {
+        let reduce = cx.reduce_motion();
+        let interactive = closing.is_none();
+        // One closed while it was still fading in goes on from what showed of it.
+        let whole = closing.unwrap_or(1.);
+        let viewport = window.viewport_size();
+        let placed = |size: Size<Pixels>| {
+            if reduce {
+                size
+            } else {
+                gpui_kit::size(size.width * ENTER_SCALE, size.height * ENTER_SCALE)
+            }
+        };
+        let layout = measure(&popup.items, window, cx);
+        let origin = menu_origin(popup.position, placed(layout.size), viewport);
+        let opacity = entered(popup.opened, reduce) * whole;
+        *animating |= opacity < 1.;
+        let mut surfaces = vec![self.menu_surface(
+            popup,
+            &popup.items,
+            Part::Menu,
+            origin,
+            &layout,
+            opacity,
+            interactive,
+            cx,
+        )];
+        let closed = popup
+            .sub_leaving
+            .as_ref()
+            .and_then(|(sub, at)| Some((sub, Part::Closed, remaining(*at, reduce)?)));
+        let open = popup.sub.as_ref().map(|sub| (sub, Part::Submenu, 1.));
+        for (sub, part, left) in closed.into_iter().chain(open) {
+            let Some(owner) = popup.items.get(sub.owner) else {
+                continue;
+            };
+            let sub_layout = measure(&owner.children, window, cx);
+            let sub_origin = submenu_origin(
+                origin,
+                layout.size,
+                layout.tops[sub.owner],
+                placed(sub_layout.size),
+                viewport,
+            );
+            let sub_opacity = entered(sub.opened, reduce) * left * whole;
+            *animating |= part == Part::Closed || sub_opacity < 1.;
+            surfaces.push(self.menu_surface(
+                popup,
+                &owner.children,
+                part,
+                sub_origin,
+                &sub_layout,
+                sub_opacity,
+                interactive && part == Part::Submenu,
+                cx,
+            ));
+        }
+        surfaces
+    }
+
     /// One menu (`.menu`): items and separators on the flyout surface.
     #[allow(clippy::too_many_arguments)]
     fn menu_surface(
         &self,
         popup: &Popup,
         items: &[MenuItem],
-        sub: bool,
+        part: Part,
         origin: Point<Pixels>,
         layout: &MenuLayout,
         opacity: f32,
@@ -685,6 +752,7 @@ impl Desktop {
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let p = self.palette;
+        let sub = part != Part::Menu;
         let entry = |index| {
             if sub {
                 Entry::Sub(index)
@@ -792,7 +860,11 @@ impl Desktop {
                 })
         });
         div()
-            .id(if sub { "submenu" } else { "menu" })
+            .id(match part {
+                Part::Menu => "menu",
+                Part::Submenu => "submenu",
+                Part::Closed => "submenu-closed",
+            })
             .role(Role::Menu)
             .absolute()
             .left(origin.x)
