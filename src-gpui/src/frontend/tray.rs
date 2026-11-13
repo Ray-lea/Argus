@@ -1173,6 +1173,9 @@ impl Desktop {
             is_resizable: false,
             is_minimizable: false,
             window_background: WindowBackgroundAppearance::Opaque,
+            // The flyouts are seldom the active window (the card never is): their
+            // fades keep the display's pace, as the main window does.
+            inactive_frame_interval: None,
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {
