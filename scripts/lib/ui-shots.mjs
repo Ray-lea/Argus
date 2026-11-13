@@ -10,7 +10,7 @@ export const INSPECTIONS = {
   vitals: ["inspectVitals", "ui-vitals"],
 };
 
-const KINDS = ["note", "control", "probe", "record", "wait", "inspect", "expect", "capture", "crop", "sheet"];
+const KINDS = ["note", "control", "probe", "record", "wait", "inspect", "expect", "capture", "captureFlyout", "crop", "sheet"];
 const NAME = /^[\w.-]+$/;
 
 /**
@@ -73,6 +73,11 @@ export function parseSteps(value) {
     if ("capture" in step) {
       assert(NAME.test(step.capture), `${where}: capture names a file`);
       captures.add(step.capture);
+    }
+    // A tray flyout of the instance instead of its main window.
+    if ("captureFlyout" in step) {
+      assert(NAME.test(step.captureFlyout), `${where}: captureFlyout names a file`);
+      captures.add(step.captureFlyout);
     }
     if ("record" in step) {
       const record = step.record;

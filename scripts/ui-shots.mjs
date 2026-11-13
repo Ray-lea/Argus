@@ -129,6 +129,10 @@ try {
       tool("capture", String(shown.pid), join(output, `${step.capture}.png`));
       console.log(`captured ${step.capture}`);
     }
+    if (step.captureFlyout) {
+      tool("capture-flyout", String(shown.pid), join(output, `${step.captureFlyout}.png`));
+      console.log(`captured ${step.captureFlyout}`);
+    }
     if (step.crop) {
       const { from, name, region, scale } = step.crop;
       tool("crop", join(output, `${from}.png`), join(output, `${name}.png`), ...region.map(String), String(scale));

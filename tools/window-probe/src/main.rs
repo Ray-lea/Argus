@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
         #[cfg(windows)]
         Some("latency") => latency::run(&args[1], args.get(2).map_or(Ok(20), |s| s.parse())?)?,
         #[cfg(all(windows, feature = "capture"))]
-        Some("capture" | "capture-preview") => windows::capture(
+        Some("capture" | "capture-preview" | "capture-flyout") => windows::capture(
             args.get(1).context("window PID required")?.parse()?,
             args.get(2).context("PNG path required")?,
             if args[0] == "capture-preview" {
@@ -62,9 +62,10 @@ fn main() -> anyhow::Result<()> {
             } else {
                 None
             },
+            args[0] == "capture-flyout",
         )?,
         _ => anyhow::bail!(
-            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | capture-preview PID PNG INACTIVE ACTIVE | compare LEFT RIGHT | crop IN OUT X Y W H [SCALE] | sheet OUT X Y W H COLUMNS SCALE IN... | frame-contrast DIRECTORY | track-chart DIRECTORY"
+            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | capture-flyout PID PNG | capture-preview PID PNG INACTIVE ACTIVE | compare LEFT RIGHT | crop IN OUT X Y W H [SCALE] | sheet OUT X Y W H COLUMNS SCALE IN... | frame-contrast DIRECTORY | track-chart DIRECTORY"
         ),
     }
     Ok(())
