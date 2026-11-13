@@ -617,7 +617,7 @@ fn draw_surface(
     }
 }
 
-fn copy_scene(
+pub(super) fn copy_scene(
     surface: &IDCompositionSurface,
     devices: &DirectXRendererDevices,
     source: &ID3D11Texture2D,
