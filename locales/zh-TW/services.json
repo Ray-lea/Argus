@@ -21,7 +21,7 @@
     "running": "執行中",
     "stopped": "已停止"
   },
-  "search": "搜尋服務名稱、描述或 PID",
+  "search": "搜尋服務名稱、描述或 PID，可逗號分隔多個",
   "control": {
     "start": "啟動服務",
     "stop": "停止服務",

@@ -13,7 +13,7 @@
   "copied": {
     "command": "Befehl"
   },
-  "search": "Nach Name, Herausgeber oder Befehl suchen",
+  "search": "Nach Name, Herausgeber oder Befehl suchen; mehrere mit Komma trennen",
   "column": {
     "publisher": "Herausgeber",
     "location": "Speicherort"

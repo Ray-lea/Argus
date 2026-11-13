@@ -21,7 +21,7 @@
     "running": "Wird ausgeführt",
     "stopped": "Beendet"
   },
-  "search": "Nach Dienstname, Beschreibung oder PID suchen",
+  "search": "Nach Dienstname, Beschreibung oder PID suchen; mehrere mit Komma trennen",
   "control": {
     "start": "Dienst starten",
     "stop": "Dienst beenden",

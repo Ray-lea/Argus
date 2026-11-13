@@ -39,7 +39,7 @@
     "local": "local address",
     "remote": "remote address"
   },
-  "search": "Port, address or process, e.g. 8080",
+  "search": "Port, address or process, e.g. 8080; separate several with commas",
   "column": {
     "process": "Process",
     "protocol": "Protocol",

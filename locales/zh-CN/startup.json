@@ -13,7 +13,7 @@
   "copied": {
     "command": "命令"
   },
-  "search": "搜索名称、发布者或命令",
+  "search": "搜索名称、发布者或命令，可逗号分隔多个",
   "column": {
     "publisher": "发布者",
     "location": "位置"

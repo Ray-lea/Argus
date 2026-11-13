@@ -68,7 +68,7 @@
     "next": "Click for “{mode}”; right-click to choose"
   },
   "search": {
-    "processes": "Search name, PID, path or service",
+    "processes": "Search name, PID, path or service; separate several with commas",
     "clear": "Clear search"
   },
   "viewMode": {

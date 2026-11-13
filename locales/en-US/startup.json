@@ -13,7 +13,7 @@
   "copied": {
     "command": "command"
   },
-  "search": "Search name, publisher or command",
+  "search": "Search name, publisher or command; separate several with commas",
   "column": {
     "publisher": "Publisher",
     "location": "Location"

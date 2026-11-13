@@ -39,7 +39,7 @@
     "local": "dirección local",
     "remote": "dirección remota"
   },
-  "search": "Puerto, dirección o proceso, p. ej., 8080",
+  "search": "Puerto, dirección o proceso, p. ej., 8080; separa varios con comas",
   "column": {
     "process": "Proceso",
     "protocol": "Protocolo",

@@ -68,7 +68,7 @@
     "next": "单击改为“{mode}”，右键可直接选择"
   },
   "search": {
-    "processes": "搜索名称、PID、路径或服务",
+    "processes": "搜索名称、PID、路径或服务，可逗号分隔多个",
     "clear": "清除搜索"
   },
   "viewMode": {

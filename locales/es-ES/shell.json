@@ -68,7 +68,7 @@
     "next": "Haga clic para cambiar a «{mode}» o haga clic derecho para elegir directamente"
   },
   "search": {
-    "processes": "Buscar nombre, PID, ruta o servicio",
+    "processes": "Buscar nombre, PID, ruta o servicio; separa varios con comas",
     "clear": "Borrar búsqueda"
   },
   "viewMode": {
