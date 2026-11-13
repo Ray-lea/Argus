@@ -902,12 +902,9 @@ impl Desktop {
                 .map(|bounds| point(bounds.left() + px(16.), bounds.bottom()));
             self.process_header_menu(Some(key.into()), at, window, cx);
         }
-        if let Some(index) = control["rowMenu"].as_u64()
-            && let Some(row) = self.rows.get(index as usize).cloned()
-        {
-            self.selected.insert(self.page.clone(), row.key.clone());
-            let items = self.row_menu(&row);
-            self.open_popup(items, window, cx);
+        // What a right press on that row does; `pointer` presses on it for real.
+        if let Some(index) = control["rowMenu"].as_u64() {
+            self.open_row_menu(index as usize, window, cx);
         }
         if control["dismiss"].as_bool() == Some(true) {
             self.act(Action::CloseOverlay, window, cx);

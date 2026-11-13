@@ -869,16 +869,46 @@ impl MenuItem {
     }
 }
 impl Desktop {
+    /// Opens the menu of the row at `index`, as a right press on it does. The
+    /// press selects the row first, as a left one does. A heading is never
+    /// selected (a left press folds it), and only a user's heading has a menu.
+    pub(in crate::frontend) fn open_row_menu(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(row) = self.rows.get(index).cloned() else {
+            return;
+        };
+        // The table outlines the row it was pressed on until told otherwise:
+        // the selection shows it instead, and a heading shows nothing.
+        if let Some(table) = &self.table {
+            table.update(cx, |state, cx| state.set_right_clicked_row(None, cx));
+        }
+        if row.section.is_none() {
+            self.selected.insert(self.page.clone(), row.key.clone());
+        } else if row.user.is_none() {
+            return;
+        }
+        let items = self.row_menu(&row);
+        self.open_popup(items, window, cx);
+        cx.notify();
+    }
     pub(in crate::frontend) fn row_menu(&self, row: &Row) -> Vec<MenuItem> {
         if row.section.is_some() {
-            let mut items = vec![MenuItem::new(
-                label(if row.expanded {
-                    "common.collapse"
-                } else {
-                    "common.expand"
-                }),
-                Action::Fold(row.key.clone()),
-            )];
+            let mut items = vec![
+                MenuItem::new(
+                    label(if row.expanded {
+                        "common.collapse"
+                    } else {
+                        "common.expand"
+                    }),
+                    Action::Fold(row.key.clone()),
+                )
+                // Every match shows while searching: headings cannot fold.
+                .disabled(!self.query.trim().is_empty()),
+            ];
             items.extend(self.user_menu(row));
             return items;
         }

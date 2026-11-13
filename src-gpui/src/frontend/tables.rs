@@ -1740,18 +1740,7 @@ impl Desktop {
                         }
                     }
                     TableEvent::RightClickedRow(Some(index)) => {
-                        // A right press selects the row, as a left one does, then opens its menu.
-                        if let Some(row) = this.rows.get(*index).cloned()
-                            && row.section.is_none()
-                        {
-                            this.selected.insert(this.page.clone(), row.key.clone());
-                            let items = this.row_menu(&row);
-                            this.open_popup(items, window, cx);
-                            if let Some(table) = &this.table {
-                                table.update(cx, |state, cx| state.set_right_clicked_row(None, cx));
-                            }
-                            cx.notify();
-                        }
+                        this.open_row_menu(*index, window, cx);
                     }
                     TableEvent::ClearSelection => {
                         // A selection the current filter or folding hides stays
