@@ -107,8 +107,8 @@ const retainedDevices = retained ? [
   ...(hardware.batteries ?? []).map(b => `bat:${b.info.id}`),
 ] : [];
 // Every performance overview of the fixture shows in full, without scrolling,
-// in a window of this logical size. The default window is smaller: there the
-// overviews with the most content scroll.
+// in a window of this logical size. The default window is smaller: it shows
+// all of them in full but the grid of logical processors.
 const COMPLETE_WINDOW = [1240, 800];
 const overviewStates = [
   ["cpu", { device: "cpu", cpuMode: "overall" }],
@@ -743,6 +743,9 @@ if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview &&
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);
   }
+  const defaults = events.filter((event) => event.event === "ui-layout" && /^(performance|memory|disk-\d+|gpu-\d+|nic-\d+|battery-\d+)$/.test(event.label));
+  assert(defaults.length >= 3, "default-size overview layouts missing");
+  for (const view of defaults) assert(view.performanceScrollY <= 1, `${view.label}: overview scrolls by ${view.performanceScrollY}px in the default window`);
   const [completeWidth, completeHeight] = COMPLETE_WINDOW;
   for (const [name] of overviewStates) {
     const view = events.find((event) => event.event === "ui-layout" && event.label === `complete-${name}`);
