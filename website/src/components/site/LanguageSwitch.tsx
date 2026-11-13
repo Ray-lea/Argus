@@ -64,6 +64,8 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
   // The page in the visitor's own language, offered under the header.
   const [offer, setOffer] = useState<{ lang: Language; open: boolean } | null>(null);
   const withdraw = () => setOffer((current) => current && { ...current, open: false });
+  // Put away, the offer leaves this button lit for a moment: the languages are here.
+  const [pointed, setPointed] = useState(false);
   // The menu stays in the page while it fades (a chosen link must outlive its
   // click); without motion it is simply hidden for that moment.
   const close = (restore = false, keep = false) => {
@@ -96,9 +98,14 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
   }, [lang]);
   useEffect(() => {
     if (offer?.open !== false) return;
-    const timer = setTimeout(() => setOffer(null), 150);
+    const timer = setTimeout(() => setOffer(null), 240);
     return () => clearTimeout(timer);
   }, [offer]);
+  useEffect(() => {
+    if (!pointed) return;
+    const timer = setTimeout(() => setPointed(false), 1300);
+    return () => clearTimeout(timer);
+  }, [pointed]);
   // A language chosen is kept for the home page's address (layout.tsx); its
   // page takes along the query, the hash and the reading position.
   const go = (event: MouseEvent<HTMLAnchorElement>, to: Language) => {
@@ -120,6 +127,7 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
       // It is not offered again while the site stays loaded.
     }
     withdraw();
+    setPointed(true);
     if (restore) trigger.current?.focus({ preventScroll: true });
   };
   // The other page did not come (offline), or this one came back from the
@@ -150,6 +158,7 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
     if (!open) return;
     // The menu takes the offer's place.
     withdraw();
+    setPointed(false);
     root.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
       if (event.target instanceof Node && !root.current?.contains(event.target)) close();
@@ -159,7 +168,7 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
   }, [open]);
   return (
     <>
-    <div className="language-picker" ref={root}
+    <div className="language-picker" ref={root} data-offer={offer?.open ? "open" : pointed ? "away" : undefined}
       onBlurCapture={event => { if (open && !event.currentTarget.contains(event.relatedTarget)) close(); }}
       onKeyDown={event => {
         if (!open) {
@@ -216,20 +225,26 @@ export function LanguageSwitch({ lang, path, label }: { lang: Language; path: st
         </a>)}
       </div>}
     </div>
-    {offer && <aside className={"language-offer" + (offer.open ? "" : " is-closing")} lang={languageInfo(offer.lang).tag}
-      aria-labelledby={id + "-offer"} inert={!offer.open}
-      onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); dismiss(true); } }}>
-      <Icon name="language" size={16} />
-      <p id={id + "-offer"}>{offers[offer.lang].text}</p>
-      <button type="button" className="language-offer-close" aria-label={offers[offer.lang].close} title={offers[offer.lang].close}
-        onClick={event => dismiss(event.detail === 0)}>
-        <Icon name="close" size={14} />
-      </button>
-      <a className="btn is-primary is-small language-offer-go" hrefLang={languageInfo(offer.lang).tag} href={localized(offer.lang, path)}
-        onClick={event => { if (go(event, offer.lang)) withdraw(); }}>
-        {offers[offer.lang].action}
-      </a>
-    </aside>}
+    {/* The tray keeps the tab under the header's edge as it slides out (global.css). */}
+    {offer && <div className={"language-offer-tray" + (offer.open ? "" : " is-closing")}>
+      <aside className="language-offer" lang={languageInfo(offer.lang).tag}
+        aria-labelledby={id + "-offer"} inert={!offer.open}
+        onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); dismiss(true); } }}>
+        <span className="language-offer-mark"><Icon name="language" size={16} /></span>
+        <p id={id + "-offer"}>
+          {offers[offer.lang].text.split("*").map((part, index) => index % 2 ? <strong key={index}>{part}</strong> : part)}
+        </p>
+        <a className="btn is-primary is-small language-offer-go" hrefLang={languageInfo(offer.lang).tag} href={localized(offer.lang, path)}
+          onClick={event => { if (go(event, offer.lang)) withdraw(); }}>
+          {offers[offer.lang].action}
+          <Icon name="arrow" size={14} />
+        </a>
+        <button type="button" className="language-offer-close" aria-label={offers[offer.lang].close} title={offers[offer.lang].close}
+          onClick={event => dismiss(event.detail === 0)}>
+          <Icon name="close" size={14} />
+        </button>
+      </aside>
+    </div>}
     </>
   );
 }
