@@ -622,10 +622,22 @@ impl Desktop {
                 return result;
             }
         }
+        // Services are changed, not ended: they name the display name the
+        // menu passed along, else the key name.
+        let service = matches!(
+            command,
+            "control_service" | "set_service_start_type" | "set_service_start_type_registry"
+        );
+        let name = match text(args, "display") {
+            display if service && !display.is_empty() => display.to_owned(),
+            _ => name,
+        };
         let key = format!(
             "{}.{kind}",
             if command == "run_task" {
                 "tasks.error"
+            } else if service {
+                "services.error"
             } else {
                 "actions.error"
             }

@@ -1311,7 +1311,7 @@ impl Desktop {
         let control = |action: &str| {
             Action::Invoke(
                 "control_service".into(),
-                json!({"name":name,"action":action}),
+                json!({"name":name,"action":action,"display":text(raw, "displayName")}),
             )
         };
         // The binary is the first token of the image path, quoted or not.

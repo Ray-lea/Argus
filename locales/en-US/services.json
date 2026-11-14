@@ -52,5 +52,11 @@
     "body": "Windows doesn't let anyone change the startup type of “{name}”, not even administrators: the service belongs to an app package. Argus can write “{type}” to the service's registry key instead.\n\nWindows usually applies it right away; if it doesn't, the table marks it as pending until the next restart. An app update may restore the original value.",
     "confirm": "Write to registry",
     "done": "Startup type written to the registry."
+  },
+  "error": {
+    "accessDenied": "Couldn't change service {name}: access denied. Turn on the privileged service in Settings, or run Argus as administrator. Security software may protect its own services.",
+    "notFound": "Service {name} wasn't found.",
+    "refused": "Argus can't change service {name}.",
+    "serviceOutdated": "Couldn't change service {name}: access denied. The privileged service version is incompatible; update the service and try again."
   }
 }

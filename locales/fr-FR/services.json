@@ -52,5 +52,11 @@
     "body": "Windows ne permet à personne de modifier le type de démarrage de « {name} », pas même aux administrateurs : le service appartient à un package d’application. Argus peut écrire « {type} » dans la clé de registre du service.\n\nWindows l’applique généralement tout de suite ; sinon, le tableau l’indique comme en attente jusqu’au prochain redémarrage. Une mise à jour de l’application peut rétablir la valeur d’origine.",
     "confirm": "Écrire dans le registre",
     "done": "Type de démarrage écrit dans le registre."
+  },
+  "error": {
+    "accessDenied": "Impossible de modifier le service {name} : accès refusé. Activez le service privilégié dans les Paramètres ou exécutez Argus en tant qu’administrateur. Les logiciels de sécurité peuvent protéger leurs propres services.",
+    "notFound": "Le service {name} est introuvable.",
+    "refused": "Argus ne peut pas modifier le service {name}.",
+    "serviceOutdated": "Impossible de modifier le service {name} : accès refusé. La version du service privilégié n’est pas compatible ; mettez le service à jour et réessayez."
   }
 }

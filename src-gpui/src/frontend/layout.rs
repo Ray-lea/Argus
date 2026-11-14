@@ -1030,6 +1030,9 @@ impl Desktop {
             let name = selected
                 .map(|s| text(s, "name").to_owned())
                 .unwrap_or_default();
+            let display = selected
+                .map(|s| text(s, "displayName").to_owned())
+                .unwrap_or_default();
             let tip = label(title);
             row = row.child(
                 self.tool_button(
@@ -1038,7 +1041,7 @@ impl Desktop {
                     Some(glyph),
                     Action::Invoke(
                         "control_service".into(),
-                        json!({"name": name, "action": action}),
+                        json!({"name": name, "action": action, "display": display}),
                     ),
                     false,
                     cx,

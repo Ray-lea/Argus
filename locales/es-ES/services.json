@@ -52,5 +52,11 @@
     "body": "Windows no permite a nadie cambiar el tipo de inicio de «{name}», ni siquiera a los administradores: el servicio pertenece a un paquete de aplicación. Argus puede escribir «{type}» en la clave de registro del servicio.\n\nWindows suele aplicarlo al momento; si no, la tabla lo marca como pendiente hasta el próximo reinicio. Una actualización de la aplicación puede restaurar el valor original.",
     "confirm": "Escribir en el registro",
     "done": "Tipo de inicio escrito en el registro."
+  },
+  "error": {
+    "accessDenied": "No se pudo cambiar el servicio {name}: acceso denegado. Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador. El software de seguridad puede proteger sus propios servicios.",
+    "notFound": "No se encontró el servicio {name}.",
+    "refused": "Argus no puede cambiar el servicio {name}.",
+    "serviceOutdated": "No se pudo cambiar el servicio {name}: acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio e inténtalo de nuevo."
   }
 }

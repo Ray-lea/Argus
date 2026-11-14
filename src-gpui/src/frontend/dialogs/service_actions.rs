@@ -17,6 +17,7 @@ impl Desktop {
             "" => name.clone(),
             display => display.to_owned(),
         };
+        let display_arg = display.clone();
         let chosen = label(&format!("services.startType.{start_type}"));
         self.ask(
             label("services.packaged.title"),
@@ -32,7 +33,7 @@ impl Desktop {
             move |this, window, cx| {
                 this.request(
                     "set_service_start_type_registry",
-                    json!({"name":name,"startType":start_type}),
+                    json!({"name":name,"startType":start_type,"display":display_arg}),
                     None,
                     window,
                     cx,
