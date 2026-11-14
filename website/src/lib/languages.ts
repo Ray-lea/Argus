@@ -39,16 +39,17 @@ export function preferredLanguage(tags: readonly string[]): Language {
 }
 
 // The offer of a page in another language is written in that language: the
-// visitor it is for may not read the page's own.
+// visitor it is for may not read the page's own. The language's name, between
+// asterisks, is what the eye should catch first.
 export const offers: Record<Language, { text: string; action: string; close: string }> = {
-  zh: { text: "本页面也提供简体中文版本。", action: "查看简体中文版", close: "关闭" },
-  "zh-TW": { text: "本頁面也提供繁體中文版本。", action: "查看繁體中文版", close: "關閉" },
-  en: { text: "This page is also available in English.", action: "View in English", close: "Close" },
-  es: { text: "Esta página también está disponible en español.", action: "Ver en español", close: "Cerrar" },
-  de: { text: "Diese Seite gibt es auch auf Deutsch.", action: "Auf Deutsch anzeigen", close: "Schließen" },
-  ja: { text: "このページは日本語でもご覧いただけます。", action: "日本語で表示", close: "閉じる" },
-  fr: { text: "Cette page est également disponible en français.", action: "Afficher en français", close: "Fermer" },
-  ru: { text: "Эта страница доступна и на русском языке.", action: "Открыть на русском", close: "Закрыть" },
+  zh: { text: "本页面也提供*简体中文*版本。", action: "查看简体中文版", close: "关闭" },
+  "zh-TW": { text: "本頁面也提供*繁體中文*版本。", action: "查看繁體中文版", close: "關閉" },
+  en: { text: "This page is also available in *English*.", action: "View in English", close: "Close" },
+  es: { text: "Esta página también está disponible en *español*.", action: "Ver en español", close: "Cerrar" },
+  de: { text: "Diese Seite gibt es auch auf *Deutsch*.", action: "Auf Deutsch anzeigen", close: "Schließen" },
+  ja: { text: "このページは*日本語*でもご覧いただけます。", action: "日本語で表示", close: "閉じる" },
+  fr: { text: "Cette page est également disponible en *français*.", action: "Afficher en français", close: "Fermer" },
+  ru: { text: "Эта страница доступна и на *русском* языке.", action: "Открыть на русском", close: "Закрыть" },
 };
 
 /*

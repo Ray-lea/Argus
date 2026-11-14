@@ -1,39 +1,31 @@
 name: 功能建议 / Feature request
-description: 描述使用需求，建议新功能或改进现有体验 / Describe a need, suggest a feature or improve an existing workflow
+description: 建议新功能或改进现有功能 / Suggest a new feature or an improvement to a feature
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        提交前可搜索已有的 Issue。现有功能失效、显示异常或异常资源占用请使用“缺陷报告”。可独立处理的诉求请分别提交。中文或英文均可。
+        提交前请搜索已有的 Issue。每份建议只写一个需求。功能失效或显示异常请使用“缺陷报告”；使用问题请在讨论区提问。可使用中文或英文。
 
-        Search existing issues before submitting. Use “Bug report” for broken features, display problems or excessive resource use. Submit independently actionable requests separately. Chinese or English is fine.
+        Search the existing issues first. Write one request in each issue. For a broken feature or a display problem, use "Bug report". Ask usage questions in Discussions. Write in Chinese or English.
   - type: textarea
     id: problem
     attributes:
-      label: 使用场景与当前困难 / Use case and current difficulty
-      description: 希望完成什么任务？当前在哪一步遇到不便？涉及现有功能时，可注明 Argus 版本和所在页面。/ What task needs to be completed, and which step is inconvenient? For existing features, include the Argus version and page if relevant.
+      label: 使用场景与当前困难 / Use case and problem
+      description: 要完成什么任务？当前哪一步不便？涉及现有功能时，注明所在页面和 Argus 版本。/ What task do you want to do? Which step is difficult now? For an existing feature, give the page and the Argus version.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 期望达到的效果 / Desired outcome
-      description: 描述期望的操作或结果即可，具体实现思路可填写在下一项。/ Describe the desired interaction or result. Implementation ideas can be included in the next optional field.
+      label: 期望效果 / Expected result
+      description: 描述期望的操作和结果。实现思路可写在下一项。/ Describe the operation and the result that you expect. Put implementation ideas in the next field.
     validations:
       required: true
   - type: textarea
     id: references
     attributes:
-      label: 参考方案、截图或演示（选填）/ References, screenshots or demos (optional)
-      description: 可提供参考软件、具体实现思路、界面草图或演示，并说明希望参考的部分。支持直接拖入附件。/ Include reference software, implementation ideas, sketches or demos, and explain which parts are relevant. Attachments can be dragged here.
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: 当前替代办法与相关环境（选填）/ Current workarounds and relevant environment (optional)
+      label: 参考与补充（选填）/ References and more information (optional)
       description: |
-        可说明目前的变通办法、已尝试的设置，以及与需求相关的软件或硬件环境。涉及显示布局时，可补充分辨率和缩放；涉及硬件或性能时，可补充相关型号。
-        硬件配置可在“进程”页未选中项时，打开右侧详细信息面板，单击“本机配置”旁的“复制配置为文字”，或手动填写相关信息。
-
-        Describe current workarounds, settings already tried, and software or hardware relevant to the request. For display layouts, include resolution and scaling; for hardware or performance, include relevant models.
-        To copy hardware details, deselect items on the Processes page, open the right details pane and click “Copy PC specifications as text” beside “This PC”, or enter relevant details manually.
+        可附参考软件、界面草图或演示，并说明参考哪一部分。也可写明当前的替代办法和相关环境，例如分辨率、缩放或硬件型号。附件可直接拖入此处。
+        Add reference software, sketches or demos, and tell which part to use. You can also give the current workaround and the related environment, for example the resolution, the scaling or the hardware models. Drag attachments here.

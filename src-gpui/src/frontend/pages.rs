@@ -1,5 +1,6 @@
 //! Page composition keeps domain queries separate from native widgets.
 mod about;
+mod components;
 mod details;
 mod history;
 mod performance;
@@ -160,6 +161,7 @@ impl Desktop {
             }
             "performance" => self.performance_view(window, cx),
             "history" => self.history_view(window, cx),
+            "components" => self.components_view(window, cx),
             "settings" => self.settings_view(window, cx),
             "about" => self.about_view(window, cx),
             "services" | "startup" | "network" => {

@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Der Hinweis am Infobereichssymbol wird im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Das Symbol im Infobereich und sein Hinweis werden im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
@@ -431,6 +431,33 @@
       "title": "Protokoll",
       "desc": "Zeichnet die Laufzeitumgebung, den Funktionsstatus, fehlgeschlagene Schritte, Fehlercodes und tatsächliche Pfade zugehöriger Dateien oder Ordner auf. Lokal gespeichert, mit bis zu 1 MB pro Datei und 3 vorherigen Protokollen. Befehlszeilen, Anmeldeinformationen und Dateiinhalte sind ausgeschlossen. Verwenden Sie diesen Eintrag, um Diagnoseprotokolle für Fehlerberichte zu finden.",
       "open": "Protokollordner öffnen"
+    },
+    "diagnostics": {
+      "title": "Diagnoseinformationen",
+      "desc": "Kopiert die aktuelle Version, den Laufzeitstatus sowie Hardware- und Anzeigeeinstellungen für einen Fehlerbericht. Fehlende Angaben werden als unbekannt gekennzeichnet.",
+      "copy": "Diagnoseinformationen kopieren",
+      "unknown": "Unbekannt",
+      "version": "Vollständige Argus-Version",
+      "windows": "Windows-Version",
+      "build": "Build-Typ",
+      "installation": "Installation",
+      "installed": "Installierte Version",
+      "portable": "Portable Version",
+      "source": "Entwicklungsbuild",
+      "permission": "Aktuelle Berechtigungen",
+      "administrator": "Administrator",
+      "standard": "Standardbenutzer",
+      "sampleTime": "Zeitpunkt der Momentaufnahme (UTC)",
+      "cpuCores": "CPU-Kerne / Threads",
+      "display": "Auflösung des aktuellen Bildschirms",
+      "window": "Clientbereich des Fensters",
+      "systemScale": "Windows-Skalierung",
+      "fontSize": "Schriftgröße",
+      "language": "Oberflächensprache",
+      "refresh": "Aktualisierungsintervall im Vordergrund",
+      "paused": "Abtastung pausiert",
+      "sensorReadings": "Sensorstatus in der Momentaufnahme",
+      "row": "{name}: {value}"
     }
   },
   "sensors": {

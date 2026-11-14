@@ -256,6 +256,7 @@ pub fn startup(args: &[String]) -> Result<()> {
             let mut search = Search {
                 pid,
                 hwnd: HWND::default(),
+                flyout: false,
             };
             unsafe {
                 let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));
@@ -434,6 +435,8 @@ impl Drop for ForegroundMonitor {
 struct Search {
     pid: u32,
     hwnd: HWND,
+    /// Look for a tray flyout (a visible tool window) instead of the main window.
+    flyout: bool,
 }
 unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
     let search = unsafe { &mut *(data.0 as *mut Search) };
@@ -451,13 +454,19 @@ unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
         serde_json::from_str(include_str!("../../../resources/app.json"))
             .expect("application metadata")
     });
-    if String::from_utf16_lossy(&title[..nt])
-        .contains(metadata["productName"].as_str().expect("product name"))
-        && matches!(
-            String::from_utf16_lossy(&class[..nc]).as_ref(),
-            "Zed::Window"
-        )
-    {
+    let class = String::from_utf16_lossy(&class[..nc]);
+    // The tray's flyouts are topmost tool windows of the same class, listed
+    // before the main window while they show.
+    let tool = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_TOOLWINDOW.0 as isize != 0;
+    let found = if search.flyout {
+        class == "Zed::Window" && tool && unsafe { IsWindowVisible(hwnd).as_bool() }
+    } else {
+        String::from_utf16_lossy(&title[..nt])
+            .contains(metadata["productName"].as_str().expect("product name"))
+            && class == "Zed::Window"
+            && !tool
+    };
+    if found {
         search.hwnd = hwnd;
         return false.into();
     }
@@ -1014,6 +1023,7 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut search = Search {
         pid: root,
         hwnd: HWND::default(),
+        flyout: false,
     };
     let mut measured = Instant::now();
     let mut closing = None;
@@ -1468,7 +1478,7 @@ pub fn run(args: &[String]) -> Result<()> {
 }
 
 #[cfg(feature = "capture")]
-pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>) -> Result<()> {
+pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>, flyout: bool) -> Result<()> {
     use windows::{
         Graphics::{
             Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem},
@@ -1491,6 +1501,7 @@ pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>) -> Result<()
     let mut search = Search {
         pid,
         hwnd: HWND::default(),
+        flyout,
     };
     unsafe {
         let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));

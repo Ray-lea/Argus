@@ -3,7 +3,7 @@
 // images the pages link to. Files are written only when they change, so a
 // running development server reloads just what moved.
 import { execFileSync } from "node:child_process";
-import { readFile, glob } from "node:fs/promises";
+import { readFile, readdir, glob } from "node:fs/promises";
 import { join, posix } from "node:path";
 import MarkdownIt from "markdown-it";
 import GithubSlugger from "github-slugger";
@@ -476,6 +476,9 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
     };
   }
   await putIfChanged(assetsDir, "argus.svg", await readFile(join(root, "resources/logo.svg")));
+  // Supporters' avatars for the thanks cards on the home page (scripts/supporters.mjs).
+  const avatars = join(websiteRoot, "src/data/supporters");
+  for (const file of await readdir(avatars)) await putIfChanged(assetsDir, "supporters/" + file, await readFile(join(avatars, file)));
   // Browsers ask for /favicon.ico regardless of the declared icon.
   await putIfChanged(join(websiteRoot, "public"), "favicon.ico", await readFile(join(root, "resources/icons/icon.ico")));
   await putIfChanged(
