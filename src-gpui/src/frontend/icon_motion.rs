@@ -260,7 +260,10 @@ impl Desktop {
 
     /// A cover the control `control` lays over itself (it must be
     /// `relative`): the pointer coming onto it sets the control's icon
-    /// moving. The control draws again by its own hover style.
+    /// moving. Its hover style changes nothing to see: it is there because a
+    /// view draws again when the pointer comes onto or leaves an element
+    /// with one, which starts the motion, also where the control's own fill
+    /// follows the pointer in place (`hover_fills_in_place`).
     pub(in crate::frontend) fn icon_probe(&self, control: &SharedString) -> Stateful<Div> {
         let plays = self.ui.icon_motions.plays.clone();
         let control = control.clone();
@@ -268,6 +271,7 @@ impl Desktop {
             .id("icon-probe")
             .absolute()
             .inset_0()
+            .hover(|style| style)
             // Where tests take hold of the control, under its own name.
             .when(self.options.test, |probe| {
                 let anchors = self.ui.anchors.clone();

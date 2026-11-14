@@ -1132,6 +1132,143 @@ pub(crate) struct PaintIndex {
     line_layout_index: LineLayoutIndex,
 }
 
+/// The border colour [`Style::paint`] gives a background quad: the fill
+/// without its alpha, so that the quad's antialiased edge fades to nothing
+/// rather than to black.
+fn hover_edge_color(background: Background) -> Hsla {
+    let mut color = background.solid;
+    color.a = 0.;
+    color
+}
+
+/// `index`, counted inside a stretch of a list starting at `from`, where that
+/// stretch was copied starting at `to`. `None` if it lies before the stretch.
+fn rebase_index(index: usize, from: usize, to: usize) -> Option<usize> {
+    index.checked_sub(from).map(|offset| to + offset)
+}
+
+impl PrepaintStateIndex {
+    /// This index, taken inside the stretch of the last frame that starts at
+    /// `from`, where a replay of that stretch starting at `to` put it: a
+    /// replay copies every list it counts entry for entry.
+    pub(crate) fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
+        Some(Self {
+            hitboxes_index: rebase_index(
+                self.hitboxes_index,
+                from.hitboxes_index,
+                to.hitboxes_index,
+            )?,
+            tooltips_index: rebase_index(
+                self.tooltips_index,
+                from.tooltips_index,
+                to.tooltips_index,
+            )?,
+            deferred_draws_index: rebase_index(
+                self.deferred_draws_index,
+                from.deferred_draws_index,
+                to.deferred_draws_index,
+            )?,
+            dispatch_tree_index: rebase_index(
+                self.dispatch_tree_index,
+                from.dispatch_tree_index,
+                to.dispatch_tree_index,
+            )?,
+            accessed_element_states_index: rebase_index(
+                self.accessed_element_states_index,
+                from.accessed_element_states_index,
+                to.accessed_element_states_index,
+            )?,
+            line_layout_index: self
+                .line_layout_index
+                .rebased(&from.line_layout_index, &to.line_layout_index)?,
+        })
+    }
+
+    /// Whether this index lies at or before `end` in every list it counts.
+    pub(crate) fn not_after(&self, end: &Self) -> bool {
+        self.hitboxes_index <= end.hitboxes_index
+            && self.tooltips_index <= end.tooltips_index
+            && self.deferred_draws_index <= end.deferred_draws_index
+            && self.dispatch_tree_index <= end.dispatch_tree_index
+            && self.accessed_element_states_index <= end.accessed_element_states_index
+            && self.line_layout_index.not_after(&end.line_layout_index)
+    }
+
+    /// The element states used between two indices of one frame.
+    pub(crate) fn accessed_element_states(range: &Range<Self>) -> Range<usize> {
+        range.start.accessed_element_states_index..range.end.accessed_element_states_index
+    }
+}
+
+impl PaintIndex {
+    /// See [`PrepaintStateIndex::rebased`].
+    pub(crate) fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
+        Some(Self {
+            scene_index: rebase_index(self.scene_index, from.scene_index, to.scene_index)?,
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: rebase_index(
+                self.debug_bounds_index,
+                from.debug_bounds_index,
+                to.debug_bounds_index,
+            )?,
+            mouse_listeners_index: rebase_index(
+                self.mouse_listeners_index,
+                from.mouse_listeners_index,
+                to.mouse_listeners_index,
+            )?,
+            input_handlers_index: rebase_index(
+                self.input_handlers_index,
+                from.input_handlers_index,
+                to.input_handlers_index,
+            )?,
+            cursor_styles_index: rebase_index(
+                self.cursor_styles_index,
+                from.cursor_styles_index,
+                to.cursor_styles_index,
+            )?,
+            window_control_hitboxes_index: rebase_index(
+                self.window_control_hitboxes_index,
+                from.window_control_hitboxes_index,
+                to.window_control_hitboxes_index,
+            )?,
+            accessed_element_states_index: rebase_index(
+                self.accessed_element_states_index,
+                from.accessed_element_states_index,
+                to.accessed_element_states_index,
+            )?,
+            tab_handle_index: rebase_index(
+                self.tab_handle_index,
+                from.tab_handle_index,
+                to.tab_handle_index,
+            )?,
+            line_layout_index: self
+                .line_layout_index
+                .rebased(&from.line_layout_index, &to.line_layout_index)?,
+        })
+    }
+
+    /// See [`PrepaintStateIndex::not_after`].
+    pub(crate) fn not_after(&self, end: &Self) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        if self.debug_bounds_index > end.debug_bounds_index {
+            return false;
+        }
+        self.scene_index <= end.scene_index
+            && self.mouse_listeners_index <= end.mouse_listeners_index
+            && self.input_handlers_index <= end.input_handlers_index
+            && self.cursor_styles_index <= end.cursor_styles_index
+            && self.window_control_hitboxes_index <= end.window_control_hitboxes_index
+            && self.accessed_element_states_index <= end.accessed_element_states_index
+            && self.tab_handle_index <= end.tab_handle_index
+            && self.line_layout_index.not_after(&end.line_layout_index)
+    }
+
+    /// The element states used between two indices of one frame.
+    pub(crate) fn accessed_element_states(range: &Range<Self>) -> Range<usize> {
+        range.start.accessed_element_states_index..range.end.accessed_element_states_index
+    }
+}
+
 impl Frame {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn record_debug_bounds(&mut self, selector: String, bounds: Bounds<Pixels>) {
@@ -1379,6 +1516,12 @@ pub struct Window {
     hovered: Rc<Cell<bool>>,
     pub(crate) needs_present: Rc<Cell<bool>>,
     painted_primitive_indices: FxHashMap<usize, Option<usize>>,
+    /// Argus patch: the fills of the element about to paint its style, when
+    /// its hover style only fills it (`Interactivity::hover_background`).
+    pub(crate) pending_hover_background: Option<crate::style::HoverBackground>,
+    /// Argus patch: how many elements being painted allow the hover fills
+    /// inside them to change in place (`hover_fills_in_place`).
+    pub(crate) hover_fills_in_place: usize,
     force_full_render: bool,
     paint_generation: u64,
     /// Tracks recent input event timestamps to determine if input is arriving at a high rate.
@@ -2552,6 +2695,8 @@ impl Window {
             hovered,
             needs_present,
             painted_primitive_indices: FxHashMap::default(),
+            pending_hover_background: None,
+            hover_fills_in_place: 0,
             force_full_render: false,
             paint_generation: 0,
             input_rate_tracker,
@@ -3102,6 +3247,199 @@ impl Window {
     /// Use outside drawing when only uncached content owned by this view changed.
     pub fn request_view_redraw(&self, entity: EntityId) {
         self.invalidator.invalidate_view_for_animation(entity);
+    }
+
+    /// Draws `view` again because an element it painted changed how it looks
+    /// or what it listens for, without the view's state changing: a hover, a
+    /// press, a tooltip coming or going. Its observers aren't notified and the
+    /// cached views inside it replay (their keys hold what they inherit from
+    /// it), where [`Self::refresh`] would render every view of the window.
+    ///
+    /// During a draw (a tooltip found gone while the window prepaints it) the
+    /// view draws again in the next frame. `refresh` does nothing then, which
+    /// left the tooltip's request in the view's prepaint until something else
+    /// drew the view: every frame that replayed the view laid the tooltip out
+    /// again to find it gone, and showed it at once if its element was waiting
+    /// to show it anew. Views now replay for as long as nothing changes them.
+    pub(crate) fn redraw_view_for_interaction(&self, view: EntityId) {
+        if self.invalidator.not_drawing() {
+            self.invalidator.invalidate_view_for_animation(view);
+        } else {
+            self.on_next_frame(move |window, _| {
+                window.invalidator.invalidate_view_for_animation(view)
+            });
+        }
+    }
+
+    /// [`Self::redraw_view_for_interaction`] for an element that may have
+    /// been painted outside any view, where the window is refreshed.
+    pub(crate) fn redraw_for_interaction(&mut self, view: Option<EntityId>) {
+        match view {
+            Some(view) => self.redraw_view_for_interaction(view),
+            None => self.refresh(),
+        }
+    }
+
+    /// Paints the background of an element whose hover style sets a solid
+    /// background and nothing else, at `bounds`, as a quad that takes either
+    /// fill in place. A row or a button under a moving pointer changes fill
+    /// far more often than anything else about it changes: drawing its view
+    /// again for each change builds, lays out and paints everything in the
+    /// view to change one quad. With no background at rest the quad is still
+    /// there, transparent, so that hovering has something to fill.
+    ///
+    /// The quad is what [`Self::paint_quad`] makes of the same fill, and
+    /// [`Self::set_hover_fill`] changes it later.
+    pub(crate) fn paint_hover_background(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        border_style: BorderStyle,
+        hover: &crate::style::HoverBackground,
+    ) {
+        self.invalidator.debug_assert_paint();
+        let opacity = self.element_opacity();
+        let fills = (
+            hover.base.unwrap_or_default().opacity(opacity),
+            hover.hover.opacity(opacity),
+        );
+        hover.link.fills.set(fills);
+        let background = if hover.hovered { fills.1 } else { fills.0 };
+        let quad = Quad {
+            order: 0,
+            bounds: self.snap_bounds(bounds),
+            content_mask: self.snapped_content_mask(),
+            background,
+            border_color: hover_edge_color(background),
+            corner_radii: corner_radii.scale(self.scale_factor()),
+            border_widths: Edges::default(),
+            border_style,
+        };
+        self.next_frame.scene.insert_hover_quad(quad, &hover.link);
+    }
+
+    /// Gives the quad that [`Self::paint_hover_background`] painted for `link`
+    /// the fill for `hovered`, in the scene on screen, and presents it: no
+    /// view draws again. Returns `false` when the quad is not in that scene as
+    /// it was painted (its view was drawn inside a transform, or another quad
+    /// equals it); the caller then draws the element's view again.
+    ///
+    /// The paint operation changes with the quad, so a later frame that
+    /// replays the view shows the same fill.
+    pub(crate) fn set_hover_fill(
+        &mut self,
+        link: &crate::scene::HoverQuadLink,
+        hovered: bool,
+    ) -> bool {
+        use crate::scene::{PaintOperation, Primitive};
+        if !self.invalidator.not_drawing() {
+            return false;
+        }
+        let Some(operation) = link.operation.get() else {
+            return false;
+        };
+        let (base, hover) = link.fills.get();
+        let background = if hovered { hover } else { base };
+        let scene = &mut self.rendered_frame.scene;
+        // The scene on screen is the one the link was last noted in.
+        let Some(entry) = scene
+            .hover_quads
+            .binary_search_by_key(&operation, |quad| quad.operation)
+            .ok()
+            .filter(|index| std::ptr::eq(Rc::as_ptr(&scene.hover_quads[*index].link), link))
+        else {
+            return false;
+        };
+        let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
+            scene.paint_operations.get(operation)
+        else {
+            return false;
+        };
+        if recorded.background == background {
+            return true;
+        }
+        // The quad among the scene's quads, as the transforms around the
+        // element placed it. Clipped out, there is none to show.
+        let placed = scene.hover_quads[entry].placed;
+        let opacity = scene.hover_quads[entry].opacity;
+        let index = match placed {
+            Some(placed) => {
+                let quads = &scene.quads;
+                let Some(index) = *self
+                    .painted_primitive_indices
+                    .entry(operation)
+                    .or_insert_with(|| {
+                        let mut hits = quads.iter().enumerate().filter(|(_, quad)| {
+                            quad.order == placed.order
+                                && quad.bounds == placed.bounds
+                                && quad.content_mask.bounds == placed.content_mask.bounds
+                                && quad.background == placed.background
+                        });
+                        let first = hits.next()?.0;
+                        hits.next().is_none().then_some(first)
+                    })
+                else {
+                    return false;
+                };
+                if scene.quads.get(index).is_none_or(|quad| {
+                    quad.bounds != placed.bounds || quad.background != placed.background
+                }) {
+                    return false;
+                }
+                Some(index)
+            }
+            None => None,
+        };
+        if let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
+            scene.paint_operations.get_mut(operation)
+        {
+            recorded.background = background;
+            recorded.border_color = hover_edge_color(background);
+        }
+        let Some(index) = index else {
+            return true;
+        };
+        let shown = background.opacity(opacity);
+        let quad = &mut scene.quads[index];
+        quad.background = shown;
+        quad.border_color = hover_edge_color(shown);
+        scene.hover_quads[entry].placed = Some(*quad);
+        scene.mark_repainted();
+        self.needs_present.set(true);
+        self.invalidator.wake_platform();
+        true
+    }
+
+    /// Calls `f` with the state of type `S` kept by each element that used
+    /// one within `accessed`, a stretch of the element states the last frame
+    /// used. A view replayed from the last frame moves what the cached views
+    /// drawn inside it recorded there to where the replay put it.
+    pub(crate) fn for_reused_element_states<S: 'static>(
+        &mut self,
+        accessed: Range<usize>,
+        mut f: impl FnMut(&mut S),
+    ) {
+        let state_type = TypeId::of::<S>();
+        let Frame {
+            accessed_element_states,
+            element_states,
+            ..
+        } = &mut self.rendered_frame;
+        let Some(keys) = accessed_element_states.get(accessed) else {
+            return;
+        };
+        for key in keys {
+            if key.1 != state_type {
+                continue;
+            }
+            if let Some(state) = element_states
+                .get_mut(key)
+                .and_then(|state| state.inner.downcast_mut::<Option<S>>())
+                .and_then(Option::as_mut)
+            {
+                f(state);
+            }
+        }
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
