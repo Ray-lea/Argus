@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Argus at 24 px: whole pixels, 5 × 4 dots. -->
+  <rect x="2" y="2" width="20" height="20" rx="5.5" fill="#16181d"/>
+  <rect x="2.5" y="2.5" width="19" height="19" rx="5" fill="none" stroke="#fff" stroke-opacity=".14"/>
+  <g fill="#4cc2ff">
+    <rect x="5" y="4" width="2" height="2" rx=".5"/>
+    <rect x="17" y="11" width="2" height="2" rx=".5"/>
+    <rect x="17" y="14" width="2" height="2" rx=".5"/>
+    <rect x="17" y="17" width="2" height="2" rx=".5"/>
+  </g>
+  <g fill="#cfd1d5" fill-opacity=".7">
+    <rect x="8" y="4" width="2" height="2" rx=".5"/>
+    <rect x="11" y="4" width="2" height="2" rx=".5"/>
+  </g>
+  <g fill="#cfd1d5">
+    <rect x="5" y="17" width="2" height="2" rx=".5"/>
+    <rect x="8" y="17" width="2" height="2" rx=".5"/>
+    <rect x="11" y="14" width="2" height="2" rx=".5"/>
+    <rect x="11" y="17" width="2" height="2" rx=".5"/>
+    <rect x="14" y="14" width="2" height="2" rx=".5"/>
+    <rect x="14" y="17" width="2" height="2" rx=".5"/>
+  </g>
+  <g fill="#cfd1d5" fill-opacity="0.15">
+    <rect x="5" y="8" width="2" height="2" rx=".5"/>
+    <rect x="5" y="11" width="2" height="2" rx=".5"/>
+    <rect x="5" y="14" width="2" height="2" rx=".5"/>
+    <rect x="8" y="8" width="2" height="2" rx=".5"/>
+    <rect x="8" y="11" width="2" height="2" rx=".5"/>
+    <rect x="8" y="14" width="2" height="2" rx=".5"/>
+    <rect x="11" y="8" width="2" height="2" rx=".5"/>
+    <rect x="11" y="11" width="2" height="2" rx=".5"/>
+    <rect x="14" y="8" width="2" height="2" rx=".5"/>
+    <rect x="14" y="11" width="2" height="2" rx=".5"/>
+    <rect x="17" y="8" width="2" height="2" rx=".5"/>
+  </g>
+</svg>

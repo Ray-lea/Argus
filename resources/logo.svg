@@ -1,35 +1,59 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="t">
   <title id="t">Argus</title>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2c376e"/>
-      <stop offset="1" stop-color="#0b0e20"/>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d3137"/>
+      <stop offset="1" stop-color="#16181d"/>
     </linearGradient>
-    <radialGradient id="sheen" cx="0.3" cy="0.12" r="0.75">
-      <stop offset="0" stop-color="#ffffff" stop-opacity=".10"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="lid" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#62e6ff"/>
-      <stop offset="1" stop-color="#8a72ff"/>
-    </linearGradient>
-    <radialGradient id="iris" cx="0.42" cy="0.4" r="0.7">
-      <stop offset="0" stop-color="#a8f3ff"/>
-      <stop offset="0.55" stop-color="#3f9bff"/>
-      <stop offset="1" stop-color="#5a46e0"/>
-    </radialGradient>
-    <clipPath id="eye">
-      <path d="M132 512C268 300 756 300 892 512C756 724 268 724 132 512Z"/>
-    </clipPath>
   </defs>
-  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#bg)"/>
-  <rect x="48" y="48" width="928" height="928" rx="216" fill="url(#sheen)"/>
-  <rect x="58" y="58" width="908" height="908" rx="206" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="10"/>
-  <g clip-path="url(#eye)">
-    <circle cx="512" cy="512" r="172" fill="url(#iris)"/>
-    <circle cx="512" cy="512" r="172" fill="none" stroke="#0a0d1a" stroke-opacity=".3" stroke-width="16"/>
-    <circle cx="512" cy="512" r="72" fill="#0a0d1a"/>
-    <circle cx="562" cy="462" r="28" fill="#fff" fill-opacity=".92"/>
+  <g transform="scale(4)">
+    <!-- The window: one tile, a light inner edge that holds it on dark taskbars. -->
+    <path d="M156 20c28 0 42 0 52.7 5.45a50 50 0 0 1 21.85 21.85c5.45 10.7 5.45 24.7 5.45 52.7L236 156c0 28 0 42 -5.45 52.7a50 50 0 0 1 -21.85 21.85c-10.7 5.45 -24.7 5.45 -52.7 5.45L100 236c-28 0 -42 0 -52.7 -5.45a50 50 0 0 1 -21.85 -21.85c-5.45 -10.7 -5.45 -24.7 -5.45 -52.7L20 100c0 -28 0 -42 5.45 -52.7a50 50 0 0 1 21.85 -21.85c10.7 -5.45 24.7 -5.45 52.7 -5.45Z" fill="url(#tile)"/>
+    <path d="M156.9 21.5c27.16 0 40.74 0 51.12 5.29a48.5 48.5 0 0 1 21.2 21.2c5.29 10.37 5.29 23.96 5.29 51.12L234.5 156.9c0 27.16 0 40.74 -5.29 51.12a48.5 48.5 0 0 1 -21.2 21.2c-10.37 5.29 -23.96 5.29 -51.12 5.29L99.1 234.5c-27.16 0 -40.74 0 -51.12 -5.29a48.5 48.5 0 0 1 -21.2 -21.2c-5.29 -10.37 -5.29 -23.96 -5.29 -51.12L21.5 99.1c0 -27.16 0 -40.74 5.29 -51.12a48.5 48.5 0 0 1 21.2 -21.2c10.37 -5.29 23.96 -5.29 51.12 -5.29Z" fill="none" stroke="#fff" stroke-opacity=".12" stroke-width="3"/>
+    <!-- Window controls; the first carries the accent. -->
+    <g fill="#cfd1d5" fill-opacity=".7">
+      <circle cx="74.62" cy="45.54" r="7"/>
+      <circle cx="96.62" cy="45.54" r="7"/>
+    </g>
+    <g fill="#4cc2ff">
+      <circle cx="52.62" cy="45.54" r="7"/>
+    </g>
+    <!-- The graph: columns of dots lit up to each sample, the newest on the right. -->
+    <g fill="#cfd1d5" fill-opacity="0.13">
+      <circle cx="52.62" cy="81.69" r="10.62"/>
+      <circle cx="52.62" cy="111.85" r="10.62"/>
+      <circle cx="52.62" cy="142" r="10.62"/>
+      <circle cx="52.62" cy="172.15" r="10.62"/>
+      <circle cx="82.77" cy="81.69" r="10.62"/>
+      <circle cx="82.77" cy="111.85" r="10.62"/>
+      <circle cx="82.77" cy="142" r="10.62"/>
+      <circle cx="112.92" cy="81.69" r="10.62"/>
+      <circle cx="112.92" cy="111.85" r="10.62"/>
+      <circle cx="112.92" cy="142" r="10.62"/>
+      <circle cx="112.92" cy="172.15" r="10.62"/>
+      <circle cx="143.08" cy="81.69" r="10.62"/>
+      <circle cx="143.08" cy="111.85" r="10.62"/>
+      <circle cx="173.23" cy="81.69" r="10.62"/>
+      <circle cx="173.23" cy="111.85" r="10.62"/>
+      <circle cx="173.23" cy="142" r="10.62"/>
+      <circle cx="203.38" cy="81.69" r="10.62"/>
+    </g>
+    <g fill="#cfd1d5">
+      <circle cx="52.62" cy="202.31" r="10.62"/>
+      <circle cx="82.77" cy="172.15" r="10.62"/>
+      <circle cx="82.77" cy="202.31" r="10.62"/>
+      <circle cx="112.92" cy="202.31" r="10.62"/>
+      <circle cx="143.08" cy="142" r="10.62"/>
+      <circle cx="143.08" cy="172.15" r="10.62"/>
+      <circle cx="143.08" cy="202.31" r="10.62"/>
+      <circle cx="173.23" cy="172.15" r="10.62"/>
+      <circle cx="173.23" cy="202.31" r="10.62"/>
+    </g>
+    <g fill="#4cc2ff">
+      <circle cx="203.38" cy="111.85" r="10.62"/>
+      <circle cx="203.38" cy="142" r="10.62"/>
+      <circle cx="203.38" cy="172.15" r="10.62"/>
+      <circle cx="203.38" cy="202.31" r="10.62"/>
+    </g>
   </g>
-  <path d="M132 512C268 300 756 300 892 512C756 724 268 724 132 512Z" fill="none" stroke="url(#lid)" stroke-width="64" stroke-linejoin="round"/>
 </svg>

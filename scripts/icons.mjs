@@ -1,7 +1,8 @@
-// Regenerates the app icons in resources/icons from the two logo sources:
-// resources/logo.svg for 48 px and up, resources/icons/logo-small.svg (bigger
-// eye, heavier strokes) for 16–32 px, where the full logo stops reading.
-// SVGs are rasterized by headless Microsoft Edge at each exact size.
+// Regenerates the app icons in resources/icons from the logo sources:
+// resources/icons/logo-<n>.svg, drawn on whole pixels, for the sizes that
+// have one (16, 20, 24 and 32 px, where the dots would blur if scaled), and
+// resources/logo.svg for the rest. SVGs are rasterized by headless Microsoft
+// Edge at each exact size.
 // Usage: node scripts/icons.mjs
 
 import { spawn } from "node:child_process";
@@ -12,12 +13,11 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const icons = join(root, "resources", "icons");
-const sources = {
-  full: join(root, "resources", "logo.svg"),
-  small: join(icons, "logo-small.svg"),
-};
-const SMALL_MAX = 32;
-const ICO_SIZES = [16, 24, 32, 48, 64, 256];
+const MASTERS = [16, 20, 24, 32];
+/** The source drawn for a size: its pixel master, or the vector logo. */
+const source = (size) => (MASTERS.includes(size) ? join(icons, `logo-${size}.svg`) : join(root, "resources", "logo.svg"));
+// 100–200% scaling of the taskbar, Start, Explorer and the installer.
+const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 256];
 const PNG_OUTPUTS = { "32x32.png": 32 };
 
 const edge = [
@@ -69,8 +69,7 @@ async function rasterize(sizes) {
 
   // Data URLs: a file:// image would taint the canvas and block toDataURL.
   const dataUrl = (path) => `data:image/svg+xml;base64,${readFileSync(path).toString("base64")}`;
-  const urls = { full: dataUrl(sources.full), small: dataUrl(sources.small) };
-  const jobs = sizes.map((size) => ({ size, src: size <= SMALL_MAX ? urls.small : urls.full }));
+  const jobs = sizes.map((size) => ({ size, src: dataUrl(source(size)) }));
   const expression = `(async (jobs) => {
     const load = (src) => new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src; });
     const out = {};
