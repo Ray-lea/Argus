@@ -1,4 +1,6 @@
-// Catalog invariants independent of any translation's wording.
+// Catalog structure and shared terminology invariants.
+import { terminologyErrors } from "./terminology.mjs";
+
 const TAG = /<(\/?)([A-Za-z]\w*)>/g;
 export function markupError(text) {
   const stack = [];
@@ -8,8 +10,8 @@ export function markupError(text) {
   }
   return stack.length ? `unclosed tag <${stack.at(-1)}>` : null;
 }
-export function textErrors(source, text) {
-  const errors = [];
+export function textErrors(source, text, context = {}) {
+  const errors = terminologyErrors(source, text, context);
   if (source.trim() && !text.trim()) errors.push("empty translation");
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u200b\u202a-\u202e\u2066-\u2069\ufeff]/u.test(text)) errors.push("invisible control character");
   if (/^[QXZ]{1,3}$/m.test(text) && !/^[QXZ]{1,3}$/m.test(source)) errors.push("translation marker on its own line");
