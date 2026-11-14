@@ -872,6 +872,18 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// Argus patch: lets this element and the elements painted inside it
+    /// take a hover style that is a solid background alone in place, without
+    /// drawing their view again (see `Window::paint_hover_background`).
+    /// Elsewhere a hover draws the view of the element again, and code may
+    /// count on that; nothing inside this element may. What must follow the
+    /// pointer there draws itself again, or has a hover style that sets more
+    /// than a background.
+    fn hover_fills_in_place(mut self) -> Self {
+        self.interactivity().hover_fills_in_place = true;
+        self
+    }
+
     /// Apply the given style to this element when the mouse hovers over a group member
     fn group_hover(
         mut self,
@@ -2205,6 +2217,12 @@ pub struct Interactivity {
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     /// Argus patch: the scroll range found during prepaint, for the wheel listener.
     pub(crate) scroll_max: Cell<Point<Pixels>>,
+    /// Argus patch: the background the last computed style had before the
+    /// hover style was applied over it, if it was (`hover_background`).
+    pub(crate) rest_background: Cell<Option<Option<crate::Fill>>>,
+    /// Argus patch: hover fills inside this element change in place
+    /// (`InteractiveElement::hover_fills_in_place`).
+    pub(crate) hover_fills_in_place: bool,
     pub(crate) ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) group: Option<SharedString>,
     /// The base style of the element, before any modifications are applied
@@ -2591,13 +2609,25 @@ impl Interactivity {
         f: impl FnOnce(&Style, &mut Window, &mut App),
     ) {
         self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
+        let fills_in_place = self.hover_fills_in_place;
+        if fills_in_place {
+            window.hover_fills_in_place += 1;
+        }
         window.with_optional_element_state::<InteractiveElementState, _>(
             global_id,
             |element_state, window| {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
 
+                self.rest_background.set(None);
                 let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+                let hover_background = self.hover_background(
+                    hitbox,
+                    element_state.as_mut(),
+                    &style,
+                    window.hover_fills_in_place > 0,
+                    cx,
+                );
 
                 #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
                 if let Some(debug_selector) = &self.debug_selector {
@@ -2618,6 +2648,7 @@ impl Interactivity {
                 }
 
                 window.with_element_opacity(style.opacity, |window| {
+                    window.pending_hover_background = hover_background;
                     style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
                         window.with_text_style(style.text_style().cloned(), |window| {
                             window.with_content_mask(
@@ -2712,6 +2743,9 @@ impl Interactivity {
                 ((), element_state)
             },
         );
+        if fills_in_place {
+            window.hover_fills_in_place -= 1;
+        }
     }
 
     #[cfg(debug_assertions)]
@@ -2936,9 +2970,26 @@ impl Interactivity {
                     .and_then(|state| state.hover_state.as_ref())
                     .cloned()
             });
+            let hover_quad = self.hover_style.as_ref().and_then(|_| {
+                element_state
+                    .as_ref()
+                    .and_then(|state| state.hover_quad.as_ref())
+                    .cloned()
+            });
+            // Argus patch: the element was just painted by this frame's hit
+            // test, which the pointer's last move need not agree with (what
+            // scrolled or was laid out anew under a resting pointer). The
+            // listener compares the next move with what was painted: an
+            // element painted hovered that the pointer then leaves must be
+            // told so. With the state of the last move alone it stayed
+            // filled until its view drew again, which a hover elsewhere in
+            // the view no longer brings about where fills change in place.
+            if let Some(hover_state) = &hover_state {
+                hover_state.borrow_mut().element = hitbox.is_hovered(window);
+            }
             let current_view = window.current_view();
 
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                 let hovered = hitbox.is_hovered(window);
                 let was_hovered = hover_state
                     .as_ref()
@@ -2946,7 +2997,15 @@ impl Interactivity {
                 if phase == DispatchPhase::Capture && hovered != was_hovered {
                     if let Some(hover_state) = &hover_state {
                         hover_state.borrow_mut().element = hovered;
-                        cx.notify(current_view);
+                        // A hover that only fills the element fills its quad
+                        // on screen; anything else draws its view again.
+                        let shown = hovered && !window.last_input_was_touch();
+                        if !hover_quad
+                            .as_ref()
+                            .is_some_and(|quad| window.set_hover_fill(quad, shown))
+                        {
+                            window.redraw_view_for_interaction(current_view);
+                        }
                     }
                 }
             });
@@ -2958,9 +3017,13 @@ impl Interactivity {
                     .as_ref()
                     .and_then(|element| element.hover_state.as_ref())
                     .cloned();
+                // Argus patch: as for the element's own hover above.
+                if let Some(hover_state) = &hover_state {
+                    hover_state.borrow_mut().group = group_hitbox_id.is_hovered(window);
+                }
                 let current_view = window.current_view();
 
-                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                     let group_hovered = group_hitbox_id.is_hovered(window);
                     let was_group_hovered = hover_state
                         .as_ref()
@@ -2968,7 +3031,7 @@ impl Interactivity {
                     if phase == DispatchPhase::Capture && group_hovered != was_group_hovered {
                         if let Some(hover_state) = &hover_state {
                             hover_state.borrow_mut().group = group_hovered;
-                            cx.notify(current_view);
+                            window.redraw_view_for_interaction(current_view);
                         }
                     }
                 });
@@ -2976,6 +3039,12 @@ impl Interactivity {
         }
 
         let drag_cursor_style = self.base_style.as_ref().mouse_cursor;
+        // A press, a release and a pending click change how this element is
+        // painted and what it listens for, nothing a view around it shows:
+        // they draw the view that painted it again, not the whole window.
+        // An element painted outside a view (drawn on its own, as tests do)
+        // has no view: the window is refreshed for it, as upstream does.
+        let interaction_view = window.rendered_entity_stack.last().copied();
 
         let mut drag_listener = mem::take(&mut self.drag_listener);
         let drop_listeners = mem::take(&mut self.drop_listeners);
@@ -3046,7 +3115,7 @@ impl Interactivity {
                             && hitbox.is_hovered(window)
                         {
                             *pending_mouse_down.borrow_mut() = Some(event.clone());
-                            window.refresh();
+                            window.redraw_for_interaction(interaction_view);
                         }
                     }
                 });
@@ -3174,7 +3243,7 @@ impl Interactivity {
                             let mut pending_mouse_down = pending_mouse_down.borrow_mut();
                             if pending_mouse_down.is_some() && hitbox.is_hovered(window) {
                                 captured_mouse_down = pending_mouse_down.take();
-                                window.refresh();
+                                window.redraw_for_interaction(interaction_view);
                             } else if pending_mouse_down.is_some() {
                                 // Clear the pending mouse down event (without firing click handlers)
                                 // if the hitbox is not being hovered.
@@ -3182,7 +3251,7 @@ impl Interactivity {
                                 // immediately after being clicked.
                                 // See https://github.com/zed-industries/zed/issues/24600 for more details
                                 pending_mouse_down.take();
-                                window.refresh();
+                                window.redraw_for_interaction(interaction_view);
                             }
                         }
                         // Fire click handlers during the bubble phase.
@@ -3325,7 +3394,7 @@ impl Interactivity {
                 window.on_mouse_event(move |_: &MouseUpEvent, phase, window, _cx| {
                     if phase == DispatchPhase::Capture && active_state.borrow().is_clicked() {
                         *active_state.borrow_mut() = ElementClickedState::default();
-                        window.refresh();
+                        window.redraw_for_interaction(interaction_view);
                     }
                 });
             }
@@ -3346,7 +3415,7 @@ impl Interactivity {
                                 group: group_hovered,
                                 element: element_hovered,
                             };
-                            window.refresh();
+                            window.redraw_for_interaction(interaction_view);
                         }
                     }
                 });
@@ -3395,10 +3464,10 @@ impl Interactivity {
         if let Some(group_hitbox) = group_hitbox {
             let was_hovered = group_hitbox.is_hovered(window);
             let current_view = window.current_view();
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                 let hovered = group_hitbox.is_hovered(window);
                 if phase == DispatchPhase::Capture && hovered != was_hovered {
-                    cx.notify(current_view);
+                    window.redraw_view_for_interaction(current_view);
                 }
             });
         }
@@ -3523,6 +3592,67 @@ impl Interactivity {
         })
     }
 
+    /// Argus patch: the two fills of this element when its hover style sets a
+    /// solid background and nothing else, for its background to follow the
+    /// pointer in place (`Window::paint_hover_background`). `style` is the
+    /// style just computed for painting. Nothing may lie over the hover style:
+    /// a press or a drag styles the element after it, and then the element is
+    /// painted as before.
+    fn hover_background(
+        &self,
+        hitbox: Option<&Hitbox>,
+        element_state: Option<&mut InteractiveElementState>,
+        style: &Style,
+        in_place: bool,
+        cx: &App,
+    ) -> Option<crate::style::HoverBackground> {
+        let rest = self.rest_background.take();
+        let element_state = element_state?;
+        // Whatever follows, the quad of an earlier frame is not this one's.
+        if let Some(link) = &element_state.hover_quad {
+            link.operation.set(None);
+        }
+        // Only where an element around this one allows it
+        // (`hover_fills_in_place`): elsewhere a hover draws the view again.
+        if !in_place {
+            return None;
+        }
+        hitbox?;
+        let hover = self.hover_style.as_ref()?.background_alone()?;
+        // The hover listener keeps its state here; without it nothing follows.
+        element_state.hover_state.as_ref()?;
+        if cx.has_active_drag()
+            || element_state
+                .clicked_state
+                .as_ref()
+                .is_some_and(|state| state.borrow().is_clicked())
+        {
+            return None;
+        }
+        let (hovered, base) = match rest {
+            Some(base) => (true, base),
+            None => (false, style.background.clone()),
+        };
+        let base = match base {
+            Some(fill) => {
+                let background = fill.color()?;
+                background.as_solid()?;
+                Some(background)
+            }
+            None => None,
+        };
+        let link = element_state
+            .hover_quad
+            .get_or_insert_with(Default::default)
+            .clone();
+        Some(crate::style::HoverBackground {
+            link,
+            base,
+            hover,
+            hovered,
+        })
+    }
+
     /// Called from internal methods that have already called with_element_state.
     fn compute_style_internal(
         &self,
@@ -3591,6 +3721,7 @@ impl Interactivity {
                 };
 
                 if is_hovered {
+                    self.rest_background.set(Some(style.background.clone()));
                     style.refine(hover_style);
                 }
             }
@@ -3731,6 +3862,9 @@ pub struct InteractiveElementState {
     pub(crate) focus_handle: Option<FocusHandle>,
     pub(crate) clicked_state: Option<Rc<RefCell<ElementClickedState>>>,
     pub(crate) hover_state: Option<Rc<RefCell<ElementHoverState>>>,
+    /// Argus patch: the quad behind the element that takes its hover fill in
+    /// place (`Window::paint_hover_background`).
+    pub(crate) hover_quad: Option<Rc<crate::scene::HoverQuadLink>>,
     pub(crate) hover_listener_state: Option<Rc<RefCell<bool>>>,
     pub(crate) pending_mouse_down: Option<Rc<RefCell<Option<MouseDownEvent>>>>,
     /// Set to the window's [`focus_generation`](crate::Window::focus_generation)
@@ -3789,20 +3923,24 @@ pub(crate) enum ActiveTooltip {
     },
 }
 
+/// Drops the tooltip of an element painted by `view`, which draws again to
+/// stop asking the window for it.
 pub(crate) fn clear_active_tooltip(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
+    view: EntityId,
     window: &mut Window,
 ) {
     match active_tooltip.borrow_mut().take() {
         None => {}
         Some(ActiveTooltip::WaitingForShow { .. }) => {}
-        Some(ActiveTooltip::Visible { .. }) => window.refresh(),
-        Some(ActiveTooltip::WaitingForHide { .. }) => window.refresh(),
+        Some(ActiveTooltip::Visible { .. }) => window.redraw_view_for_interaction(view),
+        Some(ActiveTooltip::WaitingForHide { .. }) => window.redraw_view_for_interaction(view),
     }
 }
 
 pub(crate) fn clear_active_tooltip_if_not_hoverable(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
+    view: EntityId,
     window: &mut Window,
 ) {
     let should_clear = match active_tooltip.borrow().as_ref() {
@@ -3813,7 +3951,7 @@ pub(crate) fn clear_active_tooltip_if_not_hoverable(
     };
     if should_clear {
         active_tooltip.borrow_mut().take();
-        window.refresh();
+        window.redraw_view_for_interaction(view);
     }
 }
 
@@ -3868,7 +4006,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
         let active_tooltip = active_tooltip.clone();
         move |_: &MouseDownEvent, _phase, window: &mut Window, _cx| {
             if !tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)) {
-                clear_active_tooltip_if_not_hoverable(&active_tooltip, window);
+                clear_active_tooltip_if_not_hoverable(&active_tooltip, current_view, window);
             }
         }
     });
@@ -3889,6 +4027,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
                         &build_tooltip,
                         &check_is_hovered_during_prepaint,
                         Some(long_press_tooltip_active.clone()),
+                        current_view,
                         window,
                         cx,
                     ) {
@@ -3900,7 +4039,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
                 TouchPhase::Ended | TouchPhase::Cancelled
                     if long_press_tooltip_active.replace(false) =>
                 {
-                    clear_active_tooltip(&active_tooltip, window);
+                    clear_active_tooltip(&active_tooltip, current_view, window);
                     cx.stop_propagation();
                 }
                 TouchPhase::Started
@@ -3915,7 +4054,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
         let active_tooltip = active_tooltip.clone();
         move |_: &ScrollEvent, _phase, window: &mut Window, _cx| {
             if !tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)) {
-                clear_active_tooltip_if_not_hoverable(&active_tooltip, window);
+                clear_active_tooltip_if_not_hoverable(&active_tooltip, current_view, window);
             }
         }
     });
@@ -4015,6 +4154,7 @@ fn handle_tooltip_mouse_move(
                             &build_tooltip,
                             &check_is_hovered_during_prepaint,
                             None,
+                            current_view,
                             window,
                             cx,
                         );
@@ -4028,7 +4168,7 @@ fn handle_tooltip_mouse_move(
                     _task: delayed_show_task,
                 });
         }
-        Action::CheckVisible => cx.notify(current_view),
+        Action::CheckVisible => window.redraw_view_for_interaction(current_view),
     }
 }
 
@@ -4037,6 +4177,7 @@ fn show_tooltip(
     build_tooltip: &Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>>,
     check_is_hovered_during_prepaint: &Rc<dyn Fn(&Window) -> bool>,
     long_press_tooltip_active: Option<Rc<Cell<bool>>>,
+    owner: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
@@ -4062,6 +4203,7 @@ fn show_tooltip(
                         tooltip_is_hoverable,
                         &check_is_hovered_during_prepaint,
                         tooltip_bounds,
+                        owner,
                         window,
                         cx,
                     )
@@ -4072,7 +4214,8 @@ fn show_tooltip(
     });
     let did_show = new_tooltip.is_some();
     *active_tooltip.borrow_mut() = new_tooltip;
-    window.refresh();
+    // The element draws again to hand the window its tooltip.
+    window.redraw_view_for_interaction(owner);
     did_show
 }
 
@@ -4084,6 +4227,7 @@ fn handle_tooltip_check_visible_and_update(
     tooltip_is_hoverable: bool,
     check_is_hovered: &Rc<dyn Fn(&Window) -> bool>,
     tooltip_bounds: Bounds<Pixels>,
+    view: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
@@ -4122,7 +4266,7 @@ fn handle_tooltip_check_visible_and_update(
 
     match action {
         Action::None => {}
-        Action::Hide => clear_active_tooltip(active_tooltip, window),
+        Action::Hide => clear_active_tooltip(active_tooltip, view, window),
         Action::ScheduleHide(tooltip) => {
             let delayed_hide_task = window.spawn(cx, {
                 let weak_active_tooltip = Rc::downgrade(active_tooltip);
@@ -4134,7 +4278,8 @@ fn handle_tooltip_check_visible_and_update(
                         return;
                     };
                     if active_tooltip.borrow_mut().take().is_some() {
-                        cx.update(|window, _cx| window.refresh()).ok();
+                        cx.update(|window, _cx| window.redraw_view_for_interaction(view))
+                            .ok();
                     }
                 }
             });

@@ -169,6 +169,9 @@ pub(in crate::frontend) struct UiState {
     pub toolbar_fit: RefCell<ToolbarFit>,
     /// What the page navigation's selection mark was last placed for.
     pub nav_mark: Cell<NavMark>,
+    /// What the details pane's overview of the machine showed when a sample
+    /// last drew it (`Desktop::details_follow_sample`).
+    pub overview_seen: Cell<Option<u64>>,
 }
 
 /// The page navigation's selection mark glides to a newly chosen page; when
@@ -323,48 +326,44 @@ pub(in crate::frontend) fn service_connected(status: &Value) -> bool {
 }
 
 /// The colour without its transparency (surfaces drawn without blur).
-/// The app's mark, `size` across. `img` would rasterize the 1024-unit SVG at
-/// twice its own size and sample that texture down some forty times without
-/// mipmaps, breaking its edges into steps; this draws a raster made for the
-/// window's scale at exactly the size shown, on whole device pixels. Up to
-/// 32 px it draws the small mark (a bigger eye, heavier strokes), as the
+/// The app's mark, `size` across. `img` would rasterize the SVG at twice its
+/// own size and sample that texture down without mipmaps, breaking its edges
+/// into steps; this draws a raster made for the window's scale, on whole
+/// device pixels, from the source made for that size (`logo_source`), as the
 /// app's icons do (`scripts/icons.mjs`).
 pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
     thread_local! {
-        static RASTERS: RefCell<HashMap<(bool, i32), Arc<RenderImage>>> = RefCell::default();
+        static RASTERS: RefCell<HashMap<i32, Arc<RenderImage>>> = RefCell::default();
     }
-    let small = size <= 32.;
-    let source: &'static [u8] = if small {
-        include_bytes!("../../../resources/icons/logo-small.svg")
-    } else {
-        include_bytes!("../../../resources/logo.svg")
-    };
     canvas(
         |_, _, _| {},
         move |bounds, _, window, cx| {
             let scale = window.scale_factor();
             let pixels = (f32::from(bounds.size.width) * scale).round().max(1.) as i32;
+            let (source, drawn) = logo_source(pixels);
             let image = RASTERS.with(|rasters| {
-                if let Some(image) = rasters.borrow().get(&(small, pixels)) {
+                if let Some(image) = rasters.borrow().get(&drawn) {
                     return Some(image.clone());
                 }
                 let renderer = cx.svg_renderer();
                 let svg = renderer.parse_svg(source).ok()?;
-                let side = DevicePixels(pixels);
+                let side = DevicePixels(drawn);
                 let image = renderer
                     .render_parsed(&svg, SvgSize::ExactSize(gpui_kit::size(side, side)))
                     .ok()?;
-                rasters.borrow_mut().insert((small, pixels), image.clone());
+                rasters.borrow_mut().insert(drawn, image.clone());
                 Some(image)
             });
             let Some(image) = image else {
                 return;
             };
-            let side = px(pixels as f32 / scale);
+            // A smaller master sits in the middle, still on whole pixels.
+            let inset = px(((pixels - drawn) / 2) as f32 / scale);
+            let side = px(drawn as f32 / scale);
             let at = Bounds::new(
                 point(
-                    window.pixel_snap(bounds.origin.x),
-                    window.pixel_snap(bounds.origin.y),
+                    window.pixel_snap(bounds.origin.x) + inset,
+                    window.pixel_snap(bounds.origin.y) + inset,
                 ),
                 gpui_kit::size(side, side),
             );
@@ -373,6 +372,34 @@ pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
     )
     .size(px(size))
     .flex_shrink_0()
+}
+
+/// The pixel masters of the logo, by size (`scripts/icons.mjs`).
+const LOGO_MASTERS: [(i32, &[u8]); 9] = [
+    (16, include_bytes!("../../../resources/icons/logo-16.svg")),
+    (20, include_bytes!("../../../resources/icons/logo-20.svg")),
+    (24, include_bytes!("../../../resources/icons/logo-24.svg")),
+    (30, include_bytes!("../../../resources/icons/logo-30.svg")),
+    (32, include_bytes!("../../../resources/icons/logo-32.svg")),
+    (36, include_bytes!("../../../resources/icons/logo-36.svg")),
+    (40, include_bytes!("../../../resources/icons/logo-40.svg")),
+    (42, include_bytes!("../../../resources/icons/logo-42.svg")),
+    (48, include_bytes!("../../../resources/icons/logo-48.svg")),
+];
+
+/// The logo for a raster `pixels` across, and the size to draw it: below
+/// 64 px the largest pixel master that fits (scaled, its dots would blur),
+/// centred in the rest; from 64 px the vector logo at full size.
+fn logo_source(pixels: i32) -> (&'static [u8], i32) {
+    if pixels >= 64 {
+        return (include_bytes!("../../../resources/logo.svg"), pixels);
+    }
+    let (size, source) = LOGO_MASTERS
+        .iter()
+        .rev()
+        .find(|(size, _)| *size <= pixels)
+        .unwrap_or(&LOGO_MASTERS[0]);
+    (source, *size)
 }
 
 pub(in crate::frontend) fn solid(color: Hsla) -> Hsla {

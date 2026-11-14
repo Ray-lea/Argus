@@ -451,7 +451,7 @@
       "administrator": "Administrateur",
       "standard": "Utilisateur standard",
       "sampleTime": "Heure de l’instantané (UTC)",
-      "cpuCores": "Cœurs / threads du processeur",
+      "cpuCores": "Cœurs / threads CPU",
       "display": "Résolution de l’écran actuel",
       "window": "Zone cliente de la fenêtre",
       "systemScale": "Mise à l’échelle de Windows",

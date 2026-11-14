@@ -4,7 +4,7 @@
 
 界面图标取自组件库随附的 [Lucide](https://lucide.dev/) 目录。`frontend/assets.rs` 的 `product_icons!` 表列出界面使用的图标名及其对应的 Lucide 图标，只有表中的图标嵌入程序；加载时把线宽改为 16 px 下的 1.25 px，名称以 `FilledIcon` 结尾的图标同时填充轮廓。新增图标时在表中加一行，用 `theme::icon` 或 `theme::glyph` 按名称绘制。
 
-控件上的图标用 `moving_icon` 绘制，并在控件内放置 `icon_probe`（控件须为 `relative` 且带悬停样式）：指针移入时图标按 `frontend/icon_motion.rs` 的 `Motion::of` 播放一次动效，控件换用另一图标时新图标弹入。图标是整张栅格，动效只做整体的旋转、位移与缩放，结束时回到未变换的静止状态，不循环；关闭“界面动画”后不播放。`btn`、`tool_button`、分段选择器、页面导航和设置分组已接入，测试实例下 `icon_probe` 以控件名登记锚点，可用 `hoverAnchor` 触发。
+控件上的图标用 `moving_icon` 绘制，并在控件内放置 `icon_probe`（控件须为 `relative`）：指针移入时图标按 `frontend/icon_motion.rs` 的 `Motion::of` 播放一次动效，控件换用另一图标时新图标弹入。图标是整张栅格，动效只做整体的旋转、位移与缩放，结束时回到未变换的静止状态，不循环；关闭“界面动画”后不播放。`btn`、`tool_button`、分段选择器、页面导航和设置分组已接入，测试实例下 `icon_probe` 以控件名登记锚点，可用 `hoverAnchor` 触发。
 
 进程列定义在 `frontend/columns.rs`，表头列菜单与选择列对话框在 `frontend/columns/dialog.rs`。`processColumns` 保存列的选择、顺序与宽度，名称列固定。表格、滚动和文本布局见[原生界面](../architecture/frontend.md)。
 
@@ -101,6 +101,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `pointer` | `{ "at"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>` 或 `row:<行序号>`（当前表格中从 0 起的行）；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
+| `passive` | 与 `mouse`、`wheel` 等输入一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |
 | `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |

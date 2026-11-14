@@ -782,12 +782,14 @@ impl NativeTray {
         let look = match update.look {
             TrayIcon::Logo => return Live::Logo,
             TrayIcon::Load => tray_icon::Look::Load,
+            TrayIcon::Share => tray_icon::Look::Share,
             TrayIcon::Number => tray_icon::Look::Number,
         };
         let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
         let spec = tray_icon::Spec {
             look,
             load: update.load,
+            recent: update.recent,
             light: update.light,
             badge: update.badge,
         };
@@ -1073,6 +1075,106 @@ fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
         work: corners(info.rcWork),
         monitor: corners(info.rcMonitor),
         scale: dpi_x.max(96) as f32 / 96.,
+        overflow: overflow_at(&icon).map(|(window, rect)| tray_anchor::Overflow {
+            rect: corners(rect),
+            window: window.0 as isize,
+        }),
+    }
+}
+
+/// The shell's hidden icons flyout, when the icon at `icon` is in it: the
+/// top-level window there belongs to the shell (the taskbar's process) and
+/// is not a taskbar. Its class differs between Windows versions
+/// (`TopLevelWindowForOverflowXamlIsland`, `NotifyIconOverflowWindow`).
+fn overflow_at(icon: &RECT) -> Option<(HWND, RECT)> {
+    let centre = POINT {
+        x: (icon.left + icon.right) / 2,
+        y: (icon.top + icon.bottom) / 2,
+    };
+    unsafe {
+        let window = GetAncestor(WindowFromPoint(centre), GA_ROOT);
+        if window.is_invalid() || !IsWindowVisible(window).as_bool() {
+            return None;
+        }
+        let mut class = [0u16; 64];
+        let length = GetClassNameW(window, &mut class) as usize;
+        let class = String::from_utf16_lossy(&class[..length]);
+        if matches!(class.as_str(), "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+            return None;
+        }
+        let taskbar = FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()).ok()?;
+        let (mut shell, mut owner) = (0u32, 0u32);
+        GetWindowThreadProcessId(taskbar, Some(&mut shell));
+        GetWindowThreadProcessId(window, Some(&mut owner));
+        if shell == 0 || owner != shell {
+            return None;
+        }
+        let mut rect = RECT::default();
+        GetWindowRect(window, &mut rect).ok()?;
+        // A flyout, not a desktop-sized shell window.
+        let mut taskbar_rect = RECT::default();
+        GetWindowRect(taskbar, &mut taskbar_rect).ok()?;
+        let wide =
+            (taskbar_rect.right - taskbar_rect.left).max(taskbar_rect.bottom - taskbar_rect.top);
+        ((rect.right - rect.left) < wide / 2 && (rect.bottom - rect.top) < wide / 2)
+            .then_some((window, rect))
+    }
+}
+
+/// The hook that dismisses a flyout which did not take the foreground, the
+/// flyout, and the window it leaves active (the hidden icons flyout).
+static DISMISS: Mutex<Option<(isize, isize, isize)>> = Mutex::new(None);
+
+/// While `watch` holds a flyout and the window it opened from, another
+/// window taking the foreground asks the interface to close the flyout
+/// (`argus-tray-dismiss`): it did not take the foreground itself, so it
+/// sees no deactivation. None stops watching.
+pub fn dismiss_on_foreground(watch: Option<(isize, isize)>) {
+    use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
+    let mut dismiss = DISMISS.lock().unwrap();
+    if let Some((hook, ..)) = dismiss.take() {
+        unsafe {
+            let _ = UnhookWinEvent(HWINEVENTHOOK(hook as _));
+        }
+    }
+    let Some((flyout, opener)) = watch else {
+        return;
+    };
+    let hook = unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            None,
+            Some(foreground_changed),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        )
+    };
+    if !hook.is_invalid() {
+        *dismiss = Some((hook.0 as isize, flyout, opener));
+    }
+}
+
+unsafe extern "system" fn foreground_changed(
+    _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
+    _event: u32,
+    window: HWND,
+    _object: i32,
+    _child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    let Some((_, flyout, opener)) = *DISMISS.lock().unwrap() else {
+        return;
+    };
+    let root = unsafe { GetAncestor(window, GA_ROOT) };
+    let root = if root.is_invalid() { window } else { root };
+    if root.0 as isize != flyout
+        && root.0 as isize != opener
+        && let Some(app) = HOST.get()
+    {
+        let _ = app.emit("argus-tray-dismiss", ());
     }
 }
 
@@ -1099,6 +1201,7 @@ pub fn sample_anchor() -> Anchor {
         work: [work.left, work.top, work.right, work.bottom],
         monitor: [whole.left, whole.top, whole.right, whole.bottom],
         scale: unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() }.max(96) as f32 / 96.,
+        overflow: None,
     }
 }
 

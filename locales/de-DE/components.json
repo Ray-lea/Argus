@@ -6,9 +6,10 @@
   "tray": {
     "icon": {
       "title": "Symbol im Infobereich",
-      "desc": "Balken und Zahl folgen der CPU-Auslastung live und werden ab 80 % bernsteinfarben.",
+      "desc": "Verlauf zeigt die letzten CPU-Messwerte als Spalten, Anteil zeigt die aktuelle Auslastung als Punkteraster und Zahl als Prozentwert. Ab 80 % werden sie bernsteinfarben.",
       "logo": "App-Symbol",
-      "load": "Lastbalken",
+      "load": "Verlauf",
+      "share": "Anteil",
       "number": "Zahl"
     },
     "card": {

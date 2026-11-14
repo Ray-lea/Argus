@@ -323,8 +323,15 @@ impl<V: View> IntoElement for ViewElement<V> {
 struct ViewElementState {
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
-    /// The draw that last recorded these ranges (see `Window::paint_generation`).
-    drawn: u64,
+    /// The draws whose frame each range indexes (see
+    /// `Window::paint_generation`): the one that last prepainted the view
+    /// and the one that last painted it, by rendering it, by replaying it, or
+    /// by moving its range along with a replayed view around it
+    /// (`rebase_nested_prepaint`). They differ when a prepaint was not
+    /// followed by a paint (under an element that is hidden, say): the paint
+    /// range then indexes an older frame and must not be replayed.
+    prepainted: u64,
+    painted: u64,
     cache_key: ViewElementCacheKey,
     /// The entities the view accessed while it was last drawn, in any phase,
     /// restored when its prepaint is reused so the window stays subscribed.
@@ -559,8 +566,8 @@ fn prepaint_view(
                 let text_style = window.text_style();
                 let opacity = window.element_opacity();
 
-                // The ranges index the last frame: only a view drawn in it can
-                // replay them. A view inside a replayed ancestor wasn't drawn.
+                // The ranges index the last frame: only a view prepainted and
+                // painted in it can replay them.
                 let generation = window.paint_generation();
                 // Opacity is compared by bits so that a NaN opacity still matches itself
                 // and the view keeps using its cache.
@@ -571,17 +578,20 @@ fn prepaint_view(
                     && element_state.cache_key.opacity.to_bits() == opacity.to_bits()
                     && !window.dirty_views.contains(&entity_id)
                     && !window.refreshing
-                    && element_state.drawn == generation.wrapping_sub(1)
+                    && element_state.prepainted == generation.wrapping_sub(1)
+                    && element_state.painted == generation.wrapping_sub(1)
                     && !window.view_notified_during_draw(entity_id)
                 {
-                    element_state.drawn = generation;
+                    element_state.prepainted = generation;
                     #[cfg(feature = "profiler")]
                     window.window_profiler.record_view_reuse();
+                    let previous = element_state.prepaint_range.clone();
                     let prepaint_start = window.prepaint_index();
-                    window.reuse_prepaint(element_state.prepaint_range.clone());
+                    window.reuse_prepaint(previous.clone());
                     cx.entities
                         .extend_accessed(element_state.accessed_entities.iter().copied());
                     let prepaint_end = window.prepaint_index();
+                    rebase_nested_prepaint(window, &previous, &prepaint_start, generation);
                     element_state.prepaint_range = prepaint_start..prepaint_end;
 
                     return (None, element_state);
@@ -615,7 +625,8 @@ fn prepaint_view(
                         accessed_entities,
                         prepaint_range: prepaint_start..prepaint_end,
                         paint_range: PaintIndex::default()..PaintIndex::default(),
-                        drawn: generation,
+                        prepainted: generation,
+                        painted: 0,
                         cache_key: ViewElementCacheKey {
                             bounds,
                             content_mask,
@@ -627,6 +638,76 @@ fn prepaint_view(
             },
         )
     })
+}
+
+/// A view replayed from the last frame is not visited, so the cached views
+/// drawn inside it would keep ranges that index the frame they were last
+/// visited in, and could not be replayed on their own once the view around
+/// them renders again: any frame that replayed the whole window's content (a
+/// layer above it animating, say) made the next change render every view.
+/// The replay copies the last frame's lists entry for entry, so what a view
+/// inside recorded lies as far into the copy as it lay into the original:
+/// its ranges move along. `previous` is the replayed view's range in the last
+/// frame and `start` where its replay began in this one.
+///
+/// Each range moves on its own and takes the frame's number as it does
+/// (`prepainted`, `painted`): a view replays only when both index the last
+/// frame, so one whose paint did not follow its prepaint renders instead.
+fn rebase_nested_prepaint(
+    window: &mut Window,
+    previous: &Range<PrepaintStateIndex>,
+    start: &PrepaintStateIndex,
+    generation: u64,
+) {
+    window.for_reused_element_states::<ViewElementState>(
+        PrepaintStateIndex::accessed_element_states(previous),
+        |nested| {
+            // Only ranges of the last frame that lie inside the replayed one:
+            // a view drawn from a deferred element lies after it.
+            if nested.prepainted != generation.wrapping_sub(1)
+                || nested.painted != generation.wrapping_sub(1)
+                || !nested.prepaint_range.end.not_after(&previous.end)
+            {
+                return;
+            }
+            if let (Some(from), Some(to)) = (
+                nested.prepaint_range.start.rebased(&previous.start, start),
+                nested.prepaint_range.end.rebased(&previous.start, start),
+            ) {
+                nested.prepaint_range = from..to;
+                nested.prepainted = generation;
+            }
+        },
+    );
+}
+
+/// The paint half of [`rebase_nested_prepaint`], for the views whose
+/// prepaint range moved in this frame: a view whose two ranges both moved is
+/// as good as drawn in it.
+fn rebase_nested_paint(
+    window: &mut Window,
+    previous: &Range<PaintIndex>,
+    start: &PaintIndex,
+    generation: u64,
+) {
+    window.for_reused_element_states::<ViewElementState>(
+        PaintIndex::accessed_element_states(previous),
+        |nested| {
+            if nested.prepainted != generation
+                || nested.painted != generation.wrapping_sub(1)
+                || !nested.paint_range.end.not_after(&previous.end)
+            {
+                return;
+            }
+            if let (Some(from), Some(to)) = (
+                nested.paint_range.start.rebased(&previous.start, start),
+                nested.paint_range.end.rebased(&previous.start, start),
+            ) {
+                nested.paint_range = from..to;
+                nested.painted = generation;
+            }
+        },
+    );
 }
 
 #[inline(never)]
@@ -675,7 +756,10 @@ fn paint_view(
                         window.refreshing = refreshing;
                         element_state.cache_key.opacity = opacity;
                     } else {
-                        window.reuse_paint(element_state.paint_range.clone());
+                        let previous = element_state.paint_range.clone();
+                        window.reuse_paint(previous.clone());
+                        let generation = window.paint_generation();
+                        rebase_nested_paint(window, &previous, &paint_start, generation);
                         if element_state.cache_key.opacity.to_bits() != opacity.to_bits() {
                             window.request_animation_frame();
                         }
@@ -683,6 +767,7 @@ fn paint_view(
 
                     let paint_end = window.paint_index();
                     element_state.paint_range = paint_start..paint_end;
+                    element_state.painted = window.paint_generation();
 
                     ((), element_state)
                 },

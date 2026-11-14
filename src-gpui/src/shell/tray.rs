@@ -13,6 +13,9 @@ pub(super) struct Update {
     pub look: crate::settings::TrayIcon,
     /// The latest CPU load in percent, for a live icon.
     pub load: Option<u8>,
+    /// The recent loads, oldest first, ending with `load`: the columns of the
+    /// live icon that shows them.
+    pub recent: [Option<u8>; super::tray_icon::RECENT],
     /// The taskbar is light (`SystemUsesLightTheme`).
     pub light: bool,
     /// The system tooltip shows on hover; off, the hover card does.
@@ -85,6 +88,8 @@ impl Worker {
                 state.title = title.to_owned();
             }
             state.load = Some(load);
+            state.recent.rotate_left(1);
+            *state.recent.last_mut().unwrap() = Some(load);
             true
         });
     }
@@ -213,6 +218,8 @@ mod tests {
         assert_eq!(last.title, "19999");
         assert!(last.badge && last.generation == 1);
         assert_eq!(last.load, Some(100));
+        // Readings sent while the shell was busy still reach the columns.
+        assert_eq!(last.recent, [95, 96, 97, 98, 99, 100].map(Some));
         assert!(last.look == TrayIcon::Number && last.tip && last.light);
         worker.shutdown(Duration::from_secs(1));
         assert!(results.recv_timeout(Duration::from_secs(2)).unwrap().closed);

@@ -432,7 +432,7 @@ try {
       send({ sample: { set: { "/system/threadCount": 10000 + index, "/system/handleCount": 20000 + index } } });
       await sleep(350);
       await capture(`${page}-partial`, false, false);
-      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.includes("Region")), `${page}: unchanged page was not replayed`);
+      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.some((name) => name.startsWith("Region"))), `${page}: unchanged page was not replayed`);
       send({ fullPaint: true });
       await sleep(250);
       await capture(`${page}-full`, false, false);
@@ -446,7 +446,7 @@ try {
     send({ sample: { set: { "/hardware/cpuSensors": { state: "unsupported" } } } });
     await sleep(350);
     await capture("sensor-partial", false, false);
-    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.includes("Region")), "sensor state did not invalidate settings");
+    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.some((name) => name.startsWith("Region"))), "sensor state did not invalidate settings");
     send({ fullPaint: true });
     await sleep(250);
     await capture("sensor-full", false, false);
@@ -535,6 +535,17 @@ try {
         ["details-outside", { mouse: { type: "move", x: 1000, y: 510 } }],
         ["cleared", { selectRow: 1, pointerOutside: true }],
         ["outside", { pointerOutside: true }],
+        // Input alone, as from the system: a row takes its hover fill in the
+        // scene on screen, without its view drawing again.
+        ["row-a-in-place", { mouse: { type: "move", x: 150, y: 300 }, passive: true }],
+        ["row-b-in-place", { mouse: { type: "move", x: 150, y: 360 }, passive: true }],
+        ["outside-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
+        // The details pane scrolls another row under the resting pointer,
+        // which then goes straight to a third: the second gives its fill up.
+        ["pane-row-in-place", { mouse: { type: "move", x: 800, y: 470 }, passive: true }],
+        ["pane-scrolled-in-place", { wheel: { x: 800, y: 470, lines: -2 }, passive: true }],
+        ["pane-next-row-in-place", { mouse: { type: "move", x: 800, y: 560 }, passive: true }],
+        ["pane-left-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
       ]) {
         send(state);
         await sleep(700);
