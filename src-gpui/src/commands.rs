@@ -189,6 +189,9 @@ fn privileged<T>(
         Operation::ControlService { .. } => ("control Windows service", operation),
         Operation::ServiceStartType { .. } => ("set service start type", operation),
         Operation::DeleteService { .. } => ("delete Windows service", operation),
+        Operation::ServiceStartTypeRegistry { .. } => {
+            ("set packaged service start type in registry", operation)
+        }
         Operation::CloseConnection { .. } => ("close TCP connection", operation),
         _ => ("privileged operation", operation),
     };
@@ -1336,6 +1339,28 @@ pub fn delete_service(
     result.map(|()| ServiceDeletion {
         pending: argus_core::services::remains(&name),
     })
+}
+
+/// Writes the start type of a packaged service to the registry, after the SCM
+/// refused it and the user agreed.
+pub fn set_service_start_type_registry(
+    state: State<'_, AppState>,
+    name: String,
+    start_type: StartType,
+) -> Result<(), ActionError> {
+    privileged(
+        &state,
+        Operation::ServiceStartTypeRegistry {
+            name: name.clone(),
+            start_type,
+        },
+        |reply| {
+            done(reply)?;
+            state.services.invalidate(&name);
+            Some(())
+        },
+        || state.services.set_start_type_in_registry(&name, start_type),
+    )
 }
 
 /// Opens the Windows Services console, for what Argus does not cover.
