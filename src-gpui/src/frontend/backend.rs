@@ -228,6 +228,9 @@ impl Desktop {
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
                 "argus-tray-card" => self.tray_card(&event.value, window, cx),
+                // Another window took the foreground from a panel that did not
+                // take it (one opened from the hidden icons flyout).
+                "argus-tray-dismiss" => self.close_tray_panel(cx),
                 "argus-tray-warm" => {
                     self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
                 }

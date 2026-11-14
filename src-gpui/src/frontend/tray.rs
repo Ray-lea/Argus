@@ -14,17 +14,40 @@
 //! is hidden. Without window motion it appears and goes at once.
 use super::*;
 use crate::shell::Anchor;
-use windows::Win32::Foundation::{COLORREF, HWND, POINT, RECT};
+use std::sync::atomic::{AtomicBool, Ordering};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
 };
 use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HWND_TOPMOST, LWA_ALPHA,
-    SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
-    SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-    WS_EX_LAYERED,
+    MA_NOACTIVATE, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes, SetWindowLongPtrW,
+    SetWindowPos, WM_MOUSEACTIVATE, WS_EX_LAYERED,
 };
+
+/// The flyout shows without taking activation: a click in it leaves the
+/// active window active (`flyout_procedure`).
+static PASSIVE: AtomicBool = AtomicBool::new(false);
+
+/// The flyout window's own handling before GPUI's: GPUI activates a window
+/// on any click, which would close the hidden icons flyout a passive panel
+/// was opened from.
+unsafe extern "system" fn flyout_procedure(
+    hwnd: HWND,
+    message: u32,
+    w: WPARAM,
+    l: LPARAM,
+    _id: usize,
+    _data: usize,
+) -> LRESULT {
+    if message == WM_MOUSEACTIVATE && PASSIVE.load(Ordering::Relaxed) {
+        return LRESULT(MA_NOACTIVATE as isize);
+    }
+    unsafe { DefSubclassProc(hwnd, message, w, l) }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::frontend) enum Kind {
@@ -158,6 +181,9 @@ pub(in crate::frontend) struct Flyout {
     /// Take the foreground when shown (not in tests: they must not touch
     /// the desktop's focus).
     activate: bool,
+    /// Shown without taking activation: the card, and a panel opened from
+    /// the hidden icons flyout, which closes when it is no longer active.
+    passive: bool,
     /// The content's height as last laid out, logical pixels.
     measured: Rc<Cell<f32>>,
     /// The height the window was last given.
@@ -238,10 +264,14 @@ impl Flyout {
         }
         // Transparent from the start: the first show lays it out unseen.
         set_alpha(hwnd, Some(0));
+        unsafe {
+            let _ = SetWindowSubclass(hwnd, Some(flyout_procedure), 0x464C59, 0);
+        }
         // The panel goes when another window takes the foreground.
         let activation = cx.observe_window_activation(window, |this: &mut Self, window, cx| {
             if this.kind == Kind::Panel
                 && this.activate
+                && !this.passive
                 && !window.is_window_active()
                 && matches!(this.phase, Phase::Entering(_) | Phase::Shown)
             {
@@ -255,6 +285,7 @@ impl Flyout {
                 work: [0; 4],
                 monitor: [0; 4],
                 scale: 1.,
+                overflow: None,
             },
             readings: Readings::default(),
             desktop,
@@ -264,6 +295,7 @@ impl Flyout {
             phase: Phase::Hidden,
             fade: false,
             activate,
+            passive: true,
             measured: Rc::new(Cell::new(0.)),
             placed: 0.,
             heights: [None; 2],
@@ -319,6 +351,8 @@ impl Flyout {
         self.readings = readings;
         self.requested = requested;
         self.priming = false;
+        self.passive = kind == Kind::Card || anchor.overflow.is_some();
+        PASSIVE.store(self.passive, Ordering::Relaxed);
         self.frames = 0;
         self.fade = crate::window_motion::enabled() && crate::shell::animations_enabled();
         self.phase = Phase::Placing;
@@ -395,10 +429,18 @@ impl Flyout {
                 self.phase = Phase::Shown;
             }
             if self.activate && self.kind == Kind::Panel {
-                unsafe {
-                    let _ = SetForegroundWindow(self.hwnd);
+                if self.passive {
+                    // Opened from the hidden icons flyout: that stays active
+                    // (it closes otherwise), and a window taking the foreground
+                    // from it closes this panel too.
+                    let opener = self.anchor.overflow.map_or(0, |overflow| overflow.window);
+                    crate::shell::dismiss_on_foreground(Some((self.hwnd.0 as isize, opener)));
+                } else {
+                    unsafe {
+                        let _ = SetForegroundWindow(self.hwnd);
+                    }
+                    self.focus.focus(window, cx);
                 }
-                self.focus.focus(window, cx);
             }
             window.refresh();
         }
@@ -421,6 +463,7 @@ impl Flyout {
         let kind = self.kind;
         let was_shown = self.phase != Phase::Placing;
         self.phase = Phase::Hidden;
+        crate::shell::dismiss_on_foreground(None);
         set_alpha(self.hwnd, Some(0));
         let hwnd = self.hwnd;
         // Hidden after this frame: the window is busy drawing now.

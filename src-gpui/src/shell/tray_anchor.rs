@@ -10,6 +10,20 @@ pub(crate) struct Anchor {
     pub work: [i32; 4],
     pub monitor: [i32; 4],
     pub scale: f32,
+    /// The hidden icons flyout holding the icon, when it is there rather
+    /// than on the taskbar.
+    #[serde(default)]
+    pub overflow: Option<Overflow>,
+}
+
+/// The shell's flyout of hidden tray icons: a flyout of Argus opened from
+/// it sits beside it rather than over it, and leaves it active, since it
+/// closes when another window takes the foreground.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct Overflow {
+    pub rect: [i32; 4],
+    /// Its window, `HWND` as a number.
+    pub window: isize,
 }
 
 /// The side of the display the taskbar is on.
@@ -26,8 +40,9 @@ impl Anchor {
     /// whether or not it hides itself.
     pub fn edge(&self) -> Edge {
         let [left, top, right, bottom] = self.monitor;
-        let x = (self.icon[0] + self.icon[2]) / 2;
-        let y = (self.icon[1] + self.icon[3]) / 2;
+        let beside = self.beside();
+        let x = (beside[0] + beside[2]) / 2;
+        let y = (beside[1] + beside[3]) / 2;
         [
             (bottom - y, Edge::Bottom),
             (y - top, Edge::Top),
@@ -39,13 +54,19 @@ impl Anchor {
         .map_or(Edge::Bottom, |(_, edge)| edge)
     }
 
+    /// What a flyout opens beside: the icon, or the hidden icons flyout
+    /// holding it, which it leaves uncovered.
+    fn beside(&self) -> [i32; 4] {
+        self.overflow.map_or(self.icon, |overflow| overflow.rect)
+    }
+
     /// The top-left corner of a flyout `width` × `height` pixels: `gap`
-    /// pixels off the taskbar (or the icon, when the icon sits above it in
-    /// the overflow), centred on the icon along the taskbar, and at least
-    /// `gap` inside the work area.
+    /// pixels off the taskbar (or the hidden icons flyout, when the icon is
+    /// in it), centred on the icon along the taskbar, and at least `gap`
+    /// inside the work area.
     pub fn place(&self, width: i32, height: i32, gap: i32) -> (i32, i32) {
         let [left, top, right, bottom] = self.work;
-        let [icon_left, icon_top, icon_right, icon_bottom] = self.icon;
+        let [icon_left, icon_top, icon_right, icon_bottom] = self.beside();
         let centre_x = (icon_left + icon_right) / 2 - width / 2;
         let centre_y = (icon_top + icon_bottom) / 2 - height / 2;
         let (x, y) = match self.edge() {
@@ -63,7 +84,7 @@ impl Anchor {
 
 #[cfg(test)]
 mod tests {
-    use super::{Anchor, Edge};
+    use super::{Anchor, Edge, Overflow};
 
     const MONITOR: [i32; 4] = [0, 0, 1920, 1080];
 
@@ -73,6 +94,7 @@ mod tests {
             work,
             monitor: MONITOR,
             scale: 1.,
+            overflow: None,
         }
     }
 
@@ -85,9 +107,17 @@ mod tests {
         // Too near the right edge to centre: kept 12 px inside.
         let near = anchor([1860, 1040, 1884, 1072], [0, 0, 1920, 1032]);
         assert_eq!(near.place(360, 500, 12), (1548, 520));
-        // In the overflow above the taskbar: over the icon instead.
-        let a = anchor([1700, 980, 1724, 1004], [0, 0, 1920, 1032]);
-        assert_eq!(a.place(200, 300, 12), (1612, 668));
+        // In the hidden icons flyout above the taskbar: over the flyout,
+        // centred on it, leaving it uncovered.
+        let a = Anchor {
+            overflow: Some(Overflow {
+                rect: [1600, 876, 1756, 1032],
+                window: 1,
+            }),
+            ..anchor([1700, 980, 1724, 1004], [0, 0, 1920, 1032])
+        };
+        assert_eq!(a.edge(), Edge::Bottom);
+        assert_eq!(a.place(200, 300, 12), (1578, 564));
     }
 
     #[test]
