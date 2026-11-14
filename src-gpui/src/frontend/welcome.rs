@@ -725,6 +725,8 @@ impl Desktop {
                 } else {
                     (72., 8., 4.)
                 };
+                // The hundred dots form the A, then chart the recent CPU loads.
+                let hundred = hundred::hundred("onboarding-hundred", mark, self, window, cx);
                 body = body
                     .child(
                         div()
@@ -732,7 +734,7 @@ impl Desktop {
                             .justify_center()
                             .pt(px(above))
                             .pb(px(below))
-                            .child(widgets::logo(mark)),
+                            .child(hundred),
                     )
                     .child(
                         self.dialog_title(label("onboarding.welcome.title"))

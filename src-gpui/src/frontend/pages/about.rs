@@ -137,7 +137,11 @@ impl Desktop {
             .border_color(p.stroke)
             .rounded(px(8.))
             .bg(p.layer)
-            .child(widgets::logo(64.))
+            // The hundred dots: drawn by their own layer (`hundred`).
+            .child(hundred::placeholder(
+                self.hundred_place.clone(),
+                self.page_epoch,
+            ))
             .child(
                 div()
                     .flex_1()
