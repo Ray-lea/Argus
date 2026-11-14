@@ -34,6 +34,28 @@
     "partial": "已更改 {count} 个进程的优先级，{failed} 个没有权限或已退出。",
     "done": "{name} 的优先级已设为“{priority}”。"
   },
+  "ioPriority": {
+    "failed": "无法更改 {name} 的 I/O 优先级。{error}",
+    "error": {
+      "accessDenied": "没有权限。请在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法更改 I/O 优先级。",
+      "refused": "无法更改 {name} 的 I/O 优先级。",
+      "serviceOutdated": "没有权限。特权服务版本不兼容，请更新服务后重试。",
+      "notFound": "{name} 已经退出。"
+    },
+    "partial": "已更改 {count} 个进程的 I/O 优先级，{failed} 个未能更改：{error}",
+    "done": "{name} 的 I/O 优先级已设为“{priority}”。"
+  },
+  "memoryPriority": {
+    "failed": "无法更改 {name} 的内存优先级。{error}",
+    "error": {
+      "accessDenied": "没有权限。请在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法更改内存优先级。",
+      "refused": "无法更改 {name} 的内存优先级。",
+      "serviceOutdated": "没有权限。特权服务版本不兼容，请更新服务后重试。",
+      "notFound": "{name} 已经退出。"
+    },
+    "partial": "已更改 {count} 个进程的内存优先级，{failed} 个未能更改：{error}",
+    "done": "{name} 的内存优先级已设为“{priority}”。"
+  },
   "efficiency": {
     "on": {
       "failed": "无法为 {name} 开启效率模式",

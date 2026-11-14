@@ -179,6 +179,10 @@
       "label": "Seitenfehler",
       "title": "Kumulierte Seitenfehler, einschließlich Soft- und Hard-Fehler."
     },
+    "memoryPriority": {
+      "label": "Speicherpriorität",
+      "title": "Wie früh Windows bei Speichermangel Seiten des Prozesses zurückholt; niedrigere zuerst."
+    },
     "ioRead": {
       "label": "E/A lesen",
       "title": "Pro Sekunde gelesene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
@@ -202,6 +206,10 @@
     "ioOtherTotal": {
       "label": "Gesamt andere I/O",
       "title": "Gesamtzahl der von anderen I/O während der Prozesslebensdauer übertragenen Bytes."
+    },
+    "ioPriority": {
+      "label": "E/A-Priorität",
+      "title": "Prioritätshinweis für Datenträger- und andere E/A-Anforderungen des Prozesses."
     },
     "netReceived": {
       "label": "Netzwerkempfang",
@@ -264,12 +272,28 @@
     "belowNormal": "Niedriger als normal",
     "idle": "Niedrig"
   },
+  "ioPriority": {
+    "veryLow": "Sehr niedrig",
+    "low": "Niedrig",
+    "normal": "Normal",
+    "high": "Hoch",
+    "critical": "Kritisch"
+  },
+  "memoryPriority": {
+    "veryLow": "Sehr niedrig",
+    "low": "Niedrig",
+    "medium": "Mittel",
+    "belowNormal": "Niedriger als normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "{count} Prozess beenden",
       "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
+    "ioPriority": "E/A-Priorität",
+    "memoryPriority": "Speicherpriorität",
     "suspend": "Prozess anhalten",
     "resume": "Prozess fortsetzen",
     "addRule": "Regel hinzufügen",

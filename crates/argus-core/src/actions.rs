@@ -4,19 +4,22 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
+use windows::Wdk::System::Threading::{
+    NtQueryInformationProcess, PROCESSINFOCLASS, ProcessIoPriority,
+};
 use windows::Win32::Foundation::{
     ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STATUS_ACCESS_DENIED,
 };
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcessId,
-    GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
-    NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
+    GetPriorityClass, GetProcessInformation, GetProcessTimes, HIGH_PRIORITY_CLASS,
+    IDLE_PRIORITY_CLASS, MEMORY_PRIORITY, MEMORY_PRIORITY_INFORMATION, NORMAL_PRIORITY_CLASS,
+    OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
     PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
     PROCESS_SET_INFORMATION, PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
-    ProcessPowerThrottling, REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation,
-    TerminateProcess, WaitForSingleObject,
+    ProcessMemoryPriority, ProcessPowerThrottling, REALTIME_PRIORITY_CLASS, SetPriorityClass,
+    SetProcessInformation, TerminateProcess, WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
@@ -222,6 +225,160 @@ pub fn set_priority(
     let handle = open_instance(pid, create_time, PROCESS_SET_INFORMATION)?;
     unsafe { SetPriorityClass(handle.0, priority.class()) }?;
     Ok(Priority::from_class(unsafe { GetPriorityClass(handle.0) }).unwrap_or(priority))
+}
+
+/// A process's I/O priority hint, which the I/O manager and storage stack use
+/// to order its requests. Windows reserves `High` for processes with the
+/// privilege to raise priority and `Critical` for the memory manager, so they
+/// can be read but not set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum IoPriority {
+    VeryLow,
+    Low,
+    Normal,
+    High,
+    Critical,
+}
+
+impl IoPriority {
+    const ALL: [Self; 5] = [
+        Self::VeryLow,
+        Self::Low,
+        Self::Normal,
+        Self::High,
+        Self::Critical,
+    ];
+
+    /// The `IO_PRIORITY_HINT` value.
+    fn hint(self) -> u32 {
+        Self::ALL.iter().position(|p| *p == self).unwrap() as u32
+    }
+
+    fn from_hint(hint: u32) -> Option<Self> {
+        Self::ALL.get(hint as usize).copied()
+    }
+
+    /// Whether a user may set it.
+    pub fn settable(self) -> bool {
+        matches!(self, Self::VeryLow | Self::Low | Self::Normal)
+    }
+}
+
+/// A process's memory priority: the lower it is, the sooner its pages leave
+/// the working set and standby list under memory pressure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MemoryPriority {
+    VeryLow,
+    Low,
+    Medium,
+    BelowNormal,
+    Normal,
+}
+
+impl MemoryPriority {
+    const ALL: [Self; 5] = [
+        Self::VeryLow,
+        Self::Low,
+        Self::Medium,
+        Self::BelowNormal,
+        Self::Normal,
+    ];
+
+    /// The `MEMORY_PRIORITY` value, 1 to 5.
+    fn level(self) -> u32 {
+        Self::ALL.iter().position(|p| *p == self).unwrap() as u32 + 1
+    }
+
+    fn from_level(level: u32) -> Option<Self> {
+        Self::ALL.get((level as usize).checked_sub(1)?).copied()
+    }
+}
+
+/// The I/O priority of a process, through a handle with limited query
+/// rights; None when it can't be read.
+pub(crate) fn io_priority(process: windows::Win32::Foundation::HANDLE) -> Option<IoPriority> {
+    let mut hint = 0u32;
+    let status = unsafe {
+        NtQueryInformationProcess(
+            process,
+            ProcessIoPriority,
+            (&mut hint as *mut u32).cast(),
+            size_of::<u32>() as u32,
+            std::ptr::null_mut(),
+        )
+    };
+    status
+        .is_ok()
+        .then(|| IoPriority::from_hint(hint))
+        .flatten()
+}
+
+/// The memory priority of a process, like `io_priority`.
+pub(crate) fn memory_priority(
+    process: windows::Win32::Foundation::HANDLE,
+) -> Option<MemoryPriority> {
+    let mut info = MEMORY_PRIORITY_INFORMATION::default();
+    unsafe {
+        GetProcessInformation(
+            process,
+            ProcessMemoryPriority,
+            (&mut info as *mut MEMORY_PRIORITY_INFORMATION).cast(),
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        )
+    }
+    .ok()?;
+    MemoryPriority::from_level(info.MemoryPriority.0)
+}
+
+/// Sets the I/O priority of a process instance and returns the one it ended
+/// up with.
+pub fn set_io_priority(
+    pid: u32,
+    create_time: i64,
+    priority: IoPriority,
+) -> Result<IoPriority, ActionError> {
+    if !priority.settable() {
+        return Err(ActionError::Refused);
+    }
+    let handle = open_instance(pid, create_time, PROCESS_SET_INFORMATION)?;
+    let hint = priority.hint();
+    let status = unsafe {
+        crate::nt::NtSetInformationProcess(
+            handle.0,
+            ProcessIoPriority,
+            (&hint as *const u32).cast(),
+            size_of::<u32>() as u32,
+        )
+    };
+    if status == STATUS_ACCESS_DENIED {
+        return Err(ActionError::AccessDenied);
+    }
+    status.ok()?;
+    Ok(io_priority(handle.0).unwrap_or(priority))
+}
+
+/// Sets the memory priority of a process instance and returns the one it
+/// ended up with.
+pub fn set_memory_priority(
+    pid: u32,
+    create_time: i64,
+    priority: MemoryPriority,
+) -> Result<MemoryPriority, ActionError> {
+    let handle = open_instance(pid, create_time, PROCESS_SET_INFORMATION)?;
+    let info = MEMORY_PRIORITY_INFORMATION {
+        MemoryPriority: MEMORY_PRIORITY(priority.level()),
+    };
+    unsafe {
+        SetProcessInformation(
+            handle.0,
+            ProcessMemoryPriority,
+            (&info as *const MEMORY_PRIORITY_INFORMATION).cast(),
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        )
+    }?;
+    Ok(memory_priority(handle.0).unwrap_or(priority))
 }
 
 /// Turns efficiency mode on or off the way Task Manager does: EcoQoS (the
@@ -471,6 +628,67 @@ mod tests {
             let _ = self.0.kill();
             let _ = self.0.wait();
         }
+    }
+
+    #[test]
+    fn io_and_memory_priorities_are_set_on_the_instance_and_read_back() {
+        use super::{IoPriority, MemoryPriority};
+        use std::os::windows::process::CommandExt;
+        let child = KillOnDrop(
+            std::process::Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
+        let created = crate::process::list_lineage()
+            .into_iter()
+            .find(|&(p, ..)| p == pid)
+            .unwrap()
+            .2;
+        let handle =
+            super::open_instance(pid, created, super::PROCESS_QUERY_LIMITED_INFORMATION).unwrap();
+        // The child inherits its levels from whatever runs the tests (a CI
+        // runner starts it at low I/O priority), so only readability is given.
+        assert!(super::io_priority(handle.0).is_some());
+        assert!(super::memory_priority(handle.0).is_some());
+        for priority in [IoPriority::VeryLow, IoPriority::Low, IoPriority::Normal] {
+            assert_eq!(
+                super::set_io_priority(pid, created, priority).unwrap(),
+                priority
+            );
+            assert_eq!(super::io_priority(handle.0), Some(priority));
+        }
+        for priority in [IoPriority::High, IoPriority::Critical] {
+            assert!(matches!(
+                super::set_io_priority(pid, created, priority),
+                Err(super::ActionError::Refused)
+            ));
+        }
+        for priority in [
+            MemoryPriority::VeryLow,
+            MemoryPriority::Low,
+            MemoryPriority::Medium,
+            MemoryPriority::BelowNormal,
+            MemoryPriority::Normal,
+        ] {
+            assert_eq!(
+                super::set_memory_priority(pid, created, priority).unwrap(),
+                priority
+            );
+            assert_eq!(super::memory_priority(handle.0), Some(priority));
+        }
+        // Another instance under the same PID is never touched.
+        assert!(matches!(
+            super::set_io_priority(pid, created + 1, IoPriority::Low),
+            Err(super::ActionError::NotFound)
+        ));
+        assert!(matches!(
+            super::set_memory_priority(pid, created + 1, MemoryPriority::Low),
+            Err(super::ActionError::NotFound)
+        ));
     }
 
     #[test]

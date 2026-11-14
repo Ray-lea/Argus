@@ -180,6 +180,10 @@
       "label": "Défauts de page",
       "title": "Défauts de page accumulés, y compris les défauts logiciels et matériels."
     },
+    "memoryPriority": {
+      "label": "Priorité mémoire",
+      "title": "Ordre dans lequel Windows récupère les pages mémoire du processus en cas de manque ; les plus basses d’abord."
+    },
     "ioRead": {
       "label": "Lecture E/S",
       "title": "Octets I/O lus par seconde, y compris les fichiers, le réseau et les périphériques."
@@ -203,6 +207,10 @@
     "ioOtherTotal": {
       "label": "Total autres I/O",
       "title": "Nombre total d’octets transférés par d’autres I/O au cours de la durée de vie du processus."
+    },
+    "ioPriority": {
+      "label": "Priorité d’E/S",
+      "title": "Indication de priorité des requêtes disque et autres E/S du processus."
     },
     "netReceived": {
       "label": "Réception réseau",
@@ -266,6 +274,20 @@
     "belowNormal": "Inférieure à la normale",
     "idle": "Basse"
   },
+  "ioPriority": {
+    "veryLow": "Très basse",
+    "low": "Basse",
+    "normal": "Normale",
+    "high": "Haute",
+    "critical": "Critique"
+  },
+  "memoryPriority": {
+    "veryLow": "Très basse",
+    "low": "Basse",
+    "medium": "Moyenne",
+    "belowNormal": "Inférieure à la normale",
+    "normal": "Normale"
+  },
   "menu": {
     "endAll": {
       "one": "Terminer {count} processus",
@@ -273,6 +295,8 @@
       "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
+    "ioPriority": "Priorité d’E/S",
+    "memoryPriority": "Priorité mémoire",
     "suspend": "Suspendre le processus",
     "resume": "Reprendre le processus",
     "addRule": "Ajouter une règle",

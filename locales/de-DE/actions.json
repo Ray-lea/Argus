@@ -52,6 +52,34 @@
     },
     "done": "Die Priorität von {name} wurde auf {priority} gesetzt."
   },
+  "ioPriority": {
+    "failed": "Die E/A-Priorität von {name} konnte nicht geändert werden. {error}",
+    "error": {
+      "accessDenied": "Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus; geschützte Prozesse bleiben möglicherweise unerreichbar.",
+      "refused": "Die E/A-Priorität von {name} kann nicht geändert werden.",
+      "serviceOutdated": "Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+      "notFound": "{name} wurde bereits beendet."
+    },
+    "partial": {
+      "one": "E/A-Priorität von {count} Prozess geändert; nicht geändert: {failed}. {error}",
+      "other": "E/A-Priorität von {count} Prozessen geändert; nicht geändert: {failed}. {error}"
+    },
+    "done": "Die E/A-Priorität von {name} wurde auf „{priority}“ gesetzt."
+  },
+  "memoryPriority": {
+    "failed": "Die Speicherpriorität von {name} konnte nicht geändert werden. {error}",
+    "error": {
+      "accessDenied": "Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus; geschützte Prozesse bleiben möglicherweise unerreichbar.",
+      "refused": "Die Speicherpriorität von {name} kann nicht geändert werden.",
+      "serviceOutdated": "Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+      "notFound": "{name} wurde bereits beendet."
+    },
+    "partial": {
+      "one": "Speicherpriorität von {count} Prozess geändert; nicht geändert: {failed}. {error}",
+      "other": "Speicherpriorität von {count} Prozessen geändert; nicht geändert: {failed}. {error}"
+    },
+    "done": "Die Speicherpriorität von {name} wurde auf „{priority}“ gesetzt."
+  },
   "efficiency": {
     "on": {
       "failed": "Der Effizienzmodus konnte für {name} nicht aktiviert werden",

@@ -59,6 +59,8 @@ impl Desktop {
             "end" => ("kill_process", json!({"force":false})),
             "endTree" => ("kill_process_tree", json!({})),
             "priority" => ("set_priority", json!({"priority":args["priority"]})),
+            "ioPriority" => ("set_io_priority", json!({"priority":args["priority"]})),
+            "memoryPriority" => ("set_memory_priority", json!({"priority":args["priority"]})),
             "suspend" => ("set_suspended", json!({"suspend":args["on"]})),
             _ => ("set_efficiency_mode", json!({"on":args["on"]})),
         };
@@ -216,6 +218,46 @@ impl Desktop {
                             "actions.priority.done",
                             name = name,
                             priority = label(&format!("processes.priority.{wanted}"))
+                        ),
+                        2500,
+                    )
+                }
+            }
+            "ioPriority" | "memoryPriority" => {
+                let wanted = text(value, "priority");
+                if failed.len() == total {
+                    // The whole sentence, cause included, comes from the
+                    // locale, its punctuation too.
+                    (
+                        ToastKind::Error,
+                        argus_core::i18n::format(
+                            &format!("actions.{kind}.failed"),
+                            &[("name", &name), ("error", &first_error)],
+                        ),
+                        5000,
+                    )
+                } else if !failed.is_empty() {
+                    (
+                        ToastKind::Error,
+                        argus_core::i18n::format(
+                            &format!("actions.{kind}.partial"),
+                            &[
+                                ("count", &(total - failed.len())),
+                                ("failed", &failed.len()),
+                                ("error", &first_error),
+                            ],
+                        ),
+                        5000,
+                    )
+                } else {
+                    (
+                        ToastKind::Success,
+                        argus_core::i18n::format(
+                            &format!("actions.{kind}.done"),
+                            &[
+                                ("name", &name),
+                                ("priority", &label(&format!("processes.{kind}.{wanted}"))),
+                            ],
                         ),
                         2500,
                     )

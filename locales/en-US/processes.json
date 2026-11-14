@@ -179,6 +179,10 @@
       "label": "Page faults",
       "title": "Accumulated page faults, including soft and hard faults."
     },
+    "memoryPriority": {
+      "label": "Memory priority",
+      "title": "How soon Windows reclaims the process's memory pages under pressure; lower goes first."
+    },
     "ioRead": {
       "label": "I/O read",
       "title": "I/O bytes read per second, including files, network and devices."
@@ -202,6 +206,10 @@
     "ioOtherTotal": {
       "label": "Total other I/O",
       "title": "Total bytes transferred by other I/O over the process lifetime."
+    },
+    "ioPriority": {
+      "label": "I/O priority",
+      "title": "Priority hint for the process's disk and other I/O requests."
     },
     "netReceived": {
       "label": "Network receive",
@@ -264,12 +272,28 @@
     "belowNormal": "Below normal",
     "idle": "Low"
   },
+  "ioPriority": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "critical": "Critical"
+  },
+  "memoryPriority": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "medium": "Medium",
+    "belowNormal": "Below normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "End {count} process",
       "other": "End all {count} processes"
     },
     "setPriority": "Set priority",
+    "ioPriority": "I/O priority",
+    "memoryPriority": "Memory priority",
     "suspend": "Suspend process",
     "resume": "Resume process",
     "addRule": "Add rule",

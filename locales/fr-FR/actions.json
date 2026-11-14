@@ -58,6 +58,36 @@
     },
     "done": "La priorité de {name} a été définie sur {priority}."
   },
+  "ioPriority": {
+    "failed": "Impossible de modifier la priorité d’E/S de {name}. {error}",
+    "error": {
+      "accessDenied": "Accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur ; les processus protégés peuvent rester inaccessibles.",
+      "refused": "La priorité d’E/S de {name} ne peut pas être modifiée.",
+      "serviceOutdated": "Accès refusé. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "notFound": "{name} est déjà terminé."
+    },
+    "partial": {
+      "one": "Priorité d’E/S modifiée pour {count} processus ; non modifiés : {failed}. {error}",
+      "many": "Priorité d’E/S modifiée pour {count} processus ; non modifiés : {failed}. {error}",
+      "other": "Priorité d’E/S modifiée pour {count} processus ; non modifiés : {failed}. {error}"
+    },
+    "done": "La priorité d’E/S de {name} est désormais « {priority} »."
+  },
+  "memoryPriority": {
+    "failed": "Impossible de modifier la priorité mémoire de {name}. {error}",
+    "error": {
+      "accessDenied": "Accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur ; les processus protégés peuvent rester inaccessibles.",
+      "refused": "La priorité mémoire de {name} ne peut pas être modifiée.",
+      "serviceOutdated": "Accès refusé. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "notFound": "{name} est déjà terminé."
+    },
+    "partial": {
+      "one": "Priorité mémoire modifiée pour {count} processus ; non modifiés : {failed}. {error}",
+      "many": "Priorité mémoire modifiée pour {count} processus ; non modifiés : {failed}. {error}",
+      "other": "Priorité mémoire modifiée pour {count} processus ; non modifiés : {failed}. {error}"
+    },
+    "done": "La priorité mémoire de {name} est désormais « {priority} »."
+  },
   "efficiency": {
     "on": {
       "failed": "Impossible d’activer le mode d’efficacité pour {name}",

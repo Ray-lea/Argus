@@ -614,9 +614,16 @@ impl Desktop {
             })
             .unwrap_or_else(|| text(args, "name").into());
         // The general `actions.error` texts are about ending a process;
-        // suspending and resuming have their own wherever the cause differs.
-        if command == "set_suspended" {
-            let key = format!("actions.suspend.error.{kind}");
+        // suspending and the priority setters have their own wherever the
+        // cause differs.
+        let own = match command {
+            "set_suspended" => Some("suspend"),
+            "set_io_priority" => Some("ioPriority"),
+            "set_memory_priority" => Some("memoryPriority"),
+            _ => None,
+        };
+        if let Some(action) = own {
+            let key = format!("actions.{action}.error.{kind}");
             let result = argus_core::i18n::format(&key, &[("name", &name)]);
             if result != key {
                 return result;

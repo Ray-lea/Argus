@@ -180,6 +180,10 @@
       "label": "Errores de página",
       "title": "Fallos de página acumulados, incluidos fallos leves y graves."
     },
+    "memoryPriority": {
+      "label": "Prioridad de memoria",
+      "title": "Orden en que Windows recupera las páginas de memoria del proceso cuando falta memoria; cuanto más baja, antes."
+    },
     "ioRead": {
       "label": "Lectura de E/S",
       "title": "I/O bytes leídos por segundo, incluidos archivos, redes y dispositivos."
@@ -203,6 +207,10 @@
     "ioOtherTotal": {
       "label": "Otras I/O acumuladas",
       "title": "Total de bytes transferidos por otros I/O durante la vida útil del proceso."
+    },
+    "ioPriority": {
+      "label": "Prioridad de E/S",
+      "title": "Indicación de prioridad para las solicitudes de disco y otras E/S del proceso."
     },
     "netReceived": {
       "label": "Recepción de red",
@@ -266,6 +274,20 @@
     "belowNormal": "Inferior a la normal",
     "idle": "Baja"
   },
+  "ioPriority": {
+    "veryLow": "Muy baja",
+    "low": "Baja",
+    "normal": "Normal",
+    "high": "Alta",
+    "critical": "Crítica"
+  },
+  "memoryPriority": {
+    "veryLow": "Muy baja",
+    "low": "Baja",
+    "medium": "Media",
+    "belowNormal": "Por debajo de lo normal",
+    "normal": "Normal"
+  },
   "menu": {
     "endAll": {
       "one": "Finalizar {count} proceso",
@@ -273,6 +295,8 @@
       "other": "Finalizar los {count} procesos"
     },
     "setPriority": "Establecer prioridad",
+    "ioPriority": "Prioridad de E/S",
+    "memoryPriority": "Prioridad de memoria",
     "suspend": "Suspender proceso",
     "resume": "Reanudar proceso",
     "addRule": "Añadir regla",

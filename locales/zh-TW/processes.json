@@ -159,6 +159,10 @@
       "label": "分頁錯誤次數",
       "title": "累計分頁錯誤次數，包含軟性分頁錯誤與硬性分頁錯誤。"
     },
+    "memoryPriority": {
+      "label": "記憶體優先順序",
+      "title": "記憶體不足時回收此處理程序記憶體分頁的先後，越低越先回收。"
+    },
     "ioRead": {
       "label": "I/O 讀取",
       "title": "每秒 I/O 讀取位元組數，含檔案、網路和裝置存取。"
@@ -182,6 +186,10 @@
     "ioOtherTotal": {
       "label": "累計其他 I/O",
       "title": "處理程序生命週期內其他 I/O 累計傳輸的位元組數。"
+    },
+    "ioPriority": {
+      "label": "I/O 優先順序",
+      "title": "處理程序磁碟與其他 I/O 要求的優先順序提示。"
     },
     "netReceived": {
       "label": "網路接收",
@@ -241,9 +249,25 @@
     "belowNormal": "低於標準",
     "idle": "低"
   },
+  "ioPriority": {
+    "veryLow": "非常低",
+    "low": "低",
+    "normal": "正常",
+    "high": "高",
+    "critical": "關鍵"
+  },
+  "memoryPriority": {
+    "veryLow": "非常低",
+    "low": "低",
+    "medium": "中",
+    "belowNormal": "低於正常",
+    "normal": "正常"
+  },
   "menu": {
     "endAll": "結束全部 {count} 個處理程序",
     "setPriority": "設定優先順序",
+    "ioPriority": "I/O 優先順序",
+    "memoryPriority": "記憶體優先順序",
     "suspend": "暫停處理程序",
     "resume": "繼續處理程序",
     "addRule": "新增規則",
