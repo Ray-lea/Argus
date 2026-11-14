@@ -751,13 +751,6 @@ impl Desktop {
             display if service && !display.is_empty() => display.to_owned(),
             _ => name,
         };
-        // With administrator rights already in hand, advising them is no help:
-        // the service guards itself (an antivirus's self-protection).
-        let kind = if service && kind == "accessDenied" && self.privileged() {
-            "accessDeniedPrivileged"
-        } else {
-            kind
-        };
         let key = format!(
             "{}.{kind}",
             if command == "run_task" {
