@@ -153,7 +153,16 @@ fn cell(core: &Value, column: &Column) -> String {
 fn join(parts: Vec<Option<String>>) -> String {
     parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
-/// "54–61 °C": the lowest and highest readings, or one value when they agree.
+/// "54 – 61 °C": two readings with a spaced dash between them, so that the
+/// figures of each end stay apart; one value when they agree.
+fn range(low: String, high: String, unit: &str) -> String {
+    if low == high {
+        format!("{low} {unit}")
+    } else {
+        format!("{low} – {high} {unit}")
+    }
+}
+/// The lowest and highest readings (`range`).
 fn extent(values: impl Iterator<Item = f64>, digits: usize, unit: &str) -> Option<String> {
     let list = values.filter(|v| v.is_finite()).collect::<Vec<_>>();
     if list.is_empty() {
@@ -161,11 +170,7 @@ fn extent(values: impl Iterator<Item = f64>, digits: usize, unit: &str) -> Optio
     }
     let low = reading(list.iter().copied().reduce(f64::min), digits);
     let high = reading(list.iter().copied().reduce(f64::max), digits);
-    Some(if low == high {
-        format!("{low} {unit}")
-    } else {
-        format!("{low}–{high} {unit}")
-    })
+    Some(range(low, high, unit))
 }
 /// Mean of a Windows idle class across logical processors, or none if any lacks it.
 fn os_idle(idle: &[Value], key: &str) -> Option<f64> {
@@ -342,11 +347,7 @@ impl Desktop {
                     }
                     let low = charts::watts(list.iter().copied().fold(f64::INFINITY, f64::min));
                     let high = charts::watts(list.iter().copied().fold(0., f64::max));
-                    Some(if low == high {
-                        format!("{low} W")
-                    } else {
-                        format!("{low}–{high} W")
-                    })
+                    Some(range(low, high, "W"))
                 }),
             ]);
             let title = label(match (temperature.is_some(), package.is_some()) {

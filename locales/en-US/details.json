@@ -10,6 +10,9 @@
     "copyPart": "{kind}: {name}",
     "selectTip": "Click an app or process in the list to see its details here; click it again to deselect it.",
     "closeTip": "The details pane stays open by default. Click {icon} at the top right of the window to collapse it.",
+    "tips": "Tips",
+    "tipsCollapse": "Collapse tips",
+    "tipsExpand": "Expand tips",
     "cpu": "Processor",
     "cores": {
       "one": "{count} core",

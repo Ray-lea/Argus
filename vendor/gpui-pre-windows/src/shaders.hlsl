@@ -1146,10 +1146,10 @@ float4 underline_fragment(UnderlineFragmentInput input): SV_Target {
 struct MonochromeSprite {
     uint order;
     uint is_glyph;
+    AtlasTile tile;
     Bounds bounds;
     Bounds content_mask;
     Hsla color;
-    AtlasTile tile;
     TransformationMatrix transformation;
 };
 
@@ -1230,12 +1230,12 @@ SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentIn
 struct PolychromeSprite {
     uint order;
     uint pad;
+    AtlasTile tile;
     uint grayscale;
     float opacity;
     Bounds bounds;
     Bounds content_mask;
     Corners corner_radii;
-    AtlasTile tile;
 };
 
 // Integrate the 2x chart raster on the target pixel rows. Quarter-pixel X
@@ -1496,7 +1496,13 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
         }
     } else {
         float2 unit = (input.position.xy - sprite.bounds.origin) / sprite.bounds.size;
-        float2 tile_position = (float2(sprite.tile.bounds.origin) + unit * float2(sprite.tile.bounds.size)) / input.atlas_size;
+        float2 tile_origin = float2(sprite.tile.bounds.origin);
+        float2 tile_size = float2(sprite.tile.bounds.size);
+        // Linear filtering must stay inside this tile. The atlas sampler's
+        // clamp applies to the whole texture, whose adjacent tiles hold other images.
+        float2 texel = clamp(tile_origin + unit * tile_size,
+                             tile_origin + 0.5, tile_origin + tile_size - 0.5);
+        float2 tile_position = texel / input.atlas_size;
         sample = t_sprite.Sample(s_sprite, tile_position);
         sample.rgb *= sample.a;
     }

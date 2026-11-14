@@ -1,13 +1,14 @@
 {
   "productName": "Argus",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "identifier": "dev.argus.taskmanager",
   "publisher": "Argus contributors",
   "copyright": "© 2026 Argus contributors",
   "homepage": "https://argustask.com",
   "community": {
     "url": "https://qm.qq.com/q/97YqJAQRNK",
-    "group": "453803497"
+    "group": "453803497",
+    "channel": "https://t.me/argustask"
   },
   "window": {
     "width": 1000,

@@ -1,5 +1,6 @@
 //! Page composition keeps domain queries separate from native widgets.
 mod about;
+mod components;
 mod details;
 mod history;
 mod performance;
@@ -81,14 +82,12 @@ impl Desktop {
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();
                 let accent = self.palette.accent;
-                let viewport = self.process_viewport_observer(cx);
                 div()
                     .relative()
                     .size_full()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(viewport)
                     .child(vitals)
                     .child(
                         div()
@@ -162,6 +161,7 @@ impl Desktop {
             }
             "performance" => self.performance_view(window, cx),
             "history" => self.history_view(window, cx),
+            "components" => self.components_view(window, cx),
             "settings" => self.settings_view(window, cx),
             "about" => self.about_view(window, cx),
             "services" | "startup" | "network" => {

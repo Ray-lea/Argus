@@ -692,6 +692,11 @@ impl Style {
         cx: &mut App,
         continuation: impl FnOnce(&mut Window, &mut App),
     ) {
+        // Argus patch: an element whose hover style only fills it left its
+        // two fills here; its background is then a quad that takes the hover
+        // fill in place (see `Window::paint_hover_background`).
+        let hover = window.pending_hover_background.take();
+
         #[cfg(debug_assertions)]
         if self.debug_below {
             cx.set_global(DebugBelow)
@@ -711,7 +716,9 @@ impl Style {
         window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
         let background_color = self.background.as_ref().and_then(Fill::color);
-        if background_color.is_some_and(|color| !color.is_transparent()) {
+        if let Some(hover) = &hover {
+            window.paint_hover_background(bounds, corner_radii, self.border_style, hover);
+        } else if background_color.is_some_and(|color| !color.is_transparent()) {
             let mut border_color = match background_color {
                 Some(color) => match color.tag {
                     BackgroundTag::Solid
@@ -846,6 +853,32 @@ pub struct StrikethroughStyle {
 
     /// The color of the strikethrough.
     pub color: Option<Hsla>,
+}
+
+/// The two fills of an element whose hover style sets a solid background and
+/// nothing else, left with the window for [`Style::paint`]
+/// (`Window::pending_hover_background`).
+pub(crate) struct HoverBackground {
+    pub(crate) link: std::rc::Rc<crate::scene::HoverQuadLink>,
+    /// The fill at rest, if the element has one.
+    pub(crate) base: Option<Background>,
+    /// The fill under the pointer.
+    pub(crate) hover: Background,
+    /// Whether the element is painted hovered.
+    pub(crate) hovered: bool,
+}
+
+impl StyleRefinement {
+    /// The solid background this refinement sets, if that is all it sets.
+    pub(crate) fn background_alone(&self) -> Option<Background> {
+        let background = self.background.as_ref()?.color()?;
+        background.as_solid()?;
+        let rest = StyleRefinement {
+            background: None,
+            ..self.clone()
+        };
+        (rest == StyleRefinement::default()).then_some(background)
+    }
 }
 
 /// The kinds of fill that can be applied to a shape.
@@ -1347,7 +1380,7 @@ mod tests {
             "Combining empty styles should not produce a non-empty style."
         );
 
-        let mut style_b = HighlightStyle {
+        let style_b = HighlightStyle {
             color: Some(red()),
             strikethrough: Some(StrikethroughStyle {
                 thickness: px(2.),
@@ -1377,7 +1410,7 @@ mod tests {
             "Blending a style with an empty style should not change the style."
         );
 
-        let mut style_c = expected_style;
+        let style_c = expected_style;
 
         let style_d = HighlightStyle {
             color: Some(blue().alpha(0.7)),

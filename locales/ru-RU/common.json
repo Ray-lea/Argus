@@ -18,7 +18,7 @@
   "command": "Команда",
   "copyName": "Копировать имя",
   "copyPath": "Копировать путь",
-  "openFileLocation": "Открыть расположение файла",
+  "openFileLocation": "Открыть папку с файлом",
   "goToProcess": "Перейти к процессу",
   "endProcess": "Снять задачу",
   "endProcessTree": "Завершить дерево процессов",
@@ -68,6 +68,6 @@
   "build": {
     "development": "Версия для разработки",
     "test": "Бета",
-    "stable": "Стабильный"
+    "stable": "Стабильная"
   }
 }

@@ -270,13 +270,14 @@ pub fn run() -> anyhow::Result<()> {
             if !test || shell::test_tray_delay().is_some() {
                 let mem = snapshot.system.mem_used as f64 / snapshot.system.mem_total.max(1) as f64
                     * 100.;
-                shell::set_tray_tooltip(
+                shell::set_tray_reading(
                     &host,
                     &shell::tray_tooltip(&argus_core::tr!(
                         "tray.tooltip",
                         cpu = format!("{:.0}", snapshot.system.cpu),
                         memory = format!("{mem:.0}")
                     )),
+                    f64::from(snapshot.system.cpu),
                 );
             }
             *host.state::<Latest>().0.write().unwrap() = Some(Arc::new(snapshot));

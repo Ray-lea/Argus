@@ -106,6 +106,19 @@ const retainedDevices = retained ? [
   ...(hardware.gpus ?? []).slice(1).map(g => `gpu:${g.info.id}`),
   ...(hardware.batteries ?? []).map(b => `bat:${b.info.id}`),
 ] : [];
+// Every performance overview of the fixture shows in full, without scrolling,
+// in a window of this logical size. The default window is smaller: it shows
+// all of them in full but the grid of logical processors.
+const COMPLETE_WINDOW = [1240, 800];
+const overviewStates = [
+  ["cpu", { device: "cpu", cpuMode: "overall" }],
+  ["logical", { cpuMode: "logical", coreFilter: "all" }],
+  ["memory", { device: "memory" }],
+  ...(hardware.disks ?? []).map((d, i) => [`disk-${i}`, { device: `disk:${d.info.index}` }]),
+  ...(hardware.gpus ?? []).map((g, i) => [`gpu-${i}`, { device: `gpu:${g.info.id}` }]),
+  ...(hardware.nics ?? []).map((n, i) => [`nic-${i}`, { device: `nic:${n.info.id}` }]),
+  ...(hardware.batteries ?? []).map((b, i) => [`battery-${i}`, { device: `bat:${b.info.id}` }]),
+];
 const probeFlag = process.argv.indexOf("--probe");
 const probe = resolve(probeFlag >= 0 ? process.argv[probeFlag + 1] : "target/release/argus-window-probe.exe");
 const executable = resolve(output, "argus.exe");
@@ -419,7 +432,7 @@ try {
       send({ sample: { set: { "/system/threadCount": 10000 + index, "/system/handleCount": 20000 + index } } });
       await sleep(350);
       await capture(`${page}-partial`, false, false);
-      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.includes("Region")), `${page}: unchanged page was not replayed`);
+      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.some((name) => name.startsWith("Region"))), `${page}: unchanged page was not replayed`);
       send({ fullPaint: true });
       await sleep(250);
       await capture(`${page}-full`, false, false);
@@ -433,7 +446,7 @@ try {
     send({ sample: { set: { "/hardware/cpuSensors": { state: "unsupported" } } } });
     await sleep(350);
     await capture("sensor-partial", false, false);
-    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.includes("Region")), "sensor state did not invalidate settings");
+    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.some((name) => name.startsWith("Region"))), "sensor state did not invalidate settings");
     send({ fullPaint: true });
     await sleep(250);
     await capture("sensor-full", false, false);
@@ -522,6 +535,17 @@ try {
         ["details-outside", { mouse: { type: "move", x: 1000, y: 510 } }],
         ["cleared", { selectRow: 1, pointerOutside: true }],
         ["outside", { pointerOutside: true }],
+        // Input alone, as from the system: a row takes its hover fill in the
+        // scene on screen, without its view drawing again.
+        ["row-a-in-place", { mouse: { type: "move", x: 150, y: 300 }, passive: true }],
+        ["row-b-in-place", { mouse: { type: "move", x: 150, y: 360 }, passive: true }],
+        ["outside-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
+        // The details pane scrolls another row under the resting pointer,
+        // which then goes straight to a third: the second gives its fill up.
+        ["pane-row-in-place", { mouse: { type: "move", x: 800, y: 470 }, passive: true }],
+        ["pane-scrolled-in-place", { wheel: { x: 800, y: 470, lines: -2 }, passive: true }],
+        ["pane-next-row-in-place", { mouse: { type: "move", x: 800, y: 560 }, passive: true }],
+        ["pane-left-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
       ]) {
         send(state);
         await sleep(700);
@@ -698,6 +722,14 @@ try {
     resizeLogical(1600, 1000);
     await sleep(800);
     await capture("large-performance");
+    resizeLogical(...COMPLETE_WINDOW);
+    await sleep(800);
+    for (const [name, state] of overviewStates) {
+      send(state);
+      await sleep(700);
+      send({ pointerOutside: true, inspectLayout: `complete-${name}` });
+    }
+    await sleep(350);
   }
 } finally {
   if (!exited) {
@@ -722,8 +754,17 @@ if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview &&
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);
   }
-  const overviews = events.filter((event) => event.event === "ui-layout" && /^(performance|logical-.*|memory|disk-\d+|gpu-\d+|nic-\d+|battery-\d+)$/.test(event.label));
-  for (const view of overviews) assert(view.performanceScrollY <= 1, `${view.label}: default-size performance overview scrolls by ${view.performanceScrollY}px`);
+  const defaults = events.filter((event) => event.event === "ui-layout" && /^(performance|memory|disk-\d+|gpu-\d+|nic-\d+|battery-\d+)$/.test(event.label));
+  assert(defaults.length >= 3, "default-size overview layouts missing");
+  for (const view of defaults) assert(view.performanceScrollY <= 1, `${view.label}: overview scrolls by ${view.performanceScrollY}px in the default window`);
+  const [completeWidth, completeHeight] = COMPLETE_WINDOW;
+  for (const [name] of overviewStates) {
+    const view = events.find((event) => event.event === "ui-layout" && event.label === `complete-${name}`);
+    assert(view, `${name}: overview layout missing`);
+    // A screen smaller than the window would clamp it and void the check.
+    assert(Math.abs(view.width - completeWidth) <= 1 && Math.abs(view.height - completeHeight) <= 1, `${name}: window is ${view.width} × ${view.height}, not ${completeWidth} × ${completeHeight}`);
+    assert(view.performanceScrollY <= 1, `${name}: overview scrolls by ${view.performanceScrollY}px in a ${completeWidth} × ${completeHeight} window`);
+  }
   const narrow = events.find((event) => event.event === "ui-layout" && event.label === "narrow-performance");
   assert(narrow?.performanceScrollY > 0, "minimum-size overview must scroll instead of overlapping its content");
 }

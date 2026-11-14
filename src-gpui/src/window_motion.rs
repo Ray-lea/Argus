@@ -1,7 +1,9 @@
 //! In-place window fades: showing, hiding to the
 //! tray, minimizing and restoring fade the whole window instead of the system's
 //! zoom animations. Native visibility still drives sampling; the temporary
-//! layered style exists only while a fade is running.
+//! layered style exists only while a fade is running. DWM's own transitions
+//! are suppressed only around the fades, so maximizing and restoring a shown
+//! window keep the system animation.
 
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
@@ -124,10 +126,23 @@ struct Motion {
     layered: Cell<bool>,
     opacity: Cell<u8>,
     shown: Cell<bool>,
+    /// Whether DWM transitions are currently suppressed for this window.
+    suppressed: Cell<bool>,
     ticker: RefCell<Option<Arc<Ticker>>>,
 }
 
 impl Motion {
+    /// DWM transitions stay suppressed while a fade runs and while the window
+    /// is minimized or hidden, so every way back fades in without the system's
+    /// zoom. A shown window keeps them: maximizing, restoring from maximized and
+    /// snapping use the system animation, which the window motion does not replace.
+    fn sync_transitions(&self, hwnd: HWND) {
+        let suppress = self.enabled.get() && (self.fade.get().is_some() || !shown(hwnd));
+        if self.suppressed.replace(suppress) != suppress {
+            suppress_native_transitions(hwnd, suppress);
+        }
+    }
+
     fn set_enabled(&self, hwnd: HWND, enabled: bool) {
         if self.enabled.replace(enabled) == enabled {
             return;
@@ -142,7 +157,7 @@ impl Motion {
                 self.opaque(hwnd);
             }
         }
-        suppress_native_transitions(hwnd, enabled);
+        self.sync_transitions(hwnd);
     }
     fn change(&self, hwnd: HWND, target: Target) {
         CHANGING.fetch_add(1, Ordering::Relaxed);
@@ -196,6 +211,8 @@ impl Motion {
             self.change(hwnd, target);
         }
         self.opaque(hwnd);
+        // After the change: minimizing or hiding still runs with transitions suppressed.
+        self.sync_transitions(hwnd);
     }
 
     fn start_clock(&self, hwnd: HWND) -> bool {
@@ -244,6 +261,7 @@ impl Motion {
             self.finish(hwnd, target);
             if target == Target::Shown {
                 self.change(hwnd, target);
+                self.sync_transitions(hwnd);
             }
             return;
         }
@@ -260,9 +278,11 @@ impl Motion {
         if !self.alpha(hwnd, from) {
             self.finish(hwnd, target);
             self.change(hwnd, target);
+            self.sync_transitions(hwnd);
             return;
         }
         self.fade.set(Some(Fade::new(from, target)));
+        self.sync_transitions(hwnd);
         LEAVING.store(target != Target::Shown, Ordering::Relaxed);
         if target == Target::Shown && !shown {
             self.change(hwnd, target);
@@ -302,12 +322,13 @@ pub fn install(hwnd: HWND) {
             layered: Cell::new(false),
             opacity: Cell::new(255),
             shown: Cell::new(shown(hwnd)),
+            suppressed: Cell::new(false),
             ticker: RefCell::new(None),
         }));
         if !SetWindowSubclass(hwnd, Some(procedure), SUBCLASS, motion as usize).as_bool() {
             drop(Box::from_raw(motion));
-        } else if enabled() {
-            suppress_native_transitions(hwnd, true);
+        } else {
+            (*motion).sync_transitions(hwnd);
         }
     }
 }
@@ -483,6 +504,7 @@ unsafe extern "system" fn procedure(
                 motion.stop_clock();
                 motion.opaque(hwnd);
             }
+            motion.sync_transitions(hwnd);
         }
     }
     result

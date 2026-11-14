@@ -13,9 +13,9 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
-import { translate } from "./i18n";
+import { language, translate } from "./i18n";
 import { Icon, type UiIcon } from "./icons";
-import { bytes, heat, noise, percent, rate, thousands, type Process } from "./model";
+import { appVersion, bytes, heat, noise, percent, rate, sessionOf, thousands, type Process } from "./model";
 import type { MenuEntry } from "./Pages";
 import type { Row } from "./Processes";
 import { Button, Segments, useIsoLayoutEffect } from "./widgets";
@@ -74,6 +74,10 @@ export const COLUMNS: ColumnDef[] = [
   col("path", "general", "text", 300, false, "映像路径", "进程可执行文件的完整路径。"),
   col("description", "general", "text", 220, false, "描述", "可执行文件描述或打包应用名称。"),
   col("company", "general", "text", 200, false, "公司名称", "可执行文件版本信息中的公司名称。"),
+  col("version", "general", "text", 130, false, "文件版本", "可执行文件版本信息中的文件版本。"),
+  col("architecture", "general", "text", 110, false, "架构", "进程运行的处理器架构。"),
+  col("elevated", "general", "bool", 90, false, "已提升", "进程是否以管理员权限（提升的令牌）运行。"),
+  col("commandLine", "general", "text", 360, false, "命令行", "启动进程时使用的完整命令行，包括参数。"),
   col("sessionId", "general", "id", 80, false, "会话 ID", "进程所属的 Windows 会话编号。"),
   col("createTime", "general", "time", 160, false, "启动时间", "进程创建时间，以本地时间显示。"),
   col("threads", "general", "count", 76, true, "线程", "线程数"),
@@ -144,8 +148,13 @@ export interface ColumnPrefs {
   selected: string[];
   order: string[];
   autoWidth: boolean;
+  /** The name takes the room the other columns leave (automatic widths only). */
+  fullWidth: boolean;
+  /** Widths dragged by hand; such a column keeps its width and takes no share. */
+  widths: Record<string, number>;
 }
-function normalize(selected: string[], order: string[], autoWidth: boolean): ColumnPrefs {
+type Sizing = Pick<ColumnPrefs, "autoWidth" | "fullWidth" | "widths">;
+function normalize(selected: string[], order: string[], sizing: Sizing): ColumnPrefs {
   const seen = new Set(["name"]);
   const all = ["name"];
   for (const key of [...order, ...selected, ...COLUMNS.map((c) => c.key)])
@@ -154,12 +163,25 @@ function normalize(selected: string[], order: string[], autoWidth: boolean): Col
       all.push(key);
     }
   const chosen = new Set([...selected, "name"]);
-  return { selected: all.filter((key) => chosen.has(key)), order: all, autoWidth };
+  return {
+    selected: all.filter((key) => chosen.has(key)),
+    order: all,
+    autoWidth: sizing.autoWidth,
+    fullWidth: sizing.fullWidth,
+    widths: sizing.widths,
+  };
 }
-export const defaultPrefs = () => normalize(DEFAULTS, [], true);
+export const defaultPrefs = () => normalize(DEFAULTS, [], { autoWidth: true, fullWidth: false, widths: {} });
 export function setSelected(p: ColumnPrefs, key: string, on: boolean): ColumnPrefs {
   if (key === "name" || !byKey.has(key) || p.selected.includes(key) === on) return p;
-  return normalize(on ? [...p.selected, key] : p.selected.filter((k) => k !== key), p.order, p.autoWidth);
+  return normalize(on ? [...p.selected, key] : p.selected.filter((k) => k !== key), p.order, p);
+}
+/** A column dragged to `width`, or back to its automatic width (null). */
+export function setWidth(p: ColumnPrefs, key: string, width: number | null): ColumnPrefs {
+  const widths = { ...p.widths };
+  if (width === null) delete widths[key];
+  else widths[key] = Math.round(Math.min(1200, Math.max(48, width)));
+  return { ...p, widths };
 }
 /** Moves a shown column before another (past the last for null), never before the name. */
 export function moveBefore(p: ColumnPrefs, key: string, before: string | null): ColumnPrefs {
@@ -168,7 +190,7 @@ export function moveBefore(p: ColumnPrefs, key: string, before: string | null): 
   const order = p.order.filter((k) => k !== key);
   const at = before === null ? order.length : order.indexOf(before);
   order.splice(at < 0 ? order.length : at, 0, key);
-  const next = normalize(p.selected, order, p.autoWidth);
+  const next = normalize(p.selected, order, p);
   return next.order.join() === p.order.join() ? p : next;
 }
 export const visibleColumns = (p: ColumnPrefs) => p.selected.map((key) => byKey.get(key)!);
@@ -185,6 +207,31 @@ const userTime = (p: Process) => Math.round(p.cpuTime * (0.58 + noise(p.pid * 3 
 const describe = (p: Process) => (p.glyph === "kernel" ? "" : p.exe === "svchost.exe" ? "Windows 服务主机进程" : p.name);
 const company = (p: Process) =>
   p.glyph === "kernel" || quiet.has(p.exe) ? "" : p.exe === "node.exe" ? "Node.js" : "Microsoft Corporation";
+// Version resources: Windows' own programs share the system's, build tools
+// carry none (made-up but plausible numbers).
+const products: Record<string, [string, string]> = {
+  "msedge.exe": ["Microsoft Edge", "131.0.2903.112"],
+  "Code.exe": ["Visual Studio Code", "1.96.2"],
+  "WindowsTerminal.exe": ["Windows Terminal", "1.21.3231.0"],
+  "mspaint.exe": ["Microsoft Paint", "11.2410.28.0"],
+  "Notepad.exe": ["Windows Notepad", "11.2410.21.0"],
+  "argus.exe": ["Argus", appVersion],
+  "pwsh.exe": ["PowerShell", "7.4.6.500"],
+  "node.exe": ["Node.js", "22.12.0"],
+  "OneDrive.exe": ["Microsoft OneDrive", "24.226.1110.0004"],
+  "CalculatorApp.exe": ["Windows Calculator", "11.2410.0.0"],
+  "PhoneExperienceHost.exe": ["Microsoft Phone Link", "1.24112.89.0"],
+  "MsMpEng.exe": ["Microsoft Malware Protection", "4.18.24090.11"],
+};
+export const versionInfo = (p: Process): [string, string] | null =>
+  p.glyph === "kernel" || quiet.has(p.exe)
+    ? null
+    : (products[p.exe] ?? (p.path.startsWith("C:\\Windows\\") ? ["Microsoft® Windows® Operating System", "10.0.26100.2605"] : null));
+export const architecture = (p: Process) => (p.glyph === "kernel" ? "" : "64 位 (x64)");
+/** The demo runs as administrator: Argus and the system's accounts hold elevated tokens. */
+export const elevatedOf = (p: Process) => (p.glyph === "kernel" ? "" : p.exe === "argus.exe" || p.user.startsWith("NT AUTHORITY") ? "是" : "否");
+export const commandLine = (p: Process) =>
+  p.glyph === "kernel" ? "" : `"${p.path}"` + (p.args ? " " + p.args : "");
 const addressSpace = (p: Process) => {
   if (p.glyph === "kernel") return p.mem * 1.6 + 4 * MB;
   const chromium = p.glyph === "browser" || p.glyph === "code";
@@ -217,7 +264,7 @@ export interface Cell {
 }
 export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
   const v = row.values;
-  const heading = row.kind === "group";
+  const heading = row.kind !== "unit";
   const members = () => row.pids.map((pid) => ctx.byPid.get(pid)).filter((p): p is Process => !!p);
   const one = !heading && row.count === 1 ? ctx.byPid.get(row.pids[0]) : undefined;
   const instance = <T,>(f: (p: Process) => T) => (one ? f(one) : null);
@@ -238,7 +285,11 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "path": value = common((p) => p.path); break;
     case "description": value = common(describe); break;
     case "company": value = common(company); break;
-    case "sessionId": value = instance((p) => (p.group === "windows" && p.user.startsWith("NT") ? 0 : 1)); break;
+    case "version": value = common((p) => versionInfo(p)?.[1] ?? ""); break;
+    case "architecture": value = common(architecture); break;
+    case "elevated": value = instance(elevatedOf); break;
+    case "commandLine": value = instance(commandLine); break;
+    case "sessionId": value = instance(sessionOf); break;
     case "createTime": value = instance((p) => p.started); break;
     case "threads": value = total((p) => p.threads); break;
     case "handles": value = total((p) => p.handles); break;
@@ -315,6 +366,9 @@ export function headerMenu(o: {
   onToggle: (key: string) => void;
   onChoose: () => void;
   onAutoWidth: () => void;
+  onFullWidth: () => void;
+  /** As a double-click on the column's edge: back to its automatic width. */
+  onFit: (key: string) => void;
   onReset: () => void;
 }): MenuEntry[] {
   const items: MenuEntry[] = [];
@@ -335,6 +389,12 @@ export function headerMenu(o: {
         icon: "eyeOff",
         disabled: at.key === "name",
         run: () => o.onToggle(at.key),
+      },
+      {
+        label: "自动调整此列宽度",
+        icon: "fitWidth",
+        disabled: o.prefs.autoWidth && !(at.key in o.prefs.widths),
+        run: () => o.onFit(at.key),
       },
       "-",
     );
@@ -359,6 +419,8 @@ export function headerMenu(o: {
     "-",
     { label: "选择列…", icon: "columns", run: o.onChoose },
     { label: "自动宽度", checked: o.prefs.autoWidth, run: o.onAutoWidth },
+    // Widths set by hand are kept as they are.
+    { label: "全宽", checked: o.prefs.fullWidth, disabled: !o.prefs.autoWidth, run: o.onFullWidth },
     { label: "恢复默认列", icon: "reset", run: o.onReset },
   );
   return items;
@@ -404,32 +466,129 @@ class Flips {
 }
 
 // ---------------------------------------------------------------------------
-// Widths: each column's format width; with automatic widths a header label
-// that needs more room gets it, in 8 px steps (tables/widths.rs).
+// Widths (tables/widths.rs). Figures keep their format's width, more where a
+// header label needs it, in 8 px steps. With automatic widths the name and
+// the text columns take what their contents need: what most rows need (at
+// least 95% of them; lengths far past the rest are cut short) where room is
+// short, up to what every row needs where there is room, the difference
+// shared out. The rest of the table stays empty unless the name takes it
+// ("全宽"). A width dragged by hand stays as it is.
 let measure: CanvasRenderingContext2D | null | undefined;
-function labelWidth(text: string, scale: number) {
+function textWidth(text: string, scale: number, size = 13, weight = 400) {
   measure ??= typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
-  if (!measure) return 0;
-  measure.font = `500 ${12 * scale}px "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif`;
+  if (!measure || !text) return 0;
+  measure.font = `${weight} ${size * scale}px "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif`;
   return measure.measureText(text).width;
 }
-export function useColumnWidths(columns: ColumnDef[], autoWidth: boolean, scale: number) {
+const labelWidth = (text: string, scale: number) => textWidth(text, scale, 12, 500);
+/** What most of `needs` fit in, and what all of them do. */
+function spread(needs: number[]): [number, number] {
+  if (!needs.length) return [0, 0];
+  const sorted = [...needs].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.round((sorted.length - 1) * q)];
+  // Tukey's fence, but at least nineteen values in twenty fit.
+  const fence = Math.max(at(0.75) + 1.5 * (at(0.75) - at(0.25)), at(0.95));
+  const most = Math.max(...sorted.filter((n) => n <= fence));
+  return [most, sorted[sorted.length - 1]];
+}
+/** A name cell's text and marks, from its padding to its right edge. */
+function nameNeed(row: Row, ctx: CellContext, scale: number) {
+  const inset = 6 + (row.nested ? 20 : 0) + row.depth * 20;
+  let need = inset + 14 + 8 + 16 * scale + 8 + textWidth(translate(row.label), scale, 13, row.count > 1 ? 500 : 400) + 10;
+  if (row.detail) need += 8 + textWidth(translate(row.detail), scale);
+  if (row.count > 1) need += 8 + Math.max(20, 12 + textWidth(String(row.count), scale, 11));
+  if (row.pids.some((pid) => ctx.efficiency.has(pid))) need += 8 + 12 * scale;
+  if (row.suspended) need += 8 + 14 + textWidth(translate("已暂停"), scale, 11);
+  return need;
+}
+const TEXT_COLUMNS = new Set(["name", "imageName", "path", "description", "company", "version", "architecture", "commandLine", "gpuEngine"]);
+/** The narrowest and widest a text column is made, whatever its contents (widths.rs `limits`). */
+const limits = (key: string): [number, number] =>
+  key === "name"
+    ? [180, 520]
+    : key === "path" || key === "commandLine"
+      ? [120, 600]
+      : key === "description"
+        ? [100, 480]
+        : key === "company" || key === "gpuEngine"
+          ? [100, 360]
+          : key === "imageName"
+            ? [100, 320]
+            : [64, 400];
+export interface ColumnWidths {
+  widths: Map<string, number>;
+  /** The name takes the room the others leave, as before automatic widths fitted it. */
+  fill: boolean;
+}
+export function useColumnWidths(
+  columns: ColumnDef[],
+  prefs: Sizing,
+  scale: number,
+  rows: Row[],
+  ctx: CellContext,
+  /** The table's width, in the window's own pixels. */
+  room: number,
+): ColumnWidths {
   // The server knows no fonts: the first render keeps the format widths.
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
+  const fitting = ready && prefs.autoWidth;
+  // Text needs follow the rows shown and the language, not every reading.
+  const latest = useRef({ rows, ctx });
+  latest.current = { rows, ctx };
+  const shape = fitting ? rows.map((r) => r.key + (r.suspended ? "~" : "")).join() + "|" + columns.map((c) => c.key).join() : "";
+  const needs = useMemo(() => {
+    const out = new Map<string, [number, number]>();
+    if (!shape) return out;
+    const { rows, ctx } = latest.current;
+    const units = rows.filter((r) => r.kind === "unit");
+    for (const c of columns) {
+      if (!TEXT_COLUMNS.has(c.key)) continue;
+      const label = c.key === "name" ? 0 : labelWidth(columnLabel(c), scale) + 20 + 14;
+      const list =
+        c.key === "name"
+          ? units.map((r) => nameNeed(r, ctx, scale))
+          : units.map((r) => {
+              const text = cellOf(c, r, ctx).text;
+              return text ? textWidth(translate(text), scale) + 20 : 0;
+            });
+      const [most, all] = spread(list);
+      const [lo, hi] = limits(c.key);
+      const clamp = (w: number) => Math.ceil(Math.min(hi, Math.max(lo, w, label)));
+      out.set(c.key, [clamp(most), clamp(all)]);
+    }
+    return out;
+  }, [shape, columns, scale, language()]);
   return useMemo(() => {
     const widths = new Map<string, number>();
+    const grow = new Map<string, number>();
     for (const c of columns) {
+      const manual = prefs.widths[c.key];
       let w = c.width;
-      if (ready && autoWidth && c.key !== "name") {
+      if (manual !== undefined) w = manual;
+      else if (fitting && needs.has(c.key)) {
+        const [most, all] = needs.get(c.key)!;
+        w = most;
+        if (all > w) grow.set(c.key, all - w);
+      } else if (ready && prefs.autoWidth && c.key !== "name") {
         // The label, the cell's padding and the sort mark beside it.
         const need = Math.ceil(labelWidth(columnLabel(c), scale) + 20 + 14);
         if (need > w) w += Math.ceil((need - w) / 8) * 8;
       }
       widths.set(c.key, w);
     }
-    return widths;
-  }, [columns, autoWidth, scale, ready]);
+    if (!fitting) return { widths, fill: true };
+    // Room to spare widens the text columns toward what every row needs.
+    let left = room - [...widths.values()].reduce((a, w) => a + w, 0);
+    const wanted = [...grow.values()].reduce((a, w) => a + w, 0);
+    if (left > 0 && wanted > 0) {
+      const share = Math.min(1, left / wanted);
+      for (const [key, more] of grow) widths.set(key, widths.get(key)! + Math.floor(more * share));
+      left = room - [...widths.values()].reduce((a, w) => a + w, 0);
+    }
+    if (prefs.fullWidth && prefs.widths.name === undefined && left > 0) widths.set("name", widths.get("name")! + left);
+    return { widths, fill: false };
+  }, [columns, prefs, scale, ready, fitting, needs, room]);
 }
 
 // ---------------------------------------------------------------------------

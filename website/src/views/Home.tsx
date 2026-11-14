@@ -187,7 +187,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
         </div>
         {/* A 1920 × 1080 desktop drawn at the width of the page; the window can be
             resized and maximized, and the desktop shown full screen. */}
-        <div className="stage" id="demo" data-motion="">
+        <div className="stage" id="demo" data-motion="" data-markdown="skip">
           <div className="desk">
             <div className="wallpaper" aria-hidden="true">
               <i className="petal p1"></i>
@@ -339,7 +339,7 @@ export function Home({ lang, demo }: { lang: Language; demo: ReactNode }) {
             </tbody>
           </table>
           {(
-            <aside className="cell drop" data-spotlight="" data-motion="">
+            <aside className="cell drop" data-spotlight="" data-motion="" data-markdown="skip">
               <h3>{localize(lang, en ? "Drop a file here" : "把文件拖到这里")}</h3>
               <p>{localize(lang, en ? "Only file names are read. Results are simulated in the browser; files stay on the device." : "只读取文件名，在浏览器内演示查询结果，不会上传。")}</p>
               <FileDrop />

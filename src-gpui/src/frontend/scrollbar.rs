@@ -560,7 +560,7 @@ pub(in crate::frontend) fn wheel_glide(
     canvas(
         |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
         move |_, hitbox, window, _| {
-            window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+            window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture
                     || event.touch_phase != TouchPhase::Moved
                     || !hitbox.should_handle_scroll(window)

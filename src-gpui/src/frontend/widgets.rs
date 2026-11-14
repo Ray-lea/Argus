@@ -152,12 +152,26 @@ pub(in crate::frontend) struct UiState {
     /// The top dialog fading out before it closes: its id, when it started and
     /// whether it was cancelled (Escape or a press outside it).
     pub dialog_leaving: Option<(u64, Instant, bool)>,
+    /// Until when dialogs take their content's height at once instead of
+    /// easing to it: a release in the update reader folding or unfolding
+    /// eases its own height (`Desktop::release_reader`).
+    pub dialog_follow: Option<Instant>,
+    /// The natural height of each release's notes in the update reader, by
+    /// version: what a folding release eases from and an unfolding one to.
+    pub release_heights: Rc<RefCell<HashMap<SharedString, Pixels>>>,
+    /// The feature card, change or release row of the update reader under
+    /// the pointer:
+    /// it lights up, easing in and out (`Desktop::release_body`).
+    pub release_hover: RefCell<Option<SharedString>>,
     /// The narrowest search box: placeholder, text size and width (`Desktop::search_fit`).
     pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
     /// How compact the toolbar is (`Desktop::fit_toolbar`).
     pub toolbar_fit: RefCell<ToolbarFit>,
     /// What the page navigation's selection mark was last placed for.
     pub nav_mark: Cell<NavMark>,
+    /// What the details pane's overview of the machine showed when a sample
+    /// last drew it (`Desktop::details_follow_sample`).
+    pub overview_seen: Cell<Option<u64>>,
 }
 
 /// The page navigation's selection mark glides to a newly chosen page; when
@@ -312,48 +326,44 @@ pub(in crate::frontend) fn service_connected(status: &Value) -> bool {
 }
 
 /// The colour without its transparency (surfaces drawn without blur).
-/// The app's mark, `size` across. `img` would rasterize the 1024-unit SVG at
-/// twice its own size and sample that texture down some forty times without
-/// mipmaps, breaking its edges into steps; this draws a raster made for the
-/// window's scale at exactly the size shown, on whole device pixels. Up to
-/// 32 px it draws the small mark (a bigger eye, heavier strokes), as the
+/// The app's mark, `size` across. `img` would rasterize the SVG at twice its
+/// own size and sample that texture down without mipmaps, breaking its edges
+/// into steps; this draws a raster made for the window's scale, on whole
+/// device pixels, from the source made for that size (`logo_source`), as the
 /// app's icons do (`scripts/icons.mjs`).
 pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
     thread_local! {
-        static RASTERS: RefCell<HashMap<(bool, i32), Arc<RenderImage>>> = RefCell::default();
+        static RASTERS: RefCell<HashMap<i32, Arc<RenderImage>>> = RefCell::default();
     }
-    let small = size <= 32.;
-    let source: &'static [u8] = if small {
-        include_bytes!("../../../resources/icons/logo-small.svg")
-    } else {
-        include_bytes!("../../../resources/logo.svg")
-    };
     canvas(
         |_, _, _| {},
         move |bounds, _, window, cx| {
             let scale = window.scale_factor();
             let pixels = (f32::from(bounds.size.width) * scale).round().max(1.) as i32;
+            let (source, drawn) = logo_source(pixels);
             let image = RASTERS.with(|rasters| {
-                if let Some(image) = rasters.borrow().get(&(small, pixels)) {
+                if let Some(image) = rasters.borrow().get(&drawn) {
                     return Some(image.clone());
                 }
                 let renderer = cx.svg_renderer();
                 let svg = renderer.parse_svg(source).ok()?;
-                let side = DevicePixels(pixels);
+                let side = DevicePixels(drawn);
                 let image = renderer
                     .render_parsed(&svg, SvgSize::ExactSize(gpui_kit::size(side, side)))
                     .ok()?;
-                rasters.borrow_mut().insert((small, pixels), image.clone());
+                rasters.borrow_mut().insert(drawn, image.clone());
                 Some(image)
             });
             let Some(image) = image else {
                 return;
             };
-            let side = px(pixels as f32 / scale);
+            // A smaller master sits in the middle, still on whole pixels.
+            let inset = px(((pixels - drawn) / 2) as f32 / scale);
+            let side = px(drawn as f32 / scale);
             let at = Bounds::new(
                 point(
-                    window.pixel_snap(bounds.origin.x),
-                    window.pixel_snap(bounds.origin.y),
+                    window.pixel_snap(bounds.origin.x) + inset,
+                    window.pixel_snap(bounds.origin.y) + inset,
                 ),
                 gpui_kit::size(side, side),
             );
@@ -362,6 +372,34 @@ pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
     )
     .size(px(size))
     .flex_shrink_0()
+}
+
+/// The pixel masters of the logo, by size (`scripts/icons.mjs`).
+const LOGO_MASTERS: [(i32, &[u8]); 9] = [
+    (16, include_bytes!("../../../resources/icons/logo-16.svg")),
+    (20, include_bytes!("../../../resources/icons/logo-20.svg")),
+    (24, include_bytes!("../../../resources/icons/logo-24.svg")),
+    (30, include_bytes!("../../../resources/icons/logo-30.svg")),
+    (32, include_bytes!("../../../resources/icons/logo-32.svg")),
+    (36, include_bytes!("../../../resources/icons/logo-36.svg")),
+    (40, include_bytes!("../../../resources/icons/logo-40.svg")),
+    (42, include_bytes!("../../../resources/icons/logo-42.svg")),
+    (48, include_bytes!("../../../resources/icons/logo-48.svg")),
+];
+
+/// The logo for a raster `pixels` across, and the size to draw it: below
+/// 64 px the largest pixel master that fits (scaled, its dots would blur),
+/// centred in the rest; from 64 px the vector logo at full size.
+fn logo_source(pixels: i32) -> (&'static [u8], i32) {
+    if pixels >= 64 {
+        return (include_bytes!("../../../resources/logo.svg"), pixels);
+    }
+    let (size, source) = LOGO_MASTERS
+        .iter()
+        .rev()
+        .find(|(size, _)| *size <= pixels)
+        .unwrap_or(&LOGO_MASTERS[0]);
+    (source, *size)
 }
 
 pub(in crate::frontend) fn solid(color: Hsla) -> Hsla {
@@ -484,13 +522,29 @@ const TOOLTIP_SIZE: f32 = 12.;
 /// UI's ascent and descent, 1.33 em), as the system draws tooltip text.
 const TOOLTIP_LINE_HEIGHT: f32 = 4. / 3.;
 
+/// A hover hint as it shows: not at all while a context menu is open or
+/// fading out (`menus::in_the_way`).
+struct Hint(AnyView);
+
+impl Render for Hint {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if menus::in_the_way(cx) {
+            div().into_any_element()
+        } else {
+            self.0.clone().into_any_element()
+        }
+    }
+}
+
 /// A hover hint with one line of text.
 pub(in crate::frontend) fn tooltip(
     text: impl Into<SharedString>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
-    tooltip_text(gpui_kit::component::tooltip::Tooltip::new(text.into()), cx).build(window, cx)
+    let view =
+        tooltip_text(gpui_kit::component::tooltip::Tooltip::new(text.into()), cx).build(window, cx);
+    cx.new(|_| Hint(view)).into()
 }
 
 /// A tooltip set in the system tooltip font. Tooltips are laid out apart
@@ -546,13 +600,14 @@ pub(in crate::frontend) fn wrapping_tooltip(
                 .width
         })
         .fold(px(0.), Pixels::max);
-    tooltip_text(
+    let view = tooltip_text(
         gpui_kit::component::tooltip::Tooltip::element(move |_, _| {
             div().when(natural > max, |d| d.w(max)).child(text.clone())
         }),
         cx,
     )
-    .build(window, cx)
+    .build(window, cx);
+    cx.new(|_| Hint(view)).into()
 }
 
 /// Lighter, like the interface's `filter: brightness(1.08)` on hover.
@@ -1478,26 +1533,24 @@ impl Desktop {
         const GAP: f32 = 4.;
         const MARGIN: f32 = 8.;
         let reduce = cx.reduce_motion();
-        let leaving = self
-            .ui
-            .select_leaving
-            .as_ref()
-            .filter(|(_, at)| !reduce && at.elapsed().as_secs_f32() < 0.083);
+        // A closed list rolls up toward its control over 83 ms, without taking
+        // input. It does not fade out: see `menus::rolled`.
+        let leaving = self.ui.select_leaving.as_ref().and_then(|(open, at)| {
+            let left = 1. - at.elapsed().as_secs_f32() / 0.083;
+            (!reduce && left > 0.).then_some((open, left))
+        });
         let interactive = self.ui.select.is_some();
-        let (open, opacity) = match (&self.ui.select, leaving) {
-            // Grows in over 167 ms, decelerating (`flyout-in`; its slight
-            // scale is left out).
-            (Some(open), _) => (
-                open,
-                if reduce {
-                    1.
-                } else {
-                    theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
-                },
-            ),
-            // Fades out over 83 ms, linear (`fade-out`), without taking input.
-            (None, Some((open, at))) => (open, 1. - at.elapsed().as_secs_f32() / 0.083),
+        let (open, shown) = match (&self.ui.select, leaving) {
+            (Some(open), _) => (open, 1.),
+            (None, Some((open, left))) => (open, left),
             (None, None) => return None,
+        };
+        // Grows in over 167 ms, decelerating (`flyout-in`; its slight scale is
+        // left out). One closed meanwhile goes on fading in.
+        let opacity = if reduce {
+            1.
+        } else {
+            theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
         };
         let p = self.palette;
         let viewport = window.viewport_size();
@@ -1517,16 +1570,13 @@ impl Desktop {
             .left()
             .min(viewport.width - px(MARGIN) - anchor.size.width)
             .max(px(MARGIN));
-        if opacity < 1. {
+        if opacity < 1. || shown < 1. {
             window.request_animation_frame();
         }
         let list = div()
             .id("select-list")
             .track_scroll(&open.scroll)
             .when(interactive, |d| d.occlude())
-            .absolute()
-            .left(left)
-            .top(top)
             .min_w(anchor.size.width)
             .max_h(px(max_height))
             .overflow_y_scroll()
@@ -1542,7 +1592,7 @@ impl Desktop {
             .opacity(opacity)
             .text_size(theme::font(13.))
             .text_color(p.ink)
-            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .on_scroll(|_, _, cx| cx.stop_propagation())
             .children(open.options.iter().enumerate().map(|(index, option)| {
                 let selected = Some(index) == open.selected;
                 div()
@@ -1583,6 +1633,22 @@ impl Desktop {
                     }))
             }))
             .child(scrollbar::scrollbar("select-scrollbar", &open.scroll, p.dark).border(1.));
+        let list = if shown < 1. {
+            // What is left of the list, from the edge at its control (the
+            // bottom of a list above it), with the list drawn where it was.
+            let clip = px(height * shown);
+            let hidden = if up { px(height) - clip } else { px(0.) };
+            div()
+                .absolute()
+                .left(left)
+                .top(top + hidden)
+                .h(clip)
+                .overflow_hidden()
+                .child(list.mt(px(-f32::from(hidden))))
+                .into_any_element()
+        } else {
+            list.absolute().left(left).top(top).into_any_element()
+        };
         Some(
             deferred(
                 anchored().position(point(px(0.), px(0.))).child(
@@ -1599,7 +1665,7 @@ impl Desktop {
                                 cx.notify();
                             }),
                         )
-                        .on_scroll_wheel(cx.listener(|this, _, window, cx| {
+                        .on_scroll(cx.listener(|this, _, window, cx| {
                             this.close_select();
                             window.refresh();
                             cx.notify();

@@ -211,9 +211,22 @@ pub fn status(id: &str) -> Status {
     };
     let result = (|| {
         let sid = security::current_sid()?;
+        let dir = directory(id, &sid)?;
+        // Every grant creates this directory before it registers the task.
+        // Without it there is nothing to show or revoke, and no reason to
+        // start Task Scheduler on every launch.
+        if !dir.exists() {
+            return Ok(());
+        }
         // Task Scheduler is authoritative even when runtime records are no
         // longer trusted. Keep revocation available for a damaged grant.
-        value.enabled = task::Scheduler::new()?.exists(id, &sid)?;
+        value.enabled = match task::Scheduler::new().and_then(|s| s.exists(id, &sid)) {
+            Ok(enabled) => enabled,
+            // Without a grant record the account has revoked administrator
+            // startup, or never completed it: a failure has nothing to report.
+            Err(_) if !dir.join("grant.json").exists() => return Ok(()),
+            Err(code) => return Err(code),
+        };
         if !value.enabled {
             return Ok(());
         }
@@ -265,11 +278,9 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
     }
     security::validate_sid(sid)?;
     if !enable && !maintenance {
-        task::Scheduler::new()?.remove(id, sid)?;
-        if let Some(directory) = crate::cleanup::Directory::open(&directory(id, sid)?)? {
-            directory.remove_file("grant.json")?;
-        }
-        return Ok(());
+        // Establish Task Scheduler's COM security before shell folder resolution.
+        let scheduler = task::Scheduler::new()?;
+        return revoke(&directory(id, sid)?, || scheduler.remove(id, sid));
     }
     // Establish Task Scheduler's COM security before shell folder resolution.
     let early_scheduler = if enable {
@@ -386,6 +397,48 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
             "administrator shortcut refresh",
             links::retarget(id, &record.source, &dir.join("argus-launcher.exe")),
         );
+    }
+    Ok(())
+}
+/// Revocation trusts neither the owner nor the ACL of the runtime directory
+/// (#46). It still takes the lock that enable and maintenance hold while they
+/// change the task and the grant record, so the two always end up together,
+/// and deletes only by name inside pinned directories.
+fn revoke(dir: &Path, mut remove_task: impl FnMut() -> Result<()>) -> Result<()> {
+    let directory = match crate::cleanup::Directory::open(dir) {
+        Ok(Some(directory)) => directory,
+        Ok(None) => {
+            remove_task()?;
+            // A first grant creates the directory before it takes the lock and
+            // registers its task. If one did so meanwhile, finish under its lock.
+            match crate::cleanup::Directory::open(dir)? {
+                Some(directory) => directory,
+                None => return Ok(()),
+            }
+        }
+        // Nothing here can be locked or cleaned; the task still goes.
+        Err(code) => {
+            remove_task()?;
+            return Err(code);
+        }
+    };
+    let _lock = match directory.lock("install.lock", true) {
+        Ok(lock) => lock,
+        // Enable or maintenance is changing the grant; retry afterwards.
+        Err(32) => return Err(32),
+        // They hold it only in a directory whose ACL they verified. A lock
+        // that administrators cannot open, or a link in its place, means the
+        // directory was changed outside Argus (#46): revocation goes on
+        // without the lock rather than fail, and never opens the link.
+        Err(_) => None,
+    };
+    remove_task()?;
+    directory.remove_file("grant.json")?;
+    // The standard launcher still starts the image its record names. Without
+    // a trusted record, leave every copy to the next grant or the uninstaller;
+    // a running copy stays until a later management operation.
+    if let Ok(launch) = read_launch(dir) {
+        sweep(dir, Some(&launch.image));
     }
     Ok(())
 }
@@ -769,6 +822,77 @@ mod tests {
             .collect();
         assert_eq!(remaining, ["launcher-unknown.exe"]);
         fs::remove_file(dir.join("launcher-unknown.exe")).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn revocation_takes_the_management_lock_without_trusting_the_directory() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = std::env::temp_dir().join(format!("argus-revoke-{}", guid().unwrap()));
+        let removed = std::cell::Cell::new(0);
+        let remove = || -> Result<()> {
+            removed.set(removed.get() + 1);
+            Ok(())
+        };
+        revoke(&dir, remove).unwrap();
+        assert_eq!(removed.get(), 1);
+        assert!(!dir.exists());
+
+        fs::create_dir(&dir).unwrap();
+        let image = format!("argus-admin-{}.exe", guid().unwrap());
+        let stale = format!("argus-admin-{}.exe", guid().unwrap());
+        let record = Grant {
+            image: image.clone(),
+            source: dir.join("argus.exe"),
+        };
+        fs::write(dir.join("grant.json"), serde_json::to_vec(&record).unwrap()).unwrap();
+        fs::write(
+            dir.join("launch.json"),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        fs::write(dir.join(&image), b"image").unwrap();
+        fs::write(dir.join(&stale), b"image").unwrap();
+        // The open that enable and maintenance hold while changing both.
+        let held = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .open(dir.join("install.lock"))
+            .unwrap();
+        assert_eq!(revoke(&dir, remove), Err(32));
+        assert_eq!(removed.get(), 1);
+        assert!(dir.join("grant.json").exists());
+        drop(held);
+        revoke(&dir, remove).unwrap();
+        assert_eq!(removed.get(), 2);
+        assert!(!dir.join("grant.json").exists());
+        // A user-owned directory is not trusted to name the launcher's image.
+        assert!(security::protect_directory(&dir).is_err());
+        assert!(dir.join(&image).exists() && dir.join(&stale).exists());
+
+        // A link in place of the lock is never opened, and does not keep the
+        // account's privileges in place.
+        let launch = fs::read(dir.join("launch.json")).unwrap();
+        fs::remove_file(dir.join("install.lock")).unwrap();
+        fs::hard_link(dir.join("launch.json"), dir.join("install.lock")).unwrap();
+        fs::write(dir.join("grant.json"), &launch).unwrap();
+        revoke(&dir, remove).unwrap();
+        assert_eq!(removed.get(), 3);
+        assert!(!dir.join("grant.json").exists());
+        assert_eq!(fs::read(dir.join("install.lock")).unwrap(), launch);
+        let target = dir.join("target");
+        fs::remove_file(dir.join("install.lock")).unwrap();
+        match crate::cleanup::tests::reparse_file(&dir.join("install.lock"), &target) {
+            Ok(()) => {
+                revoke(&dir, remove).unwrap();
+                assert_eq!(removed.get(), 4);
+                assert!(!target.exists());
+            }
+            Err(error) => eprintln!("no file reparse point for this account: {error}"),
+        }
+
+        remove_runtime_files(&dir).unwrap();
         fs::remove_dir(dir).unwrap();
     }
     #[test]

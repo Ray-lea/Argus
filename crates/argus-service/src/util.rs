@@ -62,11 +62,33 @@ pub fn file_stage<T>(name: &'static str, path: &std::path::Path, result: Result<
             format!(
                 "{}; path={}",
                 argus_core::diagnostics::code(*code),
-                argus_core::diagnostics::path(path)
+                log_path(path)
             ),
         );
     }
     result
+}
+
+/// `diagnostics::path` with every account SID folder replaced by `<SID>`:
+/// administrator runtime directories are named after the account's SID, and
+/// the log is attached to public bug reports.
+pub fn log_path(path: &std::path::Path) -> String {
+    use std::path::{Component, PathBuf};
+    let sid = |name: &std::ffi::OsStr| {
+        name.to_str().is_some_and(|name| {
+            name.get(..4)
+                .is_some_and(|p| p.eq_ignore_ascii_case("S-1-"))
+                && name[4..].bytes().all(|b| b.is_ascii_digit() || b == b'-')
+        })
+    };
+    let redacted: PathBuf = path
+        .components()
+        .map(|part| match part {
+            Component::Normal(name) if sid(name) => std::ffi::OsStr::new("<SID>"),
+            part => part.as_os_str(),
+        })
+        .collect();
+    argus_core::diagnostics::path(&redacted)
 }
 
 pub fn io(e: std::io::Error) -> u32 {

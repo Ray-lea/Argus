@@ -17,6 +17,9 @@ Try the full interactive interface and guided tour right in your browser on the 
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily?language=Rust" alt="Ray-lea/Argus | Trendshift Rust" width="250" height="55"/></a>
+
 [Features](#-features) · [Download](#-download) · [Build from source](#-build-from-source) · [Keyboard shortcuts](#-keyboard-shortcuts) · [Documentation](#-documentation) · [Community](#-community)
 
 </div>
@@ -45,23 +48,37 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 
 ## ✨ Features
 
-| | Feature | Description |
-|:---:|---|---|
-| 🧮 | **Processes** | Browse by app, process tree, or flat list, with real-time CPU, memory, disk read/write, network traffic, and GPU usage for each process. Sort, search, and end a process or its entire tree; inspect the command line, user, integrity level, and more in the details pane. |
-| ⚡ | **Priority and efficiency mode** | Adjust them on the fly from the context menu, or create rules that apply automatically whenever a program starts. |
-| 📈 | **Performance** | Monitor CPU (per-core load, P-cores and E-cores, frequency, temperature, and power), memory, disks (including health and SMART attributes), network, GPU, and battery in detail. |
-| 🧩 | **Services and startup apps** | Start and stop Windows services and change their startup type; enable or disable startup apps, staying in sync with Windows Task Manager. |
-| 🌐 | **Connections and ports** | Inspect active TCP and UDP endpoints alongside their owning processes, with exact port filtering and the ability to close connections. |
-| 🔍 | **File locks** | Drop a file or folder onto the window to identify which processes are holding it, combining Restart Manager with handle enumeration (including processes' current working directories). |
-| 🕘 | **History** | Automatically records resource usage charts over the past 7 days; click any point in time to inspect the busiest processes at that moment. |
-| 📌 | **System tray** | Show or hide the window anytime with a global keyboard shortcut; uses minimal resources while hidden, with separate refresh rates for minimized and tray states. |
-| 🔄 | **In-app updates** | Offers Stable and Beta channels; new versions download quietly in the background and notify in the title bar, with release notes available both before and after updating. The default download route tries GitHub, the official mirror, then GitHub proxies, and can be adjusted in Settings. |
-| 🎨 | **Native look** | Features Mica backdrop on Windows 11 and a clean solid background on Windows 10; the system accent color and light or dark theme follow Windows by default, with a theme override in Settings. |
-| 🌍 | **Languages** | Available in English, Simplified Chinese, Traditional Chinese, Spanish, German, Japanese, French and Russian, following the Windows display language by default; includes a welcome guide on first launch to configure essential settings. |
-| 👤 | **No administrator rights needed** | View executable paths and resource usage across all processes as a standard user. |
-| 🔐 | **Optional administrator startup** | Authorize once in Settings or during the welcome guide to launch Argus as administrator from sign-in, shortcuts, and Task Manager entry points; can be turned off at any time. |
-| 🛡️ | **Optional privileged service** | After a one-time administrator approval, Argus running as a standard user can also manage system processes, inspect file locks held by elevated processes, apply rules automatically, control services, close connections, and measure per-process network traffic (as well as disk reads and writes on Windows 10 and Windows 11 prior to 24H2); can be uninstalled anytime in Settings. |
-| 🪟 | **Tasks and system integration** | Supports [replacing the default Windows Task Manager](docs/architecture/task-manager.md) (in Chinese), running new tasks from any page (optionally as administrator), or restarting the current desktop's Windows Explorer. |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-en-dark.svg"><img src="docs/images/features/processes-en-light.svg" width="390" alt="The Processes page switches from the apps view to the process tree; a search for code then leaves Visual Studio Code and its child processes"></picture><br><b>Processes</b>: browse by app, process tree, or list; search, sort, and end a whole tree</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-en-dark.svg"><img src="docs/images/features/performance-en-light.svg" width="390" alt="The Performance page shows CPU utilization, speed, temperature, and power, with a chart for each P-core and E-core"></picture><br><b>Performance</b>: per-core CPU load, speed, temperature, and power, plus memory, disks, network, and GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-en-dark.svg"><img src="docs/images/features/history-en-light.svg" width="390" alt="Two moments are clicked on the 7-day charts of the History page, and the busiest processes at each are listed below"></picture><br><b>History</b>: click any moment on the 7-day charts to see the busiest processes at that time</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-en-dark.svg"><img src="docs/images/features/files-en-light.svg" width="390" alt="A spreadsheet is dropped onto the window; a dialog lists Excel and Windows Explorer as using it, and one of them is ended"></picture><br><b>File locks</b>: drop a file or folder onto the window to list the processes using it</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-en-dark.svg"><img src="docs/images/features/rules-en-light.svg" width="390" alt="HandBrake is right-clicked, its priority is set to Low, and then Efficiency mode is turned on"></picture><br><b>Context menu</b>: set priority, turn on Efficiency mode, or add a rule that applies at every start</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-en-dark.svg"><img src="docs/images/features/ports-en-light.svg" width="390" alt="A search for 8080 on the Connections page finds the process listening on the port and the one connected to it, and the connection is closed"></picture><br><b>Connections and ports</b>: find connections and their processes by port, and close them</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>Services and startup apps</b><br>Start and stop services, change their startup type, and enable or disable startup apps</td>
+<td width="50%" valign="top"><b>System tray</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> shows or hides the window at any time; minimal resource use while hidden</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Task Manager replacement</b><br>Can <a href="docs/architecture/task-manager.md">replace Windows Task Manager</a> (in Chinese) and open on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; runs new tasks and restarts Windows Explorer</td>
+<td width="50%" valign="top"><b>Look and languages</b><br>Mica backdrop, following the system accent color and light or dark theme; 8 interface languages</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>In-app updates</b><br>Stable and Beta channels, background downloads, and release notes in the app</td>
+<td width="50%" valign="top"><b>Permissions</b><br>Every process is visible to a standard user; the privileged service and administrator startup are optional</td>
+</tr>
+</table>
+
+<sub>Owing to the space and image formats a README allows, the demos above are simplified redrawings of the Argus interface with sample processes and data. They are for reference only; the application itself is authoritative.</sub>
 
 ## 📦 Download
 
@@ -86,8 +103,8 @@ See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (in Chinese)
 
 Prerequisites:
 
-- Rust `stable-x86_64-pc-windows-msvc` toolchain (1.99.1 or later)
-- Node.js 26.x from 26.12.1 (24.x LTS from 24.22.1 is also supported) and pnpm 12.14.0
+- Rust `stable-x86_64-pc-windows-msvc` toolchain (1.100.0 or later)
+- Node.js 26.x from 26.13.1 (24.x LTS from 24.22.3 is also supported) and pnpm 12.18.0
 - Visual Studio Build Tools ("Desktop development with C++" workload)
 
 Run the following commands in PowerShell from the repository root:
@@ -127,9 +144,9 @@ The documentation is in Chinese; [online documentation](https://argustask.com/do
 
 ## 💬 Community
 
-[![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ group 453803497](https://img.shields.io/badge/QQ%20group-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram channel @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users (also accessible via About → Join QQ group in Argus).
+Join the Chinese-speaking QQ group to report problems, suggest features, or share experiences with other users. The Telegram channel posts release updates and project news. Both are also accessible from Argus via About → Join QQ group and About → Join channel.
 
 ## 🤝 Contributing
 
@@ -173,6 +190,12 @@ Argus is built upon the following open-source projects, with sincere thanks:
 All third-party components and their license notices are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
 
 Thanks to the [LINUX DO](https://linux.do/) community for its support.
+
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-en-dark.svg"><img src="docs/images/supporters/bronyaicu-en-light.svg" width="720" alt="Project support &amp; special thanks: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
 
 ## 📄 License
 

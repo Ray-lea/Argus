@@ -12,7 +12,7 @@ import {
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import type { Motion } from "./Curve";
 import { language, translate } from "./i18n";
-import { dateLocale, isLanguage, languages, localized, preferredLanguage, type Language } from "@/lib/languages";
+import { dateLocale, isLanguage, languages, localized, preferredLanguage, rememberLanguage, type Language } from "@/lib/languages";
 import {
   appVersion,
   bytes,
@@ -867,6 +867,8 @@ export function VisibilityDialog({
 
 export type ThemeChoice = "site" | "light" | "dark";
 export type VitalsMode = "auto" | "show" | "hide";
+/** Grouping the process list by user: automatic (several users signed in), always or never. */
+export type UserGrouping = "auto" | "on" | "off";
 // The accelerating proxies the updater knows (argus-app config.rs, PROXY_PRESETS).
 const proxies = ["gh-proxy.com", "gh-proxy.org", "ghfast.top"];
 const sections: [string, string, UiIcon][] = [
@@ -962,6 +964,8 @@ export function Settings({
   onFontSize,
   vitals,
   onVitals,
+  userGroups,
+  onUserGroups,
   uiMotion,
   onUiMotion,
   onVisibility,
@@ -981,6 +985,8 @@ export function Settings({
   onFontSize: (size: number) => void;
   vitals: VitalsMode;
   onVitals: (mode: VitalsMode) => void;
+  userGroups: UserGrouping;
+  onUserGroups: (mode: UserGrouping) => void;
   uiMotion: boolean;
   onUiMotion: (on: boolean) => void;
   onVisibility: () => void;
@@ -1078,6 +1084,8 @@ export function Settings({
                 if (value !== "system" && !isLanguage(value)) return;
                 setLanguageChoice(value);
                 const next = value === "system" ? preferredLanguage(navigator.languages) : value;
+                // The site keeps the choice, as it does one made in its header.
+                rememberLanguage(next);
                 if (next !== language()) location.assign(localized(next) + "#demo");
               }}
               options={[{ value: "system", label: "跟随系统" }, ...languages.map(item => ({ value: item.id, label: item.name }))]}
@@ -1135,6 +1143,23 @@ export function Settings({
           </Setting>
           <Setting icon="eyeOff" title="系统进程隐藏规则" desc="自定义始终显示和额外隐藏的程序。进程页与连接页共用规则，通过工具栏图标开启隐藏。">
             <Button onClick={onVisibility}>编辑隐藏规则</Button>
+          </Setting>
+          <Setting
+            icon="users"
+            title="按用户分组进程"
+            desc="进程页按登录用户分组，各组内的视图、分类、排序与搜索不变。自动模式仅在多个用户同时登录（含已断开连接的会话）时分组；系统服务等无用户登录的会话归入“系统”。"
+          >
+            <Select
+              label="按用户分组进程"
+              context="userGroups"
+              value={userGroups}
+              onChange={onUserGroups}
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "on", label: "始终分组" },
+                { value: "off", label: "不分组" },
+              ]}
+            />
           </Setting>
         </section>
         <section>
@@ -1223,6 +1248,13 @@ export function Settings({
             desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新特权服务时同步更新替换程序并保持开启；卸载服务时恢复 Windows 任务管理器。"
           >
             <span className="a-pill">使用 Windows 任务管理器</span>
+            <Button
+              icon="external"
+              title="仅本次打开 Windows 任务管理器，保留当前替换设置。"
+              onClick={() => onSay("演示窗口不会打开 Windows 任务管理器。")}
+            >
+              临时打开系统任务管理器
+            </Button>
           </Setting>
         </section>
         <section>
@@ -1463,6 +1495,10 @@ export function About({
         <Setting icon="chat" title="交流与反馈" desc="加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。">
           <Button onClick={() => onCopy("453803497", "群号")}>复制群号</Button>
           <Button tone="accent">加入 QQ 群</Button>
+        </Setting>
+        <Setting icon="channel" title="Telegram 频道" desc="加入 Telegram 频道 t.me/argustask，获取版本更新与项目动态。">
+          <Button onClick={() => onCopy("https://t.me/argustask", "频道链接")}>复制链接</Button>
+          <Button tone="accent">加入频道</Button>
         </Setting>
         <Setting icon="sparkle" title="首次启动引导" desc="重新查看常用设置与使用提示。">
           <Button>打开引导</Button>

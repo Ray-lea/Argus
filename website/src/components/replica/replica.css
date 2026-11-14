@@ -1434,8 +1434,10 @@ button.a-th:active {
 .a-name.is-muted {
   color: var(--a-ink-2);
 }
+/* The image name gives way first and does not fill the cell: the marks after
+   it (efficiency, suspended) stay beside the text. */
 .a-exe {
-  flex: 1 1 0;
+  flex: 0 1000 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--a-ink-3);
@@ -1514,6 +1516,43 @@ button.a-th:active {
   font-size: calc(11px * var(--a-text));
   font-weight: 600;
   line-height: 18px;
+}
+/* Category headings inside a user's group stand in from its heading. */
+.a-group.is-nested .a-td-name {
+  padding-left: 26px;
+}
+/* A user's heading (grouped by user): on the hover tint, its name at 14 px
+   with the process count beside it. */
+.a-tr.a-user {
+  background: var(--a-hover);
+  cursor: default;
+}
+.a-user .a-td {
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+.a-user .a-td-name {
+  gap: 8px;
+}
+.a-user .a-td-name .a-fold {
+  margin-right: 0;
+}
+.a-user .a-td-name > .ico {
+  flex: none;
+  color: var(--a-ink-2);
+}
+.a-user-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-ink);
+  font-size: calc(14px * var(--a-text));
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+.a-user-detail {
+  flex: none;
+  color: var(--a-ink-3);
 }
 .a-group-rule {
   flex: 1;
@@ -1769,14 +1808,48 @@ button.a-th:active {
 .a-tips {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   margin-top: 16px;
-  padding: 10px 12px;
   border: 1px dashed var(--a-stroke-strong);
   border-radius: 6px;
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
   line-height: 1.5;
+}
+/* The heading folds the tips; 6 px above and below its line, as between tips. */
+.a-tips-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-weight: 500;
+  text-align: start;
+}
+.a-tips-head:hover {
+  background: var(--a-hover);
+}
+.a-tips-head:active {
+  background: var(--a-press);
+}
+.a-tips-head > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-tips-head > .ico:first-child {
+  color: var(--a-accent);
+}
+.a-tips-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
 }
 .a-tips p {
   display: flex;
@@ -1910,6 +1983,23 @@ button.a-th:active {
   color: var(--a-ink);
   text-align: start;
   transition: background-color 83ms linear;
+}
+/* Dragging an entry: the others make way, the dragged one rides the pointer
+   above them; the right-clickable CPU graphs keep their layout. */
+.a-rail.is-dragging .a-rail-item {
+  transition: transform 180ms var(--a-ease-move);
+}
+.a-rail.is-dragging .a-rail-item.is-lifted {
+  z-index: 2;
+  background: var(--a-layer);
+  border-color: var(--a-stroke);
+  transition: none;
+}
+.a-rail.is-dragging .a-rail-mark {
+  transition: none;
+}
+.a-cpu-graphs {
+  display: contents;
 }
 .a-rail-item:not([aria-current]):hover {
   background: var(--a-hover);
@@ -2217,11 +2307,14 @@ button.a-th:active {
 .a-specs dd > span {
   display: block;
 }
+/* Columns as Performance.tsx picks them for the grid's size; rows share the
+   height left and flatten to the cards' fit height (theme.json coreFitHeight)
+   before the view scrolls. */
 .a-cores-grid {
   display: grid;
   flex: 1 1 0;
   grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
-  grid-auto-rows: minmax(80px, 1fr);
+  grid-auto-rows: minmax(60px, 1fr);
   gap: 6px;
 }
 .a-core {
@@ -2418,13 +2511,13 @@ button.a-th:active {
   border-radius: 50%;
   background: var(--c);
 }
-/* A level bar: the colour at 18 % for the track, a 2 px mark for a threshold. */
+/* A level bar on a neutral track, a 2 px neutral mark for a threshold. */
 .a-disk-meter {
   position: relative;
   height: 6px;
   margin-top: 10px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 18%, transparent);
+  background: var(--a-stroke-strong);
 }
 .a-disk-meter i {
   position: absolute;
@@ -2436,12 +2529,12 @@ button.a-th:active {
 }
 .a-disk-meter b {
   position: absolute;
-  top: -3px;
+  top: -2px;
   width: 2px;
-  height: 12px;
+  height: 10px;
   margin-left: -1px;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--a-ink) 50%, transparent);
+  background: color-mix(in srgb, var(--a-ink) 65%, transparent);
 }
 .a-disk-tile p {
   margin: 6px 0 0;
@@ -3788,6 +3881,56 @@ button.a-th:active {
 .a-ptable .a-thead .a-col-name {
   flex-basis: 176px;
 }
+/* With automatic widths the name fits its contents and the rest of the
+   table stays empty (or the name takes it, "全宽"). */
+.a-ptable[data-fit] .a-col-name {
+  flex: none;
+  width: var(--a-name-w);
+}
+.a-ptable[data-fit] .a-thead .a-col-name {
+  width: calc(var(--a-name-w) - 4px);
+}
+/* A column's edge: an accent line under the pointer, dragged to resize,
+   double-clicked back to its automatic width. */
+.a-ptable .a-th:not(.a-col-name) {
+  position: relative;
+}
+.a-col-edge {
+  position: absolute;
+  top: 4px;
+  right: -4px;
+  bottom: 4px;
+  z-index: 4;
+  width: 8px;
+  cursor: col-resize !important;
+  touch-action: none;
+}
+.a-col-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 120ms;
+}
+.a-col-edge:hover::after,
+.a-ptable[data-resizing] .a-col-edge:active::after {
+  background: var(--a-accent);
+}
+.a-ptable[data-resizing] .a-th:hover {
+  background: transparent;
+}
+@keyframes a-fit-flash {
+  from {
+    background-color: color-mix(in srgb, var(--a-accent) 22%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
 /* The selection mark rides on the name, which stays in view. */
 .a-ptable .a-tr.is-selected::before {
   content: none;
@@ -4276,9 +4419,6 @@ button.a-th:active {
   .a-two {
     grid-template-columns: 1fr;
   }
-  .a-cores-grid {
-    --cols: 3 !important;
-  }
   .a-connections {
     --cols: minmax(130px, 1fr) 70px 80px 84px;
   }
@@ -4391,9 +4531,6 @@ button.a-th:active {
   }
   .a-history-axis {
     margin-left: 86px;
-  }
-  .a-cores-grid {
-    --cols: 2 !important;
   }
   .a-caption button {
     width: 30px;

@@ -18,10 +18,44 @@ impl Desktop {
                 }
             }
         }
+        // The tray's flyouts, opened where the shell would put them but never
+        // activated: "card", "panel", "warm" to make their window ahead of
+        // use, or anything else to close them.
+        if let Some(flyout) = control.get("trayFlyout") {
+            let anchor = json!(crate::shell::sample_anchor());
+            match flyout.as_str() {
+                Some("card") => {
+                    self.tray_card(&json!({"open": true, "anchor": anchor}), window, cx)
+                }
+                Some("panel") => self.tray_panel(&anchor, window, cx),
+                Some("warm") => self.warm_tray(window, cx),
+                _ => {
+                    self.tray_card(&json!({"open": false}), window, cx);
+                    self.close_tray_panel(cx);
+                }
+            }
+        }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")
         {
             let _ = self.host.emit("argus-restored", restored.clone());
+        }
+        if self.options.fixture.is_some()
+            && let Some(saved) = control.get("restoreWindow")
+            && let Ok(saved) =
+                serde_json::from_value::<argus_app::preferences::WindowPlacement>(saved.clone())
+            && saved.valid()
+            && let Some(native) = self.host.get_window("main")
+            && native.is_visible().is_ok_and(|visible| !visible)
+        {
+            let file = self
+                .host
+                .path()
+                .app_config_dir()
+                .unwrap()
+                .join("preferences.json");
+            argus_app::preferences::save_window(&file, saved).expect("test window placement");
+            crate::window_state::install(native.hwnd().unwrap(), file);
         }
         if self.options.fixture.is_some()
             && let Some(dimensions) = control["nativeResize"].as_array().filter(|a| a.len() == 2)
@@ -176,7 +210,7 @@ impl Desktop {
         }
         if let Some(wheel) = control.get("wheel") {
             // A mouse-wheel notch at a point (test only): {"x":…,"y":…,"lines":…}.
-            let event = ScrollWheelEvent {
+            let event = ScrollEvent {
                 position: point(px(number(wheel, "x") as f32), px(number(wheel, "y") as f32)),
                 delta: ScrollDelta::Lines(point(
                     number(wheel, "linesX") as f32,
@@ -187,12 +221,13 @@ impl Desktop {
                     ..Default::default()
                 },
                 touch_phase: TouchPhase::Moved,
+                source: ScrollSource::Pointer,
             };
             window.defer(cx, move |window, cx| {
                 if let Some(ms) = scrollbar::trace_ms() {
                     println!("{}", json!({"event":"wheel","ms":ms}));
                 }
-                window.dispatch_event(PlatformInput::ScrollWheel(event), cx);
+                window.dispatch_event(PlatformInput::Scroll(event), cx);
             });
         }
         if let Some(ms) = control["scrollTrace"].as_u64() {
@@ -329,15 +364,21 @@ impl Desktop {
             pointer.push(press(end, false));
         }
         // One step of a slower gesture: a hover, down, a move holding the button or
-        // up, at the middle of a remembered element (or `header:<key>`) moved by
-        // `dx`, `dy`. Without `at`, it is measured from where the gesture began, so
-        // a drag reads the same however the element moves under it.
+        // up, at the middle of a remembered element (or `header:<key>`, or the
+        // table's `row:<index>`) moved by `dx`, `dy`. Without `at`, it is measured
+        // from where the gesture began, so a drag reads the same however the
+        // element moves under it.
         let step = &control["pointer"];
         let target = step["at"]
             .as_str()
-            .and_then(|name| match name.strip_prefix("header:") {
-                Some(key) => self.header_bounds.borrow().get(key).copied(),
-                None => anchor(&step["at"]),
+            .and_then(|name| {
+                if let Some(key) = name.strip_prefix("header:") {
+                    self.header_bounds.borrow().get(key).copied()
+                } else if let Some(index) = name.strip_prefix("row:") {
+                    self.row_bounds(index.parse().ok()?, cx)
+                } else {
+                    anchor(&step["at"])
+                }
             })
             .map(|bounds| bounds.center());
         if target.is_some() {
@@ -370,7 +411,13 @@ impl Desktop {
                         ..Default::default()
                     }),
                 ]),
-                Some("down") => pointer.push(press(at, true)),
+                // `clicks` 2: the second press of a double-click, held.
+                Some("down") => pointer.push(PlatformInput::MouseDown(MouseDownEvent {
+                    position: at,
+                    button: MouseButton::Left,
+                    click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
+                    ..Default::default()
+                })),
                 Some("up") => pointer.push(press(at, false)),
                 // A second click in place, as the platform reports one.
                 Some("double") => pointer.extend([
@@ -514,6 +561,21 @@ impl Desktop {
                 .unwrap_or_default();
             let about_max = f32::from(self.about_scroll.max_offset().y);
             let about_offset = f32::from(self.about_scroll.offset().y).abs();
+            let native_window = self.host.get_window("main").and_then(|native| {
+                use windows::Win32::{Foundation::RECT, UI::WindowsAndMessaging::*};
+                let hwnd = native.hwnd().ok()?;
+                let mut client = RECT::default();
+                unsafe { GetClientRect(hwnd, &mut client) }.ok()?;
+                let viewport = window
+                    .viewport_size()
+                    .map(|length| length * window.scale_factor());
+                Some(json!({
+                    "maximized": unsafe { IsZoomed(hwnd).as_bool() },
+                    "width": client.right, "height": client.bottom,
+                    "viewportMatchesClient": (f32::from(viewport.width) - client.right as f32).abs() < 1.
+                        && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
+                }))
+            });
             println!(
                 "{}",
                 json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
@@ -529,10 +591,13 @@ impl Desktop {
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
+                "diagnosticCopy":if self.options.fixture.is_some() { self.data.get("diagnosticCopy") } else { None },
+                "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
+                "nativeWindow":native_window,
                 "width":f32::from(window.viewport_size().width),"height":f32::from(window.viewport_size().height),"scaleFactor":window.scale_factor(),"remSize":f32::from(window.rem_size()),
                 "cpuPlot":self.chart_bounds("cpu-overall-plot").map(|b|[f32::from(b.left()),f32::from(b.top()),f32::from(b.size.width),f32::from(b.size.height)]),
                 "performanceScrollY":f32::from(self.device_scroll.max_offset().y),
@@ -702,7 +767,7 @@ impl Desktop {
             let strokes = keys
                 .iter()
                 .filter_map(Value::as_str)
-                .filter_map(|k| Keystroke::parse(k).ok())
+                .filter_map(|k| Keystroke::parse_with_os(k, OperatingSystem::Windows).ok())
                 .collect::<Vec<_>>();
             window.defer(cx, move |window, cx| {
                 for stroke in strokes {
@@ -860,12 +925,9 @@ impl Desktop {
                 .map(|bounds| point(bounds.left() + px(16.), bounds.bottom()));
             self.process_header_menu(Some(key.into()), at, window, cx);
         }
-        if let Some(index) = control["rowMenu"].as_u64()
-            && let Some(row) = self.rows.get(index as usize).cloned()
-        {
-            self.selected.insert(self.page.clone(), row.key.clone());
-            let items = self.row_menu(&row);
-            self.open_popup(items, window, cx);
+        // What a right press on that row does; `pointer` presses on it for real.
+        if let Some(index) = control["rowMenu"].as_u64() {
+            self.open_row_menu(index as usize, window, cx);
         }
         if control["dismiss"].as_bool() == Some(true) {
             self.act(Action::CloseOverlay, window, cx);
@@ -912,6 +974,11 @@ impl Desktop {
                 cx,
             );
         }
-        cx.notify();
+        // A passive control stands for the input it dispatches alone: it draws
+        // again only what the same input from the system would, so a frame
+        // trace shows what a pointer move or a wheel notch invalidates.
+        if control["passive"].as_bool() != Some(true) {
+            cx.notify();
+        }
     }
 }

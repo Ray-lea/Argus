@@ -181,15 +181,15 @@
       "title": "Fallos de página acumulados, incluidos fallos leves y graves."
     },
     "ioRead": {
-      "label": "Lectura de E/S",
+      "label": "Lectura de I/O",
       "title": "I/O bytes leídos por segundo, incluidos archivos, redes y dispositivos."
     },
     "ioWrite": {
-      "label": "Escritura de E/S",
+      "label": "Escritura de I/O",
       "title": "I/O bytes escritos por segundo, incluidos archivos, redes y dispositivos."
     },
     "ioOther": {
-      "label": "Otras E/S",
+      "label": "Otras I/O",
       "title": "Bytes transferidos por segundo por otras operaciones I/O."
     },
     "ioReadTotal": {
@@ -311,7 +311,7 @@
       "general": "General",
       "cpu": "CPU",
       "memory": "Memoria",
-      "io": "Disco y E/S",
+      "io": "Disco y I/O",
       "network": "Red",
       "gpu": "GPU",
       "all": "Todos"

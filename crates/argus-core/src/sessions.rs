@@ -6,7 +6,8 @@
 //! and sessions at the sign-in screen have no user and are not listed.
 
 use std::ffi::c_void;
-use std::sync::Arc;
+use std::sync::mpsc::SyncSender;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -85,9 +86,10 @@ fn current_session() -> Option<u32> {
     (unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) } != 0).then_some(session)
 }
 
-/// The sessions a user is signed in to, in session order. `None` when the
-/// session manager does not answer: the previous list then stays in use.
-fn enumerate() -> Option<Vec<(u32, String, String, bool)>> {
+/// The sessions a user is signed in to, in session order. The Win32 error
+/// code when the session manager does not answer: the previous list then
+/// stays in use.
+fn enumerate() -> Result<Vec<(u32, String, String, bool)>, u32> {
     let mut level = 1;
     let mut list = std::ptr::null_mut();
     let mut count = 0;
@@ -95,9 +97,11 @@ fn enumerate() -> Option<Vec<(u32, String, String, bool)>> {
     if unsafe {
         WTSEnumerateSessionsExW(std::ptr::null_mut(), &mut level, 0, &mut list, &mut count)
     } == 0
-        || list.is_null()
     {
-        return None;
+        return Err(unsafe { GetLastError() });
+    }
+    if list.is_null() {
+        return Ok(Vec::new());
     }
     let mut sessions: Vec<_> = unsafe { std::slice::from_raw_parts(list, count as usize) }
         .iter()
@@ -115,7 +119,32 @@ fn enumerate() -> Option<Vec<(u32, String, String, bool)>> {
         .collect();
     unsafe { WTSFreeMemoryExW(TYPE_SESSION_INFO_LEVEL_1, list.cast(), count) };
     sessions.sort_by_key(|session| session.0);
-    Some(sessions)
+    Ok(sessions)
+}
+
+/// Replaces `sessions` with `found` unless they list the same sessions, so
+/// names stay shared and nothing is allocated while nobody signs in or out.
+fn update(sessions: &mut Vec<LogonSession>, found: Vec<(u32, String, String, bool)>) {
+    let unchanged = found.len() == sessions.len()
+        && found.iter().zip(sessions.iter()).all(|(new, old)| {
+            new.0 == old.id
+                && *new.1 == *old.user
+                && *new.2 == *old.domain
+                && new.3 == old.disconnected
+        });
+    if !unchanged {
+        let current = current_session();
+        *sessions = found
+            .into_iter()
+            .map(|(id, user, domain, disconnected)| LogonSession {
+                id,
+                user: user.into(),
+                domain: domain.into(),
+                current: current == Some(id),
+                disconnected,
+            })
+            .collect();
+    }
 }
 
 /// Users sign in and out rarely, and the session manager takes about 0.3 ms
@@ -123,61 +152,77 @@ fn enumerate() -> Option<Vec<(u32, String, String, bool)>> {
 /// at the default interval is often enough.
 const REFRESH: Duration = Duration::from_millis(1900);
 
+/// The signed-in sessions for sampling. The session manager's call has no
+/// timeout, so after the first list a reader thread makes it: sampling asks
+/// for a newer list once `REFRESH` has passed and takes the latest one
+/// without waiting. A session manager that stops answering leaves the last
+/// list in place instead of stalling every other reading.
 pub(crate) struct SessionTracker {
-    current: Option<u32>,
-    sessions: Vec<LogonSession>,
-    read: Option<Instant>,
+    latest: Arc<Mutex<Vec<LogonSession>>>,
+    /// Wakes the reader; `None` when its thread could not start.
+    ask: Option<SyncSender<()>>,
+    asked: Instant,
 }
 
 impl SessionTracker {
     pub fn new() -> Self {
+        // The first list is read here, so the first sample groups processes
+        // by user right away.
+        let mut first = Vec::new();
+        if let Ok(found) = enumerate() {
+            update(&mut first, found);
+        }
+        let latest = Arc::new(Mutex::new(first));
+        let (ask, asks) = std::sync::mpsc::sync_channel::<()>(1);
+        let shared = latest.clone();
+        let ask = std::thread::Builder::new()
+            .name("argus-sessions".into())
+            // Ends once the tracker, and with it the sender, is gone.
+            .spawn(move || {
+                for () in asks {
+                    if let Ok(found) = enumerate() {
+                        update(
+                            &mut shared.lock().unwrap_or_else(PoisonError::into_inner),
+                            found,
+                        );
+                    }
+                }
+            })
+            .ok()
+            .map(|_| ask);
         Self {
-            current: current_session(),
-            sessions: Vec::new(),
-            read: None,
+            latest,
+            ask,
+            asked: Instant::now(),
         }
     }
 
-    /// The signed-in sessions, read again once `REFRESH` has passed. Names
-    /// are shared with the previous sample's: nothing is allocated while
-    /// nobody signs in or out.
+    /// The latest signed-in sessions; asks the reader for a newer list once
+    /// `REFRESH` has passed.
     pub fn sample(&mut self) -> Vec<LogonSession> {
         let now = Instant::now();
-        if self
-            .read
-            .is_some_and(|read| now.saturating_duration_since(read) < REFRESH)
+        if now.saturating_duration_since(self.asked) >= REFRESH
+            && let Some(ask) = &self.ask
         {
-            return self.sessions.clone();
+            // Full while the reader still waits on the previous call: that
+            // answer will do.
+            let _ = ask.try_send(());
+            self.asked = now;
         }
-        self.read = Some(now);
-        if let Some(found) = enumerate() {
-            let unchanged = found.len() == self.sessions.len()
-                && found.iter().zip(&self.sessions).all(|(new, old)| {
-                    new.0 == old.id
-                        && *new.1 == *old.user
-                        && *new.2 == *old.domain
-                        && new.3 == old.disconnected
-                });
-            if !unchanged {
-                self.sessions = found
-                    .into_iter()
-                    .map(|(id, user, domain, disconnected)| LogonSession {
-                        id,
-                        user: user.into(),
-                        domain: domain.into(),
-                        current: self.current == Some(id),
-                        disconnected,
-                    })
-                    .collect();
-            }
-        }
-        self.sessions.clone()
+        self.latest
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
 /// The signed-in sessions, read once (not part of sampling).
 pub fn list() -> Vec<LogonSession> {
-    SessionTracker::new().sample()
+    let mut sessions = Vec::new();
+    if let Ok(found) = enumerate() {
+        update(&mut sessions, found);
+    }
+    sessions
 }
 
 #[link(name = "wtsapi32")]
@@ -232,8 +277,9 @@ fn sessions_to_end(
 /// to be the same user's), and is reported as denied otherwise. `NotFound`
 /// when the user is in none of the sessions any more.
 pub fn sign_out(user: &str, domain: &str, sessions: &[u32]) -> Result<(), ActionError> {
-    let signed_in =
-        enumerate().ok_or_else(|| ActionError::Os("session list unavailable".into()))?;
+    // Reported as the code alone, as the other failures here are: the
+    // interface shows it inside its own translated message.
+    let signed_in = enumerate().map_err(|code| ActionError::Os(format!("0x{code:08X}")))?;
     let own = current_session();
     let targets = sessions_to_end(&signed_in, own, user, domain, sessions);
     if targets.is_empty() {

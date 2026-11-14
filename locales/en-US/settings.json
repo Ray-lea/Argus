@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Refresh rate in the tray",
-      "desc": "How often Argus samples while it's hidden in the tray; the tray tooltip updates at the same pace. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+      "desc": "How often Argus samples while it's hidden in the tray; the tray icon and its tooltip update at the same pace. Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
     },
     "background": {
       "error": "Couldn't save the refresh rate: {error}"
@@ -409,6 +409,13 @@
       "copy": "Copy group number",
       "number": "group number"
     },
+    "channel": {
+      "title": "Telegram channel",
+      "desc": "Join the Telegram channel {channel} for release updates and project news.",
+      "join": "Join channel",
+      "copy": "Copy link",
+      "link": "channel link"
+    },
     "license": {
       "title": "License",
       "desc": "Argus is free software, released under the GNU Affero General Public License, version 3 or any later version (AGPL-3.0-or-later). It can be redistributed and modified under the terms of that license. Argus comes with no warranty.",
@@ -424,6 +431,33 @@
       "title": "Log",
       "desc": "Records the runtime environment, feature status, failed steps, error codes and actual paths of related files or folders. Stored locally, with up to 1 MB per file and 3 previous logs. Command lines, credentials and file contents are excluded. Use this entry to locate diagnostic logs for bug reports.",
       "open": "Open log folder"
+    },
+    "diagnostics": {
+      "title": "Diagnostic information",
+      "desc": "Copy the current version, runtime state, hardware and display settings to paste into an issue report. Missing information is marked as unknown.",
+      "copy": "Copy diagnostic information",
+      "unknown": "Unknown",
+      "version": "Full Argus version",
+      "windows": "Windows version",
+      "build": "Build type",
+      "installation": "Installation",
+      "installed": "Installed version",
+      "portable": "Portable version",
+      "source": "Development build",
+      "permission": "Current permissions",
+      "administrator": "Administrator",
+      "standard": "Standard user",
+      "sampleTime": "Snapshot time (UTC)",
+      "cpuCores": "CPU cores / threads",
+      "display": "Current display resolution",
+      "window": "Window client area",
+      "systemScale": "Windows scaling",
+      "fontSize": "Font size",
+      "language": "Interface language",
+      "refresh": "Foreground refresh interval",
+      "paused": "Sampling paused",
+      "sensorReadings": "Sensor state in snapshot",
+      "row": "{name}: {value}"
     }
   },
   "sensors": {

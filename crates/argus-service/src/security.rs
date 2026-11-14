@@ -1,6 +1,5 @@
 use std::ffi::c_void;
 use std::path::Path;
-use std::sync::OnceLock;
 
 use windows::Win32::Security::{LookupAccountNameW, SID_NAME_USE, SidTypeDomain, SidTypeUser};
 
@@ -28,6 +27,11 @@ use windows::Win32::System::Threading::{
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::util::{Handle, Result, UNSAFE_PATH, wide, win};
+
+// Windows Resource Protection uses this fixed service SID on every machine.
+// Trust the identity directly: name lookup can fail under a restricted token.
+const TRUSTED_INSTALLER_SID: &str =
+    "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
 
 pub struct Descriptor(pub PSECURITY_DESCRIPTOR);
 impl Descriptor {
@@ -278,7 +282,7 @@ pub fn protect_directory(path: &Path) -> Result<Handle> {
             format!(
                 "{}; path={}; check={trace:?}",
                 argus_core::diagnostics::code(error.code()),
-                argus_core::diagnostics::path(path)
+                crate::util::log_path(path)
             ),
         );
         error.code()
@@ -320,7 +324,7 @@ fn principal_name(sid: &str) -> &'static str {
         "S-1-3-0" => "Creator Owner",
         "S-1-15-2-1" => "All Application Packages",
         "S-1-15-2-2" => "All Restricted Application Packages",
-        value if trusted(value) => "TrustedInstaller",
+        TRUSTED_INSTALLER_SID => "TrustedInstaller",
         _ => "other account or group",
     }
 }
@@ -481,36 +485,7 @@ fn check_acl_with(
 }
 
 fn trusted(sid: &str) -> bool {
-    if matches!(sid, "S-1-5-18" | "S-1-5-32-544") {
-        return true;
-    }
-    // Program Files itself is normally owned by TrustedInstaller. Resolve the
-    // local service SID rather than accepting arbitrary service-account ACEs.
-    static INSTALLER: OnceLock<Option<String>> = OnceLock::new();
-    INSTALLER
-        .get_or_init(|| {
-            let mut bytes = [0u64; 16];
-            let mut size = std::mem::size_of_val(&bytes) as u32;
-            let mut domain = [0u16; 256];
-            let mut domain_size = domain.len() as u32;
-            let mut kind = SID_NAME_USE::default();
-            let sid = PSID(bytes.as_mut_ptr().cast());
-            unsafe {
-                LookupAccountNameW(
-                    None,
-                    PCWSTR(wide(r"NT SERVICE\TrustedInstaller").as_ptr()),
-                    Some(sid),
-                    &mut size,
-                    Some(PWSTR(domain.as_mut_ptr())),
-                    &mut domain_size,
-                    &mut kind,
-                )
-            }
-            .ok()?;
-            sid_string(sid).ok()
-        })
-        .as_deref()
-        == Some(sid)
+    matches!(sid, "S-1-5-18" | "S-1-5-32-544" | TRUSTED_INSTALLER_SID)
 }
 
 #[cfg(test)]
@@ -721,5 +696,125 @@ mod tests {
     fn system_program_files_is_a_trusted_parent() {
         let dir = crate::install::directory().unwrap();
         protect_directory(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn trusted_installer_owned_files_and_registry_keys_keep_their_acl_checks() {
+        for (rights, read, mask) in [("FA", "FRFX", 0x520d_0156), ("KA", "KR", 0x520d_0006)] {
+            let safe = format!(
+                "O:{TRUSTED_INSTALLER_SID}G:SYD:(A;;{rights};;;{TRUSTED_INSTALLER_SID})(A;;{rights};;;SY)(A;;{rights};;;BA)(A;;{read};;;BU)"
+            );
+            let mut trace = PathInspection::default();
+            assert_eq!(inspect_acl_details(&safe, mask, &mut trace), Ok(()));
+            assert_eq!(trace.owner, "TrustedInstaller");
+            for trustee in ["BU", "WD", "S-1-5-80-1-2-3-4-5"] {
+                let writable = format!("{safe}(A;;{rights};;;{trustee})");
+                assert_eq!(inspect_acl_mask(&writable, mask), Err(PathError::Writable));
+            }
+            let no_dacl = format!("O:{TRUSTED_INSTALLER_SID}G:SYD:NO_ACCESS_CONTROL");
+            assert_eq!(
+                inspect_acl_mask(&no_dacl, mask),
+                Err(PathError::Permissions)
+            );
+        }
+    }
+
+    #[test]
+    fn other_service_sids_and_account_owners_remain_untrusted() {
+        for owner in [
+            "S-1-5-80-0",
+            "S-1-5-80-1-2-3-4-5",
+            "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478465",
+            "S-1-5-21-1-2-3-1001",
+        ] {
+            let mut trace = PathInspection::default();
+            let sddl = format!("O:{owner}G:SYD:(A;;FA;;;SY)(A;;FA;;;BA)");
+            assert_eq!(
+                inspect_acl_details(&sddl, 0x520d_0156, &mut trace),
+                Err(PathError::Owner)
+            );
+            assert_eq!(trace.owner, "other account or group");
+        }
+    }
+
+    #[test]
+    fn trusted_installer_acl_does_not_depend_on_account_lookup_access() {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        use windows::Win32::Security::{
+            CreateRestrictedToken, CreateWellKnownSid, DISABLE_MAX_PRIVILEGE,
+            ImpersonateLoggedOnUser, SID_AND_ATTRIBUTES, TOKEN_DUPLICATE, WinNullSid,
+        };
+        use windows::Win32::System::Threading::CREATE_NO_WINDOW;
+
+        // A fresh process prevents other tests from priming the account lookup
+        // cache before this restricted-token failure is exercised.
+        const CHILD: &str = "ARGUS_TEST_RESTRICTED_INSTALLER_LOOKUP";
+        const TEST: &str =
+            "security::tests::trusted_installer_acl_does_not_depend_on_account_lookup_access";
+        if std::env::var_os(CHILD).is_none() {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--nocapture"])
+                .env(CHILD, "1")
+                .creation_flags(CREATE_NO_WINDOW.0)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stdout}\n{stderr}");
+            assert!(stdout.contains(TEST), "child did not run {TEST}: {stdout}");
+            return;
+        }
+
+        let mut token = HANDLE::default();
+        unsafe {
+            OpenProcessToken(
+                GetCurrentProcess(),
+                TOKEN_QUERY | TOKEN_DUPLICATE,
+                &mut token,
+            )
+        }
+        .unwrap();
+        let token = Handle(token);
+        let mut bytes = [0u64; 8];
+        let sid = PSID(bytes.as_mut_ptr().cast());
+        let mut size = size_of_val(&bytes) as u32;
+        unsafe { CreateWellKnownSid(WinNullSid, None, Some(sid), &mut size) }.unwrap();
+        let restrict = [SID_AND_ATTRIBUTES {
+            Sid: sid,
+            Attributes: 0,
+        }];
+        let mut restricted = HANDLE::default();
+        unsafe {
+            CreateRestrictedToken(
+                token.0,
+                DISABLE_MAX_PRIVILEGE,
+                None,
+                None,
+                Some(&restrict),
+                &mut restricted,
+            )
+        }
+        .unwrap();
+        let restricted = Handle(restricted);
+        struct Revert;
+        impl Drop for Revert {
+            fn drop(&mut self) {
+                if unsafe { RevertToSelf() }.is_err() {
+                    std::process::abort();
+                }
+            }
+        }
+        let (lookup, result) = {
+            unsafe { ImpersonateLoggedOnUser(restricted.0) }.unwrap();
+            let _revert = Revert;
+            let lookup = lookup_account(r"NT SERVICE\TrustedInstaller");
+            let result = inspect_acl(
+                "O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:SYD:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;BU)",
+            );
+            (lookup.map(|(sid, _, _)| sid), result)
+        };
+        eprintln!("TrustedInstaller lookup with restricted token: {lookup:?}");
+        assert_eq!(result, Ok(()));
     }
 }

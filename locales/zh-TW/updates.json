@@ -4,7 +4,7 @@
   "readyToast": "Argus {version} 已準備就緒",
   "availableToast": "發現新版本 {version}",
   "view": "檢視",
-  "openDialog": "在彈出視窗中檢視",
+  "openDialog": "檢視更新內容",
   "button": {
     "title": "Argus {version} 已準備就緒。按一下檢視更新內容並安裝",
     "availableTitle": "發現新版本 {version}。按一下檢視更新內容"
@@ -29,6 +29,8 @@
     "source": "來自 {source}",
     "progress": "已下載 {received} / {total}",
     "changes": "{count} 項變更",
+    "expandAll": "全部展開",
+    "collapseAll": "全部收合",
     "earlier": "更早版本的更新內容可在 GitHub 上檢視。",
     "empty": "暫無可顯示的更新內容，可在 GitHub 上檢視。",
     "language": "部分版本的更新內容僅有中文版。",

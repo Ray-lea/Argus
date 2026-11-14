@@ -1,3 +1,7 @@
 /questions/ /#faq 301
 /en/questions/ /en/#faq 301
 /search/ /docs/ 301
+# Requests for Markdown arrive rewritten to index.md (docs/development/website.md).
+/questions/index.md /#faq 301
+/en/questions/index.md /en/#faq 301
+/search/index.md /docs/ 301

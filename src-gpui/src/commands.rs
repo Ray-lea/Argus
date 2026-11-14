@@ -19,7 +19,8 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute,
+    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, TrayIcon, TrayMenu,
+    UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -116,6 +117,7 @@ pub struct AppInfo {
     /// (`build-support/build-version.rs`).
     build: &'static str,
     build_kind: argus_app::config::BuildKind,
+    windows: Option<&'static str>,
     elevated: bool,
     /// Relaunched by the installer of an update.
     updated: bool,
@@ -134,6 +136,7 @@ pub fn app_info(app: crate::native_runtime::Host) -> AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         build: env!("ARGUS_VERSION"),
         build_kind: argus_app::config::build_kind(env!("ARGUS_VERSION"), cfg!(debug_assertions)),
+        windows: crate::diagnostics::windows_version(),
         elevated: state.elevated,
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,
@@ -478,6 +481,32 @@ pub fn set_close_to_tray(
     Ok(settings_view(&app))
 }
 
+/// The tray icon's look, its hover card and what a right click opens; each
+/// one given changes, and the icon follows at once.
+pub fn set_tray(
+    app: crate::native_runtime::Host,
+    icon: Option<TrayIcon>,
+    card: Option<bool>,
+    menu: Option<TrayMenu>,
+) -> Result<SettingsView, String> {
+    let saved = app
+        .state::<SettingsStore>()
+        .update(|s| {
+            if let Some(icon) = icon {
+                s.tray_icon = icon;
+            }
+            if let Some(card) = card {
+                s.tray_card = card;
+            }
+            if let Some(menu) = menu {
+                s.tray_menu = menu;
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    shell::apply_tray(&saved);
+    Ok(settings_view(&app))
+}
+
 /// How often to sample while minimized and while in the tray, ms; takes
 /// effect at once.
 pub fn set_background_intervals(
@@ -775,6 +804,16 @@ pub fn open_community() -> Result<(), String> {
         argus_app::config::manifest()["community"]["url"]
             .as_str()
             .expect("community URL"),
+    )
+}
+
+/// Opens the Telegram channel in the default browser, which offers to hand it
+/// to Telegram.
+pub fn open_channel() -> Result<(), String> {
+    crate::shell::open_url(
+        argus_app::config::manifest()["community"]["channel"]
+            .as_str()
+            .expect("channel URL"),
     )
 }
 

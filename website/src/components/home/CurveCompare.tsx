@@ -102,7 +102,7 @@ export default function CurveCompare({ lang }: { lang: Language }) {
     </div>
   );
   return (
-    <div className="compare" ref={root}>
+    <div className="compare" ref={root} data-markdown="skip">
       <div className="compare-lanes" data-ui>
         {lane(t.argus, t.argusNote, true)}
         {lane(t.native, t.nativeNote, false)}

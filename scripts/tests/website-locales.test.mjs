@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { languages, localized, languageOfPath, notesLanguage, preferredLanguage } from "../../website/src/lib/languages.ts";
+import { languages, localized, languageOfPath, notesLanguage, offeredLanguage, offers, preferredLanguage } from "../../website/src/lib/languages.ts";
 import { translateValue } from "../../website/src/lib/translate.ts";
 import { labelTables, translateHtml } from "../../website/scripts/translate-html.mjs";
 import { prepareReplicaCatalogs } from "../../website/scripts/locales.mjs";
@@ -23,6 +23,20 @@ test("the demo's system choice follows the first supported browser language", ()
   assert.equal(preferredLanguage(["zh-CN-x-hant"]), "zh");
   assert.equal(preferredLanguage(["ja-JP"]), "ja");
   assert.equal(preferredLanguage(["pt-BR"]), "en");
+});
+test("a page offers the visitor's language until one is chosen or the offer is closed", () => {
+  assert.equal(offeredLanguage("zh", null, null, ["en-US", "zh-CN"]), "en");
+  assert.equal(offeredLanguage("zh", null, null, ["zh-CN", "en-US"]), null);
+  assert.equal(offeredLanguage("zh-TW", null, null, ["zh-CN"]), "zh");
+  assert.equal(offeredLanguage("zh", null, null, []), null);
+  // A choice outranks the browser; an unknown stored value does not count as one.
+  assert.equal(offeredLanguage("en", "ja", null, ["en-US"]), "ja");
+  assert.equal(offeredLanguage("ja", "ja", null, ["en-US"]), null);
+  assert.equal(offeredLanguage("zh", "xx", null, ["de-DE"]), "de");
+  // A closed offer is not made again; another language still is.
+  assert.equal(offeredLanguage("zh", null, "en", ["en-US"]), null);
+  assert.equal(offeredLanguage("zh", "fr", "en", ["en-US"]), "fr");
+  for (const { id } of languages) assert.ok(Object.values(offers[id]).every(text => text.trim()), id);
 });
 test("every localized HTML route keeps its CSP-hashed bytes at the edge", async () => {
   const headers = (await readFile(new URL("../../website/public/_headers", import.meta.url), "utf8")).replaceAll("\r", "");

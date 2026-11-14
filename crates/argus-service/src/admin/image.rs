@@ -104,7 +104,16 @@ mod tests {
             .unwrap();
         drop(file);
         assert!(cache.changed(&image, &source).unwrap());
+        // Same length as before: only the modification time tells the
+        // rewrite apart, and two writes can share one timestamp tick.
         std::fs::write(&image, b"next build!").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&image)
+            .unwrap();
+        file.set_modified(SystemTime::now() + std::time::Duration::from_secs(2))
+            .unwrap();
+        drop(file);
         assert!(!cache.changed(&image, &source).unwrap());
         std::fs::remove_file(&source).unwrap();
         assert!(cache.changed(&image, &source).is_err());

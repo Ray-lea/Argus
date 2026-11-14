@@ -1018,16 +1018,13 @@ fn remove_setup_folder_in(root: &Path) -> Result<()> {
     let Some(directory) = crate::cleanup::Directory::open(root)? else {
         return Ok(());
     };
-    let lock = match OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .share_mode(0)
-        .open(root.join(SETUP_LOCK))
-    {
+    // Every setup holds its lock for the whole run, so an absent lock means
+    // none is running. Removal never creates the lock, and never opens or
+    // acts through a link planted in its place.
+    let lock = match directory.lock(SETUP_LOCK, false) {
         Ok(lock) => lock,
-        Err(error) if error.raw_os_error() == Some(32) => return Ok(()),
-        Err(error) => return Err(io(error)),
+        Err(32) => return Ok(()),
+        Err(code) => return Err(code),
     };
     for entry in fs::read_dir(root).map_err(io)? {
         let entry = entry.map_err(io)?;
@@ -1565,5 +1562,41 @@ mod tests {
         drop(held);
         remove_setup_folder_in(&root).unwrap();
         assert!(!root.exists());
+    }
+
+    #[test]
+    fn uninstall_never_creates_or_follows_the_setup_lock() {
+        let root = scratch_setup_folder();
+        fs::write(root.join("helper-12-34.json"), b"{}").unwrap();
+        remove_setup_folder_in(&root).unwrap();
+        assert!(!root.exists());
+
+        let outside = scratch_setup_folder();
+        let source = outside.join("unrelated.txt");
+        fs::write(&source, b"unchanged").unwrap();
+        let target = outside.join("created.txt");
+        for plant in ["hard link", "reparse point"] {
+            let root = scratch_setup_folder();
+            let lock = root.join(SETUP_LOCK);
+            fs::write(root.join("helper-12-34.json"), b"{}").unwrap();
+            let planted = if plant == "hard link" {
+                fs::hard_link(&source, &lock)
+            } else {
+                crate::cleanup::tests::reparse_file(&lock, &target)
+            };
+            if let Err(error) = planted {
+                eprintln!("no {plant} for this account: {error}");
+            } else {
+                assert_eq!(remove_setup_folder_in(&root), Err(util::UNSAFE_PATH));
+                assert_eq!(names(&root), ["helper-12-34.json", SETUP_LOCK]);
+                assert!(!target.exists());
+                assert_eq!(fs::read(&source).unwrap(), b"unchanged");
+                fs::remove_file(&lock).unwrap();
+            }
+            fs::remove_file(root.join("helper-12-34.json")).unwrap();
+            fs::remove_dir(root).unwrap();
+        }
+        fs::remove_file(source).unwrap();
+        fs::remove_dir(outside).unwrap();
     }
 }
