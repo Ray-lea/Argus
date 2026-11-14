@@ -423,8 +423,20 @@ impl Flyout {
         self.phase = Phase::Hidden;
         set_alpha(self.hwnd, Some(0));
         let hwnd = self.hwnd;
+        // Shown again before the deferred steps ran: without a fade, a right
+        // click closes the card and opens the panel in the same window within
+        // one frame. Hiding it then would leave the panel open but unseen.
+        let this = cx.weak_entity();
+        let reshown = move |cx: &App| {
+            this.upgrade()
+                .is_some_and(|flyout| flyout.read(cx).phase != Phase::Hidden)
+        };
+        let reshown_closed = reshown.clone();
         // Hidden after this frame: the window is busy drawing now.
         window.defer(cx, move |window, cx| {
+            if reshown(cx) {
+                return;
+            }
             unsafe {
                 let _ = SetWindowPos(
                     hwnd,
@@ -440,6 +452,9 @@ impl Flyout {
         });
         let desktop = self.desktop.clone();
         cx.defer(move |cx| {
+            if reshown_closed(cx) {
+                return;
+            }
             let _ = desktop.update(cx, |desktop, _| desktop.tray_closed(kind, was_shown));
         });
     }
