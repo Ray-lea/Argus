@@ -169,6 +169,9 @@ pub(in crate::frontend) struct UiState {
     pub toolbar_fit: RefCell<ToolbarFit>,
     /// What the page navigation's selection mark was last placed for.
     pub nav_mark: Cell<NavMark>,
+    /// What the details pane's overview of the machine showed when a sample
+    /// last drew it (`Desktop::details_follow_sample`).
+    pub overview_seen: Cell<Option<u64>>,
 }
 
 /// The page navigation's selection mark glides to a newly chosen page; when

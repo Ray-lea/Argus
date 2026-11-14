@@ -8,11 +8,23 @@
 //! pointer. Its hint shows after GPUI's tooltip delay in the window's tooltip
 //! slot, where `.tooltip()` puts its own, and hides on the same occasions: the
 //! pointer leaving the part, a press, the wheel or the keyboard.
+//!
+//! A row reports when its list renders, and a list does not render for the
+//! pointer moving over its rows (their hover fills change in place). A row the
+//! pointer comes onto is therefore asked to report once the pointer has stayed
+//! on it ([`REPORT_AFTER`]): the list renders once for a pointer that rests,
+//! not once for every row a moving pointer crosses. The hint's delay still
+//! counts from when the pointer came onto the part.
 use super::*;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 /// GPUI's `DEFAULT_TOOLTIP_SHOW_DELAY`, the delay of every other tooltip.
 const SHOW_DELAY: Duration = Duration::from_millis(500);
+/// How long the pointer stays on a row before the row reports its parts:
+/// half the hint's delay, so that a late frame still leaves the hint on time.
+const REPORT_AFTER: Duration = Duration::from_millis(250);
+/// Most pointer moves kept for a row that is waited for ([`Waiting::trail`]).
+const TRAIL: usize = 256;
 /// Widest a hint runs before it wraps, as the performance page's hints do.
 const WIDTH: f32 = 420.;
 
@@ -22,24 +34,6 @@ pub(super) fn id(parts: impl Hash) -> u64 {
     let mut hasher = DefaultHasher::new();
     parts.hash(&mut hasher);
     hasher.finish()
-}
-
-/// The row of a list under the pointer: `rows` rows `row_height` apart from
-/// the top of `list`'s viewport, scrolled by it. Read where the rows are laid
-/// out, after the list applied this frame's scrolling.
-pub(super) fn row_under(
-    list: &ScrollHandle,
-    row_height: f32,
-    rows: usize,
-    window: &Window,
-) -> Option<usize> {
-    let viewport = list.bounds();
-    let pointer = window.mouse_position();
-    if !viewport.contains(&pointer) {
-        return None;
-    }
-    let row = f32::from(pointer.y - viewport.top() - list.offset().y) / row_height;
-    (row >= 0. && (row as usize) < rows).then_some(row as usize)
 }
 
 #[derive(Clone, Default)]
@@ -60,6 +54,45 @@ struct State {
     layer: Option<EntityId>,
     /// The view that renders the hinting table.
     table: Option<EntityId>,
+    /// Where the hinting table laid out its rows when it last rendered, and
+    /// the row that reported its parts then ([`Tips::row_under`]).
+    rows: Option<Rows>,
+    near: Option<usize>,
+    /// The row the pointer came onto since, which has not reported.
+    waiting: Option<Waiting>,
+    /// The pointer's way over the row that reports in this render, if the
+    /// row was waited for ([`Waiting::trail`]).
+    trail: Vec<(Instant, Point<Pixels>)>,
+}
+
+/// The rows of a list: `count` rows `height` apart from `top`, where the
+/// scrolled list has its first one, seen through `viewport`.
+#[derive(Clone, Copy)]
+struct Rows {
+    viewport: Bounds<Pixels>,
+    top: Pixels,
+    height: f32,
+    count: usize,
+}
+
+impl Rows {
+    fn at(&self, point: Point<Pixels>) -> Option<usize> {
+        if !self.viewport.contains(&point) {
+            return None;
+        }
+        let row = f32::from(point.y - self.top) / self.height;
+        (row >= 0. && (row as usize) < self.count).then_some(row as usize)
+    }
+}
+
+/// A row the pointer came onto after its list rendered.
+struct Waiting {
+    row: usize,
+    /// Renders the list once the pointer has stayed on the row.
+    _report: Task<()>,
+    /// Where the pointer went on the row and when, oldest first: from it a
+    /// part that reports late learns how long the pointer has been on it.
+    trail: Vec<(Instant, Point<Pixels>)>,
 }
 
 struct Target {
@@ -86,11 +119,32 @@ impl State {
                 area(a).total_cmp(&area(b))
             })
     }
+
+    /// How long the pointer has been on a part at `bounds` whose row was
+    /// waited for: the part's hint is that much nearer, as if the row had
+    /// reported when the pointer came onto it. Nothing for a row that reports
+    /// in the render the pointer's move asked for.
+    fn dwelt(&self, bounds: &Bounds<Pixels>) -> Duration {
+        dwelt(&self.trail, bounds, Instant::now())
+    }
+}
+
+/// The time up to `now` over which every move of `trail` (oldest first) lay
+/// inside `bounds`.
+fn dwelt(trail: &[(Instant, Point<Pixels>)], bounds: &Bounds<Pixels>, now: Instant) -> Duration {
+    trail
+        .iter()
+        .rev()
+        .take_while(|(_, position)| bounds.contains(position))
+        .last()
+        .map_or(Duration::ZERO, |(since, _)| {
+            now.saturating_duration_since(*since)
+        })
 }
 
 impl Tips {
     /// A table renders its rows anew, in the view being rendered. Whether the
-    /// row under the pointer ([`row_under`]) reports its hinted parts
+    /// row under the pointer ([`Tips::row_under`]) reports its hinted parts
     /// ([`Tips::target`]): not while no hint can show (after a press or the
     /// wheel, until the pointer moves), so those renders, the frames of a wheel
     /// scroll among them, pay nothing.
@@ -98,7 +152,41 @@ impl Tips {
         let mut state = self.0.borrow_mut();
         state.targets.clear();
         state.table = Some(window.current_view());
+        state.rows = None;
+        state.near = None;
+        // A row that was waited for reports in this render, whatever asked
+        // for it.
+        state.trail = state
+            .waiting
+            .take()
+            .map(|waiting| waiting.trail)
+            .unwrap_or_default();
         state.armed
+    }
+
+    /// The row of a list under the pointer, which reports its hinted parts in
+    /// this render: `rows` rows `row_height` apart from the top of `list`'s
+    /// viewport, scrolled by it. Read where the rows are laid out, after the
+    /// list applied this frame's scrolling.
+    pub(super) fn row_under(
+        &self,
+        list: &ScrollHandle,
+        row_height: f32,
+        rows: usize,
+        window: &Window,
+    ) -> Option<usize> {
+        let viewport = list.bounds();
+        let rows = Rows {
+            viewport,
+            top: viewport.top() + list.offset().y,
+            height: row_height,
+            count: rows,
+        };
+        let near = rows.at(window.mouse_position());
+        let mut state = self.0.borrow_mut();
+        state.rows = Some(rows);
+        state.near = near;
+        near
     }
 
     /// `element`, reporting itself as a part hinted by `text` once laid out.
@@ -146,11 +234,17 @@ impl Tips {
             state.targets.push(Target { id, bounds, text });
             state.armed && bounds.contains(&pointer)
         };
-        // A part laid out under a resting pointer: the row the pointer just
-        // entered, or another row in its place.
+        // A part laid out under a resting pointer: the row the pointer came
+        // onto, or another row in its place.
         if hit {
-            let under = self.0.borrow().at(pointer).map(|target| target.id);
-            self.hover(under, window, cx);
+            let (under, dwelt) = {
+                let state = self.0.borrow();
+                match state.at(pointer) {
+                    Some(target) => (Some(target.id), state.dwelt(&target.bounds)),
+                    None => (None, Duration::ZERO),
+                }
+            };
+            self.hover(under, dwelt, window, cx);
         }
     }
 
@@ -164,6 +258,30 @@ impl Tips {
         let (under, rearmed, table) = {
             let mut state = self.0.borrow_mut();
             let rearmed = !std::mem::replace(&mut state.armed, true);
+            // A row the pointer comes onto has not reported its parts. It
+            // does when the list renders, which this asks for once the
+            // pointer has stayed on the row.
+            let onto = state
+                .rows
+                .and_then(|rows| rows.at(event.position))
+                .filter(|row| !rearmed && state.near != Some(*row));
+            match (onto, &mut state.waiting) {
+                (Some(row), Some(waiting)) if waiting.row == row => {
+                    // Too many moves to keep: what is known starts over here.
+                    if waiting.trail.len() >= TRAIL {
+                        waiting.trail.clear();
+                    }
+                    waiting.trail.push((Instant::now(), event.position));
+                }
+                (Some(row), _) => {
+                    state.waiting = Some(Waiting {
+                        row,
+                        _report: self.report_later(window, cx),
+                        trail: vec![(Instant::now(), event.position)],
+                    });
+                }
+                (None, _) => state.waiting = None,
+            }
             (
                 state.at(event.position).map(|target| target.id),
                 rearmed,
@@ -171,12 +289,23 @@ impl Tips {
             )
         };
         // The table stopped reporting its parts after the press or the wheel;
-        // it reports them in its next render. (The first move after a scroll
-        // usually changes the hovered row, which renders it anyway.)
+        // it reports them in its next render.
         if rearmed && let Some(table) = table {
             cx.notify(table);
         }
-        self.hover(under, window, cx);
+        self.hover(under, Duration::ZERO, window, cx);
+    }
+
+    /// Renders the hinting table after [`REPORT_AFTER`], unless dropped.
+    fn report_later(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        let weak = Rc::downgrade(&self.0);
+        window.spawn(cx, async move |cx| {
+            cx.background_executor().timer(REPORT_AFTER).await;
+            let table = weak.upgrade().and_then(|state| state.borrow().table);
+            if let Some(table) = table {
+                cx.update(|_, cx| cx.notify(table)).ok();
+            }
+        })
     }
 
     /// The pointer left the table, or a press or the wheel hid the hint. What
@@ -187,11 +316,14 @@ impl Tips {
             let mut state = self.0.borrow_mut();
             state.armed = false;
             state.targets.clear();
+            state.waiting = None;
+            state.trail.clear();
         }
-        self.hover(None, window, cx);
+        self.hover(None, Duration::ZERO, window, cx);
     }
 
-    fn hover(&self, id: Option<u64>, window: &mut Window, cx: &mut App) {
+    /// The part under the pointer is `id`, and has been for `dwelt`.
+    fn hover(&self, id: Option<u64>, dwelt: Duration, window: &mut Window, cx: &mut App) {
         let (hide, layer) = {
             let mut state = self.0.borrow_mut();
             if state.hovered == id {
@@ -200,8 +332,9 @@ impl Tips {
             state.hovered = id;
             state.pending = id.map(|id| {
                 let weak = Rc::downgrade(&self.0);
+                let delay = SHOW_DELAY.saturating_sub(dwelt);
                 window.spawn(cx, async move |cx| {
-                    cx.background_executor().timer(SHOW_DELAY).await;
+                    cx.background_executor().timer(delay).await;
                     if let Some(state) = weak.upgrade() {
                         cx.update(|window, cx| Tips(state).show(id, window, cx))
                             .ok();
@@ -312,5 +445,32 @@ impl Render for TipLayer {
         )
         .absolute()
         .size_0()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dwelt;
+    use gpui_kit::gpui::{Bounds, point, px, size};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_part_that_reports_late_counts_from_when_the_pointer_came_onto_it() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let part = Bounds::new(point(px(100.), px(0.)), size(px(50.), px(30.)));
+        let on = |x: f32| point(px(x), px(10.));
+
+        // Onto the row beside the part, then onto the part and about on it.
+        let trail = [(at(0), on(20.)), (at(40), on(110.)), (at(90), on(120.))];
+        assert_eq!(dwelt(&trail, &part, at(250)), Duration::from_millis(210));
+        // Off the part and back: only the last stay counts.
+        let trail = [(at(0), on(110.)), (at(40), on(20.)), (at(90), on(120.))];
+        assert_eq!(dwelt(&trail, &part, at(250)), Duration::from_millis(160));
+        // The pointer's last move was elsewhere, or its way is not known: the
+        // hint waits its whole delay.
+        let trail = [(at(0), on(110.)), (at(40), on(20.))];
+        assert_eq!(dwelt(&trail, &part, at(250)), Duration::ZERO);
+        assert_eq!(dwelt(&[], &part, at(250)), Duration::ZERO);
     }
 }

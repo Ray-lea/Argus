@@ -535,6 +535,17 @@ try {
         ["details-outside", { mouse: { type: "move", x: 1000, y: 510 } }],
         ["cleared", { selectRow: 1, pointerOutside: true }],
         ["outside", { pointerOutside: true }],
+        // Input alone, as from the system: a row takes its hover fill in the
+        // scene on screen, without its view drawing again.
+        ["row-a-in-place", { mouse: { type: "move", x: 150, y: 300 }, passive: true }],
+        ["row-b-in-place", { mouse: { type: "move", x: 150, y: 360 }, passive: true }],
+        ["outside-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
+        // The details pane scrolls another row under the resting pointer,
+        // which then goes straight to a third: the second gives its fill up.
+        ["pane-row-in-place", { mouse: { type: "move", x: 800, y: 470 }, passive: true }],
+        ["pane-scrolled-in-place", { wheel: { x: 800, y: 470, lines: -2 }, passive: true }],
+        ["pane-next-row-in-place", { mouse: { type: "move", x: 800, y: 560 }, passive: true }],
+        ["pane-left-in-place", { mouse: { type: "move", x: 2, y: 2 }, passive: true }],
       ]) {
         send(state);
         await sleep(700);
