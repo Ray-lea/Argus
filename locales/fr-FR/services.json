@@ -57,6 +57,7 @@
     "accessDenied": "Impossible de modifier le service {name} : accès refusé. Activez le service privilégié dans les Paramètres ou exécutez Argus en tant qu’administrateur. Les logiciels de sécurité peuvent protéger leurs propres services.",
     "notFound": "Le service {name} est introuvable.",
     "refused": "Argus ne peut pas modifier le service {name}.",
-    "serviceOutdated": "Impossible de modifier le service {name} : accès refusé. La version du service privilégié n’est pas compatible ; mettez le service à jour et réessayez."
+    "serviceOutdated": "Impossible de modifier le service {name} : accès refusé. La version du service privilégié n’est pas compatible ; mettez le service à jour et réessayez.",
+    "accessDeniedPrivileged": "Impossible de modifier le service {name} : accès refusé même avec les droits d’administrateur. Le service est probablement protégé par son propre logiciel, par exemple l’autoprotection d’un antivirus."
   }
 }

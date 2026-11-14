@@ -57,6 +57,7 @@
     "accessDenied": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus. Sicherheitssoftware kann ihre eigenen Dienste schützen.",
     "notFound": "Dienst {name} wurde nicht gefunden.",
     "refused": "Argus kann den Dienst {name} nicht ändern.",
-    "serviceOutdated": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut."
+    "serviceOutdated": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+    "accessDeniedPrivileged": "Dienst {name} konnte nicht geändert werden: Zugriff trotz Administratorrechten verweigert. Der Dienst wird wahrscheinlich von seiner eigenen Software geschützt, etwa vom Selbstschutz eines Virenscanners."
   }
 }

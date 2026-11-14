@@ -57,6 +57,7 @@
     "accessDenied": "無法變更服務 {name}：存取遭拒。請在設定中啟用特權服務，或以系統管理員身分執行 Argus。安全性軟體可能會保護自己的服務。",
     "notFound": "找不到服務 {name}。",
     "refused": "Argus 無法變更服務 {name}。",
-    "serviceOutdated": "無法變更服務 {name}：存取遭拒。特權服務版本不相容，請更新服務後再試一次。"
+    "serviceOutdated": "無法變更服務 {name}：存取遭拒。特權服務版本不相容，請更新服務後再試一次。",
+    "accessDeniedPrivileged": "無法變更服務 {name}：即使具備系統管理員權限，存取仍遭拒。該服務可能受其自身軟體保護，例如防毒軟體的自我保護功能。"
   }
 }

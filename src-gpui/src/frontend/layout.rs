@@ -1182,9 +1182,7 @@ impl Desktop {
         }
         let privilege = if boolean(&self.data["info"], "elevated") {
             "admin"
-        } else if self.data.get("privilege").is_some_and(|s| {
-            text(s, "state") == "running" && boolean(s, "authorized") && s["error"].is_null()
-        }) {
+        } else if self.privileged() {
             "service"
         } else {
             "standard"

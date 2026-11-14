@@ -57,6 +57,7 @@
     "accessDenied": "无法更改服务 {name}：访问被拒绝。请在设置中启用特权服务，或以管理员身份运行 Argus。安全软件可能会保护自己的服务。",
     "notFound": "未找到服务 {name}。",
     "refused": "Argus 无法更改服务 {name}。",
-    "serviceOutdated": "无法更改服务 {name}：访问被拒绝。特权服务版本不兼容，请更新服务后重试。"
+    "serviceOutdated": "无法更改服务 {name}：访问被拒绝。特权服务版本不兼容，请更新服务后重试。",
+    "accessDeniedPrivileged": "无法更改服务 {name}：即使拥有管理员权限，访问仍被拒绝。该服务可能受其自身软件保护，例如杀毒软件的自我保护功能。"
   }
 }

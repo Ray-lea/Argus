@@ -57,6 +57,7 @@
     "accessDenied": "No se pudo cambiar el servicio {name}: acceso denegado. Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador. El software de seguridad puede proteger sus propios servicios.",
     "notFound": "No se encontró el servicio {name}.",
     "refused": "Argus no puede cambiar el servicio {name}.",
-    "serviceOutdated": "No se pudo cambiar el servicio {name}: acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio e inténtalo de nuevo."
+    "serviceOutdated": "No se pudo cambiar el servicio {name}: acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio e inténtalo de nuevo.",
+    "accessDeniedPrivileged": "No se pudo cambiar el servicio {name}: acceso denegado incluso con permisos de administrador. Probablemente el servicio esté protegido por su propio software, como la autoprotección de un antivirus."
   }
 }

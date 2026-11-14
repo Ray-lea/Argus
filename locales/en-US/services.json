@@ -57,6 +57,7 @@
     "accessDenied": "Couldn't change service {name}: access denied. Turn on the privileged service in Settings, or run Argus as administrator. Security software may protect its own services.",
     "notFound": "Service {name} wasn't found.",
     "refused": "Argus can't change service {name}.",
-    "serviceOutdated": "Couldn't change service {name}: access denied. The privileged service version is incompatible; update the service and try again."
+    "serviceOutdated": "Couldn't change service {name}: access denied. The privileged service version is incompatible; update the service and try again.",
+    "accessDeniedPrivileged": "Couldn't change service {name}: access denied even with administrator rights. The service is probably protected by its own software, such as an antivirus's self-protection."
   }
 }
