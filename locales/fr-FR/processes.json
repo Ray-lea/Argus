@@ -181,15 +181,15 @@
       "title": "Défauts de page accumulés, y compris les défauts logiciels et matériels."
     },
     "ioRead": {
-      "label": "Lecture E/S",
+      "label": "Lecture I/O",
       "title": "Octets I/O lus par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioWrite": {
-      "label": "Écriture E/S",
+      "label": "Écriture I/O",
       "title": "Octets I/O écrits par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioOther": {
-      "label": "Autres E/S",
+      "label": "Autres I/O",
       "title": "Octets transférés par seconde par d’autres opérations I/O."
     },
     "ioReadTotal": {
@@ -311,7 +311,7 @@
       "general": "Général",
       "cpu": "CPU",
       "memory": "Mémoire",
-      "io": "Disque et E/S",
+      "io": "Disque et I/O",
       "network": "Réseau",
       "gpu": "GPU",
       "all": "Tous"

@@ -9,6 +9,7 @@ mod diagnostic_summary;
 mod dialogs;
 mod flip;
 mod gpu_usage;
+mod hundred;
 mod icon_motion;
 mod inline;
 mod layout;
@@ -252,6 +253,8 @@ struct Desktop {
     /// last laid out: the card's height in a viewport of any height.
     perf_card_chrome: Rc<Cell<Option<Pixels>>>,
     chart_tick_queued: bool,
+    /// Where the about page left room for the hundred dots (`hundred`).
+    hundred_place: Rc<RefCell<hundred::Place>>,
     /// A fixture fed made-up samples (the `sample` test control): its chart
     /// clock runs as in a live session instead of standing still.
     fixture_samples: bool,
@@ -436,6 +439,7 @@ impl Desktop {
             live_motions: Rc::default(),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
+            hundred_place: Rc::default(),
             fixture_samples: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),
@@ -793,12 +797,17 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     charts::ChartLayer::new(placements, clock, active, shift, pane, motions)
                 });
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
+                let place = view.read(cx).hundred_place.clone();
+                let shift = view.read(cx).page_shift.clone();
+                let owner = view.downgrade();
+                let hundred = cx.new(|_| hundred::HundredLayer::new(owner, place, shift));
                 let state = view.read(cx).scrim.clone();
                 let scrim = cx.new(|_| dialogs::Scrim { state });
                 view.update(cx, |desktop, _| desktop.scrim_view = Some(scrim.clone()));
                 cx.new(|_| DesktopRoot {
                     desktop: view,
                     charts,
+                    hundred,
                     scrim,
                 })
             })
@@ -842,6 +851,7 @@ fn trace_work(event: &str, detail: Option<&str>, started: Instant) {
 struct DesktopRoot {
     desktop: Entity<Desktop>,
     charts: Entity<charts::ChartLayer>,
+    hundred: Entity<hundred::HundredLayer>,
     scrim: Entity<dialogs::Scrim>,
 }
 
@@ -856,6 +866,7 @@ impl Render for DesktopRoot {
                     .cached(StyleRefinement::default().size_full()),
             )
             .child(self.charts.clone())
+            .child(self.hundred.clone())
             .child(self.scrim.clone())
     }
 }

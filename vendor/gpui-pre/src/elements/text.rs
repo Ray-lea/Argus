@@ -1255,7 +1255,7 @@ impl Element for InteractiveText {
                                     }
 
                                     mouse_down.take();
-                                    window.refresh();
+                                    window.redraw_view_for_interaction(current_view);
                                 }
                             },
                         );
@@ -1268,7 +1268,7 @@ impl Element for InteractiveText {
                                     text_layout.index_for_position(event.position)
                             {
                                 mouse_down.set(Some(mouse_down_index));
-                                window.refresh();
+                                window.redraw_view_for_interaction(current_view);
                             }
                         });
                     }
@@ -1288,7 +1288,7 @@ impl Element for InteractiveText {
                                 if let Some(hover_listener) = hover_listener.as_ref() {
                                     hover_listener(updated, event.clone(), window, cx);
                                 }
-                                cx.notify(current_view);
+                                window.redraw_view_for_interaction(current_view);
                             }
                         }
                     }

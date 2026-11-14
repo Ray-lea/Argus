@@ -6,9 +6,10 @@
   "tray": {
     "icon": {
       "title": "Icône de la zone de notification",
-      "desc": "La barre et le chiffre suivent l’utilisation du CPU en temps réel et passent à l’ambre à partir de 80 %.",
+      "desc": "Tendance affiche les dernières mesures du CPU en colonnes, Part allume une grille de points selon l’utilisation actuelle et Chiffre affiche le pourcentage. À partir de 80 %, ils passent à l’ambre.",
       "logo": "Icône de l’application",
-      "load": "Barre de charge",
+      "load": "Tendance",
+      "share": "Part",
       "number": "Chiffre"
     },
     "card": {

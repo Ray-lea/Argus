@@ -1383,10 +1383,10 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
         if std::mem::take(&mut self.near_due) {
-            self.near = self
-                .list
-                .as_ref()
-                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
+            self.near = self.list.as_ref().and_then(|list| {
+                self.tips
+                    .row_under(list, ROW_HEIGHT, self.rows.len(), window)
+            });
         }
         let p = Palette::current(cx);
         let row = &self.rows[index];
@@ -1684,7 +1684,7 @@ impl Desktop {
         )
     }
     /// Where the list draws the row at `index`, scrolled as it is: where a
-    /// test presses on it (see `tips::row_under` for the same measure).
+    /// test presses on it (see `Tips::row_under` for the same measure).
     pub(in crate::frontend) fn row_bounds(&self, index: usize, cx: &App) -> Option<Bounds<Pixels>> {
         let list = self.table.as_ref()?.read(cx).delegate().list.clone()?;
         let viewport = list.bounds();
@@ -1826,7 +1826,6 @@ impl Desktop {
         let network = boolean(&self.snapshot, "processNetwork");
         let sort = (self.sort.as_str(), self.descending);
         let column_preferences = columns::Preferences::load(&self.prefs);
-        let totals = self.process_column_totals(&column_preferences);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         let scope = (self.view.as_str(), self.query.as_str());
         let available = window.viewport_size().width
@@ -1845,6 +1844,24 @@ impl Desktop {
             .selected
             .get(&page)
             .and_then(|key| rows.iter().position(|r| &r.key == key));
+        // Whether the table is laid out anew. The column totals read every
+        // process and only that uses them: a frame that scrolls the list or
+        // moves a highlight leaves them alone.
+        let stale = {
+            let state = table.read(cx);
+            let delegate = state.delegate();
+            !Arc::ptr_eq(&delegate.rows, &rows)
+                || delegate.available != available
+                || (page == "processes" && delegate.process_columns != column_preferences)
+                || delegate.font_size != theme::font(12.)
+                || delegate.bits != bits
+                || delegate.locale != argus_core::i18n::locale()
+        };
+        let totals = if stale {
+            self.process_column_totals(&column_preferences)
+        } else {
+            HashMap::new()
+        };
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
             // A column dragged to a width is drawn at it already: a glide to
@@ -1856,13 +1873,7 @@ impl Desktop {
                     }
                 }
             }
-            if !Arc::ptr_eq(&state.delegate().rows, &rows)
-                || state.delegate().available != available
-                || (page == "processes" && state.delegate().process_columns != column_preferences)
-                || state.delegate().font_size != theme::font(12.)
-                || state.delegate().bits != bits
-                || state.delegate().locale != argus_core::i18n::locale()
-            {
+            if stale {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
@@ -1901,6 +1912,10 @@ impl Desktop {
         div()
             .id("table-region")
             .size_full()
+            // A row under the pointer takes its fill in place: the list does
+            // not render for the pointer moving over it. What a row shows for
+            // the pointer otherwise asks for its own render (`tips`).
+            .hover_fills_in_place()
             .on_hover(cx.listener(|this, hovered, window, cx| {
                 this.pointer_in_table = *hovered;
                 if !hovered {
@@ -1910,7 +1925,10 @@ impl Desktop {
                         this.rebuild_rows(false, cx);
                     }
                 }
-                cx.notify();
+                // Outside the list, only the status bar says the order is
+                // held: the desktop draws its own tree again. Rows put back
+                // in order told the list themselves (`install_rows`).
+                window.request_view_redraw(cx.entity_id());
             }))
             // Cell hints follow the pointer here, one listener for the table.
             .on_mouse_move(move |event, window, cx| tips.moved(event, window, cx))

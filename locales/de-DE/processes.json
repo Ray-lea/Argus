@@ -180,15 +180,15 @@
       "title": "Kumulierte Seitenfehler, einschließlich Soft- und Hard-Fehler."
     },
     "ioRead": {
-      "label": "E/A lesen",
+      "label": "I/O lesen",
       "title": "Pro Sekunde gelesene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioWrite": {
-      "label": "E/A schreiben",
+      "label": "I/O schreiben",
       "title": "Pro Sekunde geschriebene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioOther": {
-      "label": "Sonstige E/A",
+      "label": "Sonstige I/O",
       "title": "Von anderen I/O-Vorgängen pro Sekunde übertragene Bytes."
     },
     "ioReadTotal": {
@@ -308,7 +308,7 @@
       "general": "Allgemein",
       "cpu": "CPU",
       "memory": "Arbeitsspeicher",
-      "io": "Datenträger und E/A",
+      "io": "Datenträger und I/O",
       "network": "Netzwerk",
       "gpu": "GPU",
       "all": "Alle"

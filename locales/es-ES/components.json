@@ -6,9 +6,10 @@
   "tray": {
     "icon": {
       "title": "Icono de la bandeja",
-      "desc": "La barra y la cifra siguen el uso de CPU en tiempo real y se vuelven ámbar a partir del 80 %.",
+      "desc": "Tendencia muestra las últimas muestras de CPU en columnas, Proporción ilumina una cuadrícula de puntos según el uso actual y Cifra muestra el porcentaje. A partir del 80 % se vuelven ámbar.",
       "logo": "Icono de la aplicación",
-      "load": "Barra de carga",
+      "load": "Tendencia",
+      "share": "Proporción",
       "number": "Cifra"
     },
     "card": {

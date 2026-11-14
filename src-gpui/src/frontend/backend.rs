@@ -228,6 +228,9 @@ impl Desktop {
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
                 "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
                 "argus-tray-card" => self.tray_card(&event.value, window, cx),
+                // Another window took the foreground from a panel that did not
+                // take it (one opened from the hidden icons flyout).
+                "argus-tray-dismiss" => self.close_tray_panel(cx),
                 "argus-tray-warm" => {
                     self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
                 }
@@ -361,7 +364,10 @@ impl Desktop {
 
     /// List data arrives through its own command/row notifications. A sample
     /// only changes the uncached status bar on these pages. Settings also read
-    /// sensor state and live process icons for rules, so retain full updates there.
+    /// sensor state and live process icons for rules, so the page is drawn
+    /// again there, as on the pages that show the sample. Only a change of
+    /// sensor state, an open dialog, menu or drag, and a hidden window draw
+    /// everything.
     pub(in crate::frontend) fn notify_snapshot(
         &self,
         full: bool,
@@ -376,13 +382,26 @@ impl Desktop {
         let visible = self.host.get_window("main").is_some_and(|window| {
             window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
         });
-        if status_only
-            && !full
-            && visible
-            && self.modal.is_none()
-            && self.popup.is_none()
-            && self.drag.is_none()
-        {
+        let quiet =
+            !full && visible && self.modal.is_none() && self.popup.is_none() && self.drag.is_none();
+        if quiet && status_only {
+            window.request_view_redraw(cx.entity_id());
+        } else if quiet && self.has_region(regions::RegionKind::Page) {
+            // The sample shows in the page, with the regions inside it, and in
+            // the status bar. The toolbar and the navigation read none of it:
+            // they replay.
+            if self.page == "processes" {
+                // The page places its regions and draws the list's scrollbar.
+                // The list was told when its rows were installed; the cards
+                // show every sample, the details pane what it follows.
+                self.redraw_region(regions::RegionKind::Page, window);
+                self.refresh_region(regions::RegionKind::Vitals, cx);
+                if self.details_follow_sample() {
+                    self.refresh_region(regions::RegionKind::Details, cx);
+                }
+            } else {
+                self.refresh_region(regions::RegionKind::Page, cx);
+            }
             window.request_view_redraw(cx.entity_id());
         } else {
             cx.notify();

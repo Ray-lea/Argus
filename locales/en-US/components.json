@@ -6,9 +6,10 @@
   "tray": {
     "icon": {
       "title": "Tray icon",
-      "desc": "The bar and the number follow CPU usage live and turn amber from 80%.",
+      "desc": "Trend shows the latest CPU samples as columns, Share lights a grid of dots for the current usage, and Number shows the percentage. All turn amber from 80%.",
       "logo": "App icon",
-      "load": "Load bar",
+      "load": "Trend",
+      "share": "Share",
       "number": "Number"
     },
     "card": {

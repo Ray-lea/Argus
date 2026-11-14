@@ -10,9 +10,9 @@
     {"control":{"wheel":{"x":620,"y":550,"lines":-5}},"wait":450,"capture":"notes-scrolled"},
     {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"notes-closed","expect":{"dialog":null}},
     {"control":{"dialog":"whatsnew","keys":["escape"]},"wait":450,"inspect":"layout","label":"closed-during-measurement","expect":{"dialog":null}},
-    {"control":{"mouse":{"type":"move","x":348,"y":72}},"wait":20},
-    {"control":{"mouse":{"type":"down","x":348,"y":72}},"wait":20},
-    {"control":{"mouse":{"type":"up","x":348,"y":72}},"wait":300,"inspect":"layout","label":"page-responsive","expect":{"page":"settings","dialog":null}},
+    {"control":{"mouse":{"type":"move","x":402,"y":72}},"wait":20},
+    {"control":{"mouse":{"type":"down","x":402,"y":72}},"wait":20},
+    {"control":{"mouse":{"type":"up","x":402,"y":72}},"wait":300,"inspect":"layout","label":"page-responsive","expect":{"page":"settings","dialog":null}},
     {"control":{"dialog":"task"},"wait":400,"inspect":"layout","label":"form-visible","expect":{"dialog.kind":"task","dialog.ready":true}},
     {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"form-closed","expect":{"dialog":null}}
   ]

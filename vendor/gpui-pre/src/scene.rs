@@ -48,6 +48,9 @@ pub struct Scene {
     /// Source geometry of retained load bars, indexed after scene sorting.
     pub retained_bars: std::collections::BTreeMap<usize, RetainedBar>,
     pub(crate) paint_operations: Vec<PaintOperation>,
+    /// The background quads that follow a hover without a paint, in the
+    /// order of their operations.
+    pub(crate) hover_quads: Vec<HoverQuad>,
     primitive_bounds: BoundsTree<ScaledPixels>,
     layer_stack: Vec<DrawOrder>,
     /// The visual transforms in effect, each composed with those outside it.
@@ -65,12 +68,12 @@ pub struct Scene {
 #[expect(missing_docs)]
 impl Scene {
     pub fn clear(&mut self) {
-        static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        self.paint_revision = REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.paint_revision = next_revision();
         self.force_full_redraw.set(false);
         self.animated_order = None;
         self.retained_bars.clear();
         self.paint_operations.clear();
+        self.hover_quads.clear();
         self.primitive_bounds.clear();
         self.layer_stack.clear();
         self.transform_stack.clear();
@@ -86,6 +89,52 @@ impl Scene {
 
     pub fn len(&self) -> usize {
         self.paint_operations.len()
+    }
+
+    /// Makes the scene another paint to its renderer after a primitive that
+    /// does not animate changed in place: what it kept of the last one is
+    /// compared with it again.
+    pub(crate) fn mark_repainted(&mut self) {
+        self.paint_revision = next_revision();
+    }
+
+    /// Inserts the background `quad` of an element whose hover changes its
+    /// fill alone, and notes where it went for `link` to change the fill in
+    /// place (see [`crate::Window::paint_hover_background`]).
+    pub(crate) fn insert_hover_quad(&mut self, quad: Quad, link: &std::rc::Rc<HoverQuadLink>) {
+        let (operation, quads) = (self.paint_operations.len(), self.quads.len());
+        self.insert_primitive(quad);
+        self.note_hover_quad(operation, quads, link);
+    }
+
+    /// Links `link` to the quad just recorded at `operation`, if it was;
+    /// `quads` is how many quads the scene held before.
+    fn note_hover_quad(
+        &mut self,
+        operation: usize,
+        quads: usize,
+        link: &std::rc::Rc<HoverQuadLink>,
+    ) {
+        let recorded = self.paint_operations.len() == operation + 1
+            && matches!(
+                self.paint_operations[operation],
+                PaintOperation::Primitive(Primitive::Quad(_))
+            );
+        link.operation.set(recorded.then_some(operation));
+        if recorded {
+            self.hover_quads.push(HoverQuad {
+                operation,
+                link: link.clone(),
+                // Clipped out, it has no quad to show, only its operation.
+                placed: (self.quads.len() == quads + 1)
+                    .then(|| self.quads.last().copied())
+                    .flatten(),
+                opacity: self
+                    .transform_stack
+                    .last()
+                    .map_or(1., |transform| transform.opacity),
+            });
+        }
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
@@ -233,10 +282,38 @@ impl Scene {
         }
     }
 
+    /// Replays `range` of `prev_scene`'s operations, one operation for each:
+    /// the cached views painted inside a replayed view find their own
+    /// operations by their place in it (see `rebase_nested_paint` in view.rs).
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
-        for operation in &prev_scene.paint_operations[range] {
+        // The hover quads among the operations follow them into this scene.
+        let mut hover_quads = prev_scene.hover_quads[prev_scene
+            .hover_quads
+            .partition_point(|quad| quad.operation < range.start)..]
+            .iter()
+            .peekable();
+        for (source, operation) in range.clone().zip(&prev_scene.paint_operations[range]) {
+            let (recorded, quads) = (self.paint_operations.len(), self.quads.len());
+            while hover_quads
+                .next_if(|quad| quad.operation < source)
+                .is_some()
+            {}
+            let hover_quad = hover_quads.next_if(|quad| quad.operation == source);
             match operation {
-                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
+                PaintOperation::Primitive(primitive) => {
+                    self.insert_primitive(primitive.clone());
+                    if self.paint_operations.len() == recorded {
+                        // Recorded inside a transform and clipped out without
+                        // it: nothing to draw, but it keeps its place.
+                        self.paint_operations
+                            .push(PaintOperation::Primitive(primitive.clone()));
+                        if let Some(quad) = hover_quad {
+                            quad.link.operation.set(None);
+                        }
+                    } else if let Some(quad) = hover_quad {
+                        self.note_hover_quad(recorded, quads, &quad.link);
+                    }
+                }
                 PaintOperation::Rule(axis, quad) => self.insert_rule(*axis, *quad),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
                 PaintOperation::EndLayer => self.pop_layer(),
@@ -346,6 +423,38 @@ pub(crate) enum PrimitiveKind {
     SubpixelSprite,
     PolychromeSprite,
     Surface,
+}
+
+/// The identity of a complete paint: a counter shared by every scene.
+fn next_revision() -> u64 {
+    static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The background quad of an element whose hover style sets a solid
+/// background and nothing else. The element's fill then changes in the scene
+/// on screen as the pointer comes and goes, instead of by drawing its view
+/// again (see [`crate::Window::paint_hover_background`]).
+pub(crate) struct HoverQuad {
+    /// Where its primitive lies in the scene's paint operations.
+    pub(crate) operation: usize,
+    pub(crate) link: std::rc::Rc<HoverQuadLink>,
+    /// The quad as the scene holds it among its quads: moved, clipped and
+    /// faded by the transforms it was painted in, and given its draw order.
+    /// `None` when it is clipped out.
+    pub(crate) placed: Option<Quad>,
+    /// The opacity those transforms give its fill.
+    pub(crate) opacity: f32,
+}
+
+/// What an element keeps of its [`HoverQuad`] from one frame to the next.
+#[derive(Default)]
+pub(crate) struct HoverQuadLink {
+    /// Where the quad lies in the paint operations of the scene last built
+    /// with it, when it was recorded there.
+    pub(crate) operation: std::cell::Cell<Option<usize>>,
+    /// Its fill at rest and under the pointer, with the element's opacity.
+    pub(crate) fills: std::cell::Cell<(Background, Background)>,
 }
 
 pub(crate) enum PaintOperation {
