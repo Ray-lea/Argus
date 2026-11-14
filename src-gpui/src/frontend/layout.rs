@@ -710,7 +710,9 @@ impl Desktop {
                     })
                     .text_size(theme::font(12.))
                     .text_color(p.ink)
-                    .child(widgets::logo(18.))
+                    // 24 px: a pixel master at every standard scaling
+                    // (24/30/36/42/48 device pixels, as on the taskbar).
+                    .child(widgets::logo(24.))
                     .child(argus_app::config::app_title()),
             )
             .on_prepaint(track_toolbar(
