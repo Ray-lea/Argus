@@ -271,9 +271,11 @@ impl NativeTable {
                 }
                 cached.as_ref().map(|(_, hint)| hint.clone())
             }
-            // A base priority between the classes says which it lies between.
+            // Keep the full class name available when a manual width truncates it;
+            // custom values instead explain where they sit between the classes.
             ("processes", "basePriority") if row.metric(field.key).is_some() => {
                 super::base_priority_hint(&row.members[0])
+                    .or_else(|| super::base_priority(&row.members[0]))
             }
             // The busiest engine, which the figure is the share of.
             ("processes", "gpu") => row.gpu_usage().engine.clone().filter(|e| !e.is_empty()),
