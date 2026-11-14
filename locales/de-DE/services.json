@@ -14,7 +14,8 @@
     "manual": "Manuell",
     "disabled": "Deaktiviert",
     "boot": "Start",
-    "system": "System"
+    "system": "System",
+    "pending": "{type} nach Neustart"
   },
   "filter": {
     "all": "Alle",
@@ -45,5 +46,18 @@
   "noMatch": "Keine passenden Dienste",
   "clearFilter": "Filter zurücksetzen",
   "summary": "{running} von {total} Diensten werden ausgeführt",
-  "manageHint": "Die meisten Dienste können nur verwaltet werden, wenn der privilegierte Dienst aktiviert ist oder wenn Argus als Administrator ausgeführt wird."
+  "manageHint": "Die meisten Dienste können nur verwaltet werden, wenn der privilegierte Dienst aktiviert ist oder wenn Argus als Administrator ausgeführt wird.",
+  "packaged": {
+    "title": "Starttyp in der Registrierung ändern?",
+    "body": "Windows erlaubt niemandem, den Starttyp von „{name}“ zu ändern, auch Administratoren nicht: Der Dienst gehört zu einem App-Paket. Argus kann stattdessen „{type}“ in den Registrierungsschlüssel des Dienstes schreiben.\n\nWindows übernimmt ihn meist sofort; andernfalls zeigt die Tabelle ihn bis zum nächsten Neustart als ausstehend an. Ein App-Update kann den ursprünglichen Wert wiederherstellen.",
+    "confirm": "In Registrierung schreiben",
+    "done": "Starttyp in die Registrierung geschrieben."
+  },
+  "error": {
+    "accessDenied": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus. Sicherheitssoftware kann ihre eigenen Dienste schützen.",
+    "notFound": "Dienst {name} wurde nicht gefunden.",
+    "refused": "Argus kann den Dienst {name} nicht ändern.",
+    "serviceOutdated": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+    "accessDeniedPrivileged": "Dienst {name} konnte nicht geändert werden: Zugriff trotz Administratorrechten verweigert. Der Dienst wird wahrscheinlich von seiner eigenen Software geschützt, etwa vom Selbstschutz eines Virenscanners."
+  }
 }

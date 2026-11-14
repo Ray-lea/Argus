@@ -1,5 +1,14 @@
 use super::*;
 impl Desktop {
+    /// Argus acts with administrator rights: elevated itself, or through a
+    /// running privileged service authorized for this account.
+    pub(in crate::frontend) fn privileged(&self) -> bool {
+        boolean(&self.data["info"], "elevated")
+            || self.data.get("privilege").is_some_and(|s| {
+                text(s, "state") == "running" && boolean(s, "authorized") && s["error"].is_null()
+            })
+    }
+
     pub(in crate::frontend) fn request(
         &mut self,
         command: &str,
@@ -622,10 +631,29 @@ impl Desktop {
                 return result;
             }
         }
+        // Services are changed, not ended: they name the display name the
+        // menu passed along, else the key name.
+        let service = matches!(
+            command,
+            "control_service" | "set_service_start_type" | "set_service_start_type_registry"
+        );
+        let name = match text(args, "display") {
+            display if service && !display.is_empty() => display.to_owned(),
+            _ => name,
+        };
+        // With administrator rights already in hand, advising them is no help:
+        // the service guards itself (an antivirus's self-protection).
+        let kind = if service && kind == "accessDenied" && self.privileged() {
+            "accessDeniedPrivileged"
+        } else {
+            kind
+        };
         let key = format!(
             "{}.{kind}",
             if command == "run_task" {
                 "tasks.error"
+            } else if service {
+                "services.error"
             } else {
                 "actions.error"
             }

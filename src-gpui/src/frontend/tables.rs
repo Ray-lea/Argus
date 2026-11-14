@@ -309,6 +309,9 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::StartType => {
             if raw["startType"].is_null() {
                 missing()
+            } else if !raw["pendingStartType"].is_null() {
+                // Written to the registry; the SCM still runs the old value.
+                pending_start_type(text(raw, "pendingStartType"))
             } else {
                 label(&format!("services.startType.{}", text(raw, "startType")))
             }
@@ -496,6 +499,17 @@ impl Render for TableFrame {
             })
     }
 }
+/// A start type written to the registry that takes effect after a restart.
+fn pending_start_type(start_type: &str) -> String {
+    argus_core::i18n::format(
+        "services.startType.pending",
+        &[(
+            "type",
+            &label(&format!("services.startType.{start_type}")) as &dyn std::fmt::Display,
+        )],
+    )
+}
+
 /// The labels a fixed column's cells can show, as locale keys under `prefix`,
 /// and the width of what sits beside the label (the status dot and its gap).
 fn cell_labels(kind: CellKind) -> (&'static str, &'static [&'static str], f32) {
@@ -571,8 +585,15 @@ impl NativeTable {
                 .or_insert_with(|| {
                     // The header leaves room for the sort arrow, as `AutoWidths` does.
                     let (prefix, keys, beside) = cell_labels(field.kind);
+                    // A start type can also show as pending a restart, which is longer.
+                    let pending = (field.kind == CellKind::StartType)
+                        .then(|| keys.iter().map(|key| pending_start_type(key)))
+                        .into_iter()
+                        .flatten();
                     keys.iter()
-                        .map(|key| width(&label(&format!("{prefix}.{key}")), 13.) + beside)
+                        .map(|key| label(&format!("{prefix}.{key}")))
+                        .chain(pending)
+                        .map(|text| width(&text, 13.) + beside)
                         .fold(width(&field.label, 12.) + 20., f32::max)
                         + CELL_PADDING * 2.
                 });

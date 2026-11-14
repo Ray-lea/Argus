@@ -3,6 +3,15 @@
 //! Status for every service is one `EnumServicesStatusExW` call. Static
 //! configuration (start type, binary path, description) costs three RPCs per
 //! service, so it is cached and refreshed only occasionally.
+//!
+//! Services installed by an MSIX package (`SERVICE_PKG_SERVICE`) get a
+//! security descriptor that grants configuration changes only to
+//! `NT SERVICE\AppXSvc`: neither administrators nor SYSTEM may change their
+//! start type through the SCM. Their registry key keeps the usual ACL, so
+//! [`ServiceCatalog::set_start_type_in_registry`] writes `Start` there instead.
+//! In testing the SCM picked the new value up at once, but nothing documents
+//! that; while the two differ, the registry value is shown as a pending start
+//! type, which the SCM reads at the next boot at the latest.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -11,7 +20,8 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegLoadMUIStringW, RegOpenKeyExW,
+    HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_SAM_FLAGS,
+    RegCloseKey, RegLoadMUIStringW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 use windows::Win32::System::Services::{
     ChangeServiceConfig2W, ChangeServiceConfigW, CloseServiceHandle, ControlService,
@@ -35,6 +45,8 @@ const CONFIG_TTL: Duration = Duration::from_secs(60);
 const SERVICE_ACCEPT_STOP: u32 = 0x1;
 const SERVICE_WIN32_SHARE_PROCESS: u32 = 0x20;
 const SERVICE_STOPPED: u32 = 1;
+/// `SERVICE_PKG_SERVICE`: the service belongs to an MSIX package.
+const SERVICE_PKG_SERVICE: u32 = 0x200;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +59,12 @@ pub struct ServiceInfo {
     pub state: &'static str,
     /// `boot` | `system` | `auto` | `autoDelayed` | `manual` | `disabled`
     pub start_type: Option<&'static str>,
+    /// Start type written to the registry that the SCM picks up at the next
+    /// boot; None when it matches `start_type`.
+    pub pending_start_type: Option<&'static str>,
+    /// Installed by an MSIX package, so only its registry value can change
+    /// the start type.
+    pub packaged: bool,
     /// Hosting process; 0 when not running.
     pub pid: u32,
     /// Command line of the service binary.
@@ -79,6 +97,8 @@ struct Config {
     /// Display name in the user's UI language (the SCM resolves it in the system one).
     display_name: Option<String>,
     start_type: Option<&'static str>,
+    pending_start_type: Option<&'static str>,
+    packaged: bool,
     path: Option<Arc<str>>,
     account: Option<Arc<str>>,
     description: Option<Arc<str>>,
@@ -198,6 +218,8 @@ impl ServiceCatalog {
             description: config.description.clone(),
             state: state_name(st.dwCurrentState.0),
             start_type: config.start_type,
+            pending_start_type: config.pending_start_type,
+            packaged: config.packaged,
             pid: st.dwProcessId,
             path: config.path.clone(),
             account: config.account.clone(),
@@ -282,6 +304,89 @@ impl ServiceCatalog {
         self.invalidate(name);
         Ok(())
     }
+
+    /// Writes the start type of a packaged service straight to its registry
+    /// key, for when the SCM refuses the change (see the module docs). The SCM
+    /// usually applies it at once, at the next boot at the latest; an update of
+    /// the package may restore its own value. Refuses services that are not packaged: those go through the SCM.
+    pub fn set_start_type_in_registry(
+        &self,
+        name: &str,
+        start: StartType,
+    ) -> Result<(), ActionError> {
+        let scm = open_scm()?;
+        let packaged = query_config(&scm, name)
+            .ok_or(ActionError::NotFound)?
+            .packaged;
+        if !packaged {
+            return Err(ActionError::Refused);
+        }
+        let key =
+            open_registry_key(name, KEY_QUERY_VALUE | KEY_SET_VALUE).map_err(ActionError::from)?;
+        let (code, delayed) = start_values(start);
+        set_dword(&key, "Start", code)?;
+        if let Some(delayed) = delayed {
+            set_dword(&key, "DelayedAutostart", delayed.into())?;
+        }
+        self.invalidate(name);
+        Ok(())
+    }
+}
+
+/// `Start` and, for automatic starts, `DelayedAutostart` registry values.
+fn start_values(start: StartType) -> (u32, Option<bool>) {
+    match start {
+        StartType::Auto => (2, Some(false)),
+        StartType::AutoDelayed => (2, Some(true)),
+        StartType::Manual => (3, None),
+        StartType::Disabled => (4, None),
+    }
+}
+
+/// The start type the registry values describe, named like `start_type`.
+fn registry_start_name(start: u32, delayed: bool) -> Option<&'static str> {
+    match (start, delayed) {
+        (0, _) => Some("boot"),
+        (1, _) => Some("system"),
+        (2, true) => Some("autoDelayed"),
+        (2, false) => Some("auto"),
+        (3, _) => Some("manual"),
+        (4, _) => Some("disabled"),
+        _ => None,
+    }
+}
+
+fn set_dword(key: &RegKey, value: &str, data: u32) -> Result<(), ActionError> {
+    let v = wide(value);
+    unsafe {
+        RegSetValueExW(
+            key.0,
+            PCWSTR(v.as_ptr()),
+            None,
+            REG_DWORD,
+            Some(&data.to_le_bytes()),
+        )
+    }
+    .ok()?;
+    Ok(())
+}
+
+fn read_dword(key: &RegKey, value: &str) -> Option<u32> {
+    let v = wide(value);
+    let mut data = [0u8; 4];
+    let mut len = data.len() as u32;
+    let mut kind = REG_DWORD;
+    let r = unsafe {
+        RegQueryValueExW(
+            key.0,
+            PCWSTR(v.as_ptr()),
+            None,
+            Some(&mut kind),
+            Some(data.as_mut_ptr()),
+            Some(&mut len),
+        )
+    };
+    (r == ERROR_SUCCESS && kind == REG_DWORD && len == 4).then(|| u32::from_le_bytes(data))
 }
 
 fn start(scm: &Handle, name: &str) -> Result<(), ActionError> {
@@ -335,6 +440,7 @@ fn query_config(scm: &Handle, name: &str) -> Option<Config> {
                 4 => Some("disabled"),
                 _ => None,
             };
+            config.packaged = c.dwServiceType.0 & SERVICE_PKG_SERVICE != 0;
             config.path = unsafe { pwstr(c.lpBinaryPathName) }.map(Into::into);
             config.account = unsafe { pwstr(c.lpServiceStartName) }.map(Into::into);
         }
@@ -344,9 +450,10 @@ fn query_config(scm: &Handle, name: &str) -> Option<Config> {
         let d = unsafe { &*(buf.as_ptr() as *const SERVICE_DESCRIPTIONW) };
         config.description = unsafe { pwstr(d.lpDescription) }.map(Into::into);
     }
-    if let Some(key) = registry_key(name) {
-        config.display_name = mui_string(&key, "DisplayName");
-        if let Some(d) = mui_string(&key, "Description") {
+    let key = open_registry_key(name, KEY_READ).ok();
+    if let Some(key) = &key {
+        config.display_name = mui_string(key, "DisplayName");
+        if let Some(d) = mui_string(key, "Description") {
             config.description = Some(d.into());
         }
     }
@@ -357,6 +464,15 @@ fn query_config(scm: &Handle, name: &str) -> Option<Config> {
         if info.fDelayedAutostart.as_bool() {
             config.start_type = Some("autoDelayed");
         }
+    }
+    // A registry value the SCM has not taken up (written by Argus or by hand)
+    // shows as pending; the SCM reads it at the next boot at the latest.
+    if let Some(key) = &key
+        && let Some(start) = read_dword(key, "Start")
+    {
+        let delayed = read_dword(key, "DelayedAutostart").is_some_and(|d| d != 0);
+        config.pending_start_type = registry_start_name(start, delayed)
+            .filter(|registry| config.start_type.is_some_and(|scm| scm != *registry));
     }
     Some(config)
 }
@@ -372,19 +488,20 @@ impl Drop for RegKey {
     }
 }
 
-fn registry_key(name: &str) -> Option<RegKey> {
+fn open_registry_key(name: &str, access: REG_SAM_FLAGS) -> windows::core::Result<RegKey> {
     let path = wide(&format!(r"SYSTEM\CurrentControlSet\Services\{name}"));
     let mut key = HKEY::default();
-    let r = unsafe {
+    unsafe {
         RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             PCWSTR(path.as_ptr()),
             None,
-            KEY_READ,
+            access,
             &mut key,
         )
-    };
-    (r == ERROR_SUCCESS).then_some(RegKey(key))
+    }
+    .ok()?;
+    Ok(RegKey(key))
 }
 
 /// Reads a registry string, resolving `@file.dll,-id` references in the
@@ -433,5 +550,33 @@ fn state_name(state: u32) -> &'static str {
         6 => "pausePending",
         7 => "paused",
         _ => "stopped",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_values_read_back_as_the_chosen_start_type() {
+        for (start, name) in [
+            (StartType::Auto, "auto"),
+            (StartType::AutoDelayed, "autoDelayed"),
+            (StartType::Manual, "manual"),
+            (StartType::Disabled, "disabled"),
+        ] {
+            let (code, delayed) = start_values(start);
+            assert_eq!(
+                registry_start_name(code, delayed.unwrap_or(false)),
+                Some(name)
+            );
+        }
+    }
+
+    #[test]
+    fn delayed_flag_only_matters_for_automatic_starts() {
+        assert_eq!(registry_start_name(3, true), Some("manual"));
+        assert_eq!(registry_start_name(4, true), Some("disabled"));
+        assert_eq!(registry_start_name(7, false), None);
     }
 }

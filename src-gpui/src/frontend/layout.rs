@@ -1030,6 +1030,9 @@ impl Desktop {
             let name = selected
                 .map(|s| text(s, "name").to_owned())
                 .unwrap_or_default();
+            let display = selected
+                .map(|s| text(s, "displayName").to_owned())
+                .unwrap_or_default();
             let tip = label(title);
             row = row.child(
                 self.tool_button(
@@ -1038,7 +1041,7 @@ impl Desktop {
                     Some(glyph),
                     Action::Invoke(
                         "control_service".into(),
-                        json!({"name": name, "action": action}),
+                        json!({"name": name, "action": action, "display": display}),
                     ),
                     false,
                     cx,
@@ -1179,9 +1182,7 @@ impl Desktop {
         }
         let privilege = if boolean(&self.data["info"], "elevated") {
             "admin"
-        } else if self.data.get("privilege").is_some_and(|s| {
-            text(s, "state") == "running" && boolean(s, "authorized") && s["error"].is_null()
-        }) {
+        } else if self.privileged() {
             "service"
         } else {
             "standard"

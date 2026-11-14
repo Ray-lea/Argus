@@ -30,7 +30,7 @@
 | `system.rs` | 总 CPU 与每个逻辑处理器的 CPU（均含内核时间）、内存、提交、缓存。以标准权限查询 `SystemMemoryListInformation`，取得已修改页、各优先级的备用页、空闲与已清零页；内存组成按互不重叠的页列表显示，已缓存为备用与已修改之和。查询不可用时显示总量，组成明细留空 |
 | `cpu.rs` | 按处理器组读取独立空闲计数与周期计数，校验处理器时钟与原生计数的单位、连续性和分母；异常时重新建立基线或回退时间计数 |
 | `details.rs` | 按需查询单个进程：命令行、用户、完整性级别、架构、优先级、版本 |
-| `services.rs` | 通过服务控制管理器（SCM）：一次 `EnumServicesStatusExW` 取得全部服务状态；启动类型、路径、描述每个服务要三次 RPC，所以缓存起来偶尔刷新；名称与描述按界面语言从 MUI 读取；启停服务、修改启动类型 |
+| `services.rs` | 通过服务控制管理器（SCM）：一次 `EnumServicesStatusExW` 取得全部服务状态；启动类型、路径、描述每个服务要三次 RPC，所以缓存起来偶尔刷新；名称与描述按界面语言从 MUI 读取；启停服务、修改启动类型。MSIX 包安装的服务（`SERVICE_PKG_SERVICE`）的安全描述符只允许 `NT SERVICE\AppXSvc` 修改配置，管理员和 SYSTEM 都会被 SCM 拒绝；这类服务可改为直接写入注册表项中的 `Start`（自动启动时还有 `DelayedAutostart`），实测 SCM 通常随即采用新值，但不作保证；注册表值与 SCM 当前值不同时，作为待生效的启动类型返回，最迟在下次开机时生效 |
 | `startup.rs`、`startup/packaged.rs` | 注册表 Run 键、启动文件夹（解析 .lnk）与当前账户的应用包启动任务；传统项目使用 `StartupApproved`，应用包结合 AppModel 注册状态、首次激活与用户授权标记判断是否启用，并记录禁用时间。显示程序名称和应用包本地化名称，保留原始项目标识；包清单与名称按包版本、位置和清单修改时间缓存，状态每次重新读取 |
 | `connections.rs` | TCP / UDP（IPv4 / IPv6）端点与所属进程（`netstat -ano` 显示的内容）；断开 IPv4 TCP 连接 |
 | `filelock.rs` | 以当前账户权限通过 Restart Manager 查找打开文件或加载 DLL 的进程。整批查询被拒时二分重试，隔离无法检查的文件 |

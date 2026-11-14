@@ -251,6 +251,9 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
                 ))
             } else if key == spec.first {
                 Order::Key(collation::key(&row.title))
+            } else if key == "startType" && !row.raw["pendingStartType"].is_null() {
+                // A start type pending a restart sorts as what the row shows.
+                Order::Key(collation::key(text(&row.raw, "pendingStartType")))
             } else if key == "protocol" {
                 Order::Protocol(
                     collation::key(text(&row.raw, key)),
@@ -578,6 +581,32 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn a_start_type_pending_a_restart_sorts_as_shown() {
+        let source = [
+            ("a", "auto", None),
+            ("b", "manual", None),
+            ("c", "auto", Some("manual")),
+            ("d", "disabled", None),
+        ]
+        .map(|(name, start, pending)| {
+            json!({"name":name,"displayName":name,"startType":start,"pendingStartType":pending})
+        });
+        let spec = ListSpec {
+            page: "services".into(),
+            first: "displayName",
+            ..spec("startType", false, "", json!({}))
+        };
+        let names = list_rows(&spec, &source, &Default::default())
+            .iter()
+            .map(|row| row.key.clone())
+            .collect::<Vec<_>>();
+        // "c" is still automatic in the SCM but shows as manual after restart.
+        let position = |name: &str| names.iter().position(|n| n == name).unwrap();
+        assert!(position("c").abs_diff(position("b")) == 1);
+        assert!(position("a") < position("d"));
     }
 
     #[test]

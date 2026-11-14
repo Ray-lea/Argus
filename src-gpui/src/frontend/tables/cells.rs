@@ -132,13 +132,13 @@ impl NativeTable {
                 }
             }
             CellKind::StartType => {
+                let start = match text(&row.raw, "pendingStartType") {
+                    "" => text(&row.raw, "startType"),
+                    pending => pending,
+                };
                 element = element
-                    .when(text(&row.raw, "startType") == "manual", |d| {
-                        d.text_color(faint)
-                    })
-                    .when(text(&row.raw, "startType") == "disabled", |d| {
-                        d.text_color(p.io)
-                    })
+                    .when(start == "manual", |d| d.text_color(faint))
+                    .when(start == "disabled", |d| d.text_color(p.io))
                     .child(value);
             }
             CellKind::Protocol => {
