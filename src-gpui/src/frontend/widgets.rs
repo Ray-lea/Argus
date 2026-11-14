@@ -371,17 +371,32 @@ pub(in crate::frontend) fn logo(size: f32) -> impl IntoElement {
     .flex_shrink_0()
 }
 
+/// The pixel masters of the logo, by size (`scripts/icons.mjs`).
+const LOGO_MASTERS: [(i32, &[u8]); 9] = [
+    (16, include_bytes!("../../../resources/icons/logo-16.svg")),
+    (20, include_bytes!("../../../resources/icons/logo-20.svg")),
+    (24, include_bytes!("../../../resources/icons/logo-24.svg")),
+    (30, include_bytes!("../../../resources/icons/logo-30.svg")),
+    (32, include_bytes!("../../../resources/icons/logo-32.svg")),
+    (36, include_bytes!("../../../resources/icons/logo-36.svg")),
+    (40, include_bytes!("../../../resources/icons/logo-40.svg")),
+    (42, include_bytes!("../../../resources/icons/logo-42.svg")),
+    (48, include_bytes!("../../../resources/icons/logo-48.svg")),
+];
+
 /// The logo for a raster `pixels` across, and the size to draw it: below
-/// 40 px the largest pixel master that fits (scaled, its dots would blur),
-/// centred in the rest; from 40 px the vector logo at full size.
+/// 64 px the largest pixel master that fits (scaled, its dots would blur),
+/// centred in the rest; from 64 px the vector logo at full size.
 fn logo_source(pixels: i32) -> (&'static [u8], i32) {
-    match pixels {
-        ..20 => (include_bytes!("../../../resources/icons/logo-16.svg"), 16),
-        20..24 => (include_bytes!("../../../resources/icons/logo-20.svg"), 20),
-        24..32 => (include_bytes!("../../../resources/icons/logo-24.svg"), 24),
-        32..40 => (include_bytes!("../../../resources/icons/logo-32.svg"), 32),
-        _ => (include_bytes!("../../../resources/logo.svg"), pixels),
+    if pixels >= 64 {
+        return (include_bytes!("../../../resources/logo.svg"), pixels);
     }
+    let (size, source) = LOGO_MASTERS
+        .iter()
+        .rev()
+        .find(|(size, _)| *size <= pixels)
+        .unwrap_or(&LOGO_MASTERS[0]);
+    (source, *size)
 }
 
 pub(in crate::frontend) fn solid(color: Hsla) -> Hsla {

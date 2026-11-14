@@ -1,6 +1,6 @@
 // Regenerates the app icons in resources/icons from the logo sources:
 // resources/icons/logo-<n>.svg, drawn on whole pixels, for the sizes that
-// have one (16, 20, 24 and 32 px, where the dots would blur if scaled), and
+// have one (up to 48 px, where the dots would blur if scaled), and
 // resources/logo.svg for the rest. SVGs are rasterized by headless Microsoft
 // Edge at each exact size.
 // Usage: node scripts/icons.mjs
@@ -13,11 +13,13 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const icons = join(root, "resources", "icons");
-const MASTERS = [16, 20, 24, 32];
+const MASTERS = [16, 20, 24, 30, 32, 36, 40, 42, 48];
 /** The source drawn for a size: its pixel master, or the vector logo. */
 const source = (size) => (MASTERS.includes(size) ? join(icons, `logo-${size}.svg`) : join(root, "resources", "logo.svg"));
-// 100–200% scaling of the taskbar, Start, Explorer and the installer.
-const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 256];
+// The taskbar asks for 24 px per 100 % of scaling (24, 30, 36, 42, 48 at
+// 100–200 %), small icons for 16 px per 100 % (16, 20, 24, 32); a missing
+// size is scaled from another one and its dots blur.
+const ICO_SIZES = [16, 20, 24, 30, 32, 36, 40, 42, 48, 64, 256];
 const PNG_OUTPUTS = { "32x32.png": 32 };
 
 const edge = [
