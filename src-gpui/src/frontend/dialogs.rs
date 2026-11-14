@@ -1737,9 +1737,12 @@ impl Desktop {
                 self.notify_toast(ToastKind::Error, message);
             }
             // A packaged service's security descriptor keeps the SCM from
-            // changing it even for administrators: offer its registry value.
+            // changing it even for administrators: offer its registry value,
+            // which takes the same rights; without them the usual guidance shows.
             "set_service_start_type"
-                if boolean(args, "packaged") && text(error, "kind") == "accessDenied" =>
+                if boolean(args, "packaged")
+                    && text(error, "kind") == "accessDenied"
+                    && self.privileged() =>
             {
                 self.offer_registry_start_type(args, window, cx);
             }
