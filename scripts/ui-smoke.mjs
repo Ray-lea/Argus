@@ -432,7 +432,7 @@ try {
       send({ sample: { set: { "/system/threadCount": 10000 + index, "/system/handleCount": 20000 + index } } });
       await sleep(350);
       await capture(`${page}-partial`, false, false);
-      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.includes("Region")), `${page}: unchanged page was not replayed`);
+      assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.reused >= 3 && !event.rendered.some((name) => name.startsWith("Region"))), `${page}: unchanged page was not replayed`);
       send({ fullPaint: true });
       await sleep(250);
       await capture(`${page}-full`, false, false);
@@ -446,7 +446,7 @@ try {
     send({ sample: { set: { "/hardware/cpuSensors": { state: "unsupported" } } } });
     await sleep(350);
     await capture("sensor-partial", false, false);
-    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.includes("Region")), "sensor state did not invalidate settings");
+    assert(events.slice(begin).some((event) => event.event === "frame-phases" && event.rendered.some((name) => name.startsWith("Region"))), "sensor state did not invalidate settings");
     send({ fullPaint: true });
     await sleep(250);
     await capture("sensor-full", false, false);

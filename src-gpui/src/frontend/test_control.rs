@@ -974,6 +974,11 @@ impl Desktop {
                 cx,
             );
         }
-        cx.notify();
+        // A passive control stands for the input it dispatches alone: it draws
+        // again only what the same input from the system would, so a frame
+        // trace shows what a pointer move or a wheel notch invalidates.
+        if control["passive"].as_bool() != Some(true) {
+            cx.notify();
+        }
     }
 }
