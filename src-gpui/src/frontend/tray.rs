@@ -1081,6 +1081,25 @@ impl Render for Flyout {
 }
 
 impl Desktop {
+    pub(in crate::frontend) fn tray_test_state(&self, cx: &App) -> Value {
+        let sampling_shown = self.host.get_window("main").is_some_and(|window| {
+            window.hwnd().is_ok_and(|hwnd| {
+                crate::shell::sampling_state(hwnd) == argus_app::sampler::WindowState::Shown
+            })
+        });
+        let Some(open) = &self.tray.open else {
+            return json!({"visible":false,"panel":false,"samplingShown":sampling_shown});
+        };
+        let flyout = open.flyout.read(cx);
+        json!({
+            "visible":unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(flyout.hwnd).as_bool() },
+            "panel":flyout.showing(Some(Kind::Panel)),
+            "card":flyout.showing(Some(Kind::Card)),
+            "animated":flyout.fade,
+            "samplingShown":sampling_shown,
+        })
+    }
+
     /// What the flyouts show now.
     fn tray_readings(&self) -> Readings {
         let sys = &self.snapshot["system"];
