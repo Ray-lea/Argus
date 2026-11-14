@@ -309,6 +309,18 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::StartType => {
             if raw["startType"].is_null() {
                 missing()
+            } else if !raw["pendingStartType"].is_null() {
+                // Written to the registry; the SCM still runs the old value.
+                argus_core::i18n::format(
+                    "services.startType.pending",
+                    &[(
+                        "type",
+                        &label(&format!(
+                            "services.startType.{}",
+                            text(raw, "pendingStartType")
+                        )) as &dyn std::fmt::Display,
+                    )],
+                )
             } else {
                 label(&format!("services.startType.{}", text(raw, "startType")))
             }

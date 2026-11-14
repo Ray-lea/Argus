@@ -14,7 +14,8 @@
     "manual": "Manuel",
     "disabled": "Désactivé",
     "boot": "Amorçage",
-    "system": "Système"
+    "system": "Système",
+    "pending": "{type} après redémarrage"
   },
   "filter": {
     "all": "Tous",
@@ -45,5 +46,11 @@
   "noMatch": "Aucun service correspondant",
   "clearFilter": "Effacer les filtres",
   "summary": "{running} de {total} en cours d’exécution",
-  "manageHint": "La plupart des services ne peuvent être gérés qu’avec le service privilégié activé ou avec Argus exécuté en tant qu’administrateur."
+  "manageHint": "La plupart des services ne peuvent être gérés qu’avec le service privilégié activé ou avec Argus exécuté en tant qu’administrateur.",
+  "packaged": {
+    "title": "Modifier le type de démarrage dans le registre ?",
+    "body": "Windows ne permet à personne de modifier le type de démarrage de « {name} », pas même aux administrateurs : le service appartient à un package d’application. Argus peut écrire « {type} » dans la clé de registre du service.\n\nWindows l’applique généralement tout de suite ; sinon, le tableau l’indique comme en attente jusqu’au prochain redémarrage. Une mise à jour de l’application peut rétablir la valeur d’origine.",
+    "confirm": "Écrire dans le registre",
+    "done": "Type de démarrage écrit dans le registre."
+  }
 }

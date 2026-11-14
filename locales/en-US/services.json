@@ -14,7 +14,8 @@
     "manual": "Manual",
     "disabled": "Disabled",
     "boot": "Boot",
-    "system": "System"
+    "system": "System",
+    "pending": "{type} after restart"
   },
   "filter": {
     "all": "All",
@@ -45,5 +46,11 @@
   "noMatch": "No matching services",
   "clearFilter": "Clear filters",
   "summary": "{running} of {total} running",
-  "manageHint": "Most services can only be managed with the privileged service enabled or with Argus running as administrator."
+  "manageHint": "Most services can only be managed with the privileged service enabled or with Argus running as administrator.",
+  "packaged": {
+    "title": "Change startup type in the registry?",
+    "body": "Windows doesn't let anyone change the startup type of “{name}”, not even administrators: the service belongs to an app package. Argus can write “{type}” to the service's registry key instead.\n\nWindows usually applies it right away; if it doesn't, the table marks it as pending until the next restart. An app update may restore the original value.",
+    "confirm": "Write to registry",
+    "done": "Startup type written to the registry."
+  }
 }

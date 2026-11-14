@@ -14,7 +14,8 @@
     "manual": "手動",
     "disabled": "已停用",
     "boot": "開機",
-    "system": "系統"
+    "system": "系統",
+    "pending": "{type}（重新啟動後）"
   },
   "filter": {
     "all": "全部",
@@ -45,5 +46,11 @@
   "noMatch": "沒有相符的服務",
   "clearFilter": "清除篩選",
   "summary": "執行中 {running} / 共 {total} 個服務",
-  "manageHint": "多數服務需要啟用特殊權限服務或以系統管理員身分執行 Argus 才能管理。"
+  "manageHint": "多數服務需要啟用特殊權限服務或以系統管理員身分執行 Argus 才能管理。",
+  "packaged": {
+    "title": "透過登錄更改啟動類型？",
+    "body": "「{name}」屬於應用程式套件，Windows 不允許任何人（包括系統管理員）更改其啟動類型。Argus 可以改為將「{type}」寫入該服務的登錄機碼。\n\nWindows 通常會立即套用；若未套用，表格會將其標示為待生效，直到下次重新啟動。應用程式更新可能會還原原本的值。",
+    "confirm": "寫入登錄",
+    "done": "啟動類型已寫入登錄。"
+  }
 }

@@ -333,6 +333,13 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "set_service_start_type_registry" => crate::commands::set_service_start_type_registry(
+            host.state(),
+            argument::<String>(&args, "name")?,
+            argument::<StartType>(&args, "startType")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "open_services_console" => crate::commands::open_services_console()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

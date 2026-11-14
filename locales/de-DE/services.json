@@ -14,7 +14,8 @@
     "manual": "Manuell",
     "disabled": "Deaktiviert",
     "boot": "Start",
-    "system": "System"
+    "system": "System",
+    "pending": "{type} nach Neustart"
   },
   "filter": {
     "all": "Alle",
@@ -45,5 +46,11 @@
   "noMatch": "Keine passenden Dienste",
   "clearFilter": "Filter zurücksetzen",
   "summary": "{running} von {total} Diensten werden ausgeführt",
-  "manageHint": "Die meisten Dienste können nur verwaltet werden, wenn der privilegierte Dienst aktiviert ist oder wenn Argus als Administrator ausgeführt wird."
+  "manageHint": "Die meisten Dienste können nur verwaltet werden, wenn der privilegierte Dienst aktiviert ist oder wenn Argus als Administrator ausgeführt wird.",
+  "packaged": {
+    "title": "Starttyp in der Registrierung ändern?",
+    "body": "Windows erlaubt niemandem, den Starttyp von „{name}“ zu ändern, auch Administratoren nicht: Der Dienst gehört zu einem App-Paket. Argus kann stattdessen „{type}“ in den Registrierungsschlüssel des Dienstes schreiben.\n\nWindows übernimmt ihn meist sofort; andernfalls zeigt die Tabelle ihn bis zum nächsten Neustart als ausstehend an. Ein App-Update kann den ursprünglichen Wert wiederherstellen.",
+    "confirm": "In Registrierung schreiben",
+    "done": "Starttyp in die Registrierung geschrieben."
+  }
 }

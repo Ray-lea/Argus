@@ -14,7 +14,8 @@
     "manual": "手动",
     "disabled": "禁用",
     "boot": "引导",
-    "system": "系统"
+    "system": "系统",
+    "pending": "{type}（重启后）"
   },
   "filter": {
     "all": "全部",
@@ -45,5 +46,11 @@
   "noMatch": "没有匹配的服务",
   "clearFilter": "清除筛选",
   "summary": "正在运行 {running} / 共 {total} 个服务",
-  "manageHint": "多数服务需要启用特权服务或以管理员身份运行 Argus 才能管理。"
+  "manageHint": "多数服务需要启用特权服务或以管理员身份运行 Argus 才能管理。",
+  "packaged": {
+    "title": "通过注册表更改启动类型？",
+    "body": "“{name}”属于应用包，Windows 不允许任何人（包括管理员）更改其启动类型。Argus 可以改为将“{type}”写入该服务的注册表项。\n\nWindows 通常会立即应用；若未应用，表格会将其标为待生效，直到下次重启。应用更新可能会恢复原来的值。",
+    "confirm": "写入注册表",
+    "done": "启动类型已写入注册表。"
+  }
 }
