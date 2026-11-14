@@ -84,15 +84,16 @@ impl From<Theme> for String {
     }
 }
 
-/// What the tray icon shows: the app's icon, or the Argus eye with the CPU
-/// load as a bar or as a figure. Stored as its name; one this version does
-/// not know reads as the default.
+/// What the tray icon shows: the app's icon, or the CPU load live as the
+/// recent samples (`Load`), as the share of a hundred dots, or as a figure.
+/// Stored as its name; one this version does not know reads as the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
 pub enum TrayIcon {
     Logo,
     #[default]
     Load,
+    Share,
     Number,
 }
 
@@ -100,6 +101,7 @@ impl From<String> for TrayIcon {
     fn from(name: String) -> Self {
         match name.as_str() {
             "logo" => TrayIcon::Logo,
+            "share" => TrayIcon::Share,
             "number" => TrayIcon::Number,
             _ => TrayIcon::Load,
         }
@@ -111,6 +113,7 @@ impl From<TrayIcon> for String {
         match icon {
             TrayIcon::Logo => "logo",
             TrayIcon::Load => "load",
+            TrayIcon::Share => "share",
             TrayIcon::Number => "number",
         }
         .into()
@@ -482,7 +485,12 @@ mod tests {
         assert_eq!(settings.tray_icon, TrayIcon::Load);
         assert_eq!(settings.tray_menu, TrayMenu::Panel);
         assert!(!settings.close_to_tray);
-        for icon in [TrayIcon::Logo, TrayIcon::Load, TrayIcon::Number] {
+        for icon in [
+            TrayIcon::Logo,
+            TrayIcon::Load,
+            TrayIcon::Share,
+            TrayIcon::Number,
+        ] {
             for menu in [TrayMenu::Panel, TrayMenu::Menu] {
                 let saved = Settings {
                     tray_icon: icon,

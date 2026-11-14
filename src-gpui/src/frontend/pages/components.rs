@@ -130,7 +130,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let looks = ["logo", "load", "number"];
+        let looks = ["logo", "load", "share", "number"];
         let look = text(settings, "trayIcon");
         let icon = self.segments(
             "setting-trayIcon",

@@ -782,12 +782,14 @@ impl NativeTray {
         let look = match update.look {
             TrayIcon::Logo => return Live::Logo,
             TrayIcon::Load => tray_icon::Look::Load,
+            TrayIcon::Share => tray_icon::Look::Share,
             TrayIcon::Number => tray_icon::Look::Number,
         };
         let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
         let spec = tray_icon::Spec {
             look,
             load: update.load,
+            recent: update.recent,
             light: update.light,
             badge: update.badge,
         };
