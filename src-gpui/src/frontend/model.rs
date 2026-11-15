@@ -478,6 +478,9 @@ pub struct ProcessOptions<'a> {
     pub users: Option<&'a UserGroups>,
     /// The folded user groups, by `UserGroup::id`.
     pub user_folds: &'a HashSet<String>,
+    /// Every group, heading and branch open, whatever the folds: the list as
+    /// the automatic column widths measure it.
+    pub open: bool,
 }
 /// The `section` of a user group's heading.
 pub const USER_SECTION: &str = "user";
@@ -821,7 +824,7 @@ fn user_rows(processes: &[Value], users: &UserGroups, options: &ProcessOptions<'
         heading.members = listed.members;
         heading.gpu = Some(listed.gpu);
         heading.expandable = true;
-        heading.expanded = searching || !options.user_folds.contains(&group.id);
+        heading.expanded = options.open || searching || !options.user_folds.contains(&group.id);
         let expanded = heading.expanded;
         out.push(heading);
         if expanded {
@@ -944,7 +947,8 @@ fn group_rows(
                 ));
                 row.members = members.into_iter().cloned().collect();
                 row.expandable = true;
-                row.expanded = options.expanded.contains(&row.key)
+                row.expanded = options.open
+                    || options.expanded.contains(&row.key)
                     || shown
                         .as_ref()
                         .is_some_and(|items| items.len() < row.members.len());
@@ -1011,7 +1015,8 @@ fn group_rows(
             heading.gpu = Some(gpu_usage::aggregate(grouped.iter().map(Row::gpu_usage)));
             heading.raw["entryCount"] = json!(grouped.len());
             heading.expandable = true;
-            heading.expanded = !options.sections.contains(section) || !query.is_empty();
+            heading.expanded =
+                options.open || !options.sections.contains(section) || !query.is_empty();
             let expanded = heading.expanded;
             out.push(heading);
             if expanded {
@@ -1099,6 +1104,7 @@ fn tree_rows(
         children: &'a HashMap<String, Vec<&'a Value>>,
         visible: &'a HashSet<String>,
         searching: bool,
+        open: bool,
         expanded: &'a HashSet<String>,
         named: &'a F,
         sort: &'a str,
@@ -1114,8 +1120,8 @@ fn tree_rows(
                 .map(|p| {
                     let mut row = (self.named)(p, depth);
                     row.expandable = self.children.get(&row.key).is_some_and(|c| !c.is_empty());
-                    row.expanded =
-                        row.expandable && (self.searching || self.expanded.contains(&row.key));
+                    row.expanded = row.expandable
+                        && (self.searching || self.open || self.expanded.contains(&row.key));
                     row
                 })
                 .collect();
@@ -1136,6 +1142,7 @@ fn tree_rows(
         children: &children,
         visible: &visible,
         searching,
+        open: options.open,
         expanded: options.tree_expanded,
         named,
         sort: options.sort,
@@ -1810,6 +1817,7 @@ mod tests {
                 visibility: None,
                 users: None,
                 user_folds: &empty,
+                open: false,
             },
         )
     }
@@ -1847,6 +1855,7 @@ mod tests {
                         visibility: Some(&rules),
                         users: None,
                         user_folds: &empty,
+                        open: false,
                     },
                 );
                 assert_eq!(
@@ -1977,6 +1986,7 @@ mod tests {
                     visibility: None,
                     users: None,
                     user_folds: &empty,
+                    open: false,
                 },
             )
         };
@@ -2022,6 +2032,7 @@ mod tests {
                 visibility: None,
                 users: None,
                 user_folds: &empty,
+                open: false,
             },
         );
         assert_eq!(pids(&rows), [1]);
@@ -2073,6 +2084,7 @@ mod tests {
                 visibility: None,
                 users: None,
                 user_folds: &empty,
+                open: false,
             },
         );
         let members = rows.iter().filter(|row| row.depth == 1).collect::<Vec<_>>();
@@ -2105,6 +2117,7 @@ mod tests {
                 visibility: None,
                 users: None,
                 user_folds: &empty,
+                open: false,
             },
         );
         assert_eq!(rows.len(), 3);
@@ -2197,6 +2210,7 @@ mod tests {
                 visibility: None,
                 users: None,
                 user_folds: &empty,
+                open: false,
             },
         );
         assert_eq!(rows.len(), 2);
@@ -2430,6 +2444,7 @@ mod tests {
         folds: &'a [&'a str],
         sections: &'a [&'a str],
         visibility: bool,
+        open: bool,
     }
     impl Default for Grouped<'_> {
         fn default() -> Self {
@@ -2441,6 +2456,7 @@ mod tests {
                 folds: &[],
                 sections: &[],
                 visibility: false,
+                open: false,
             }
         }
     }
@@ -2464,6 +2480,7 @@ mod tests {
                 visibility: view.visibility.then_some(&rules),
                 users: Some(&users),
                 user_folds: &folds,
+                open: view.open,
             },
         )
     }
@@ -2692,6 +2709,7 @@ mod tests {
                 visibility: None,
                 users: Some(&users),
                 user_folds: &empty,
+                open: false,
             },
         );
         assert_eq!(
@@ -2817,6 +2835,54 @@ mod tests {
     }
 
     #[test]
+    fn the_open_list_shows_every_row_whatever_is_folded() {
+        let processes = user_processes();
+        let every = processes
+            .iter()
+            .filter_map(|p| p["pid"].as_u64())
+            .collect::<HashSet<_>>();
+        for (mode, sort) in [
+            ("apps", "name"),
+            ("apps", "pid"),
+            ("tree", "pid"),
+            ("list", "name"),
+        ] {
+            // Every user, category, app and branch folded.
+            let view = |open| Grouped {
+                mode,
+                sort,
+                descending: false,
+                folds: &["user:pc\\alice", "user:pc\\bob", "system"],
+                sections: &["apps", "background", "windows"],
+                open,
+                ..Default::default()
+            };
+            let folded = grouped_rows(&processes, &two_users(), view(false));
+            let open = grouped_rows(&processes, &two_users(), view(true));
+            assert!(folded.iter().all(|row| row.user.is_some()), "{mode} {sort}");
+            assert_eq!(
+                pids(&open).into_iter().collect::<HashSet<_>>(),
+                every,
+                "{mode} {sort}"
+            );
+            assert!(open.iter().all(|row| !row.expandable || row.expanded));
+        }
+        // The app's members are listed below it.
+        let apps = grouped_rows(
+            &processes,
+            &two_users(),
+            Grouped {
+                mode: "apps",
+                sort: "pid",
+                descending: false,
+                open: true,
+                ..Default::default()
+            },
+        );
+        assert!(apps.iter().any(|row| row.depth == 1 && pid(row) == 21));
+    }
+
+    #[test]
     fn a_folded_user_shows_only_a_heading_with_its_totals() {
         let processes = user_processes();
         for mode in ["apps", "tree", "list"] {
@@ -2857,6 +2923,7 @@ mod tests {
             visibility: None,
             users,
             user_folds: &empty,
+            open: false,
         };
         let rows = process_rows(&processes, options(Some(&users)));
         // Session 2 has no signed-in user here: its processes are the system's.

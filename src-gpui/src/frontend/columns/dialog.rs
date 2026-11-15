@@ -284,6 +284,8 @@ impl Desktop {
             self.rebuild_rows(false, cx);
         }
         self.prefs.set(PREFERENCE, preferences);
+        // Automatic widths turned on measure the open list from the start.
+        self.refresh_width_rows(None, cx);
         cx.notify();
     }
 

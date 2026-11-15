@@ -268,6 +268,8 @@ impl Desktop {
                 let epoch = self.rows_epoch;
                 let locale = argus_core::i18n::locale();
                 let processes = self.page == "processes";
+                // The list the column widths measure, now and then.
+                let measure = self.width_source(Some(tables::WIDTH_ROWS_EVERY));
                 let options = (
                     self.view.clone(),
                     self.query.clone(),
@@ -286,9 +288,10 @@ impl Desktop {
                     let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
                     let serialize_us = start.elapsed().as_micros() as u64;
                     let start = Instant::now();
+                    let users = processes
+                        .then(|| model::UserGroups::grouping(values(&model["sessions"]), options.9))
+                        .flatten();
                     let rows = processes.then(|| {
-                        let users =
-                            model::UserGroups::grouping(values(&model["sessions"]), options.9);
                         model::process_rows(
                             values(&model["processes"]),
                             model::ProcessOptions {
@@ -303,33 +306,36 @@ impl Desktop {
                                 visibility: options.8.as_ref(),
                                 users: users.as_ref(),
                                 user_folds: &options.10,
+                                open: false,
                             },
                         )
                     });
+                    let open = measure.map(|source| source.build(&model));
                     (
                         model,
                         rows,
+                        open,
                         serialize_us,
                         start.elapsed().as_micros() as u64,
                     )
                 });
                 cx.spawn_in(window, async move |this, cx| {
-                    let (model, rows, serialize_us, group_us) = task.await;
+                    let (model, rows, open, serialize_us, group_us) = task.await;
                     let _ = this.update_in(cx, |this, window, cx| {
                         let started = Instant::now();
                         this.snapshot_pending = false;
                         this.work.serialize_us += serialize_us;
                         this.work.background_group_us += group_us;
-                        let rows =
+                        let (rows, open) =
                             if epoch == this.rows_epoch && locale == argus_core::i18n::locale() {
-                                rows
+                                (rows, open)
                             } else {
-                                None
+                                (None, None)
                             };
                         let full = this.snapshot.is_null()
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
-                        this.accept_snapshot_prepared(model, rows, window, cx);
+                        this.accept_snapshot_prepared(model, rows, open, window, cx);
                         this.refresh_tray(cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
@@ -365,7 +371,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.accept_snapshot_prepared(snapshot, None, window, cx);
+        self.accept_snapshot_prepared(snapshot, None, None, window, cx);
     }
 
     /// List data arrives through its own command/row notifications. A sample
@@ -417,6 +423,7 @@ impl Desktop {
         &mut self,
         snapshot: Value,
         rows: Option<Vec<Row>>,
+        open: Option<tables::WidthRows>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -475,6 +482,14 @@ impl Desktop {
                 .detach();
         }
         if self.page == "processes" {
+            // The list the column widths measure: built with the rows off
+            // the UI thread when it was due, else here with each sample that
+            // brought no rows (test samples, or rows dropped as stale).
+            match open {
+                Some(open) => self.keep_width_rows(open),
+                None if rows.is_none() => self.refresh_width_rows(Some(Duration::ZERO), cx),
+                None => {}
+            }
             self.rebuild_rows_prepared(
                 self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
                 rows,

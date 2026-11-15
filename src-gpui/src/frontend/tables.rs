@@ -61,6 +61,8 @@ struct TableLayout<'a> {
     totals: HashMap<String, String>,
     bits: bool,
     scope: (&'a str, &'a str),
+    /// The process list the automatic column widths measure (`WidthRows`).
+    measured: Option<Arc<Vec<WidthRow>>>,
 }
 /// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
@@ -404,6 +406,9 @@ pub(super) struct NativeTable {
     scope: (String, String),
     totals: HashMap<String, String>,
     auto_widths: widths::AutoWidths,
+    /// The process list the automatic widths measure (`WidthRows`); the
+    /// rows shown stand in until there is one.
+    measured: Arc<Vec<WidthRow>>,
     /// Fixed column widths of the other tables for the current language and
     /// text size, by page and column (`fit_fixed`).
     fitted: HashMap<(String, &'static str), f32>,
@@ -647,6 +652,7 @@ impl NativeTable {
             scope: (String::new(), String::new()),
             totals: HashMap::new(),
             auto_widths: Default::default(),
+            measured: Arc::new(vec![]),
             fitted: HashMap::new(),
             cell_values: HashMap::new(),
             horizontal: None,
@@ -668,8 +674,14 @@ impl NativeTable {
             totals,
             bits,
             scope,
+            measured,
         } = layout;
         let rows_changed = !Arc::ptr_eq(&self.rows, &rows);
+        // An empty list (none sampled yet) measures nothing.
+        let measured = measured.filter(|measured| !measured.is_empty());
+        let measured_changed = measured
+            .as_ref()
+            .is_some_and(|measured| !Arc::ptr_eq(&self.measured, measured));
         let totals_changed = self.totals != totals;
         let locale = argus_core::i18n::locale();
         if rows_changed || bits != self.bits || self.locale != locale {
@@ -703,7 +715,10 @@ impl NativeTable {
             .horizontal
             .as_ref()
             .is_some_and(|h| h.wheel_target() != h.offset());
-        if same_layout && (!preferences.auto_width || (!rows_changed && !totals_changed) || gliding)
+        if same_layout
+            && (!preferences.auto_width
+                || (!rows_changed && !totals_changed && !measured_changed)
+                || gliding)
         {
             return false;
         }
@@ -736,6 +751,17 @@ impl NativeTable {
         self.process_columns = preferences.clone();
         self.page = page.into();
         if page == "processes" && preferences.auto_width {
+            self.measured = match measured {
+                Some(measured) => measured,
+                // Until the list is built, the rows shown stand in for it.
+                None if rows_changed || self.measured.is_empty() => Arc::new(
+                    self.rows
+                        .iter()
+                        .map(|row| widths::WidthRow::of(row, &fields, bits))
+                        .collect(),
+                ),
+                None => self.measured.clone(),
+            };
             let (first, count) = self
                 .list
                 .as_ref()
@@ -756,6 +782,7 @@ impl NativeTable {
                 widths::Contents {
                     rows: &self.rows,
                     range: first..(first + count.min(96)).min(self.rows.len()),
+                    measured: &self.measured,
                     totals: &self.totals,
                     values: &mut self.cell_values,
                     bits,
@@ -982,6 +1009,7 @@ impl NativeTable {
             widths::Contents {
                 rows: &self.rows,
                 range: 0..0,
+                measured: &self.measured,
                 totals: &self.totals,
                 values: &mut self.cell_values,
                 bits: self.bits,
@@ -1519,6 +1547,86 @@ fn mirror_selection(
         .borrow_mut()
         .deferred_scroll_to_item = None;
 }
+/// How often, at most, the samples build the list the column widths
+/// measure again (`WidthRows`). Rows on screen widen a column with each
+/// sample in between, so only rows scrolled away, folded or left out by a
+/// search wait for it.
+pub(super) const WIDTH_ROWS_EVERY: Duration = Duration::from_secs(5);
+pub(in crate::frontend) use widths::WidthRow;
+/// The process list as the automatic column widths measure it: every group
+/// open and nothing searched, so that searching or folding a group leaves
+/// the widths as they are. Each row keeps only what the widths read of it
+/// (`WidthRow`). Built again with another view, grouping, column choice
+/// or language, and from the samples now and then; the rows shown can only
+/// widen a column in between (`widths::AutoWidths::apply`).
+pub(in crate::frontend) struct WidthRows {
+    rows: Arc<Vec<WidthRow>>,
+    shape: WidthShape,
+    built: Instant,
+}
+/// What the measured list depends on besides the sample: the view, the
+/// category headings of the name order, grouping by user, the columns
+/// chosen and the language.
+#[derive(PartialEq)]
+struct WidthShape {
+    view: String,
+    sections: bool,
+    users: model::UserGrouping,
+    columns: Vec<String>,
+    locale: argus_core::i18n::Locale,
+}
+/// What the measured list is built from besides the sample, taken on the
+/// UI thread for a build that may run off it.
+pub(in crate::frontend) struct WidthSource {
+    shape: WidthShape,
+    sort: String,
+    hosted: HashMap<u64, Vec<String>>,
+    visibility: Option<visibility::Rules>,
+    columns: columns::Preferences,
+    bits: bool,
+}
+impl WidthSource {
+    /// The rows of `snapshot`'s processes with every group open and nothing
+    /// searched (`model::ProcessOptions::open`), as the widths read them.
+    pub(in crate::frontend) fn build(self, snapshot: &Value) -> WidthRows {
+        let none = HashSet::new();
+        let users = model::UserGroups::grouping(values(&snapshot["sessions"]), self.shape.users);
+        let rows = model::process_rows(
+            values(&snapshot["processes"]),
+            model::ProcessOptions {
+                mode: &self.shape.view,
+                query: "",
+                sort: &self.sort,
+                descending: false,
+                expanded: &none,
+                tree_expanded: &none,
+                sections: &none,
+                hosted: &self.hosted,
+                visibility: self.visibility.as_ref(),
+                users: users.as_ref(),
+                user_folds: &none,
+                open: true,
+            },
+        );
+        let fields = process_fields(&self.columns, boolean(snapshot, "processNetwork"));
+        WidthRows {
+            rows: Arc::new(
+                rows.iter()
+                    .map(|row| WidthRow::of(row, &fields, self.bits))
+                    .collect(),
+            ),
+            shape: self.shape,
+            built: Instant::now(),
+        }
+    }
+}
+/// The note and pin of the row marked `key`.
+fn row_mark(marks: &Value, key: &str) -> (Option<String>, bool) {
+    (
+        marks[key]["note"].as_str().map(str::to_owned),
+        boolean(&marks[key], "pinned"),
+    )
+}
 /// The icon a row shows: a WebView's host application's, else its own.
 impl Desktop {
     pub(in crate::frontend) fn rebuild_rows(&mut self, hold: bool, cx: &mut Context<Self>) {
@@ -1549,6 +1657,7 @@ impl Desktop {
                     visibility: self.visibility_rules("processes").as_ref(),
                     users: users.as_ref(),
                     user_folds: &self.user_folds,
+                    open: false,
                 },
             )
         } else {
@@ -1571,13 +1680,10 @@ impl Desktop {
         };
         // The other lists come with their marks, pinned rows first.
         if self.page == "processes" {
-            let marks = self.marks();
-            for row in &mut rows {
-                if let Some(key) = &row.mark_key {
-                    row.note = marks[key]["note"].as_str().map(str::to_owned);
-                    row.pinned = boolean(&marks[key], "pinned");
-                }
-            }
+            self.mark_rows(&mut rows);
+            // A search, a fold or another order leaves the measured list as
+            // it is; another view or grouping builds it again.
+            self.refresh_width_rows(None, cx);
         }
         if hold && self.page == "processes" {
             let order: HashMap<_, _> = self
@@ -1621,6 +1727,107 @@ impl Desktop {
         self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
         self.work.row_builds += 1;
     }
+    /// Gives process rows the note and pin of their row marks.
+    fn mark_rows(&self, rows: &mut [Row]) {
+        let marks = self.marks();
+        for row in rows {
+            if let Some(key) = &row.mark_key {
+                (row.note, row.pinned) = row_mark(&marks, key);
+            }
+        }
+    }
+    /// What the process list measured for the column widths depends on
+    /// besides the sample.
+    fn width_shape(&self, columns: &columns::Preferences) -> WidthShape {
+        let mut keys = columns.selected.clone();
+        keys.sort();
+        WidthShape {
+            view: self.view.clone(),
+            sections: self.sort == "name",
+            users: self.user_grouping(),
+            columns: keys,
+            locale: argus_core::i18n::locale(),
+        }
+    }
+    /// What to build the process list measured for the column widths from,
+    /// if it is to be built again: there is none, or the list takes another
+    /// shape; with a new sample, also once it is `older` than that. Only
+    /// while the process page sizes its columns automatically, and no build
+    /// is under way.
+    pub(in crate::frontend) fn width_source(&self, older: Option<Duration>) -> Option<WidthSource> {
+        if self.page != "processes" || self.width_pending {
+            return None;
+        }
+        let columns = columns::Preferences::load(&self.prefs);
+        if !columns.auto_width {
+            return None;
+        }
+        let shape = self.width_shape(&columns);
+        let due = self.width_rows.as_ref().is_none_or(|built| {
+            built.rows.is_empty()
+                || built.shape != shape
+                || older.is_some_and(|older| built.built.elapsed() >= older)
+        });
+        due.then(|| WidthSource {
+            shape,
+            sort: self.sort.clone(),
+            hosted: self.hosted_services(),
+            visibility: self.visibility_rules("processes"),
+            columns,
+            bits: self.prefs.get::<String>("netUnit", "bytes".into()) == "bits",
+        })
+    }
+    /// Keeps `built` as the list the column widths measure, with the row marks.
+    pub(in crate::frontend) fn keep_width_rows(&mut self, mut built: WidthRows) {
+        if let Some(rows) = Arc::get_mut(&mut built.rows) {
+            let marks = self.marks();
+            for row in rows {
+                if let Some(key) = &row.mark_key {
+                    (row.note, row.pinned) = row_mark(&marks, key);
+                }
+            }
+        }
+        self.width_rows = Some(built);
+    }
+    /// Builds the list the column widths measure again if it is due
+    /// (`width_source`): off the UI thread from the latest sample, the
+    /// widths keeping the list they have until it is done. Test samples
+    /// have no such source and build it here.
+    pub(in crate::frontend) fn refresh_width_rows(
+        &mut self,
+        older: Option<Duration>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source) = self.width_source(older) else {
+            return;
+        };
+        let latest = if self.options.fixture.is_none() {
+            self.host.state::<crate::Latest>().0.read().unwrap().clone()
+        } else {
+            None
+        };
+        let Some(snapshot) = latest else {
+            let built = source.build(&self.snapshot);
+            self.keep_width_rows(built);
+            return;
+        };
+        self.width_pending = true;
+        let task = cx.background_executor().spawn(async move {
+            let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
+            source.build(&model)
+        });
+        cx.spawn(async move |this, cx| {
+            let built = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.width_pending = false;
+                this.keep_width_rows(built);
+                if this.page == "processes" {
+                    this.configure_table(cx);
+                }
+            });
+        })
+        .detach();
+    }
     /// Shows `rows` on the current page's table.
     pub(in crate::frontend) fn install_rows(
         &mut self,
@@ -1633,6 +1840,16 @@ impl Desktop {
                 .reset_with_uniform_height(rows.len(), px(ROW_HEIGHT));
         }
         let previous_rows = std::mem::replace(&mut self.rows, rows);
+        self.configure_table(cx);
+        // Retain old rows until delegates release them, then reclaim the value trees off-thread.
+        if !previous_rows.is_empty() {
+            cx.background_executor()
+                .spawn(async move { drop(previous_rows) })
+                .detach();
+        }
+    }
+    /// Lays the current page's table out for its rows and the column widths.
+    fn configure_table(&mut self, cx: &mut Context<Self>) {
         // Apply data before rendering. Updating TableState from table_view
         // invalidates its parent during paint and rebuilds Desktop twice per sample.
         if let Some(table) = &self.table {
@@ -1644,6 +1861,7 @@ impl Desktop {
             let totals = self.process_column_totals(&column_preferences);
             let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
             let scope = (self.view.as_str(), self.query.as_str());
+            let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
             let selected = self
                 .selected
                 .get(&page)
@@ -1663,6 +1881,7 @@ impl Desktop {
                         totals,
                         bits,
                         scope,
+                        measured,
                     },
                     sort,
                     cx,
@@ -1681,12 +1900,6 @@ impl Desktop {
         }
         if let Some(frame) = &self.table_frame {
             frame.update(cx, |_, cx| cx.notify());
-        }
-        // Retain old rows until delegates release them, then reclaim the value trees off-thread.
-        if !previous_rows.is_empty() {
-            cx.background_executor()
-                .spawn(async move { drop(previous_rows) })
-                .detach();
         }
     }
     /// The list's vertical scrollbar for a page that draws it beside the table:
@@ -1851,6 +2064,7 @@ impl Desktop {
         let column_preferences = columns::Preferences::load(&self.prefs);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         let scope = (self.view.as_str(), self.query.as_str());
+        let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_shown() {
@@ -1907,6 +2121,7 @@ impl Desktop {
                         totals,
                         bits,
                         scope,
+                        measured,
                     },
                     sort,
                     cx,
