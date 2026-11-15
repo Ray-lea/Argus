@@ -657,6 +657,46 @@ mod tests {
             LocalFree(sd);
             assert_ne!(result, 0);
         }
+        // CI may enable SeDebugPrivilege on the process token. Limit only this
+        // thread's access checks so parallel tests keep their original rights.
+        use windows::Win32::Security::{
+            CreateRestrictedToken, DISABLE_MAX_PRIVILEGE, ImpersonateLoggedOnUser, RevertToSelf,
+            TOKEN_DUPLICATE, TOKEN_QUERY,
+        };
+        use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+        let mut token = windows::Win32::Foundation::HANDLE::default();
+        unsafe {
+            OpenProcessToken(
+                GetCurrentProcess(),
+                TOKEN_QUERY | TOKEN_DUPLICATE,
+                &mut token,
+            )
+        }
+        .unwrap();
+        let token = OwnedHandle(token);
+        let mut restricted = windows::Win32::Foundation::HANDLE::default();
+        unsafe {
+            CreateRestrictedToken(
+                token.0,
+                DISABLE_MAX_PRIVILEGE,
+                None,
+                None,
+                None,
+                &mut restricted,
+            )
+        }
+        .unwrap();
+        let restricted = OwnedHandle(restricted);
+        struct Revert;
+        impl Drop for Revert {
+            fn drop(&mut self) {
+                if unsafe { RevertToSelf() }.is_err() {
+                    std::process::abort();
+                }
+            }
+        }
+        unsafe { ImpersonateLoggedOnUser(restricted.0) }.unwrap();
+        let revert = Revert;
         let full = unsafe {
             OpenProcess(
                 windows::Win32::System::Threading::PROCESS_QUERY_INFORMATION,
@@ -672,6 +712,7 @@ mod tests {
         assert!(matches!(criticality(&handle), Ok(false)));
         assert!(permit_termination(criticality(&handle), false).is_ok());
         drop(handle);
+        drop(revert);
         // No termination request is issued. EOF lets only this helper exit itself.
         drop(child.stdin.take());
         assert!(child.wait().unwrap().success());
