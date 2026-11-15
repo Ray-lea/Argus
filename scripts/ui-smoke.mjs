@@ -578,11 +578,16 @@ try {
       ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical-light", { page: "performance", device: "cpu", cpuMode: "logical" }],
     ];
+    // A hovered card's tint lies over its curve together with the scrim and
+    // the text. A full paint rounds the window to 8 bits after each layer; a
+    // composed frame blends one 8-bit image of them over the curve and lets the
+    // compositor interpolate between 8-bit scroll phases. Where a steep curve
+    // edge meets all of them, single pixels differ by three code values.
     const hoverCases = ["dark", "light"].flatMap(theme => [
-      [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }],
+      [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }, 3],
       [`column-tooltip-${theme}`, { page: "processes", theme }, { hoverHeader: "name" }],
     ]);
-    for (const [name, state, hover] of hoverRetained ? hoverCases : cases) {
+    for (const [name, state, hover, chartRounding = 2] of hoverRetained ? hoverCases : cases) {
       send({ ...state, uiMotion: "off", pointerOutside: true });
       await sleep(1500);
       send({ pointerOutside: true });
@@ -615,8 +620,9 @@ try {
         const scoped = compareCompositedCaptures(picture, after, `${before}-reuse`);
         events.push({ event: "pixel-comparison", label: picture, ...scoped });
         // An unchanged parent can keep the composited charts. Their floating
-        // blend allows two code values; static ink outside their clips allows one.
-        assert(scoped.maxChannelDelta <= 2 && scoped.maxOutsideCharts <= 1,
+        // blend allows `chartRounding` code values (two, three under a hover
+        // tint); static ink outside their clips allows one.
+        assert(scoped.maxChannelDelta <= chartRounding && scoped.maxOutsideCharts <= 1,
           `${picture}: retained rendering differs from a full paint: ${JSON.stringify(scoped)}`);
         }
       }
