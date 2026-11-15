@@ -68,6 +68,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
 
+[`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
+
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。
 
 [`process-users.json`](../../tools/window-probe/steps/process-users.json) 用 `sample` 控制改写模拟快照的 `sessions` 与各进程的会话编号，核对单用户时不分组、第二个用户登录后自动分组、三种视图、分类与用户组的折叠、搜索、隐藏系统进程、同一程序在两个用户组内各占一行，以及“始终分组”“不分组”优先于登录用户数。`inspectLayout.userGroups` 输出所选模式、登录用户数、是否分组及各分组行的标题、进程数与展开状态。同一文件还用 `pointer` 的 `context` 事件在分组行上按下右键，核对弹出的菜单：当前用户可注销，其他用户在标准权限下不可选，“系统”分组只有折叠，分类标题不弹出菜单；用 `data` 把 `info.elevated` 设为真后注销其他用户，经确认对话框，再用 `resolve` 给出 `sign_out_user` 的成功与拒绝访问两种结果。模拟快照不发出任何命令，不会注销真实会话。`inspectLayout` 的 `dialog.title` 为对话框标题，`toasts` 为当前显示的通知文字。

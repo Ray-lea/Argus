@@ -466,8 +466,20 @@ impl Flyout {
         crate::shell::dismiss_on_foreground(None);
         set_alpha(self.hwnd, Some(0));
         let hwnd = self.hwnd;
+        // Shown again before the deferred steps ran: without a fade, a right
+        // click closes the card and opens the panel in the same window within
+        // one frame. Hiding it then would leave the panel open but unseen.
+        let this = cx.weak_entity();
+        let reshown = move |cx: &App| {
+            this.upgrade()
+                .is_some_and(|flyout| flyout.read(cx).phase != Phase::Hidden)
+        };
+        let reshown_closed = reshown.clone();
         // Hidden after this frame: the window is busy drawing now.
         window.defer(cx, move |window, cx| {
+            if reshown(cx) {
+                return;
+            }
             unsafe {
                 let _ = SetWindowPos(
                     hwnd,
@@ -483,6 +495,9 @@ impl Flyout {
         });
         let desktop = self.desktop.clone();
         cx.defer(move |cx| {
+            if reshown_closed(cx) {
+                return;
+            }
             let _ = desktop.update(cx, |desktop, _| desktop.tray_closed(kind, was_shown));
         });
     }
@@ -1066,6 +1081,25 @@ impl Render for Flyout {
 }
 
 impl Desktop {
+    pub(in crate::frontend) fn tray_test_state(&self, cx: &App) -> Value {
+        let sampling_shown = self.host.get_window("main").is_some_and(|window| {
+            window.hwnd().is_ok_and(|hwnd| {
+                crate::shell::sampling_state(hwnd) == argus_app::sampler::WindowState::Shown
+            })
+        });
+        let Some(open) = &self.tray.open else {
+            return json!({"visible":false,"panel":false,"samplingShown":sampling_shown});
+        };
+        let flyout = open.flyout.read(cx);
+        json!({
+            "visible":unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(flyout.hwnd).as_bool() },
+            "panel":flyout.showing(Some(Kind::Panel)),
+            "card":flyout.showing(Some(Kind::Card)),
+            "animated":flyout.fade,
+            "samplingShown":sampling_shown,
+        })
+    }
+
     /// What the flyouts show now.
     fn tray_readings(&self) -> Readings {
         let sys = &self.snapshot["system"];
