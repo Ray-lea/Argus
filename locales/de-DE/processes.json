@@ -157,7 +157,7 @@
     },
     "basePriority": {
       "label": "Basispriorität",
-      "title": "Numerische Prozessbasispriorität, gemeldet von Windows."
+      "title": "Von Windows gemeldete Basispriorität des Prozesses als Prioritätsklasse. Ein Wert zwischen den Klassen, den Windows manchen Systemprozessen gibt, wird als Zahl angezeigt."
     },
     "workingSet": {
       "label": "Arbeitssatz",
@@ -329,5 +329,7 @@
     "fixed": "Fest",
     "selectionSummary": "{count} ausgewählt",
     "virtualAliases": "Virtueller Speicher virtuelle Bytes Adressreservierung"
-  }
+  },
+  "basePriorityBetween": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt; sie liegt zwischen {below} und {above}.",
+  "basePriorityCustom": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt."
 }

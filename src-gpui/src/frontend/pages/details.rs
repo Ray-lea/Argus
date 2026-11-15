@@ -697,17 +697,7 @@ impl Desktop {
                 .map(|value| label(&format!("{namespace}.{value}")))
                 .unwrap_or_else(missing)
         };
-        let priority = match process["basePriority"].as_u64() {
-            Some(4) => Some("idle"),
-            Some(6) => Some("belowNormal"),
-            Some(8) => Some("normal"),
-            Some(10) => Some("aboveNormal"),
-            Some(13) => Some("high"),
-            Some(24) => Some("realtime"),
-            _ => None,
-        }
-        .map(|class| label(&format!("processes.priority.{class}")))
-        .unwrap_or_else(missing);
+        let priority = tables::base_priority(process).unwrap_or_else(missing);
         let plain = |value: &Value| {
             value
                 .as_u64()

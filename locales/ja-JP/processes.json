@@ -156,7 +156,7 @@
     },
     "basePriority": {
       "label": "基本優先度",
-      "title": "Windows が報告するプロセスの基本優先度の数値です。"
+      "title": "Windows が報告するプロセスの基本優先度を優先度クラスで表示します。Windows が一部のシステム プロセスに設定する、クラスの間の値は数値で表示します。"
     },
     "workingSet": {
       "label": "ワーキング セット",
@@ -326,5 +326,7 @@
     "fixed": "固定",
     "selectionSummary": "{count} 列を選択",
     "virtualAliases": "仮想メモリ 仮想バイト アドレス予約"
-  }
+  },
+  "basePriorityBetween": "優先度クラスではありません。Windows が一部のシステム プロセスに直接設定する基本優先度で、{below} と {above} の間です。",
+  "basePriorityCustom": "優先度クラスではありません。Windows が一部のシステム プロセスに直接設定する基本優先度です。"
 }

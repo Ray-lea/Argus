@@ -869,7 +869,7 @@ export function ProcessTable(t: TableProps) {
               {others.map((c) => {
                 const cell = cellOf(c, row, ctx);
                 // Long text ends in an ellipsis; hovering shows all of it.
-                const long = c.format === "text" && !!cell.text;
+                const long = (c.format === "text" || c.key === "basePriority") && !!cell.text;
                 return (
                   <span
                     role="gridcell"

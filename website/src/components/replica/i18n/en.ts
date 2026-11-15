@@ -745,7 +745,7 @@ export const exact: Record<string, string> = {
   "累计用户态与内核态 CPU 时间；分组显示成员合计。": "Accumulated user and kernel CPU time; groups show the member total.",
   "进程累计使用的用户态 CPU 时间。": "Accumulated CPU time spent in user mode.",
   "进程累计使用的内核态 CPU 时间。": "Accumulated CPU time spent in kernel mode.",
-  "Windows 报告的进程基本优先级数值。": "Numeric process base priority reported by Windows.",
+  "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。": "Process base priority reported by Windows, shown as its priority class. A value between the classes, which Windows gives some system processes, shows as a number.",
   "当前驻留的物理内存，含共享页面；分组为成员工作集之和。":
     "Resident physical memory, including shared pages. Groups sum member working sets.",
   "单进程自启动以来的工作集峰值；展开应用分组查看各进程。":

@@ -219,6 +219,38 @@ fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Fiel
         })
         .collect()
 }
+/// A process's base priority as its priority class, or as the number Windows
+/// reports when it matches no class.
+pub(in crate::frontend) fn base_priority(process: &Value) -> Option<String> {
+    let value = process["basePriority"].as_i64()?;
+    Some(match model::priority_class(process) {
+        Some(class) => label(&format!("processes.priority.{class}")),
+        None => crate::regional::number!("{value}"),
+    })
+}
+
+/// Why a base priority shows as a number: it lies between two classes.
+pub(in crate::frontend) fn base_priority_hint(process: &Value) -> Option<String> {
+    if model::priority_class(process).is_some() {
+        return None;
+    }
+    let base = process["basePriority"].as_i64()?;
+    let class = |(value, class): (i64, &str)| {
+        format!(
+            "{} ({value})",
+            label(&format!("processes.priority.{class}"))
+        )
+    };
+    Some(match model::priority_neighbours(base) {
+        (Some(below), Some(above)) => tr!(
+            "processes.basePriorityBetween",
+            below = class(below),
+            above = class(above)
+        ),
+        _ => label("processes.basePriorityCustom"),
+    })
+}
+
 fn cell(row: &Row, field: &Field) -> String {
     let raw = &row.raw;
     let missing = || label("format.missing");
@@ -227,6 +259,11 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::ProcessText => row
             .column_text(field.key)
             .map(|value| columns::shown(field.key, value).into_owned())
+            .unwrap_or_else(missing),
+        // A process's priority class by name; groups mix them and show none.
+        CellKind::Identifier if field.key == "basePriority" => row
+            .metric(field.key)
+            .and_then(|_| base_priority(&row.members[0]))
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)

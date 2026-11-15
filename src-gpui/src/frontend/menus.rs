@@ -1175,7 +1175,7 @@ impl Desktop {
         let priorities = row
             .members
             .iter()
-            .map(|member| priority_class(member))
+            .map(|member| model::priority_class(member))
             .collect::<HashSet<_>>();
         let current = (priorities.len() == 1)
             .then(|| priorities.into_iter().next().flatten())
@@ -1480,18 +1480,6 @@ impl Desktop {
         }
         items
     }
-}
-/// The priority class of a base priority; other values match no class.
-fn priority_class(process: &Value) -> Option<&'static str> {
-    Some(match process["basePriority"].as_i64()? {
-        4 => "idle",
-        6 => "belowNormal",
-        8 => "normal",
-        10 => "aboveNormal",
-        13 => "high",
-        24 => "realtime",
-        _ => return None,
-    })
 }
 
 #[cfg(test)]

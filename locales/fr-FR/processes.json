@@ -158,7 +158,7 @@
     },
     "basePriority": {
       "label": "Priorité de base",
-      "title": "Valeur numérique de la priorité de base du processus indiquée par Windows."
+      "title": "Priorité de base du processus indiquée par Windows, affichée comme classe de priorité. Une valeur située entre les classes, que Windows attribue à certains processus système, s’affiche sous forme de nombre."
     },
     "workingSet": {
       "label": "Plage de travail",
@@ -332,5 +332,7 @@
     "fixed": "Fixe",
     "selectionSummary": "Sélectionnées : {count}",
     "virtualAliases": "mémoire virtuelle octets virtuels réservation d’adresses"
-  }
+  },
+  "basePriorityBetween": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système ; elle se situe entre {below} et {above}.",
+  "basePriorityCustom": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système."
 }

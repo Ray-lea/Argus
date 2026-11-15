@@ -154,7 +154,7 @@
     },
     "basePriority": {
       "label": "基本优先级",
-      "title": "Windows 报告的进程基本优先级数值。"
+      "title": "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。"
     },
     "workingSet": {
       "label": "工作集",
@@ -320,5 +320,7 @@
     "fixed": "固定",
     "selectionSummary": "已选 {count} 列",
     "virtualAliases": "虚拟内存 虚拟字节 地址预留"
-  }
+  },
+  "basePriorityBetween": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级，介于{below}与{above}之间。",
+  "basePriorityCustom": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级。"
 }

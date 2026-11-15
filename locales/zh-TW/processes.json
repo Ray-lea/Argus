@@ -137,7 +137,7 @@
     },
     "basePriority": {
       "label": "基本優先順序",
-      "title": "Windows 回報的處理程序基本優先順序數值。"
+      "title": "Windows 回報的處理程序基本優先順序，以優先順序類別顯示。Windows 為部分系統處理程序設定的介於類別之間的值以數字顯示。"
     },
     "workingSet": {
       "label": "工作集",
@@ -320,5 +320,7 @@
     "reset": "還原預設規則",
     "empty": "目前篩選條件下沒有可顯示的項目。",
     "clear": "顯示全部並清除篩選"
-  }
+  },
+  "basePriorityBetween": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序，介於{below}與{above}之間。",
+  "basePriorityCustom": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序。"
 }
