@@ -285,6 +285,13 @@ pub(super) struct BackdropPatch {
     rect: RECT,
 }
 
+impl BackdropPatch {
+    /// The only part of the rendered frame the patch shows.
+    pub(super) fn rect(&self) -> RECT {
+        self.rect
+    }
+}
+
 /// The backing bitmap and root stay attached while a marked chart alternates
 /// between a complete paint and compositor-driven motion.
 #[derive(Clone)]
@@ -991,8 +998,12 @@ impl DirectXRenderer {
             return None;
         }
         let stationary = scene_cache::Snapshot::stationary(scene)?;
-        let scene_cache::Repair::Region(rect) =
-            stationary.repair(tree.stationary.as_ref()?, self.width, self.height)?
+        let scene_cache::Repair::Region(rect) = stationary.repair(
+            tree.stationary.as_ref()?,
+            self.width,
+            self.height,
+            &self.fresh,
+        )?
         else {
             return None;
         };
@@ -1178,7 +1189,7 @@ impl DirectXRenderer {
         self.release_path_targets();
         if let Some(r) = self.resources.as_mut() {
             r.prefix_snapshot = None;
-            r.suffix_damage = None;
+            r.forget_frames();
         }
         let Some(comp) = &mut self.direct_composition else {
             return Ok(false);
@@ -1201,11 +1212,9 @@ impl DirectXRenderer {
         comp.charts.bars.clear();
         if let Some(r) = self.resources.as_mut() {
             // The next visible draw must reconstruct the entire swap-chain buffer.
-            r.prefix_key = None;
             r.prefix_view = None;
             r.prefix = None;
-            r.prefix_snapshot = None;
-            r.suffix_damage = None;
+            r.forget();
         }
         if let Some(devices) = &self.devices {
             unsafe {
@@ -1265,7 +1274,7 @@ impl DirectXRenderer {
                     .stationary
                     .as_ref()
                     .zip(scene_cache::Snapshot::stationary(scene))
-                    .is_some_and(|(a, b)| a.matches(&b))
+                    .is_some_and(|(a, b)| b.matches(a, &self.fresh))
             {
                 return Ok(false);
             }

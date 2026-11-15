@@ -1,4 +1,6 @@
 use std::{
+    collections::VecDeque,
+    ops::Range,
     slice,
     sync::{Arc, OnceLock},
 };
@@ -7,7 +9,7 @@ use anyhow::{Context, Result};
 use gpui_util::ResultExt;
 use windows::{
     Win32::{
-        Foundation::{HWND, RECT},
+        Foundation::{HWND, RECT, S_OK},
         Graphics::{
             Direct3D::*,
             Direct3D11::*,
@@ -59,6 +61,16 @@ pub(crate) struct DirectXRenderer {
     pipelines: DirectXRenderPipelines,
     direct_composition: Option<DirectComposition>,
     font_info: &'static FontInfo,
+    /// Atlas tiles uploaded since the last frame was rendered.
+    fresh: scene_cache::FreshTiles,
+    /// The primitives of the last local repaint and their batches, kept for
+    /// their buffers.
+    local: Scene,
+    local_batches: Vec<PrimitiveBatch>,
+    /// When a scene last moved something without a paint (chart curves,
+    /// load bars), and the revision of the scene last drawn.
+    charts_moved: Option<std::time::Instant>,
+    drawn_revision: u64,
 
     width: u32,
     height: u32,
@@ -83,15 +95,27 @@ pub(crate) struct DirectXRendererDevices {
 }
 
 struct DirectXResources {
+    /// The static prefix of the scene last drawn with one, while
+    /// `prefix_key` names it.
     prefix: Option<ID3D11Texture2D>,
     prefix_view: Option<ID3D11ShaderResourceView>,
     compose_prefix: bool,
-    restore_regions: Vec<RECT>,
     prefix_key: Option<(u64, usize, bool)>,
+    /// The prefix ink of the last frame drawn over a cached prefix.
     prefix_snapshot: Option<scene_cache::Snapshot>,
     prefix_scissor: ID3D11RasterizerState,
     rasterizer: ID3D11RasterizerState,
+    /// Where the last drawn suffix painted, and its ink.
     suffix_damage: Option<Vec<RECT>>,
+    suffix_snapshot: Option<scene_cache::Snapshot>,
+    /// Buffers of replaced snapshots, filled again by later frames.
+    spare: Vec<scene_cache::Snapshot>,
+    /// How the last frame was drawn, for the next one to compare with.
+    last: Option<Last>,
+    /// The last frame repainted its whole prefix for a change that was not
+    /// local: the next such frame does not keep its prefix either.
+    streak: bool,
+    frames: Frames,
     present_dirty: Option<Vec<RECT>>,
     // Direct3D rendering objects
     swap_chain: IDXGISwapChain1,
@@ -277,6 +301,216 @@ fn merge_damage(regions: &mut Vec<RECT>, mut rect: RECT) {
     regions.push(rect);
 }
 
+fn overlaps(a: &RECT, b: &RECT) -> bool {
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+/// Regions of the render target, or all of it.
+#[derive(Clone, Debug, PartialEq)]
+enum Damage {
+    Full,
+    Rects(Vec<RECT>),
+}
+
+impl Damage {
+    const NONE: Self = Self::Rects(Vec::new());
+
+    fn add(&mut self, rect: RECT) {
+        if let Self::Rects(rects) = self
+            && rect.left < rect.right
+            && rect.top < rect.bottom
+        {
+            merge_damage(rects, rect);
+        }
+    }
+
+    fn extend(&mut self, other: &Self) {
+        match other {
+            Self::Full => *self = Self::Full,
+            Self::Rects(rects) => {
+                for rect in rects {
+                    self.add(*rect);
+                }
+            }
+        }
+    }
+
+    fn reaches(&self, rects: &[RECT]) -> bool {
+        match self {
+            Self::Full => !rects.is_empty(),
+            Self::Rects(own) => own.iter().any(|a| rects.iter().any(|b| overlaps(a, b))),
+        }
+    }
+
+    fn pixels(&self, width: u32, height: u32) -> u64 {
+        match self {
+            Self::Full => u64::from(width) * u64::from(height),
+            Self::Rects(rects) => rects
+                .iter()
+                .map(|r| (r.right - r.left) as u64 * (r.bottom - r.top) as u64)
+                .sum(),
+        }
+    }
+}
+
+/// What the swap chain's buffers hold. A flip-model chain hands back the
+/// buffer it presented `BUFFER_COUNT` presents ago, and DWM may compose any
+/// part of a presented buffer again later, not only its dirty rectangles: a
+/// buffer is brought up to date in full before it is presented again.
+struct Frames {
+    /// The number of the last frame drawn into the render target.
+    drawn: u64,
+    /// The frame each buffer last received, in the order the swap chain
+    /// returns them, the current back buffer first; `None` while unknown.
+    buffers: [Option<u64>; BUFFER_COUNT],
+    /// What each recent frame changed from the one before it, oldest first.
+    changes: VecDeque<(u64, Damage)>,
+    /// What changed since a frame last reached the screen.
+    unpresented: Damage,
+}
+
+impl Frames {
+    fn new() -> Self {
+        Self {
+            drawn: 0,
+            buffers: [None; BUFFER_COUNT],
+            changes: VecDeque::new(),
+            unpresented: Damage::Full,
+        }
+    }
+
+    /// What the back buffer lacks of the last drawn frame.
+    fn stale(&self) -> Damage {
+        let Some(held) = self.buffers[0] else {
+            return Damage::Full;
+        };
+        if held == self.drawn {
+            return Damage::NONE;
+        }
+        if self
+            .changes
+            .front()
+            .is_none_or(|(frame, _)| *frame > held + 1)
+        {
+            return Damage::Full;
+        }
+        let mut stale = Damage::NONE;
+        for (_, change) in self.changes.iter().filter(|(frame, _)| *frame > held) {
+            stale.extend(change);
+        }
+        stale
+    }
+
+    fn drew(&mut self, change: Damage) {
+        self.drawn += 1;
+        self.unpresented.extend(&change);
+        self.changes.push_back((self.drawn, change));
+        while self.changes.len() > 2 * BUFFER_COUNT {
+            self.changes.pop_front();
+        }
+        self.buffers[0] = Some(self.drawn);
+    }
+
+    /// The last drawn frame reached the screen.
+    fn presented(&mut self) {
+        self.unpresented = Damage::NONE;
+    }
+
+    /// The swap chain presented its back buffer and returns the next one.
+    fn flipped(&mut self) {
+        self.buffers.rotate_left(1);
+    }
+
+    fn forget(&mut self) {
+        self.buffers = [None; BUFFER_COUNT];
+        self.changes.clear();
+        self.unpresented = Damage::Full;
+    }
+}
+
+/// How the last frame was drawn.
+enum Last {
+    /// Whole, from a scene without an animated suffix.
+    Whole {
+        revision: u64,
+        opaque: bool,
+        ink: Option<scene_cache::Snapshot>,
+    },
+    /// Over the cached prefix; its prefix and suffix are in the resources.
+    Cached { opaque: bool },
+}
+
+/// How a frame begins in the render target.
+enum Base<'a> {
+    /// Cleared to the window background.
+    Clear,
+    /// As the last frame left it.
+    Keep,
+    /// With the cached prefix copied into these regions.
+    Restore(&'a Damage),
+}
+
+/// What a frame did, for the GPU timing samples.
+#[derive(Default)]
+struct FrameReport {
+    path: &'static str,
+    reused: bool,
+    repaired_pixels: u64,
+    suffix: bool,
+    /// The primitives a local repaint drew, out of the scene's.
+    local: Option<(usize, usize)>,
+    /// CPU time at the end of each step of the frame, with GPU timing.
+    started: Option<std::time::Instant>,
+    steps: Vec<(&'static str, f64)>,
+}
+
+impl FrameReport {
+    fn step(&mut self, name: &'static str) {
+        if let Some(started) = self.started {
+            self.steps
+                .push((name, started.elapsed().as_secs_f64() * 1_000_000.));
+        }
+    }
+}
+
+/// The regions `Present1` reports, `None` for the whole window. All of them
+/// must be up to date in the buffer; an unchanged frame reports one pixel, as
+/// no rectangles would mean all of them.
+fn present_regions(partial: bool, unpresented: &Damage) -> Option<Vec<RECT>> {
+    match unpresented {
+        _ if !partial => None,
+        Damage::Full => None,
+        Damage::Rects(rects) if rects.is_empty() => Some(vec![RECT {
+            left: 0,
+            top: 0,
+            right: 1,
+            bottom: 1,
+        }]),
+        Damage::Rects(rects) => Some(rects.clone()),
+    }
+}
+
+/// The scissored passes for `rects`: more than four merge into their bounds.
+fn passes(rects: &[RECT]) -> Vec<RECT> {
+    if rects.len() <= 4 {
+        return rects.to_vec();
+    }
+    vec![rects.iter().skip(1).fold(rects[0], |a, r| RECT {
+        left: a.left.min(r.left),
+        top: a.top.min(r.top),
+        right: a.right.max(r.right),
+        bottom: a.bottom.max(r.bottom),
+    })]
+}
+
+fn primitive_count(scene: &Scene) -> usize {
+    scene.quads.len()
+        + scene.underlines.len()
+        + scene.monochrome_sprites.len()
+        + scene.subpixel_sprites.len()
+        + scene.polychrome_sprites.len()
+}
+
 fn batch_last_order(scene: &Scene, batch: &PrimitiveBatch) -> DrawOrder {
     match batch {
         PrimitiveBatch::Shadows(range) => scene.shadows[range.end - 1].order,
@@ -299,6 +533,9 @@ fn batch_last_order(scene: &Scene, batch: &PrimitiveBatch) -> DrawOrder {
 // A single sprite can restore its own background while painting. Only disjoint
 // masks are eligible: overlapping layers must retain the ordinary blend order.
 struct PrefixComposition {
+    /// Everything the composed suffix writes. Frames present what changed
+    /// instead, which covers this whenever the suffix changed.
+    #[cfg_attr(not(test), allow(dead_code))]
     dirty: Vec<RECT>,
     restore: Vec<RECT>,
 }
@@ -609,6 +846,11 @@ impl DirectXRenderer {
             pipelines,
             direct_composition,
             font_info: Self::get_font_info(),
+            fresh: Default::default(),
+            local: Scene::default(),
+            local_batches: Vec::new(),
+            charts_moved: None,
+            drawn_revision: 0,
             width: 1,
             height: 1,
             skip_draws: false,
@@ -620,7 +862,7 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&mut self, clear_color: &[f32; 4], reuse_prefix: bool) -> Result<()> {
+    fn pre_draw(&mut self, clear_color: &[f32; 4], base: Base<'_>) -> Result<()> {
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -651,18 +893,13 @@ impl DirectXRenderer {
             self.globals.last_params = Some(params);
         }
         unsafe {
-            if reuse_prefix {
+            if let Base::Restore(regions) = base {
                 let target = resources
                     .render_target
                     .as_ref()
                     .context("render target missing")?;
                 let prefix = resources.prefix.as_ref().context("scene prefix missing")?;
-                let regions = if resources.compose_prefix {
-                    Some(resources.restore_regions.as_slice())
-                } else {
-                    resources.present_dirty.as_deref()
-                };
-                if let Some(rects) = regions {
+                if let Damage::Rects(rects) = regions {
                     for rect in rects {
                         let region = D3D11_BOX {
                             left: rect.left as u32,
@@ -691,7 +928,7 @@ impl DirectXRenderer {
                     self.work.copies += 1;
                     self.work.copy_pixels += u64::from(self.width) * u64::from(self.height);
                 }
-            } else if !reuse_prefix {
+            } else if let Base::Clear = base {
                 self.work.clears += 1;
                 device_context.ClearRenderTargetView(
                     resources
@@ -769,7 +1006,15 @@ impl DirectXRenderer {
         }
         flat.drawn = true;
         unsafe { comp.comp_device.Commit()? };
+        self.note_presented();
         Ok(())
+    }
+
+    /// The last drawn frame reached the screen other than through a flip.
+    fn note_presented(&mut self) {
+        if let Some(r) = &mut self.resources {
+            r.frames.presented();
+        }
     }
 
     #[inline]
@@ -801,6 +1046,16 @@ impl DirectXRenderer {
                 .Present1(1, DXGI_PRESENT(0), &parameters)
         };
         crate::frame_trace::record(4, u64::from(result.is_ok()));
+        if let Some(r) = self.resources.as_mut() {
+            // Any other status (an occluded window, say) leaves it open
+            // whether the buffers turned.
+            if result == S_OK {
+                r.frames.flipped();
+                r.frames.presented();
+            } else {
+                r.frames.forget();
+            }
+        }
         result.ok().context("Presenting swap chain failed")
     }
 
@@ -866,6 +1121,7 @@ impl DirectXRenderer {
                 .as_ref()
                 .is_some_and(|c| c.charts.enabled()),
         );
+        self.fresh.clear();
         self.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
             &devices.device,
             &devices.device_context,
@@ -902,11 +1158,19 @@ impl DirectXRenderer {
         if scene.paths.is_empty() {
             self.release_path_targets();
         }
-        let force = scene.force_full_redraw.replace(false);
+        // Kept until a frame is rendered: chart frames that only move
+        // compositor visuals compare with the last rendered frame as well.
+        self.fresh.extend(self.atlas.take_fresh_tiles());
+        // Drawn again without a paint, the scene moved something in place.
+        if scene.paint_revision != 0 && scene.paint_revision == self.drawn_revision {
+            self.charts_moved = Some(std::time::Instant::now());
+        }
+        self.drawn_revision = scene.paint_revision;
+        let force = scene.force_full_redraw.replace(false) || self.fresh.len() > 4096;
         if force {
+            self.fresh.clear();
             if let Some(r) = &mut self.resources {
-                r.prefix_key = None;
-                r.prefix_snapshot = None;
+                r.forget();
             }
             if let Some(comp) = &mut self.direct_composition {
                 comp.charts.invalidate_frame_cache();
@@ -936,15 +1200,18 @@ impl DirectXRenderer {
         let backdrop_patch = (!force)
             .then(|| self.plan_chart_backdrop(scene, background_appearance))
             .flatten();
-        self.render(
-            scene,
-            background_appearance,
-            !tree_was_moving || backdrop_patch.is_some(),
-        )?;
+        let partial = !tree_was_moving || backdrop_patch.is_some();
+        // The compositor shows the charts of a patched frame: only the
+        // patched rectangle of the render target reaches the screen.
+        let only = backdrop_patch.as_ref().map(|patch| patch.rect());
+        self.render(scene, background_appearance, partial, only)?;
         let mut restore_root = was_composited;
         if let Some(patch) = backdrop_patch {
             match self.patch_chart_backdrop(scene, background_appearance, patch) {
-                Ok(true) => return Ok(()),
+                Ok(true) => {
+                    self.note_presented();
+                    return Ok(());
+                }
                 Ok(false) => {}
                 Err(error) => {
                     log::warn!("Updating chart backdrop: {error:#}");
@@ -952,9 +1219,26 @@ impl DirectXRenderer {
                     self.direct_composition.as_mut().unwrap().charts.disable();
                 }
             }
+            // The whole frame is shown after all.
+            self.render(scene, background_appearance, partial, None)?;
         }
-        match self.install_chart_tree(scene, background_appearance) {
-            Ok(true) => return Ok(()),
+        // Compositor visuals pay off for charts that move between paints.
+        // Promoting still charts started a backdrop scan and painted the
+        // foreground on every paint, and a paint with the next revision
+        // restarted them before they could finish.
+        let moving = self
+            .charts_moved
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(3));
+        let installed = if moving {
+            self.install_chart_tree(scene, background_appearance)
+        } else {
+            Ok(false)
+        };
+        match installed {
+            Ok(true) => {
+                self.note_presented();
+                return Ok(());
+            }
             Err(error) => {
                 log::warn!("Creating chart visuals: {error:#}");
                 restore_root = true;
@@ -963,7 +1247,10 @@ impl DirectXRenderer {
             Ok(false) => {}
         }
         match self.present_chart_frame(scene) {
-            Ok(true) => return Ok(()),
+            Ok(true) => {
+                self.note_presented();
+                return Ok(());
+            }
             Err(error) => {
                 log::warn!("Presenting completed chart frame: {error:#}");
                 restore_root = true;
@@ -994,17 +1281,25 @@ impl DirectXRenderer {
         Ok(())
     }
 
-    /// Clear the render target for `background_appearance` and encode every
-    /// primitive batch of `scene` into it, without presenting. Shared by
-    /// [`draw`](Self::draw) (which then presents) and
-    /// [`render_to_image`](Self::render_to_image) (which reads the target back
-    /// instead), so the two cannot drift.
+    /// Encode `scene` into the render target for `background_appearance`,
+    /// without presenting. Shared by [`draw`](Self::draw) (which then
+    /// presents) and [`render_to_image`](Self::render_to_image) (which reads
+    /// the target back instead), so the two cannot drift. Afterwards the
+    /// whole render target shows `scene`, although only what differs from the
+    /// frame it held is drawn; `present_dirty` names what changed since a
+    /// frame last reached the screen, `None` for everything or `!partial`.
+    /// With `only`, the frame is shown just inside that rectangle: a chart
+    /// suffix outside it is left for a later frame.
     fn render(
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
         partial: bool,
+        only: Option<RECT>,
     ) -> Result<()> {
+        static CACHE: OnceLock<bool> = OnceLock::new();
+        let cache =
+            *CACHE.get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_SCENE_CACHE").is_none());
         // Copy the immutable prefix as exact pixels. Every batch at or after
         // the first mutable draw order still renders with its original blend.
         // A complete interaction paint has not run a bounds-only update yet.
@@ -1020,13 +1315,7 @@ impl DirectXRenderer {
                     .map(|sprite| sprite.order)
                     .min()
             })
-            .filter(|_| {
-                static ENABLED: OnceLock<bool> = OnceLock::new();
-                scene.surfaces.is_empty()
-                    && *ENABLED.get_or_init(|| {
-                        std::env::var_os("ARGUS_GPUI_DISABLE_SCENE_CACHE").is_none()
-                    })
-            });
+            .filter(|_| scene.surfaces.is_empty() && cache);
         let batches = split_batches(scene, animated_order);
         let prefix_end = animated_order
             .and_then(|order| {
@@ -1035,132 +1324,7 @@ impl DirectXRenderer {
                     .position(|batch| batch_last_order(scene, batch) >= order)
             })
             .filter(|end| *end > 0 && scene.paint_revision != 0);
-        let prefix_key = prefix_end.map(|_| {
-            (
-                scene.paint_revision,
-                animated_order.expect("animated order") as usize,
-                matches!(background_appearance, WindowBackgroundAppearance::Opaque),
-            )
-        });
-        let same_prefix = prefix_key.is_some()
-            && self
-                .resources
-                .as_ref()
-                .is_some_and(|r| r.prefix_key == prefix_key);
-        let snapshot = if !same_prefix {
-            prefix_end.and_then(|end| scene_cache::Snapshot::new(scene, &batches[..end]))
-        } else {
-            None
-        };
-        let repair = snapshot.as_ref().and_then(|snapshot| {
-            static ENABLED: OnceLock<bool> = OnceLock::new();
-            if !*ENABLED
-                .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_PREFIX_REPAIR").is_none())
-            {
-                return None;
-            }
-            let r = self.resources.as_ref()?;
-            let old_key = r.prefix_key?;
-            if old_key.2 != prefix_key?.2 || r.prefix.is_none() {
-                return None;
-            }
-            snapshot.repair(r.prefix_snapshot.as_ref()?, self.width, self.height)
-        });
-        let repair_rect = match repair {
-            Some(scene_cache::Repair::Region(rect)) => Some(rect),
-            _ => None,
-        };
-        let reuse_prefix = same_prefix || matches!(repair, Some(scene_cache::Repair::Unchanged));
-        let reuse_background = same_prefix || repair.is_some();
-        let suffix_damage = prefix_end
-            .and_then(|end| suffix_damage(scene, &batches[end..], self.width, self.height));
-        static COMPOSE: OnceLock<bool> = OnceLock::new();
-        let composed = if reuse_background
-            && partial
-            && *COMPOSE
-                .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION").is_none())
-            && batches[prefix_end.expect("prefix end")..]
-                .iter()
-                .all(|batch| match batch {
-                    PrimitiveBatch::PolychromeSprites { texture_id, .. } => {
-                        self.atlas.get_texture_view(*texture_id).is_some()
-                    }
-                    PrimitiveBatch::Quads(_) => true,
-                    _ => false,
-                }) {
-            independent_sprite_regions(
-                scene,
-                &batches[prefix_end.expect("prefix end")..],
-                self.width,
-                self.height,
-            )
-        } else {
-            None
-        };
-        self.resources
-            .as_mut()
-            .context("resources missing")?
-            .compose_prefix = composed.is_some();
-        self.resources
-            .as_mut()
-            .context("resources missing")?
-            .restore_regions = composed
-            .as_ref()
-            .map(|plan| plan.restore.clone())
-            .unwrap_or_default();
-        self.resources
-            .as_mut()
-            .context("resources missing")?
-            .present_dirty = if reuse_background && partial {
-            composed
-                .map(|plan| plan.dirty)
-                .or_else(|| suffix_damage.clone())
-        } else {
-            None
-        };
-        if repair.is_some() {
-            let r = self.resources.as_mut().context("resources missing")?;
-            if partial
-                && let (Some(dirty), Some(previous)) = (&mut r.present_dirty, &r.suffix_damage)
-            {
-                for rect in previous.iter().copied().chain(repair_rect) {
-                    merge_damage(dirty, rect);
-                    merge_damage(&mut r.restore_regions, rect);
-                }
-            } else {
-                r.present_dirty = None;
-                r.compose_prefix = false;
-            }
-        }
-        static DIAGNOSTICS: OnceLock<bool> = OnceLock::new();
-        if *DIAGNOSTICS.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
-            static FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            static COMPOSED: std::sync::atomic::AtomicBool =
-                std::sync::atomic::AtomicBool::new(false);
-            let frame = FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let composed = self.resources.as_ref().is_some_and(|r| r.compose_prefix);
-            let changed = COMPOSED.swap(composed, std::sync::atomic::Ordering::Relaxed) != composed;
-            if frame < 3 || frame.is_multiple_of(400) || changed {
-                let area = self
-                    .resources
-                    .as_ref()
-                    .and_then(|r| r.present_dirty.as_ref())
-                    .map(|rects| {
-                        rects
-                            .iter()
-                            .map(|r| (r.right - r.left) * (r.bottom - r.top))
-                            .sum::<i32>()
-                    })
-                    .unwrap_or(0);
-                println!(
-                    "{{\"event\":\"gpu-scene-cache\",\"frame\":{frame},\"revision\":{},\"animated\":{},\"reused\":{reuse_prefix},\"composed\":{composed},\"prefixBatches\":{},\"batches\":{},\"dirtyArea\":{area}}}",
-                    scene.paint_revision,
-                    scene.animated_order.is_some(),
-                    prefix_end.unwrap_or(0),
-                    batches.len()
-                );
-            }
-        }
+        self.fresh.extend(self.atlas.take_fresh_tiles());
         self.work = FrameWork::default();
         let stats_before = self
             .gpu_timing
@@ -1181,174 +1345,39 @@ impl DirectXRenderer {
             timing.begin();
         }
         let render_started = self.gpu_timing.as_ref().map(|_| std::time::Instant::now());
-        let result: Result<()> = (|| {
-            self.pre_draw(
-                &match background_appearance {
-                    WindowBackgroundAppearance::Opaque => [1.0f32; 4],
-                    _ => [0.0f32; 4],
-                },
-                reuse_background,
-            )?;
-            let prefix_params = self.globals.last_params;
-            if let Some(rect) = repair_rect {
-                let r = self.resources.as_ref().context("resources missing")?;
-                let ctx = &self
-                    .devices
-                    .as_ref()
-                    .context("devices missing")?
-                    .device_context;
-                unsafe {
-                    ctx.cast::<ID3D11DeviceContext1>()?.ClearView(
-                        r.render_target_view.as_ref().context("repair target")?,
-                        &match background_appearance {
-                            WindowBackgroundAppearance::Opaque => [1.; 4],
-                            _ => [0.; 4],
-                        },
-                        Some(&[rect]),
-                    );
-                    ctx.RSSetState(&r.prefix_scissor);
-                    ctx.RSSetScissorRects(Some(&[rect]));
-                }
-                self.work.clears += 1;
-                if let Some(mut params) = prefix_params {
-                    params.compose_prefix = 0;
-                    update_buffer(
-                        ctx,
-                        self.globals
-                            .global_params_buffer
-                            .as_ref()
-                            .context("repair globals")?,
-                        &[params],
-                    )?;
-                }
-            }
-            if let Some(timing) = &mut self.gpu_timing {
-                timing.mark(1);
-            }
-            self.upload_scene_buffers(scene)?;
-            let devices = self.devices.as_ref().context("devices missing")?;
-            self.globals.batch_params.prepare(
-                &devices.device,
-                &devices.device_context,
+        let mut report = FrameReport {
+            started: render_started,
+            ..Default::default()
+        };
+        let result = match (prefix_end, animated_order) {
+            (Some(end), Some(order)) => self.render_cached(
+                scene,
                 &batches,
-            )?;
-            if let Some(timing) = &mut self.gpu_timing {
-                timing.mark(2);
-                if reuse_prefix || prefix_end.is_none() {
-                    timing.mark(3);
+                end,
+                order,
+                background_appearance,
+                partial,
+                only,
+                &mut report,
+            ),
+            _ => self.render_whole(
+                scene,
+                &batches,
+                background_appearance,
+                partial,
+                cache,
+                &mut report,
+            ),
+        };
+        // A scissored pass may have stopped halfway.
+        self.restore_rasterizer();
+        match &result {
+            Ok(()) => self.fresh.clear(),
+            Err(_) => {
+                if let Some(r) = self.resources.as_mut() {
+                    r.forget();
                 }
             }
-
-            let annotation = self
-                .devices
-                .as_ref()
-                .and_then(|devices| devices.annotation.clone())
-                .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
-            for (index, batch) in batches.into_iter().enumerate() {
-                if reuse_prefix && Some(index) < prefix_end {
-                    continue;
-                }
-                if !reuse_prefix && Some(index) == prefix_end {
-                    self.save_scene_prefix(prefix_key.expect("prefix key"), repair_rect)?;
-                    if repair_rect.is_some() {
-                        let ctx = &self
-                            .devices
-                            .as_ref()
-                            .context("devices missing")?
-                            .device_context;
-                        unsafe {
-                            ctx.RSSetState(
-                                &self
-                                    .resources
-                                    .as_ref()
-                                    .context("resources missing")?
-                                    .rasterizer,
-                            );
-                        }
-                        if let Some(params) = prefix_params {
-                            update_buffer(
-                                ctx,
-                                self.globals
-                                    .global_params_buffer
-                                    .as_ref()
-                                    .context("repair globals")?,
-                                &[params],
-                            )?;
-                        }
-                    }
-                    if let Some(timing) = &mut self.gpu_timing {
-                        timing.mark(3);
-                    }
-                }
-                self.globals.batch_params.active = index;
-                let _annotation = annotation
-                    .as_ref()
-                    .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
-                match batch {
-                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
-                PrimitiveBatch::Paths(range) => {
-                    let paths = &scene.paths[range];
-                    self.draw_paths_to_intermediate(paths)?;
-                    self.draw_paths_from_intermediate(paths)
-                }
-                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
-                PrimitiveBatch::MonochromeSprites { texture_id, range } => {
-                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::SubpixelSprites { texture_id, range } => {
-                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::PolychromeSprites { texture_id, range } => {
-                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
-                }
-                PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
-            }
-            .with_context(|| {
-                format!(
-                    "scene too large:\
-                    {} paths, {} shadows, {} quads, {} underlines, {} mono, {} subpixel, {} poly, {} surfaces",
-                    scene.paths.len(),
-                    scene.shadows.len(),
-                    scene.quads.len(),
-                    scene.underlines.len(),
-                    scene.monochrome_sprites.len(),
-                    scene.subpixel_sprites.len(),
-                    scene.polychrome_sprites.len(),
-                    scene.surfaces.len(),
-                )
-            })?;
-            }
-            Ok(())
-        })();
-        if repair_rect.is_some() {
-            let ctx = &self
-                .devices
-                .as_ref()
-                .context("devices missing")?
-                .device_context;
-            unsafe {
-                ctx.RSSetState(
-                    &self
-                        .resources
-                        .as_ref()
-                        .context("resources missing")?
-                        .rasterizer,
-                );
-            }
-        }
-        if result.is_ok() {
-            let r = self.resources.as_mut().context("resources missing")?;
-            r.suffix_damage = suffix_damage;
-            if !same_prefix {
-                r.prefix_snapshot = snapshot;
-                if repair.is_some() {
-                    r.prefix_key = prefix_key;
-                }
-            }
-        } else if let Some(r) = self.resources.as_mut() {
-            r.prefix_snapshot = None;
-            r.prefix_key = None;
         }
         if let Some(timing) = &mut self.gpu_timing {
             let stats_after = self.pipelines.stats();
@@ -1367,11 +1396,601 @@ impl DirectXRenderer {
                 .unwrap_or(u64::from(self.width) * u64::from(self.height));
             let cpu_us =
                 render_started.map_or(0., |started| started.elapsed().as_secs_f64() * 1_000_000.);
-            let repair_pixels =
-                repair_rect.map_or(0, |r| (r.right - r.left) as u64 * (r.bottom - r.top) as u64);
-            timing.finish(|| format!("\"ok\":{},\"reused\":{reuse_prefix},\"repairedPixels\":{repair_pixels},\"composed\":{composed},\"width\":{},\"height\":{},\"drawCalls\":{},\"instanceUploadBytes\":{},\"textureUploads\":{},\"textureUploadBytes\":{},\"copyCalls\":{},\"copyPixels\":{},\"clearCalls\":{},\"resolveCalls\":{},\"resolvePixels\":{},\"dirtyPixels\":{dirty_pixels},\"renderCpuUs\":{cpu_us}", result.is_ok(), self.width, self.height, stats_after.0.wrapping_sub(stats_before.0), stats_after.1.wrapping_sub(stats_before.1), atlas_delta.0, atlas_delta.1, work.copies, work.copy_pixels, work.clears, work.resolves, work.resolve_pixels));
+            let mut local = report.local.map_or(String::new(), |(drawn, of)| {
+                format!(",\"localPrimitives\":{drawn},\"scenePrimitives\":{of}")
+            });
+            if !report.steps.is_empty() {
+                let steps = report
+                    .steps
+                    .iter()
+                    .map(|(name, us)| format!("\"{name}\":{us:.1}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                local.push_str(&format!(",\"cpuStepsUs\":{{{steps}}}"));
+            }
+            timing.finish(|| format!("\"ok\":{},\"path\":\"{}\",\"reused\":{},\"repairedPixels\":{},\"suffix\":{},\"composed\":{composed},\"width\":{},\"height\":{},\"drawCalls\":{},\"instanceUploadBytes\":{},\"textureUploads\":{},\"textureUploadBytes\":{},\"copyCalls\":{},\"copyPixels\":{},\"clearCalls\":{},\"resolveCalls\":{},\"resolvePixels\":{},\"dirtyPixels\":{dirty_pixels},\"renderCpuUs\":{cpu_us}{local}", result.is_ok(), report.path, report.reused, report.repaired_pixels, report.suffix, self.width, self.height, stats_after.0.wrapping_sub(stats_before.0), stats_after.1.wrapping_sub(stats_before.1), atlas_delta.0, atlas_delta.1, work.copies, work.copy_pixels, work.clears, work.resolves, work.resolve_pixels));
         }
         result
+    }
+
+    /// A scene without an animated suffix. Only what differs from the frame
+    /// the back buffer holds is drawn, from the primitives that reach it.
+    fn render_whole(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+        background_appearance: WindowBackgroundAppearance,
+        partial: bool,
+        cache: bool,
+        report: &mut FrameReport,
+    ) -> Result<()> {
+        report.path = "whole";
+        let opaque = matches!(background_appearance, WindowBackgroundAppearance::Opaque);
+        let clear_color = if opaque { [1.0f32; 4] } else { [0.0f32; 4] };
+        let (width, height) = (self.width, self.height);
+        let revision = scene.paint_revision;
+        let r = self.resources.as_mut().context("resources missing")?;
+        r.compose_prefix = false;
+        let last = match r.last.take() {
+            Some(Last::Whole {
+                revision,
+                opaque: was_opaque,
+                ink,
+            }) if was_opaque == opaque => Some((revision, ink)),
+            _ => None,
+        };
+        let (change, ink) = match last {
+            // A scene changes only with a paint, which gives it a new revision.
+            Some((seen, ink)) if revision != 0 && seen == revision && self.fresh.is_empty() => {
+                (Damage::NONE, ink)
+            }
+            last => {
+                let ink = if cache && revision != 0 {
+                    r.snapshot(scene, batches)
+                } else {
+                    None
+                };
+                let old = last.and_then(|(_, ink)| ink);
+                let change = match (&ink, &old) {
+                    (Some(now), Some(old)) => match now.repair(old, width, height, &self.fresh) {
+                        Some(scene_cache::Repair::Unchanged) => Damage::NONE,
+                        Some(scene_cache::Repair::Region(rect)) => Damage::Rects(vec![rect]),
+                        None => Damage::Full,
+                    },
+                    _ => Damage::Full,
+                };
+                r.recycle(old);
+                (change, ink)
+            }
+        };
+        report.step("ink");
+        let mut needed = r.frames.stale();
+        needed.extend(&change);
+        // Without the cache every frame is drawn whole, for comparisons.
+        if !partial || !cache {
+            needed = Damage::Full;
+        }
+        // A frame over the cached prefix that follows compares with this one
+        // in full.
+        r.suffix_damage = None;
+        r.suffix_snapshot = None;
+        r.streak = false;
+        match &needed {
+            Damage::Full => {
+                self.pre_draw(&clear_color, Base::Clear)?;
+                self.timing_mark(1);
+                self.upload_scene_buffers(scene)?;
+                self.prepare_batches(batches)?;
+                self.timing_mark(2);
+                self.draw_batches(scene, batches, 0..batches.len())?;
+            }
+            Damage::Rects(rects) => {
+                report.reused = true;
+                self.pre_draw(&clear_color, Base::Keep)?;
+                self.timing_mark(1);
+                if !rects.is_empty() {
+                    report.repaired_pixels = needed.pixels(width, height);
+                    report.local =
+                        self.draw_region(scene, batches, &passes(rects), &clear_color, report)?;
+                }
+            }
+        }
+        report.step("draw");
+        self.timing_mark(3);
+        let r = self.resources.as_mut().context("resources missing")?;
+        r.last = Some(Last::Whole {
+            revision,
+            opaque,
+            ink,
+        });
+        r.frames.drew(change);
+        r.present_dirty = present_regions(partial && cache, &r.frames.unpresented);
+        self.scene_cache_event(scene, report.reused, false, false, 0, batches.len());
+        Ok(())
+    }
+
+    /// A scene with a suffix from `animated_order` on that can change without
+    /// a paint (chart curves, load bars). Its prefix stays in a texture and is
+    /// repaired where it changed. The suffix is drawn over it when it changed
+    /// or when its background has to be restored.
+    #[allow(clippy::too_many_arguments)]
+    fn render_cached(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+        prefix_end: usize,
+        animated_order: DrawOrder,
+        background_appearance: WindowBackgroundAppearance,
+        partial: bool,
+        only: Option<RECT>,
+        report: &mut FrameReport,
+    ) -> Result<()> {
+        report.path = "cached";
+        let opaque = matches!(background_appearance, WindowBackgroundAppearance::Opaque);
+        let clear_color = if opaque { [1.0f32; 4] } else { [0.0f32; 4] };
+        let (width, height) = (self.width, self.height);
+        let prefix_key = (scene.paint_revision, animated_order as usize, opaque);
+        static REPAIR: OnceLock<bool> = OnceLock::new();
+        let repair_enabled =
+            *REPAIR.get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_PREFIX_REPAIR").is_none());
+        static COMPOSE: OnceLock<bool> = OnceLock::new();
+        let compose_enabled = *COMPOSE
+            .get_or_init(|| std::env::var_os("ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION").is_none());
+        let r = self.resources.as_mut().context("resources missing")?;
+        r.compose_prefix = false;
+        // The last frame compares with this one when it was also drawn over
+        // the cached prefix, on the same background.
+        let continued = matches!(r.last, Some(Last::Cached { opaque: was }) if was == opaque);
+        let same_prefix = r.prefix_key == Some(prefix_key);
+        let snapshot = if same_prefix {
+            None
+        } else {
+            r.snapshot(scene, &batches[..prefix_end])
+        };
+        // How the prefix differs from the last one drawn here. The texture
+        // holds that one while `prefix_key` is set and is repaired alike.
+        let locality = match (&snapshot, &r.prefix_snapshot) {
+            (Some(now), Some(old)) => now.repair(old, width, height, &self.fresh),
+            _ => None,
+        };
+        // Repairing most of the window copies more, back and forth, than
+        // drawing all of it again.
+        let large = matches!(locality, Some(scene_cache::Repair::Region(rect))
+            if (rect.right - rect.left) as u64 * (rect.bottom - rect.top) as u64 * 2
+                > u64::from(width) * u64::from(height));
+        let repair = locality.filter(|_| {
+            !large
+                && repair_enabled
+                && r.prefix.is_some()
+                && r.prefix_key.is_some_and(|key| key.2 == opaque)
+        });
+        let repair_rect = match repair {
+            Some(scene_cache::Repair::Region(rect)) => Some(rect),
+            _ => None,
+        };
+        let reuse_prefix = same_prefix || matches!(repair, Some(scene_cache::Repair::Unchanged));
+        let reuse_background = same_prefix || repair.is_some();
+        report.step("prefix");
+        // What this frame changes from the last one drawn.
+        let mut change = if !continued {
+            Damage::Full
+        } else if same_prefix {
+            Damage::NONE
+        } else {
+            match locality {
+                Some(scene_cache::Repair::Unchanged) => Damage::NONE,
+                Some(scene_cache::Repair::Region(rect)) => Damage::Rects(vec![rect]),
+                None => Damage::Full,
+            }
+        };
+        let suffix = &batches[prefix_end..];
+        let suffix_damage = suffix_damage(scene, suffix, width, height);
+        let suffix_ink = r.snapshot(scene, suffix);
+        let suffix_changed = !continued
+            || match (&suffix_ink, &r.suffix_snapshot) {
+                (Some(now), Some(old)) => !now.matches(old, &self.fresh),
+                _ => true,
+            };
+        report.step("suffix");
+        // Outside the part of the frame that is shown, the suffix waits for a
+        // frame that shows it; until then its pixels are not known.
+        let suffix_needed = match (only, &suffix_damage) {
+            (Some(shown), Some(rects)) => rects.iter().any(|rect| overlaps(rect, &shown)),
+            _ => true,
+        };
+        if suffix_changed && suffix_needed {
+            match (&suffix_damage, &r.suffix_damage) {
+                (Some(now), Some(old)) => {
+                    for rect in now.iter().chain(old) {
+                        change.add(*rect);
+                    }
+                }
+                _ => change = Damage::Full,
+            }
+        }
+        // What the back buffer must have drawn anew: this frame's change and
+        // what it missed of the frames since it was last drawn.
+        let mut restore = r.frames.stale();
+        restore.extend(&change);
+        if !partial || !reuse_background {
+            restore = Damage::Full;
+        }
+        let draw_suffix = suffix_needed
+            && (suffix_changed
+                || match &suffix_damage {
+                    Some(rects) => restore.reaches(rects),
+                    None => true,
+                });
+        // The suffix is drawn whole, over its restored background.
+        let mut needed = restore.clone();
+        if draw_suffix {
+            match &suffix_damage {
+                Some(rects) => {
+                    for rect in rects {
+                        needed.add(*rect);
+                    }
+                }
+                None => needed = Damage::Full,
+            }
+        }
+        let composed = if draw_suffix
+            && reuse_background
+            && !matches!(needed, Damage::Full)
+            && compose_enabled
+            && suffix.iter().all(|batch| match batch {
+                PrimitiveBatch::PolychromeSprites { texture_id, .. } => {
+                    self.atlas.get_texture_view(*texture_id).is_some()
+                }
+                PrimitiveBatch::Quads(_) => true,
+                _ => false,
+            }) {
+            independent_sprite_regions(scene, suffix, width, height)
+        } else {
+            None
+        };
+        // Composed images restore their own background; only the rest of the
+        // suffix and the changed regions are copied from the prefix.
+        let base = match &composed {
+            Some(plan) => {
+                let mut regions = Damage::Rects(plan.restore.clone());
+                regions.extend(&restore);
+                regions
+            }
+            None => needed,
+        };
+        // Over a run of complete paints for changes that are not local, the
+        // next frame repaints everything as well: keep no prefix for it. A
+        // patched chart tree stays and paints over the prefix: keep it then.
+        let keep_complete = (locality.is_some() && !large) || !r.streak || only.is_some();
+        // Without the suffix, a frame draws what the buffer needs from the
+        // prefix's own primitives, uploading only those that reach it, and
+        // copies just the repaired rectangle into the cache.
+        let complete = draw_suffix || !reuse_background;
+        let redraw = match &restore {
+            Damage::Rects(rects) if !complete => Some(passes(rects)),
+            _ => None,
+        };
+        report.reused = reuse_background;
+        report.suffix = draw_suffix;
+        report.repaired_pixels = match &redraw {
+            Some(_) => restore.pixels(width, height),
+            None => {
+                repair_rect.map_or(0, |r| (r.right - r.left) as u64 * (r.bottom - r.top) as u64)
+            }
+        };
+        report.step("plan");
+        self.pre_draw(
+            &clear_color,
+            match (&redraw, reuse_background) {
+                (Some(_), _) => Base::Keep,
+                (None, true) => Base::Restore(&base),
+                (None, false) => Base::Clear,
+            },
+        )?;
+        self.timing_mark(1);
+        report.step("base");
+        if complete {
+            self.upload_scene_buffers(scene)?;
+            self.prepare_batches(batches)?;
+            self.timing_mark(2);
+            report.step("upload");
+        }
+        if let Some(rects) = &redraw {
+            if !rects.is_empty() {
+                report.local =
+                    self.draw_region(scene, &batches[..prefix_end], rects, &clear_color, report)?;
+            }
+            // The prefix alone is drawn there: the cache takes the repair.
+            if let Some(rect) = repair_rect {
+                self.save_scene_prefix(prefix_key, Some(rect))?;
+            }
+        } else if let Some(rect) = repair_rect {
+            if complete {
+                self.clear_and_scissor(rect, &clear_color)?;
+                self.draw_batches(scene, batches, 0..prefix_end)?;
+                self.restore_rasterizer();
+            } else {
+                report.local =
+                    self.draw_region(scene, &batches[..prefix_end], &[rect], &clear_color, report)?;
+            }
+            self.save_scene_prefix(prefix_key, Some(rect))?;
+        } else if !reuse_background {
+            self.draw_batches(scene, batches, 0..prefix_end)?;
+            if keep_complete {
+                self.save_scene_prefix(prefix_key, None)?;
+            }
+        }
+        self.timing_mark(3);
+        report.step("prefixDrawn");
+        if draw_suffix {
+            if composed.is_some() {
+                self.compose_suffix()?;
+            }
+            self.draw_batches(scene, batches, prefix_end..batches.len())?;
+            report.step("suffixDrawn");
+        }
+        let r = self.resources.as_mut().context("resources missing")?;
+        let intact = !suffix_changed
+            && !suffix_damage
+                .as_ref()
+                .is_some_and(|rects| restore.reaches(rects));
+        if suffix_needed || intact {
+            r.suffix_damage = suffix_damage;
+            let old = std::mem::replace(&mut r.suffix_snapshot, suffix_ink);
+            r.recycle(old);
+        } else {
+            // The buffer may hold the old suffix, the restored background and
+            // nothing of the new one: the next frame that shows it redraws all.
+            let old = r.suffix_snapshot.take();
+            r.recycle(old);
+            r.recycle(suffix_ink);
+            r.suffix_damage = match (r.suffix_damage.take(), suffix_damage) {
+                (Some(mut old), Some(now)) => {
+                    for rect in now {
+                        merge_damage(&mut old, rect);
+                    }
+                    Some(old)
+                }
+                _ => None,
+            };
+        }
+        if !same_prefix {
+            let old = std::mem::replace(&mut r.prefix_snapshot, snapshot);
+            r.recycle(old);
+        }
+        if repair.is_some() {
+            r.prefix_key = Some(prefix_key);
+        } else if !reuse_background && !keep_complete {
+            r.prefix_key = None;
+        }
+        r.streak = !reuse_background && (locality.is_none() || large);
+        r.last = Some(Last::Cached { opaque });
+        r.frames.drew(change);
+        r.present_dirty = present_regions(partial, &r.frames.unpresented);
+        report.step("record");
+        self.scene_cache_event(
+            scene,
+            reuse_prefix,
+            composed.is_some(),
+            draw_suffix,
+            prefix_end,
+            batches.len(),
+        );
+        Ok(())
+    }
+
+    /// Clears each of `rects` and draws into it, under a scissor, what
+    /// `batches` of `scene` draw there. When they can all be culled, only the
+    /// primitives that reach the rects are uploaded and drawn: their count
+    /// and the scene's are returned.
+    fn draw_region(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+        rects: &[RECT],
+        clear_color: &[f32; 4],
+        report: &mut FrameReport,
+    ) -> Result<Option<(usize, usize)>> {
+        let mut local = std::mem::take(&mut self.local);
+        let mut local_batches = std::mem::take(&mut self.local_batches);
+        let culled = scene_cache::local_scene(&mut local, scene, batches, rects);
+        local_batches.clear();
+        if culled {
+            local_batches.extend(local.batches());
+        }
+        report.step("cull");
+        let result = (|| {
+            let (draw_scene, draw_batches) = if culled {
+                // The next complete upload must not take these for the scene's.
+                self.pipelines.uploaded_revision = None;
+                self.upload_scene_buffers(&local)?;
+                self.pipelines.uploaded_revision = None;
+                (&local, local_batches.as_slice())
+            } else {
+                self.upload_scene_buffers(scene)?;
+                (scene, batches)
+            };
+            self.prepare_batches(draw_batches)?;
+            self.timing_mark(2);
+            report.step("localUpload");
+            for rect in rects {
+                self.clear_and_scissor(*rect, clear_color)?;
+                self.draw_batches(draw_scene, draw_batches, 0..draw_batches.len())?;
+            }
+            self.restore_rasterizer();
+            Ok(culled.then(|| (primitive_count(&local), primitive_count(scene))))
+        })();
+        self.local = local;
+        self.local_batches = local_batches;
+        result
+    }
+
+    /// Clears `rect` and confines the following draws to it until
+    /// [`restore_rasterizer`](Self::restore_rasterizer).
+    fn clear_and_scissor(&mut self, rect: RECT, clear_color: &[f32; 4]) -> Result<()> {
+        let r = self.resources.as_ref().context("resources missing")?;
+        let ctx = &self
+            .devices
+            .as_ref()
+            .context("devices missing")?
+            .device_context;
+        unsafe {
+            ctx.cast::<ID3D11DeviceContext1>()?.ClearView(
+                r.render_target_view
+                    .as_ref()
+                    .context("render target view missing")?,
+                clear_color,
+                Some(&[rect]),
+            );
+            ctx.RSSetState(&r.prefix_scissor);
+            ctx.RSSetScissorRects(Some(&[rect]));
+        }
+        self.work.clears += 1;
+        Ok(())
+    }
+
+    fn restore_rasterizer(&self) {
+        if let (Some(devices), Some(r)) = (&self.devices, &self.resources) {
+            unsafe { devices.device_context.RSSetState(&r.rasterizer) };
+        }
+    }
+
+    /// Lets the suffix's images compose the cached prefix behind themselves.
+    fn compose_suffix(&mut self) -> Result<()> {
+        let r = self.resources.as_mut().context("resources missing")?;
+        r.compose_prefix = true;
+        let ctx = &self
+            .devices
+            .as_ref()
+            .context("devices missing")?
+            .device_context;
+        if let Some(mut params) = self.globals.last_params {
+            params.compose_prefix = 1;
+            if self.globals.last_params != Some(params) {
+                update_buffer(
+                    ctx,
+                    self.globals
+                        .global_params_buffer
+                        .as_ref()
+                        .context("global params missing")?,
+                    &[params],
+                )?;
+                self.globals.last_params = Some(params);
+            }
+        }
+        unsafe { ctx.PSSetShaderResources(2, Some(slice::from_ref(&r.prefix_view))) };
+        Ok(())
+    }
+
+    fn prepare_batches(&mut self, batches: &[PrimitiveBatch]) -> Result<()> {
+        let devices = self.devices.as_ref().context("devices missing")?;
+        self.globals
+            .batch_params
+            .prepare(&devices.device, &devices.device_context, batches)
+    }
+
+    fn timing_mark(&mut self, index: usize) {
+        if let Some(timing) = &mut self.gpu_timing {
+            timing.mark(index);
+        }
+    }
+
+    /// Draws `batches[range]` of `scene` from the instances uploaded for it,
+    /// after [`prepare_batches`](Self::prepare_batches) of all `batches`.
+    fn draw_batches(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+        range: Range<usize>,
+    ) -> Result<()> {
+        let annotation = self
+            .devices
+            .as_ref()
+            .and_then(|devices| devices.annotation.clone())
+            .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
+        for index in range {
+            let batch = &batches[index];
+            self.globals.batch_params.active = index;
+            let _annotation = annotation
+                .as_ref()
+                .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
+            match batch {
+                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
+                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
+                PrimitiveBatch::Paths(range) => {
+                    let paths = &scene.paths[range.clone()];
+                    self.draw_paths_to_intermediate(paths)?;
+                    self.draw_paths_from_intermediate(paths)
+                }
+                PrimitiveBatch::Underlines(range) => {
+                    self.draw_underlines(range.start, range.len())
+                }
+                PrimitiveBatch::MonochromeSprites { texture_id, range } => {
+                    self.draw_monochrome_sprites(*texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::SubpixelSprites { texture_id, range } => {
+                    self.draw_subpixel_sprites(*texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::PolychromeSprites { texture_id, range } => {
+                    self.draw_polychrome_sprites(*texture_id, range.start, range.len())
+                }
+                PrimitiveBatch::Surfaces(range) => {
+                    self.draw_surfaces(&scene.surfaces[range.clone()])
+                }
+            }
+            .with_context(|| {
+                format!(
+                    "scene too large:\
+                    {} paths, {} shadows, {} quads, {} underlines, {} mono, {} subpixel, {} poly, {} surfaces",
+                    scene.paths.len(),
+                    scene.shadows.len(),
+                    scene.quads.len(),
+                    scene.underlines.len(),
+                    scene.monochrome_sprites.len(),
+                    scene.subpixel_sprites.len(),
+                    scene.polychrome_sprites.len(),
+                    scene.surfaces.len(),
+                )
+            })?;
+        }
+        Ok(())
+    }
+
+    fn scene_cache_event(
+        &self,
+        scene: &Scene,
+        reused: bool,
+        composed: bool,
+        suffix: bool,
+        prefix_batches: usize,
+        batches: usize,
+    ) {
+        static DIAGNOSTICS: OnceLock<bool> = OnceLock::new();
+        if !*DIAGNOSTICS.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
+            return;
+        }
+        static FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        static COMPOSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let frame = FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let changed = COMPOSED.swap(composed, std::sync::atomic::Ordering::Relaxed) != composed;
+        if frame < 3 || frame.is_multiple_of(400) || changed {
+            let area = self
+                .resources
+                .as_ref()
+                .and_then(|r| r.present_dirty.as_ref())
+                .map(|rects| {
+                    rects
+                        .iter()
+                        .map(|r| (r.right - r.left) * (r.bottom - r.top))
+                        .sum::<i32>()
+                })
+                .unwrap_or(0);
+            println!(
+                "{{\"event\":\"gpu-scene-cache\",\"frame\":{frame},\"revision\":{},\"animated\":{},\"reused\":{reused},\"composed\":{composed},\"suffixDrawn\":{suffix},\"prefixBatches\":{prefix_batches},\"batches\":{batches},\"dirtyArea\":{area}}}",
+                scene.paint_revision,
+                scene.animated_order.is_some(),
+            );
+        }
     }
 
     fn paint_foreground(
@@ -1481,7 +2100,7 @@ impl DirectXRenderer {
         let work = self.work;
         self.pipelines.uploaded_revision = None;
         let result = (|| {
-            self.pre_draw(&[0.; 4], false)?;
+            self.pre_draw(&[0.; 4], Base::Clear)?;
             if let Some(backdrop) = backdrop {
                 let source = D3D11_BOX {
                     left: bounds.left as u32,
@@ -1619,7 +2238,7 @@ impl DirectXRenderer {
             !self.skip_draws,
             "render_to_image unavailable while recovering from a lost device"
         );
-        self.render(scene, background_appearance, false)?;
+        self.render(scene, background_appearance, false, None)?;
         self.read_render_target()
     }
 
@@ -2147,12 +2766,16 @@ impl DirectXResources {
             prefix: None,
             prefix_view: None,
             compose_prefix: false,
-            restore_regions: Vec::new(),
             prefix_key: None,
             prefix_snapshot: None,
             prefix_scissor,
             rasterizer,
             suffix_damage: None,
+            suffix_snapshot: None,
+            spare: Vec::new(),
+            last: None,
+            streak: false,
+            frames: Frames::new(),
             present_dirty: None,
             render_target: Some(render_target),
             render_target_view,
@@ -2171,10 +2794,8 @@ impl DirectXResources {
         self.prefix = None;
         self.prefix_view = None;
         self.compose_prefix = false;
-        self.restore_regions.clear();
-        self.prefix_key = None;
-        self.prefix_snapshot = None;
-        self.suffix_damage = None;
+        self.forget();
+        self.frames = Frames::new();
         self.present_dirty = None;
         let (render_target, render_target_view, viewport) =
             create_resources(devices, &self.swap_chain, width, height)?;
@@ -2183,6 +2804,47 @@ impl DirectXResources {
         self.paths = None;
         self.viewport = viewport;
         Ok(())
+    }
+
+    /// Nothing drawn before can be trusted: neither the render target's
+    /// buffers nor the cached prefix.
+    fn forget(&mut self) {
+        self.prefix_key = None;
+        self.prefix_snapshot = None;
+        self.forget_frames();
+    }
+
+    /// The ink of `batches`, in the buffers of a replaced snapshot.
+    fn snapshot(
+        &mut self,
+        scene: &Scene,
+        batches: &[PrimitiveBatch],
+    ) -> Option<scene_cache::Snapshot> {
+        let mut snapshot = self.spare.pop().unwrap_or_default();
+        if snapshot.fill(scene, batches) {
+            Some(snapshot)
+        } else {
+            self.spare.push(snapshot);
+            None
+        }
+    }
+
+    fn recycle(&mut self, snapshot: Option<scene_cache::Snapshot>) {
+        if let Some(snapshot) = snapshot
+            && self.spare.len() < 3
+        {
+            self.spare.push(snapshot);
+        }
+    }
+
+    /// What the buffers hold and how the last frame was drawn are unknown;
+    /// the cached prefix stays valid.
+    fn forget_frames(&mut self) {
+        self.suffix_damage = None;
+        self.suffix_snapshot = None;
+        self.last = None;
+        self.streak = false;
+        self.frames.forget();
     }
 }
 
