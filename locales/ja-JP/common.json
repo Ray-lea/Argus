@@ -15,6 +15,7 @@
   "none": "なし",
   "name": "名前",
   "status": "状態",
+  "filterColumn": "「{column}」で絞り込む",
   "command": "コマンド",
   "copyName": "名前をコピー",
   "copyPath": "パスをコピー",

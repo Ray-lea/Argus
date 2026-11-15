@@ -15,6 +15,7 @@
   "none": "None",
   "name": "Name",
   "status": "Status",
+  "filterColumn": "Filter by {column}",
   "command": "Command",
   "copyName": "Copy name",
   "copyPath": "Copy path",

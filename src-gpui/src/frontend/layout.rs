@@ -23,6 +23,9 @@ const MORE: &str = "toolbar-more";
 const RATE: &str = "status-rate";
 /// The search box's shortcut, as the menus write shortcuts.
 const SEARCH_HINT: &str = "Ctrl+F";
+/// The search box's share of the window's width, between its placeholder's
+/// width and `searchWidth`.
+const SEARCH_SHARE: f32 = 0.3;
 /// The refresh rates on offer, in milliseconds.
 const INTERVALS: [u64; 4] = [500, 1000, 2000, 5000];
 /// Where a menu opens from its control.
@@ -564,13 +567,20 @@ impl Desktop {
                 let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
                 let empty = self.search.read(cx).value().is_empty();
                 let placeholder: SharedString = label(self.search_placeholder()).into();
-                let width = (right - left).min(theme::dimension("searchWidth"));
+                // A share of the window's width: narrow windows keep more of
+                // the title row to drag by. No narrower than its placeholder,
+                // no wider than `searchWidth`, and never past its neighbours.
+                let fit = self.search_fit(window, cx);
+                let width = (window.viewport_size().width * SEARCH_SHARE)
+                    .max(fit)
+                    .min(theme::dimension("searchWidth"))
+                    .min(right - left);
                 // The shortcut rests at the end of an empty, idle box that
                 // has room for it beside the whole placeholder.
                 let hint_width = theme::text_width(SEARCH_HINT, theme::font(11.), window, cx)
                     .ceil()
                     + px(10. + 2. + 8.);
-                let hint = empty && !focused && width >= self.search_fit(window, cx) + hint_width;
+                let hint = empty && !focused && width >= fit + hint_width;
                 // A Fluent text box (`.search input`): the control face with a
                 // stronger bottom edge; focused, a 2 px accent bottom on the raised
                 // layer; while it filters the list, it wears the accent.
@@ -771,26 +781,25 @@ impl Desktop {
                     ("tree", "TreeIcon"),
                     ("list", "ListIcon"),
                 ]
+        // The services and connections filters are in their status columns'
+        // headers (`NativeTable::header_filter`).
                 .into_iter()
                 .map(|(mode, glyph)| {
+                // Icons only: the names are in the tooltips.
                     (
-                        label(&format!("shell.viewMode.{mode}.label")),
+                        String::new(),
                         Some(glyph),
                         Action::View(mode.into()),
                         self.view == mode,
                     )
                 })
                 .collect();
-                row.child(self.choice("process-view", views, compact, cx))
+                row.child(self.segments("process-view", views, cx))
                     .child(self.visibility_controls(cx))
                     .child(self.details_button(cx))
             }
-            "services" => row
-                .child(self.page_controls(compact, window, cx))
-                .child(self.service_actions(cx)),
-            "network" => row
-                .child(self.page_controls(compact, window, cx))
-                .child(self.visibility_controls(cx)),
+            "services" => row.child(self.service_actions(cx)),
+            "network" => row.child(self.visibility_controls(cx)),
             _ => row.child(self.page_controls(compact, window, cx)),
         };
         Some(row.into_any_element())
@@ -906,6 +915,17 @@ impl Desktop {
         &mut self,
         items: Vec<MenuItem>,
         anchor: &str,
+    /// The list's filter, under its button in the status column's header.
+    pub(in crate::frontend) fn open_column_filter(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let items = self.filter_menu();
+        if !items.is_empty() {
+            self.open_anchored(items, tables::COLUMN_FILTER, Side::Under, window, cx);
+        }
+    }
         side: Side,
         window: &mut Window,
         cx: &mut Context<Self>,

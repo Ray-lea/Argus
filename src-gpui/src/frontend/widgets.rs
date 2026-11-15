@@ -805,11 +805,13 @@ impl Desktop {
             track = track.child(
                 gpui_kit::base::Button::new(ElementId::NamedInteger(
                     format!("seg-{id}").into(),
+            // An option drawn as its icon alone names itself in a tooltip.
+            let tip = icon_only.then(|| accessible.clone());
                     index as u64,
                 ))
                 .relative()
                 .h(px(26.))
-                .px(px(10.))
+                .px(px(if icon_only { 8. } else { 10. }))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -821,6 +823,9 @@ impl Desktop {
                 // Before the first layout there is no pill yet: paint the choice itself.
                 .when(chosen && to.is_none(), |b| b.bg(p.control_checked))
                 .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
+                .when_some(tip, |b, tip| {
+                    b.tooltip(move |window, cx| tooltip(tip.clone(), window, cx))
+                })
                 .role(Role::Tab)
                 .accessibility_label(accessible)
                 .when_some(glyph, |b, glyph| {

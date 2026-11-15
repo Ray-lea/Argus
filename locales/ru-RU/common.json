@@ -15,6 +15,7 @@
   "none": "Нет",
   "name": "Имя",
   "status": "Состояние",
+  "filterColumn": "Фильтр по столбцу «{column}»",
   "command": "Команда",
   "copyName": "Копировать имя",
   "copyPath": "Копировать путь",

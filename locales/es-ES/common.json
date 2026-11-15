@@ -15,6 +15,7 @@
   "none": "Ninguno",
   "name": "Nombre",
   "status": "Estado",
+  "filterColumn": "Filtrar por {column}",
   "command": "Comando",
   "copyName": "Copiar nombre",
   "copyPath": "Copiar ruta",

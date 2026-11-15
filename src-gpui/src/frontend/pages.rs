@@ -252,49 +252,41 @@ impl Desktop {
             _ => div().into_any_element(),
         }
     }
-    /// The page's filter or time range in the page bar (`compact`: as a
-    /// drop-down), and the history page's "Latest".
+    /// The filter of the page's list (services, connections) as its status
+    /// column's header menu offers it: each choice, checked when it is the
+    /// one in force.
+    pub(in crate::frontend) fn filter_menu(&self) -> Vec<MenuItem> {
+        let choices: &[&str] = tables::filter_choices(&self.page).map_or(&[], |(_, c)| c);
+        let network = self.page == "network";
+        let namespace = if network { "connections" } else { &self.page };
+        let selected = self
+            .filters
+            .get(&self.page)
+            .map(String::as_str)
+            .unwrap_or("all");
+        choices
+            .iter()
+            .map(|&choice| {
+                MenuItem::new(
+                    label(&format!(
+                        "{namespace}.filter.{choice}{}",
+                        if network { ".label" } else { "" }
+                    )),
+                    Action::Preference(format!("filter.{}", self.page), json!(choice)),
+                )
+                .checked(selected == choice)
+            })
+            .collect()
+    }
+    /// The history page's time range in the page bar (`compact`: as a
+    /// drop-down), and its "Latest".
     pub(in crate::frontend) fn page_controls(
         &self,
         compact: bool,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let choices: &[&str] = tables::filter_choices(&self.page).map_or(&[], |(_, c)| c);
-        let namespace = if self.page == "network" {
-            "connections"
-        } else {
-            &self.page
-        };
-        let selected = self
-            .filters
-            .get(&self.page)
-            .map(String::as_str)
-            .unwrap_or("all");
         let mut row = div().flex().items_center().gap_2();
-        if !choices.is_empty() {
-            row = row.child(
-                self.choice(
-                    "page-filter",
-                    choices
-                        .iter()
-                        .map(|&choice| {
-                            (
-                                label(&format!(
-                                    "{namespace}.filter.{choice}{}",
-                                    if self.page == "network" { ".label" } else { "" }
-                                )),
-                                None,
-                                Action::Preference(format!("filter.{}", self.page), json!(choice)),
-                                selected == choice,
-                            )
-                        })
-                        .collect(),
-                    compact,
-                    cx,
-                ),
-            );
-        }
         if self.page == "history" {
             row = row.child(
                 self.choice(

@@ -1241,14 +1241,18 @@ impl TableDelegate for NativeTable {
         // Process headers: the interface's 4 px cell padding inside its 4 px
         // header padding below the label, which the header band leaves out.
         let processes = self.page == "processes";
+        let filter = self.header_filter(index, cx);
         // The table keeps its own inset at the right of a header's content
         // (`widths::HEADER_INSET`): a process header leaves out as much of its
-        // padding, so its figures end where the cells' do.
+        // padding, so its figures end where the cells' do. A filter button
+        // takes the end of its header.
         let mut cell = div()
             .size_full()
             .pl(px(CELL_PADDING))
             .pr(px(if processes {
                 CELL_PADDING - widths::HEADER_INSET
+            } else if filter.is_some() {
+                FILTER_BUTTON + 4.
             } else {
                 CELL_PADDING
             }))
@@ -1374,7 +1378,16 @@ impl TableDelegate for NativeTable {
                     let _ = owner.update(cx, |this, cx| this.act(Action::Sort(key), window, cx));
                 });
             });
-        self.header_cell(index, button, window, cx)
+        let header = self.header_cell(index, button, window, cx);
+        match filter {
+            Some(filter) => div()
+                .relative()
+                .size_full()
+                .child(header)
+                .child(filter)
+                .into_any_element(),
+            None => header,
+        }
     }
     fn render_td(
         &mut self,
@@ -2354,6 +2367,13 @@ pub(super) fn sort_preference(page: &str, key: &str, descending: bool) -> Option
 }
 /// A list's filter choices and the preference that keeps the choice, named as
 /// under `services.filter` and `connections.filter`.
+/// The column whose header carries the list's filter (`filter_choices`).
+pub(super) fn filter_column(page: &str) -> Option<&'static str> {
+    filter_choices(page).map(|_| "state")
+}
+/// The column filter's button, and the key its menu hangs from.
+const FILTER_BUTTON: f32 = 22.;
+pub(super) const COLUMN_FILTER: &str = "column-filter";
 pub(super) fn filter_choices(page: &str) -> Option<(&'static str, &'static [&'static str])> {
     match page {
         "services" => Some(("services.filter", &["all", "running", "stopped"])),
