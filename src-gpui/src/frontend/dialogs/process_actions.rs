@@ -163,6 +163,17 @@ impl Desktop {
                     .unwrap_or_default();
                 if !failed.is_empty() {
                     (ToastKind::Error, first_error, 5000)
+                } else if number(report, "criticalityUnknown") > 0. {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.endTree.unchecked",
+                            count = number(report, "terminated") as u64,
+                            failed = number(report, "failed") as u64,
+                            unchecked = number(report, "criticalityUnknown") as u64
+                        ),
+                        5000,
+                    )
                 } else if number(report, "failed") > 0. {
                     (
                         ToastKind::Error,

@@ -35,7 +35,8 @@
       "one": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
       "many": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
       "other": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados)."
-    }
+    },
+    "unchecked": "Procesos finalizados: {count}; sin finalizar: {failed}, incluidos {unchecked} cuyo estado crítico no se pudo comprobar."
   },
   "error": {
     "accessDenied": "No se pudo finalizar {name}: acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador. Los procesos protegidos pueden seguir restringidos.",
@@ -43,7 +44,8 @@
     "critical": "{name} es un proceso crítico del sistema. Finalizarlo provocaría un fallo de Windows, por lo que se ha bloqueado la operación.",
     "refused": "{name} no se puede finalizar.",
     "serviceOutdated": "No se pudo finalizar {name}: acceso denegado. La versión del servicio privilegiado es incompatible. Actualice el servicio y vuelva a intentarlo.",
-    "generic": "No se pudo finalizar {name}: {error}"
+    "generic": "No se pudo finalizar {name}: {error}",
+    "criticalityUnknown": "No se pudo comprobar si {name} es un proceso crítico del sistema. Se bloqueó la finalización."
   },
   "priority": {
     "confirmTitle": "¿Establecer la prioridad de {name} en Tiempo real?",
