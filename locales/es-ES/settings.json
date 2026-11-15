@@ -86,6 +86,7 @@
     "pauseTitle": "Pausar mientras se mantiene pulsado",
     "searchTitle": "Buscar procesos",
     "search": "Ir a búsqueda de procesos. La tecla / también funciona cuando no se escribe y, en la página Procesos, al escribir una letra o un dígito se inicia una búsqueda.",
+    "runTask": "Inicie un programa o abra un archivo o una carpeta desde cualquier página. No funciona mientras escribe.",
     "pause": "Mantenga presionado para pausar las actualizaciones de Procesos o Rendimiento; suelte para reanudar. Una pausa manual permanece vigente.",
     "end": "Finaliza el proceso o grupo de aplicaciones seleccionado, con confirmación.",
     "taskManager": "Abrir Argus cuando está activado «Sustituir el Administrador de tareas».",

@@ -252,8 +252,11 @@ impl Desktop {
             _ => div().into_any_element(),
         }
     }
+    /// The page's filter or time range in the page bar (`compact`: as a
+    /// drop-down), and the history page's "Latest".
     pub(in crate::frontend) fn page_controls(
         &self,
+        compact: bool,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -268,10 +271,10 @@ impl Desktop {
             .get(&self.page)
             .map(String::as_str)
             .unwrap_or("all");
-        let mut row = div().flex().items_center().gap_1();
+        let mut row = div().flex().items_center().gap_2();
         if !choices.is_empty() {
             row = row.child(
-                self.segments(
+                self.choice(
                     "page-filter",
                     choices
                         .iter()
@@ -287,13 +290,14 @@ impl Desktop {
                             )
                         })
                         .collect(),
+                    compact,
                     cx,
                 ),
             );
         }
         if self.page == "history" {
             row = row.child(
-                self.segments(
+                self.choice(
                     "history-range",
                     history::RANGES
                         .into_iter()
@@ -306,12 +310,13 @@ impl Desktop {
                             )
                         })
                         .collect(),
+                    compact,
                     cx,
                 ),
             );
             if self.history_cursor.is_some() {
                 // A plain `.btn` whose text is not a `.btn-text`: it keeps its
-                // label at every compact level of the toolbar.
+                // label at every compact level of the page bar.
                 row = row.child(
                     self.btn(
                         "history-latest",

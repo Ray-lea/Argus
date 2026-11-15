@@ -34,6 +34,7 @@ product_icons! {
     "HistoryIcon" | "DataIcon" => RotateCcwClock,
     "SettingsIcon" => Settings,
     "MenuIcon" => Menu,
+    "MoreIcon" => Ellipsis,
     "AppsIcon" => LayoutGrid,
     "TreeIcon" => ListTree,
     "ExpandAllIcon" => ChevronsUpDown,

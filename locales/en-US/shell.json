@@ -50,9 +50,11 @@
   },
   "pause": "Pause updates",
   "resume": "Resume updates",
-  "fileLock": {
-    "title": "Find what's using a file (or drop files onto the window)",
-    "label": "Find processes using a file"
+  "more": {
+    "label": "More actions",
+    "runTask": "Run new task…",
+    "fileLock": "Find processes using a file…",
+    "fileLockDetail": "Or drop files"
   },
   "details": {
     "label": "Details pane",
@@ -88,6 +90,7 @@
     "orderHeld": "Sorting paused while the pointer is over the list",
     "orderHeldHint": "Rows re-sort once the pointer leaves the list",
     "paused": "Updates paused",
+    "holdHint": "Hold Ctrl on the Processes or Performance page to pause briefly",
     "interval": "Updates every {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nClick to see what’s new in this version; right-click to copy the version number"

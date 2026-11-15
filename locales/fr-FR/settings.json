@@ -86,6 +86,7 @@
     "pauseTitle": "Suspendre pendant l’appui",
     "searchTitle": "Rechercher des processus",
     "search": "Accédez à la recherche de processus. La touche / fonctionne également lorsque vous ne tapez pas, et sur la page Processus, la saisie d’une lettre ou d’un chiffre lance une recherche.",
+    "runTask": "Lancez un programme ou ouvrez un fichier ou un dossier depuis n’importe quelle page. Inactif pendant la saisie.",
     "pause": "Maintenez la touche enfoncée pour suspendre l’actualisation sur Processus ou Performances, puis relâchez-la pour reprendre. Une pause manuelle reste active.",
     "end": "Terminez le processus ou le groupe d’applications sélectionné, avec confirmation.",
     "taskManager": "Ouvrez Argus lorsque le remplacement de Gestionnaire des tâches est activé.",

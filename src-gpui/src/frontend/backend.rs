@@ -939,6 +939,12 @@ impl Desktop {
                 cx.stop_propagation();
                 return;
             }
+            // "Run new task" from the page bar's "More", but not while typing.
+            if key == "n" && !searching {
+                self.act(Action::Dialog("task".into(), json!({})), window, cx);
+                cx.stop_propagation();
+                return;
+            }
         }
         if searching {
             // ↓ leaves the search box for the list, selecting the first row if none is.

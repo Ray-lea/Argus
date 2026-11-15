@@ -86,6 +86,7 @@
     "pauseTitle": "Pause while held",
     "searchTitle": "Search processes",
     "search": "Go to process search. The / key also works when not typing, and on the Processes page typing a letter or digit starts a search.",
+    "runTask": "Start a program or open a file or folder from any page. Not while typing.",
     "pause": "Hold to pause updates on Processes or Performance; release to resume. A manual pause stays in effect.",
     "end": "End the selected process or app group, with confirmation.",
     "taskManager": "Open Argus when Task Manager replacement is enabled.",

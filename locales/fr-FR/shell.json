@@ -50,9 +50,11 @@
   },
   "pause": "Suspendre l’actualisation",
   "resume": "Reprendre l’actualisation",
-  "fileLock": {
-    "title": "Rechercher ce qui utilise un fichier (ou déposer des fichiers dans la fenêtre)",
-    "label": "Rechercher les processus utilisant un fichier"
+  "more": {
+    "label": "Autres actions",
+    "runTask": "Exécuter une nouvelle tâche…",
+    "fileLock": "Rechercher les processus utilisant un fichier…",
+    "fileLockDetail": "Ou déposer des fichiers"
   },
   "details": {
     "label": "Volet Détails",
@@ -88,6 +90,7 @@
     "orderHeld": "Tri interrompu alors que le pointeur est sur la liste",
     "orderHeldHint": "Les lignes sont triées une fois que le pointeur quitte la liste",
     "paused": "Actualisation suspendue",
+    "holdHint": "Maintenez Ctrl enfoncée sur les pages Processus et Performances pour suspendre brièvement",
     "interval": "Actualisation toutes les {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nCliquez pour voir les nouveautés de cette version ; faites un clic droit pour copier le numéro de version"

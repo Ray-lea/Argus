@@ -7,7 +7,12 @@
   "openDialog": "更新内容を表示",
   "button": {
     "title": "Argus {version} の準備が整いました。クリックして更新内容を確認し、インストールできます",
-    "availableTitle": "新しいバージョン {version} が見つかりました。クリックして更新内容を確認できます"
+    "availableTitle": "新しいバージョン {version} が見つかりました。クリックして更新内容を確認できます",
+    "downloadingTitle": "Argus {version} をダウンロードしています。完了後にインストールできます。クリックして更新内容を確認できます"
+  },
+  "badge": {
+    "ready": "{version} をインストール",
+    "available": "新しいバージョン {version}"
   },
   "menu": {
     "view": "更新内容を表示",

@@ -4181,6 +4181,12 @@ impl Desktop {
                 "settings.shortcuts.search",
                 "Ctrl+F",
             ),
+            (
+                "RunTaskIcon",
+                "tasks.title",
+                "settings.shortcuts.runTask",
+                "Ctrl+N",
+            ),
         ];
         let mut cards = common
             .into_iter()

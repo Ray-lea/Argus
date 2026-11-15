@@ -539,12 +539,19 @@ impl Desktop {
                         .count()
                 })
                 .sum::<usize>();
-            let actions_are_client = window
-                .window_control_area_at(self.toolbar_regions.borrow()[1].center())
-                .is_none();
+            // The search box (on pages that have one) and the page bar's end
+            // controls take the pointer; the bar's stretch drags the window.
+            let bar = *self.bar_regions.borrow();
+            let actions_are_client = (!self.has_search()
+                || window
+                    .window_control_area_at(self.toolbar_regions.borrow()[1].center())
+                    .is_none())
+                && window.window_control_area_at(bar[0].center()).is_none();
+            let stretch_drags =
+                window.window_control_area_at(bar[2].center()) == Some(WindowControlArea::Drag);
             println!(
                 "{}",
-                json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,
+                json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,"stretchDrags":stretch_drags,
                 "minimize":control_matches(WindowControlArea::Min),"maximize":control_matches(WindowControlArea::Max),"close":control_matches(WindowControlArea::Close)})
             );
             println!(

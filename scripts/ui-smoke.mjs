@@ -752,7 +752,8 @@ if (exitCode !== 0 || error || events.some((e) => e.event === "focusViolation"))
   throw Error(`Native validation failed: ${error}`);
 for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.endsWith("-dialog"))) {
   assert(event.dragPoints > 0, `${event.label}: empty title bar lost its native drag region`);
-  assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
+  assert(event.actionsAreClient, `${event.label}: search box or page bar controls were classified as draggable caption`);
+  assert(event.stretchDrags, `${event.label}: the page bar's empty stretch does not drag the window`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
 if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions) {
