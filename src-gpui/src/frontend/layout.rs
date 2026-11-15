@@ -704,8 +704,15 @@ impl Desktop {
         };
         let owner = cx.entity().downgrade();
         let regions = self.bar_regions.clone();
+        let settling = self.bar_settling.clone();
         let probe = move |index: usize| {
-            let track = track_bar(index, regions.clone(), owner.clone());
+            let track = track_bar(
+                index,
+                regions.clone(),
+                owner.clone(),
+                settling.clone(),
+                level,
+            );
             canvas(
                 move |bounds, window, cx| track(bounds, window, cx),
                 |_, _, _, _| {},
@@ -774,18 +781,18 @@ impl Desktop {
         }
         let compact = level == 1;
         let row = div().flex().items_center().gap_2().flex_shrink_0();
+        // The services and connections filters are in their status columns'
+        // headers (`NativeTable::header_filter`).
         let row = match self.page.as_str() {
             "processes" => {
+                // Icons only: the names are in the tooltips.
                 let views = [
                     ("apps", "AppsIcon"),
                     ("tree", "TreeIcon"),
                     ("list", "ListIcon"),
                 ]
-        // The services and connections filters are in their status columns'
-        // headers (`NativeTable::header_filter`).
                 .into_iter()
                 .map(|(mode, glyph)| {
-                // Icons only: the names are in the tooltips.
                     (
                         String::new(),
                         Some(glyph),
@@ -908,13 +915,6 @@ impl Desktop {
         );
         self.open_anchored(items, MORE, Side::Below, window, cx);
     }
-    /// Opens `items` from the control recorded as `anchor`: under its left
-    /// edge, or by its right edge (above or below it), turning toward the
-    /// free side as menus do. Unrecorded, the menu opens at the pointer.
-    fn open_anchored(
-        &mut self,
-        items: Vec<MenuItem>,
-        anchor: &str,
     /// The list's filter, under its button in the status column's header.
     pub(in crate::frontend) fn open_column_filter(
         &mut self,
@@ -926,6 +926,13 @@ impl Desktop {
             self.open_anchored(items, tables::COLUMN_FILTER, Side::Under, window, cx);
         }
     }
+    /// Opens `items` from the control recorded as `anchor`: under its left
+    /// edge, or by its right edge (above or below it), turning toward the
+    /// free side as menus do. Unrecorded, the menu opens at the pointer.
+    fn open_anchored(
+        &mut self,
+        items: Vec<MenuItem>,
+        anchor: &str,
         side: Side,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1022,10 +1029,13 @@ impl Desktop {
     /// while its end controls run past the row (the drag stretch before them
     /// already at its least) the bar goes one compact level further each
     /// frame, learning the room the level wanted; it goes back once the bar
-    /// has that room. Level 1 turns the labelled choices into drop-downs,
-    /// level 2 moves the page's controls to a row of their own. Another page,
-    /// text size, language, navigation or the history page's "Latest" button
-    /// starts over. Returns the level to draw.
+    /// has that room. Level 1 turns the labelled choices into drop-downs
+    /// (pages without any skip it), level 2 moves the page's controls to a
+    /// row of their own. Each page, text size, language, navigation and the
+    /// history page's "Latest" button keeps what it learned: coming back, the
+    /// bar starts at the level that room allows. Until a level fits, the
+    /// frames drawn at the others are not presented (`track_bar`). Returns the
+    /// level to draw.
     pub(in crate::frontend) fn fit_toolbar(
         &self,
         window: &mut Window,
@@ -1050,10 +1060,28 @@ impl Desktop {
             };
         let mut state = self.ui.toolbar_fit.borrow_mut();
         if state.key != key {
+            let mut learned = std::mem::take(&mut state.learned);
+            let previous = std::mem::take(&mut state.key);
+            if !previous.is_empty() {
+                learned.insert(previous, state.need);
+            }
+            let need = learned.get(&key).copied().unwrap_or_default();
+            // The first level this room does not rule out (an unknown need fits).
+            let mut level = 0;
+            while level < 2
+                && need[level as usize] > px(0.)
+                && room + px(0.5) < need[level as usize]
+            {
+                level += 1;
+            }
             *state = widgets::ToolbarFit {
                 key,
-                ..Default::default()
+                level,
+                need,
+                drawn: None,
+                learned,
             };
+            self.bar_settling.set(true);
         }
         let before = state.level;
         while state.level > 0 && room + px(0.5) >= state.need[state.level as usize - 1] {
@@ -1062,15 +1090,22 @@ impl Desktop {
         // The regions measure the level last drawn: once the current one is
         // drawn, see whether it fits.
         if state.drawn == Some(state.level)
-            && state.level < 2
             && regions[0].size.width > px(0.)
             && regions[1].size.width > px(0.)
         {
             let overflow = regions[0].right() - (regions[1].right() - px(BAR_INSET));
-            if overflow > px(0.5) {
+            if overflow > px(0.5) && state.level < 2 {
                 let level = state.level as usize;
                 state.need[level] = room + overflow;
-                state.level += 1;
+                if level == 0 && !self.has_choices() {
+                    // Nothing to fold: level 1 would draw the same bar.
+                    state.need[1] = room + overflow;
+                    state.level = 2;
+                } else {
+                    state.level += 1;
+                }
+            } else {
+                self.bar_settling.set(false);
             }
         }
         let level = state.level;
@@ -1083,6 +1118,10 @@ impl Desktop {
             });
         }
         level
+    }
+    /// Pages whose bar has labelled choices to fold into drop-downs (level 1).
+    fn has_choices(&self) -> bool {
+        self.page == "history"
     }
     /// The page bar's height below its first row: the controls' own row at
     /// the last compact level.
@@ -1759,11 +1798,15 @@ fn track_title(
 /// Measures the page bar's end controls and the bar (`fit_toolbar`), and its
 /// drag stretch for tests. Another page's controls move them on its first
 /// frame: the bar steps to another level (and the desktop draws again) only
-/// if it no longer fits at the level drawn.
+/// if it no longer fits at the level drawn. While the bar is `settling`, a
+/// frame at a `level` that does not fit is only measured: the controls never
+/// show at the end of the row and then jump below it.
 fn track_bar(
     index: usize,
     regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
     owner: WeakEntity<Desktop>,
+    settling: Rc<Cell<bool>>,
+    level: u8,
 ) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
     move |bounds, window, cx| {
         if regions.borrow()[index] == bounds {
@@ -1772,6 +1815,15 @@ fn track_bar(
         regions.borrow_mut()[index] = bounds;
         if index == 2 {
             return;
+        }
+        if settling.get() && level < 2 {
+            let [trailing, bar, _] = *regions.borrow();
+            if trailing.size.width > px(0.)
+                && bar.size.width > px(0.)
+                && trailing.right() - (bar.right() - px(BAR_INSET)) > px(0.5)
+            {
+                window.defer_presentation_until_layout();
+            }
         }
         let owner = owner.clone();
         window.defer(cx, move |window, cx| {

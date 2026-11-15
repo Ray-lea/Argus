@@ -297,6 +297,10 @@ struct Desktop {
     /// The page bar (the tab row on top, the page header beside the side
     /// navigation): its end controls, the bar, and its drag stretch.
     bar_regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
+    /// Set while the page bar looks for a level that fits (another page,
+    /// language or text size): frames drawn at a level that does not fit are
+    /// measured only, never presented (`track_bar`).
+    bar_settling: Rc<Cell<bool>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
@@ -481,6 +485,7 @@ impl Desktop {
             tip_layer,
             toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
             bar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
+            bar_settling: Rc::new(Cell::new(true)),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),

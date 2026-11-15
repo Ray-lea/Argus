@@ -198,20 +198,23 @@ pub(in crate::frontend) struct Spin {
     pub repeat: Task<()>,
 }
 
-/// The toolbar's compact level and what it learned (the interface's
-/// `fitToolbar`): 1 hides the text of the buttons at the end, 2 the labels of
-/// the view modes, 3 moves the page's controls to a row of their own and 4
-/// the search box too. `need[level]` is the width the toolbar wanted when that
-/// level stopped fitting; it returns to the level once the window is as wide.
+/// The page bar's compact level and what it learned (the interface's
+/// `fitToolbar`): 1 turns the labelled choices into drop-downs, 2 moves the
+/// page's controls to a row of their own. `need[level]` is the room the bar
+/// wanted when that level stopped fitting; it returns to the level once it has
+/// that room.
 #[derive(Default)]
 pub(in crate::frontend) struct ToolbarFit {
-    /// What the levels were learned for (page, text, navigation, language,
-    /// update button); a change starts over from level 0.
+    /// What the levels are learned for (page, text, navigation, language and
+    /// the history page's "Latest").
     pub key: String,
     pub level: u8,
     pub need: [Pixels; 4],
-    /// The level the toolbar was last drawn at: its regions measure that one.
+    /// The level the bar was last drawn at: its regions measure that one.
     pub drawn: Option<u8>,
+    /// What the other keys' levels needed, kept for when they come back: a
+    /// page seen before draws at its level from its first frame.
+    pub learned: HashMap<String, [Pixels; 4]>,
 }
 
 /// A card that eases between rest, hover and press with live transforms
@@ -802,11 +805,11 @@ impl Desktop {
             let hover = p.hover;
             let ink = p.ink;
             let control = SharedString::from(format!("seg-{id}-{index}"));
+            // An option drawn as its icon alone names itself in a tooltip.
+            let tip = icon_only.then(|| accessible.clone());
             track = track.child(
                 gpui_kit::base::Button::new(ElementId::NamedInteger(
                     format!("seg-{id}").into(),
-            // An option drawn as its icon alone names itself in a tooltip.
-            let tip = icon_only.then(|| accessible.clone());
                     index as u64,
                 ))
                 .relative()
@@ -820,12 +823,12 @@ impl Desktop {
                 .text_size(theme::font(13.))
                 .whitespace_nowrap()
                 .text_color(color)
-                // Before the first layout there is no pill yet: paint the choice itself.
-                .when(chosen && to.is_none(), |b| b.bg(p.control_checked))
-                .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
                 .when_some(tip, |b, tip| {
                     b.tooltip(move |window, cx| tooltip(tip.clone(), window, cx))
                 })
+                // Before the first layout there is no pill yet: paint the choice itself.
+                .when(chosen && to.is_none(), |b| b.bg(p.control_checked))
+                .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
                 .role(Role::Tab)
                 .accessibility_label(accessible)
                 .when_some(glyph, |b, glyph| {
