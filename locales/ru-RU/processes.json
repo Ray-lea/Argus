@@ -47,6 +47,12 @@
     "many": "{count} процессов",
     "other": "{count} процесса"
   },
+  "totalHidden": {
+    "one": "{total} (скрыто: {count})",
+    "few": "{total} (скрыто: {count})",
+    "many": "{total} (скрыто: {count})",
+    "other": "{total} (скрыто: {count})"
+  },
   "filtered": "Список фильтруется поиском",
   "column": {
     "name": {

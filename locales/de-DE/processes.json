@@ -45,6 +45,10 @@
     "one": "{count} Prozess",
     "other": "{count} Prozesse"
   },
+  "totalHidden": {
+    "one": "{total} ({count} ausgeblendet)",
+    "other": "{total} ({count} ausgeblendet)"
+  },
   "filtered": "Die Liste wird durch die Suche gefiltert",
   "column": {
     "name": {

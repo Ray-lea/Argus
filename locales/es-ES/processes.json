@@ -46,6 +46,11 @@
     "many": "{count} procesos",
     "other": "{count} procesos"
   },
+  "totalHidden": {
+    "one": "{total} ({count} oculto)",
+    "many": "{total} ({count} ocultos)",
+    "other": "{total} ({count} ocultos)"
+  },
   "filtered": "La lista se filtra por la búsqueda.",
   "column": {
     "name": {

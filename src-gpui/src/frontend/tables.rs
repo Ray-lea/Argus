@@ -2368,10 +2368,24 @@ impl Desktop {
         }
         let processes = values(&self.snapshot["processes"]);
         match key {
-            "name" => tr!(
-                "processes.total",
-                count = number(sys, "processCount") as usize
-            ),
+            "name" => {
+                let total = tr!(
+                    "processes.total",
+                    count = number(sys, "processCount") as usize
+                );
+                // With system processes hidden, how many of them the list leaves out.
+                let hidden = self.visibility_rules("processes").map_or(0, |rules| {
+                    processes
+                        .iter()
+                        .filter(|process| rules.hides_process(process))
+                        .count()
+                });
+                if hidden == 0 {
+                    total
+                } else {
+                    tr!("processes.totalHidden", total = total, count = hidden)
+                }
+            }
             "cpu" => format!("{}%", number(sys, "cpu").round()),
             "mem" => format!(
                 "{}%",

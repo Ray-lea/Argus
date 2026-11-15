@@ -44,6 +44,9 @@
   "total": {
     "other": "{count} プロセス"
   },
+  "totalHidden": {
+    "other": "{total}（非表示 {count}）"
+  },
   "filtered": "検索で一覧を絞り込みます",
   "column": {
     "name": {
