@@ -59,6 +59,7 @@ impl Desktop {
             "end" => ("kill_process", json!({"force":false})),
             "endTree" => ("kill_process_tree", json!({})),
             "priority" => ("set_priority", json!({"priority":args["priority"]})),
+            "suspend" => ("set_suspended", json!({"suspend":args["on"]})),
             _ => ("set_efficiency_mode", json!({"on":args["on"]})),
         };
         let payloads = if kind == "endTree" {
@@ -162,6 +163,17 @@ impl Desktop {
                     .unwrap_or_default();
                 if !failed.is_empty() {
                     (ToastKind::Error, first_error, 5000)
+                } else if number(report, "criticalityUnknown") > 0. {
+                    (
+                        ToastKind::Error,
+                        tr!(
+                            "actions.endTree.unchecked",
+                            count = number(report, "terminated") as u64,
+                            failed = number(report, "failed") as u64,
+                            unchecked = number(report, "criticalityUnknown") as u64
+                        ),
+                        5000,
+                    )
                 } else if number(report, "failed") > 0. {
                     (
                         ToastKind::Error,
@@ -221,6 +233,12 @@ impl Desktop {
                 }
             }
             _ => {
+                // Efficiency mode and suspension: on or off, with the same three outcomes.
+                let action = if kind == "suspend" {
+                    "suspend"
+                } else {
+                    "efficiency"
+                };
                 let state = if boolean(value, "on") { "on" } else { "off" };
                 if failed.len() == total {
                     (
@@ -228,7 +246,7 @@ impl Desktop {
                         format!(
                             "{}：{first_error}",
                             argus_core::i18n::format(
-                                &format!("actions.efficiency.{state}.failed"),
+                                &format!("actions.{action}.{state}.failed"),
                                 &[("name", &name)]
                             )
                         ),
@@ -238,10 +256,12 @@ impl Desktop {
                     (
                         ToastKind::Error,
                         argus_core::i18n::format(
-                            &format!("actions.efficiency.{state}.partial"),
+                            &format!("actions.{action}.{state}.partial"),
+                            // Suspension texts name the first cause; efficiency's ignore it.
                             &[
                                 ("count", &(total - failed.len())),
                                 ("failed", &failed.len()),
+                                ("error", &first_error),
                             ],
                         ),
                         5000,
@@ -250,7 +270,7 @@ impl Desktop {
                     (
                         ToastKind::Success,
                         argus_core::i18n::format(
-                            &format!("actions.efficiency.{state}.done"),
+                            &format!("actions.{action}.{state}.done"),
                             &[("name", &name)],
                         ),
                         2500,

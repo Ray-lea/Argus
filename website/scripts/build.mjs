@@ -6,6 +6,7 @@ import { buildRelease } from "./release.mjs";
 import { writeDistribution } from "./distribution.mjs";
 import { prepareContent } from "./content.mjs";
 import { secureHtml } from "./csp.mjs";
+import { writeMarkdown } from "./markdown.mjs";
 import {
   contentDir,
   repoRoot as root,
@@ -70,12 +71,17 @@ await put(
     origin +
     "/security/\nPreferred-Languages: zh, en\n",
 );
-// Every page is open to crawlers; the .txt files beside each page are the
-// Next.js navigation data, not pages.
+await writeMarkdown(dir.site);
+// Every page is open to crawlers, and the content signals (contentsignals.org)
+// allow search, AI answers and AI training, as llms.txt invites. The .txt files
+// beside each page are the Next.js navigation data, and the index.md files are
+// what the page's own address returns for Accept: text/markdown.
 await put(
   dir.site,
   "robots.txt",
-  "User-agent: *\nAllow: /\nDisallow: /*index.txt$\nDisallow: /*__next.\nSitemap: " + origin + "/sitemap.xml\n",
+  "User-agent: *\nContent-Signal: ai-train=yes, search=yes, ai-input=yes\nAllow: /\nDisallow: /*index.txt$\nDisallow: /*index.md$\nDisallow: /*__next.\nSitemap: " +
+    origin +
+    "/sitemap.xml\n",
 );
 
 // Only completed builds replace the disposable output beneath this project's target directory.

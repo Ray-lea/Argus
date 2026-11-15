@@ -170,7 +170,7 @@
     "incompatible": "Cliquez sur « Mettre le service à jour » pour installer la version correspondant à Argus et établir la connexion.",
     "install": {
       "title": "Activer le service privilégié ?",
-      "body": "Après l’installation, le compte Windows actuel peut utiliser le service en arrière-plan sans nouvelle autorisation pour :\n· terminer les processus de tout utilisateur, sauf les processus système critiques, et régler leur priorité et leur mode d’efficacité ;\n· démarrer et arrêter tout service Windows et modifier son type de démarrage, y compris les services des logiciels de sécurité et de Windows Update ;\n· fermer toute connexion IPv4 TCP et consulter les fichiers utilisés, le trafic réseau et les lectures et écritures disque de tous les processus ;\n· consulter l’identité des disques, les attributs SMART et les journaux de santé avec des commandes fixes en lecture seule ;\n· lire les données des capteurs CPU et les vitesses des ventilateurs de la carte mère via des modules fixes lorsque PawnIO est installé.\n\nLes autres programmes exécutés avec des droits standard sous ce compte peuvent aussi utiliser ces opérations, ce qui accorde au compte une partie des droits d’administrateur. Installez le service uniquement sur un compte que vous utilisez personnellement. Il démarre avec Windows. Son installation nécessite une autorisation d’administrateur ; il peut être désinstallé ensuite dans Paramètres.",
+      "body": "Après l’installation, le compte Windows actuel peut utiliser le service en arrière-plan sans nouvelle autorisation pour :\n· terminer, suspendre ou reprendre les processus de tout utilisateur, sauf les processus système critiques, et régler leur priorité et leur mode d’efficacité ;\n· démarrer et arrêter tout service Windows et modifier son type de démarrage, y compris les services des logiciels de sécurité et de Windows Update ;\n· fermer toute connexion IPv4 TCP et consulter les fichiers utilisés, le trafic réseau et les lectures et écritures disque de tous les processus ;\n· consulter l’identité des disques, les attributs SMART et les journaux de santé avec des commandes fixes en lecture seule ;\n· lire les données des capteurs CPU et les vitesses des ventilateurs de la carte mère via des modules fixes lorsque PawnIO est installé.\n\nLes autres programmes exécutés avec des droits standard sous ce compte peuvent aussi utiliser ces opérations, ce qui accorde au compte une partie des droits d’administrateur. Installez le service uniquement sur un compte que vous utilisez personnellement. Il démarre avec Windows. Son installation nécessite une autorisation d’administrateur ; il peut être désinstallé ensuite dans Paramètres.",
       "action": "Installer et activer"
     },
     "uninstall": {
@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Actualisation dans la zone de notification",
-      "desc": "Intervalle de collecte lorsque la fenêtre est masquée dans la zone de notification ; l’infobulle suit le même rythme. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder les règles pour les nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Intervalle de collecte lorsque la fenêtre est masquée dans la zone de notification ; l’icône et son infobulle suivent le même rythme. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder les règles pour les nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
     },
     "background": {
       "error": "Impossible d’enregistrer le taux de rafraîchissement : {error}"
@@ -412,6 +412,13 @@
       "copy": "Copier le numéro du groupe",
       "number": "numéro du groupe"
     },
+    "channel": {
+      "title": "Chaîne Telegram",
+      "desc": "Rejoignez la chaîne Telegram {channel} pour suivre les nouvelles versions et l’actualité du projet.",
+      "join": "Rejoindre la chaîne",
+      "copy": "Copier le lien",
+      "link": "lien de la chaîne"
+    },
     "license": {
       "title": "Licence",
       "desc": "Argus est un logiciel libre distribué sous la GNU Affero General Public License, version 3 ou toute version ultérieure (AGPL-3.0-or-later). Il peut être redistribué et modifié selon les termes de cette licence. Argus est fourni sans garantie.",
@@ -427,6 +434,33 @@
       "title": "Journal",
       "desc": "Enregistre l’environnement d’exécution, l’état des fonctionnalités, les étapes ayant échoué, les codes d’erreur et les chemins réels des fichiers ou dossiers associés. Stocké localement, avec jusqu’à 1 MB par fichier et 3 journaux précédents. Les lignes de commande, les informations d’identification et le contenu des fichiers sont exclus. Utilisez cette entrée pour localiser les journaux de diagnostic pour les rapports de bogues.",
       "open": "Ouvrir le dossier des journaux"
+    },
+    "diagnostics": {
+      "title": "Informations de diagnostic",
+      "desc": "Copie la version actuelle, l’état d’exécution, le matériel et les paramètres d’affichage pour les coller dans un rapport de problème. Les informations manquantes sont indiquées comme inconnues.",
+      "copy": "Copier les informations de diagnostic",
+      "unknown": "Inconnu",
+      "version": "Version complète d’Argus",
+      "windows": "Version de Windows",
+      "build": "Type de compilation",
+      "installation": "Installation",
+      "installed": "Version installée",
+      "portable": "Version portable",
+      "source": "Compilation de développement",
+      "permission": "Autorisations actuelles",
+      "administrator": "Administrateur",
+      "standard": "Utilisateur standard",
+      "sampleTime": "Heure de l’instantané (UTC)",
+      "cpuCores": "Cœurs / threads CPU",
+      "display": "Résolution de l’écran actuel",
+      "window": "Zone cliente de la fenêtre",
+      "systemScale": "Mise à l’échelle de Windows",
+      "fontSize": "Taille de police",
+      "language": "Langue de l’interface",
+      "refresh": "Intervalle d’actualisation au premier plan",
+      "paused": "Échantillonnage en pause",
+      "sensorReadings": "État des capteurs dans l’instantané",
+      "row": "{name} : {value}"
     }
   },
   "sensors": {

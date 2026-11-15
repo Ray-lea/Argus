@@ -17,6 +17,9 @@ Die interaktive Oberfläche und die Funktionsübersicht können auf der [offizie
 [![Plattform](https://img.shields.io/static/v1?label=Plattform&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
 [![Lizenz](https://img.shields.io/static/v1?label=Lizenz&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily?language=Rust" alt="Ray-lea/Argus | Trendshift Rust" width="250" height="55"/></a>
+
 [Funktionen](#features) · [Download](#download) · [Aus dem Quellcode bauen](#build-from-source) · [Tastenkombinationen](#keyboard-shortcuts) · [Dokumentation](#documentation) · [Community](#community)
 
 </div>
@@ -51,23 +54,37 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 
 ## ✨ Funktionen
 
-| | Funktion | Beschreibung |
-|:---:|---|---|
-| 🧮 | **Prozesse** | Ansichten nach App, Prozessstruktur oder als flache Liste, mit Echtzeitwerten für CPU, Arbeitsspeicher, Datenträgerzugriffe, Netzwerk und GPU. Prozesse lassen sich sortieren, suchen und einzeln oder als ganze Struktur beenden. Der Detailbereich zeigt unter anderem Befehlszeile, Benutzer und Integritätsstufe. |
-| ⚡ | **Priorität und Effizienzmodus** | Direkt im Kontextmenü anpassen oder Regeln erstellen, die bei jedem Programmstart automatisch angewendet werden. |
-| 📈 | **Leistung** | Detaillierte Überwachung von CPU —Last je Kern, P- und E-Kerne, Takt, Temperatur und Leistungsaufnahme—, Arbeitsspeicher, Datenträgern einschließlich Zustand und SMART-Attributen, Netzwerk, GPU und Akku. |
-| 🧩 | **Dienste und Autostart-Apps** | Windows-Dienste starten und beenden, deren Starttyp ändern sowie Autostart-Apps aktivieren oder deaktivieren. Der Zustand bleibt mit dem Windows-Task-Manager synchron. |
-| 🌐 | **Verbindungen und Ports** | Aktive TCP- und UDP-Endpunkte mit ihren Prozessen anzeigen, nach exakten Portnummern filtern und Verbindungen schließen. |
-| 🔍 | **Dateisperren** | Dateien oder Ordner auf das Fenster ziehen, um verwendende Prozesse zu finden. Kombiniert Restart Manager mit der Handle-Auflistung und berücksichtigt auch die Arbeitsverzeichnisse von Prozessen. |
-| 🕘 | **Verlauf** | Zeichnet die Ressourcennutzung der letzten 7 Tage automatisch auf. Ein Klick auf einen Zeitpunkt zeigt die damals aktivsten Prozesse. |
-| 📌 | **Infobereich** | Das Fenster lässt sich jederzeit über eine globale Tastenkombination ein- oder ausblenden. Im ausgeblendeten Zustand ist der Ressourcenbedarf gering; die Intervalle bei minimiertem Fenster und im Infobereich sind getrennt einstellbar. |
-| 🔄 | **Updates in der Anwendung** | Stabile Versionen und Betaversionen werden unterstützt. Neue Versionen werden im Hintergrund heruntergeladen und in der Titelleiste angekündigt; Änderungen sind vor und nach dem Update einsehbar. Standardmäßig werden GitHub, der offizielle Spiegelserver und danach GitHub-Proxys verwendet. Die Downloadquelle kann in den Einstellungen angepasst werden. |
-| 🎨 | **Native Oberfläche** | Mica-Hintergrund unter Windows 11 und einfarbiger Hintergrund unter Windows 10. Akzentfarbe sowie helles oder dunkles Design folgen standardmäßig Windows; das Design kann in den Einstellungen separat gewählt werden. |
-| 🌍 | **Sprachen** | Verfügbar auf vereinfachtem und traditionellem Chinesisch, Englisch, Spanisch, Deutsch, Japanisch, Französisch und Russisch. Die Erstauswahl folgt Windows; eine Einführung hilft beim ersten Start mit den wichtigsten Einstellungen. |
-| 👤 | **Ohne Administratorrechte nutzbar** | Programmpfade und Ressourcenverbrauch aller Prozesse lassen sich mit Standardrechten anzeigen. |
-| 🔐 | **Optionaler Administratorstart** | Nach einmaliger Freigabe in den Einstellungen oder der Einführung startet Argus bei der Anmeldung, über Verknüpfungen und über Task-Manager-Aufrufe als Administrator. Die Option lässt sich jederzeit deaktivieren. |
-| 🛡️ | **Optionaler privilegierter Dienst** | Nach einer Installation mit Administratorfreigabe kann die Oberfläche mit Standardrechten Systemprozesse verwalten, Dateisperren erhöhter Prozesse prüfen, Regeln anwenden, Dienste steuern, Verbindungen schließen und den Netzwerkverkehr je Prozess messen. Unter Windows 10 und Windows 11 vor 24H2 ermöglicht der Dienst auch die Messung der Datenträgerzugriffe je Prozess. Er kann jederzeit in den Einstellungen deinstalliert werden. |
-| 🪟 | **Aufgaben und Systemintegration** | Unterstützt das [Ersetzen des Windows-Task-Managers](docs/architecture/task-manager.md) —Dokumentation auf Chinesisch—, neue Aufgaben von jeder Seite aus, optional mit Administratorrechten, und den Neustart des Windows-Explorers des aktuellen Desktops. |
+<table>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/processes-de-dark.svg"><img src="docs/images/features/processes-de-light.svg" width="390" alt="Die Seite Prozesse wechselt von der App-Ansicht zur Prozessstruktur; eine Suche nach code lässt Visual Studio Code und seine untergeordneten Prozesse übrig"></picture><br><b>Prozesse</b>: Ansicht nach App, als Prozessstruktur oder Liste; suchen, sortieren und ganze Strukturen beenden</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-de-dark.svg"><img src="docs/images/features/performance-de-light.svg" width="390" alt="Die Seite Leistung zeigt Auslastung, Geschwindigkeit, Temperatur und Leistung der CPU mit einem Diagramm je P- und E-Kern"></picture><br><b>Leistung</b>: CPU-Last je Kern, Takt, Temperatur und Leistungsaufnahme sowie Arbeitsspeicher, Datenträger, Netzwerk und GPU</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-de-dark.svg"><img src="docs/images/features/history-de-light.svg" width="390" alt="Auf der Seite Verlauf werden zwei Zeitpunkte in den 7-Tage-Diagrammen angeklickt; darunter erscheinen jeweils die aktivsten Prozesse"></picture><br><b>Verlauf</b>: ein Klick auf einen Zeitpunkt der 7-Tage-Diagramme zeigt die damals aktivsten Prozesse</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-de-dark.svg"><img src="docs/images/features/files-de-light.svg" width="390" alt="Nach dem Ziehen einer Tabelle auf das Fenster listet ein Dialog Excel und den Windows-Explorer als verwendende Prozesse auf; einer davon wird beendet"></picture><br><b>Dateisperren</b>: Datei oder Ordner auf das Fenster ziehen, um die verwendenden Prozesse aufzulisten</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/rules-de-dark.svg"><img src="docs/images/features/rules-de-light.svg" width="390" alt="Per Rechtsklick auf HandBrake wird die Priorität auf Niedrig gesetzt und danach der Effizienzmodus aktiviert"></picture><br><b>Kontextmenü</b>: Priorität festlegen, Effizienzmodus aktivieren oder eine Regel für jeden Start hinzufügen</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/ports-de-dark.svg"><img src="docs/images/features/ports-de-light.svg" width="390" alt="Eine Suche nach 8080 auf der Seite Verbindungen findet den Prozess, der den Port abhört, und den damit verbundenen Prozess; die Verbindung wird geschlossen"></picture><br><b>Verbindungen und Ports</b>: Verbindungen und ihre Prozesse nach Port finden und schließen</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%" valign="top"><b>Dienste und Autostart-Apps</b><br>Dienste starten und beenden, den Starttyp ändern, Autostart-Apps aktivieren oder deaktivieren</td>
+<td width="50%" valign="top"><b>Infobereich</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> blendet das Fenster jederzeit ein oder aus; ausgeblendet mit geringem Ressourcenbedarf</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Task-Manager ersetzen</b><br>Kann den <a href="docs/architecture/task-manager.md">Windows-Task-Manager ersetzen</a> —Dokumentation auf Chinesisch— und auf <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> öffnen; führt neue Aufgaben aus und startet den Windows-Explorer neu</td>
+<td width="50%" valign="top"><b>Oberfläche und Sprachen</b><br>Mica-Hintergrund, Akzentfarbe sowie helles oder dunkles Design folgen Windows; 8 Oberflächensprachen</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><b>Updates in der Anwendung</b><br>Stabile und Beta-Versionen, Download im Hintergrund, Änderungen in der Anwendung einsehbar</td>
+<td width="50%" valign="top"><b>Berechtigungen</b><br>Alle Prozesse sind mit Standardrechten sichtbar; privilegierter Dienst und Administratorstart sind optional</td>
+</tr>
+</table>
+
+<sub>Aufgrund der Platz- und Bildformatgrenzen einer README sind die obigen Demos vereinfachte Nachzeichnungen der Argus-Oberfläche mit Beispielprozessen und -daten. Sie dienen nur zur Orientierung; maßgeblich ist die Anwendung selbst.</sub>
 
 <a id="download"></a>
 
@@ -98,8 +115,8 @@ Geprüfte Windows-Versionen, Funktionsunterschiede und erforderliche Berechtigun
 
 Voraussetzungen:
 
-- Rust-Toolchain `stable-x86_64-pc-windows-msvc`, Version 1.99.1 oder neuer.
-- Node.js 26.x ab 26.12.1 oder 24.x LTS ab 24.22.1 sowie pnpm 12.14.0.
+- Rust-Toolchain `stable-x86_64-pc-windows-msvc`, Version 1.100.0 oder neuer.
+- Node.js 26.x ab 26.13.1 oder 24.x LTS ab 24.22.3 sowie pnpm 12.18.0.
 - Visual Studio Build Tools mit der Workload „Desktopentwicklung mit C++“.
 
 Im Stammverzeichnis des Repositorys mit PowerShell ausführen:
@@ -145,9 +162,9 @@ Die ausführliche Dokumentation ist auf Chinesisch verfasst. Die [Online-Dokumen
 
 ## 💬 Community
 
-[![QQ-Gruppe 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK)
+[![QQ-Gruppe 453803497](https://img.shields.io/badge/QQ-453803497-12B7F5?logo=qq&logoColor=white)](https://qm.qq.com/q/97YqJAQRNK) [![Telegram-Kanal @argustask](https://img.shields.io/badge/Telegram-%40argustask-26A5E4?logo=telegram&logoColor=white)](https://t.me/argustask)
 
-In der chinesischsprachigen QQ-Gruppe können Probleme gemeldet, Funktionen vorgeschlagen und Erfahrungen ausgetauscht werden. Sie ist auch über **Info → QQ-Gruppe beitreten** in Argus erreichbar.
+In der chinesischsprachigen QQ-Gruppe können Probleme gemeldet, Funktionen vorgeschlagen und Erfahrungen ausgetauscht werden. Der Telegram-Kanal veröffentlicht Neuigkeiten zu Versionen und zum Projekt. Beide sind auch über **Info → QQ-Gruppe beitreten** und **Info → Kanal beitreten** in Argus erreichbar.
 
 <a id="contributing"></a>
 
@@ -199,6 +216,12 @@ Argus baut auf den folgenden Open-Source-Projekten auf:
 Alle Drittkomponenten und ihre Lizenzhinweise sind in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) aufgeführt.
 
 Vielen Dank an die Community [LINUX DO](https://linux.do/) für ihre Unterstützung.
+
+<!-- supporters:start · node scripts/supporters.mjs -->
+<p align="center">
+  <a href="https://github.com/bronyaicu" target="_blank" rel="noopener"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/supporters/bronyaicu-de-dark.svg"><img src="docs/images/supporters/bronyaicu-de-light.svg" width="720" alt="Projektunterstützung &amp; besonderer Dank: bronyaicu"></picture></a>
+</p>
+<!-- supporters:end -->
 
 <a id="license"></a>
 

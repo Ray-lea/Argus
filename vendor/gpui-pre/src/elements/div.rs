@@ -16,15 +16,15 @@
 //! constructed by combining these two systems into an all-in-one element.
 
 use crate::{
-    Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, Bounds, ClickEvent, DispatchPhase,
-    Display, Element, ElementId, Entity, EntityId, ExternalDragPayload, ExternalDragPayloadSource,
-    FileDropEvent, FocusHandle, Global, GlobalElementId, Hitbox, HitboxBehavior, HitboxId,
-    InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent, KeyUpEvent, KeyboardButton,
-    KeyboardClickEvent, LayoutId, LongPressEvent, ModifiersChangedEvent, MouseButton,
-    MouseClickEvent, MouseDownEvent, MouseExitEvent, MouseMoveEvent, MousePressureEvent,
-    MouseUpEvent, OngoingScroll, Overflow, ParentElement, PinchEvent, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Size, Style, StyleRefinement, Styled, Task, TooltipId,
-    TouchPhase, Visibility, Window, WindowControlArea, point, px, size,
+    Action, AnyDrag, AnyElement, AnyTooltip, AnyView, App, BackGestureEvent, Bounds, ClickEvent,
+    DispatchPhase, Display, Element, ElementId, Entity, EntityId, ExternalDragPayload,
+    ExternalDragPayloadSource, FileDropEvent, FocusHandle, Global, GlobalElementId, Hitbox,
+    HitboxBehavior, HitboxId, InspectorElementId, IntoElement, IsZero, KeyContext, KeyDownEvent,
+    KeyUpEvent, KeyboardButton, KeyboardClickEvent, LayoutId, LongPressEvent,
+    ModifiersChangedEvent, MouseButton, MouseClickEvent, MouseDownEvent, MouseExitEvent,
+    MouseMoveEvent, MousePressureEvent, MouseUpEvent, OngoingScroll, Overflow, ParentElement,
+    PinchEvent, Pixels, Point, Render, ScrollEvent, SharedString, Size, Style, StyleRefinement,
+    Styled, Task, TooltipId, TouchPhase, Visibility, Window, WindowControlArea, point, px, size,
 };
 use collections::HashMap;
 use gpui_util::ResultExt;
@@ -383,20 +383,26 @@ impl Interactivity {
             }));
     }
 
-    /// Bind the given callback to scroll wheel events during the bubble phase.
-    /// The imperative API equivalent to [`InteractiveElement::on_scroll_wheel`].
+    /// Bind the given callback to scroll events during the bubble phase.
+    /// The imperative API equivalent to [`InteractiveElement::on_scroll`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
-    pub fn on_scroll_wheel(
-        &mut self,
-        listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
-    ) {
-        self.scroll_wheel_listeners
+    pub fn on_scroll(&mut self, listener: impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static) {
+        self.scroll_listeners
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.should_handle_scroll(window) {
                     (listener)(event, window, cx);
                 }
             }));
+    }
+
+    /// The former name of [`Interactivity::on_scroll`].
+    #[deprecated(note = "renamed to `on_scroll`")]
+    pub fn on_scroll_wheel(
+        &mut self,
+        listener: impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static,
+    ) {
+        self.on_scroll(listener);
     }
 
     /// Bind the given callback to pinch gesture events during the bubble phase.
@@ -407,6 +413,24 @@ impl Interactivity {
             .push(Box::new(move |event, phase, hitbox, window, cx| {
                 if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                     (listener)(event, window, cx);
+                }
+            }));
+    }
+
+    /// Bind the given callback to back-navigation gestures that start over this element.
+    /// The imperative API equivalent to [`InteractiveElement::on_back_gesture`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    pub fn on_back_gesture(
+        &mut self,
+        listener: impl Fn(&BackGestureEvent, &mut Window, &mut App) + 'static,
+    ) {
+        self.back_gesture_listeners
+            .push(Box::new(move |event, phase, hitbox, window, cx| {
+                if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
+                    (listener)(event, window, cx);
+                    window.prevent_default();
+                    cx.stop_propagation();
                 }
             }));
     }
@@ -848,6 +872,18 @@ pub trait InteractiveElement: Sized {
         self
     }
 
+    /// Argus patch: lets this element and the elements painted inside it
+    /// take a hover style that is a solid background alone in place, without
+    /// drawing their view again (see `Window::paint_hover_background`).
+    /// Elsewhere a hover draws the view of the element again, and code may
+    /// count on that; nothing inside this element may. What must follow the
+    /// pointer there draws itself again, or has a hover style that sets more
+    /// than a background.
+    fn hover_fills_in_place(mut self) -> Self {
+        self.interactivity().hover_fills_in_place = true;
+        self
+    }
+
     /// Apply the given style to this element when the mouse hovers over a group member
     fn group_hover(
         mut self,
@@ -1053,16 +1089,25 @@ pub trait InteractiveElement: Sized {
         self
     }
 
-    /// Bind the given callback to scroll wheel events during the bubble phase.
-    /// The fluent API equivalent to [`Interactivity::on_scroll_wheel`].
+    /// Bind the given callback to scroll events during the bubble phase.
+    /// The fluent API equivalent to [`Interactivity::on_scroll`].
     ///
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
-    fn on_scroll_wheel(
+    fn on_scroll(
         mut self,
-        listener: impl Fn(&ScrollWheelEvent, &mut Window, &mut App) + 'static,
+        listener: impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.interactivity().on_scroll_wheel(listener);
+        self.interactivity().on_scroll(listener);
         self
+    }
+
+    /// The former name of [`InteractiveElement::on_scroll`].
+    #[deprecated(note = "renamed to `on_scroll`")]
+    fn on_scroll_wheel(
+        self,
+        listener: impl Fn(&ScrollEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_scroll(listener)
     }
 
     /// Bind the given callback to pinch gesture events during the bubble phase.
@@ -1071,6 +1116,20 @@ pub trait InteractiveElement: Sized {
     /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
     fn on_pinch(mut self, listener: impl Fn(&PinchEvent, &mut Window, &mut App) + 'static) -> Self {
         self.interactivity().on_pinch(listener);
+        self
+    }
+
+    /// Bind the given callback to back-navigation gestures that start over this
+    /// element, such as the iOS swipe from the leading screen edge. The innermost
+    /// element with a back listener claims the gesture and receives every phase.
+    /// The fluent API equivalent to [`Interactivity::on_back_gesture`].
+    ///
+    /// See [`Context::listener`](crate::Context::listener) to get access to a view's state from this callback.
+    fn on_back_gesture(
+        mut self,
+        listener: impl Fn(&BackGestureEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.interactivity().on_back_gesture(listener);
         self
     }
 
@@ -1728,11 +1787,14 @@ pub(crate) type MouseExitListener =
 pub(crate) type FileDropExitListener =
     Box<dyn Fn(&FileDropEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static>;
 
-pub(crate) type ScrollWheelListener =
-    Box<dyn Fn(&ScrollWheelEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static>;
+pub(crate) type ScrollListener =
+    Box<dyn Fn(&ScrollEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static>;
 
 pub(crate) type PinchListener =
     Box<dyn Fn(&PinchEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static>;
+
+pub(crate) type BackGestureListener =
+    Box<dyn Fn(&BackGestureEvent, DispatchPhase, &Hitbox, &mut Window, &mut App) + 'static>;
 
 pub(crate) type ClickListener = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
@@ -2155,6 +2217,12 @@ pub struct Interactivity {
     pub(crate) scroll_offset: Option<Rc<RefCell<Point<Pixels>>>>,
     /// Argus patch: the scroll range found during prepaint, for the wheel listener.
     pub(crate) scroll_max: Cell<Point<Pixels>>,
+    /// Argus patch: the background the last computed style had before the
+    /// hover style was applied over it, if it was (`hover_background`).
+    pub(crate) rest_background: Cell<Option<Option<crate::Fill>>>,
+    /// Argus patch: hover fills inside this element change in place
+    /// (`InteractiveElement::hover_fills_in_place`).
+    pub(crate) hover_fills_in_place: bool,
     pub(crate) ongoing_scroll: Option<Rc<RefCell<OngoingScroll>>>,
     pub(crate) group: Option<SharedString>,
     /// The base style of the element, before any modifications are applied
@@ -2178,8 +2246,9 @@ pub struct Interactivity {
     pub(crate) mouse_move_listeners: Vec<MouseMoveListener>,
     pub(crate) mouse_exit_listeners: Vec<MouseExitListener>,
     pub(crate) file_drop_exit_listeners: Vec<FileDropExitListener>,
-    pub(crate) scroll_wheel_listeners: Vec<ScrollWheelListener>,
+    pub(crate) scroll_listeners: Vec<ScrollListener>,
     pub(crate) pinch_listeners: Vec<PinchListener>,
+    pub(crate) back_gesture_listeners: Vec<BackGestureListener>,
     pub(crate) key_down_listeners: Vec<KeyDownListener>,
     pub(crate) key_up_listeners: Vec<KeyUpListener>,
     pub(crate) modifiers_changed_listeners: Vec<ModifiersChangedListener>,
@@ -2404,7 +2473,9 @@ impl Interactivity {
 
                             let scroll_offset =
                                 self.clamp_scroll_position(bounds, &style, window, cx);
-                            let result = f(&style, scroll_offset, hitbox, window, cx);
+                            let result = window.with_element_opacity(style.opacity, |window| {
+                                f(&style, scroll_offset, hitbox, window, cx)
+                            });
                             (result, element_state)
                         },
                     )
@@ -2431,8 +2502,9 @@ impl Interactivity {
             || !self.file_drop_exit_listeners.is_empty()
             || !self.click_listeners.is_empty()
             || !self.aux_click_listeners.is_empty()
-            || !self.scroll_wheel_listeners.is_empty()
+            || !self.scroll_listeners.is_empty()
             || self.has_pinch_listeners()
+            || !self.back_gesture_listeners.is_empty()
             || self.drag_listener.is_some()
             || !self.drop_listeners.is_empty()
             || !self.drag_over_styles.is_empty()
@@ -2458,7 +2530,7 @@ impl Interactivity {
                 .tracked_scroll_handle
                 .as_ref()
                 .map(|handle| handle.0.borrow_mut());
-            if let Some(mut scroll_handle_state) = tracked_scroll_handle.as_deref_mut() {
+            if let Some(scroll_handle_state) = tracked_scroll_handle.as_deref_mut() {
                 scroll_handle_state.overflow = style.overflow;
                 scroll_to_bottom = mem::take(&mut scroll_handle_state.scroll_to_bottom);
             }
@@ -2537,13 +2609,25 @@ impl Interactivity {
         f: impl FnOnce(&Style, &mut Window, &mut App),
     ) {
         self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
+        let fills_in_place = self.hover_fills_in_place;
+        if fills_in_place {
+            window.hover_fills_in_place += 1;
+        }
         window.with_optional_element_state::<InteractiveElementState, _>(
             global_id,
             |element_state, window| {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
 
+                self.rest_background.set(None);
                 let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+                let hover_background = self.hover_background(
+                    hitbox,
+                    element_state.as_mut(),
+                    &style,
+                    window.hover_fills_in_place > 0,
+                    cx,
+                );
 
                 #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
                 if let Some(debug_selector) = &self.debug_selector {
@@ -2564,6 +2648,7 @@ impl Interactivity {
                 }
 
                 window.with_element_opacity(style.opacity, |window| {
+                    window.pending_hover_background = hover_background;
                     style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
                         window.with_text_style(style.text_style().cloned(), |window| {
                             window.with_content_mask(
@@ -2658,6 +2743,9 @@ impl Interactivity {
                 ((), element_state)
             },
         );
+        if fills_in_place {
+            window.hover_fills_in_place -= 1;
+        }
     }
 
     #[cfg(debug_assertions)]
@@ -2701,12 +2789,12 @@ impl Interactivity {
                     };
                     if let Some(source_location) = self.source_location
                         && text_bounds.contains(&window.mouse_position())
-                        && window.modifiers().secondary()
+                        && window.modifiers().secondary(cx)
                     {
-                        let secondary_held = window.modifiers().secondary();
+                        let secondary_held = window.modifiers().secondary(cx);
                         window.on_key_event({
-                            move |e: &crate::ModifiersChangedEvent, _phase, window, _cx| {
-                                if e.modifiers.secondary() != secondary_held
+                            move |e: &crate::ModifiersChangedEvent, _phase, window, cx| {
+                                if e.modifiers.secondary(cx) != secondary_held
                                     && text_bounds.contains(&window.mouse_position())
                                 {
                                     window.refresh();
@@ -2850,9 +2938,9 @@ impl Interactivity {
             })
         }
 
-        for listener in self.scroll_wheel_listeners.drain(..) {
+        for listener in self.scroll_listeners.drain(..) {
             let hitbox = hitbox.clone();
-            window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+            window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
@@ -2860,6 +2948,13 @@ impl Interactivity {
         for listener in self.pinch_listeners.drain(..) {
             let hitbox = hitbox.clone();
             window.on_mouse_event(move |event: &PinchEvent, phase, window, cx| {
+                listener(event, phase, &hitbox, window, cx);
+            })
+        }
+
+        for listener in self.back_gesture_listeners.drain(..) {
+            let hitbox = hitbox.clone();
+            window.on_mouse_event(move |event: &BackGestureEvent, phase, window, cx| {
                 listener(event, phase, &hitbox, window, cx);
             })
         }
@@ -2875,9 +2970,26 @@ impl Interactivity {
                     .and_then(|state| state.hover_state.as_ref())
                     .cloned()
             });
+            let hover_quad = self.hover_style.as_ref().and_then(|_| {
+                element_state
+                    .as_ref()
+                    .and_then(|state| state.hover_quad.as_ref())
+                    .cloned()
+            });
+            // Argus patch: the element was just painted by this frame's hit
+            // test, which the pointer's last move need not agree with (what
+            // scrolled or was laid out anew under a resting pointer). The
+            // listener compares the next move with what was painted: an
+            // element painted hovered that the pointer then leaves must be
+            // told so. With the state of the last move alone it stayed
+            // filled until its view drew again, which a hover elsewhere in
+            // the view no longer brings about where fills change in place.
+            if let Some(hover_state) = &hover_state {
+                hover_state.borrow_mut().element = hitbox.is_hovered(window);
+            }
             let current_view = window.current_view();
 
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                 let hovered = hitbox.is_hovered(window);
                 let was_hovered = hover_state
                     .as_ref()
@@ -2885,7 +2997,15 @@ impl Interactivity {
                 if phase == DispatchPhase::Capture && hovered != was_hovered {
                     if let Some(hover_state) = &hover_state {
                         hover_state.borrow_mut().element = hovered;
-                        cx.notify(current_view);
+                        // A hover that only fills the element fills its quad
+                        // on screen; anything else draws its view again.
+                        let shown = hovered && !window.last_input_was_touch();
+                        if !hover_quad
+                            .as_ref()
+                            .is_some_and(|quad| window.set_hover_fill(quad, shown))
+                        {
+                            window.redraw_view_for_interaction(current_view);
+                        }
                     }
                 }
             });
@@ -2897,9 +3017,13 @@ impl Interactivity {
                     .as_ref()
                     .and_then(|element| element.hover_state.as_ref())
                     .cloned();
+                // Argus patch: as for the element's own hover above.
+                if let Some(hover_state) = &hover_state {
+                    hover_state.borrow_mut().group = group_hitbox_id.is_hovered(window);
+                }
                 let current_view = window.current_view();
 
-                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                     let group_hovered = group_hitbox_id.is_hovered(window);
                     let was_group_hovered = hover_state
                         .as_ref()
@@ -2907,7 +3031,7 @@ impl Interactivity {
                     if phase == DispatchPhase::Capture && group_hovered != was_group_hovered {
                         if let Some(hover_state) = &hover_state {
                             hover_state.borrow_mut().group = group_hovered;
-                            cx.notify(current_view);
+                            window.redraw_view_for_interaction(current_view);
                         }
                     }
                 });
@@ -2915,6 +3039,12 @@ impl Interactivity {
         }
 
         let drag_cursor_style = self.base_style.as_ref().mouse_cursor;
+        // A press, a release and a pending click change how this element is
+        // painted and what it listens for, nothing a view around it shows:
+        // they draw the view that painted it again, not the whole window.
+        // An element painted outside a view (drawn on its own, as tests do)
+        // has no view: the window is refreshed for it, as upstream does.
+        let interaction_view = window.rendered_entity_stack.last().copied();
 
         let mut drag_listener = mem::take(&mut self.drag_listener);
         let drop_listeners = mem::take(&mut self.drop_listeners);
@@ -2985,7 +3115,7 @@ impl Interactivity {
                             && hitbox.is_hovered(window)
                         {
                             *pending_mouse_down.borrow_mut() = Some(event.clone());
-                            window.refresh();
+                            window.redraw_for_interaction(interaction_view);
                         }
                     }
                 });
@@ -3113,7 +3243,7 @@ impl Interactivity {
                             let mut pending_mouse_down = pending_mouse_down.borrow_mut();
                             if pending_mouse_down.is_some() && hitbox.is_hovered(window) {
                                 captured_mouse_down = pending_mouse_down.take();
-                                window.refresh();
+                                window.redraw_for_interaction(interaction_view);
                             } else if pending_mouse_down.is_some() {
                                 // Clear the pending mouse down event (without firing click handlers)
                                 // if the hitbox is not being hovered.
@@ -3121,7 +3251,7 @@ impl Interactivity {
                                 // immediately after being clicked.
                                 // See https://github.com/zed-industries/zed/issues/24600 for more details
                                 pending_mouse_down.take();
-                                window.refresh();
+                                window.redraw_for_interaction(interaction_view);
                             }
                         }
                         // Fire click handlers during the bubble phase.
@@ -3264,7 +3394,7 @@ impl Interactivity {
                 window.on_mouse_event(move |_: &MouseUpEvent, phase, window, _cx| {
                     if phase == DispatchPhase::Capture && active_state.borrow().is_clicked() {
                         *active_state.borrow_mut() = ElementClickedState::default();
-                        window.refresh();
+                        window.redraw_for_interaction(interaction_view);
                     }
                 });
             }
@@ -3285,7 +3415,7 @@ impl Interactivity {
                                 group: group_hovered,
                                 element: element_hovered,
                             };
-                            window.refresh();
+                            window.redraw_for_interaction(interaction_view);
                         }
                     }
                 });
@@ -3334,10 +3464,10 @@ impl Interactivity {
         if let Some(group_hitbox) = group_hitbox {
             let was_hovered = group_hitbox.is_hovered(window);
             let current_view = window.current_view();
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, _cx| {
                 let hovered = group_hitbox.is_hovered(window);
                 if phase == DispatchPhase::Capture && hovered != was_hovered {
-                    cx.notify(current_view);
+                    window.redraw_view_for_interaction(current_view);
                 }
             });
         }
@@ -3360,7 +3490,7 @@ impl Interactivity {
             let scroll_max = self.scroll_max.get();
             let hitbox = hitbox.clone();
             let current_view = window.current_view();
-            window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
+            window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
                 if phase == DispatchPhase::Capture {
                     smooth_scroll::new_event();
                     return;
@@ -3462,6 +3592,67 @@ impl Interactivity {
         })
     }
 
+    /// Argus patch: the two fills of this element when its hover style sets a
+    /// solid background and nothing else, for its background to follow the
+    /// pointer in place (`Window::paint_hover_background`). `style` is the
+    /// style just computed for painting. Nothing may lie over the hover style:
+    /// a press or a drag styles the element after it, and then the element is
+    /// painted as before.
+    fn hover_background(
+        &self,
+        hitbox: Option<&Hitbox>,
+        element_state: Option<&mut InteractiveElementState>,
+        style: &Style,
+        in_place: bool,
+        cx: &App,
+    ) -> Option<crate::style::HoverBackground> {
+        let rest = self.rest_background.take();
+        let element_state = element_state?;
+        // Whatever follows, the quad of an earlier frame is not this one's.
+        if let Some(link) = &element_state.hover_quad {
+            link.operation.set(None);
+        }
+        // Only where an element around this one allows it
+        // (`hover_fills_in_place`): elsewhere a hover draws the view again.
+        if !in_place {
+            return None;
+        }
+        hitbox?;
+        let hover = self.hover_style.as_ref()?.background_alone()?;
+        // The hover listener keeps its state here; without it nothing follows.
+        element_state.hover_state.as_ref()?;
+        if cx.has_active_drag()
+            || element_state
+                .clicked_state
+                .as_ref()
+                .is_some_and(|state| state.borrow().is_clicked())
+        {
+            return None;
+        }
+        let (hovered, base) = match rest {
+            Some(base) => (true, base),
+            None => (false, style.background.clone()),
+        };
+        let base = match base {
+            Some(fill) => {
+                let background = fill.color()?;
+                background.as_solid()?;
+                Some(background)
+            }
+            None => None,
+        };
+        let link = element_state
+            .hover_quad
+            .get_or_insert_with(Default::default)
+            .clone();
+        Some(crate::style::HoverBackground {
+            link,
+            base,
+            hover,
+            hovered,
+        })
+    }
+
     /// Called from internal methods that have already called with_element_state.
     fn compute_style_internal(
         &self,
@@ -3530,6 +3721,7 @@ impl Interactivity {
                 };
 
                 if is_hovered {
+                    self.rest_background.set(Some(style.background.clone()));
                     style.refine(hover_style);
                 }
             }
@@ -3670,6 +3862,9 @@ pub struct InteractiveElementState {
     pub(crate) focus_handle: Option<FocusHandle>,
     pub(crate) clicked_state: Option<Rc<RefCell<ElementClickedState>>>,
     pub(crate) hover_state: Option<Rc<RefCell<ElementHoverState>>>,
+    /// Argus patch: the quad behind the element that takes its hover fill in
+    /// place (`Window::paint_hover_background`).
+    pub(crate) hover_quad: Option<Rc<crate::scene::HoverQuadLink>>,
     pub(crate) hover_listener_state: Option<Rc<RefCell<bool>>>,
     pub(crate) pending_mouse_down: Option<Rc<RefCell<Option<MouseDownEvent>>>>,
     /// Set to the window's [`focus_generation`](crate::Window::focus_generation)
@@ -3728,20 +3923,24 @@ pub(crate) enum ActiveTooltip {
     },
 }
 
+/// Drops the tooltip of an element painted by `view`, which draws again to
+/// stop asking the window for it.
 pub(crate) fn clear_active_tooltip(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
+    view: EntityId,
     window: &mut Window,
 ) {
     match active_tooltip.borrow_mut().take() {
         None => {}
         Some(ActiveTooltip::WaitingForShow { .. }) => {}
-        Some(ActiveTooltip::Visible { .. }) => window.refresh(),
-        Some(ActiveTooltip::WaitingForHide { .. }) => window.refresh(),
+        Some(ActiveTooltip::Visible { .. }) => window.redraw_view_for_interaction(view),
+        Some(ActiveTooltip::WaitingForHide { .. }) => window.redraw_view_for_interaction(view),
     }
 }
 
 pub(crate) fn clear_active_tooltip_if_not_hoverable(
     active_tooltip: &Rc<RefCell<Option<ActiveTooltip>>>,
+    view: EntityId,
     window: &mut Window,
 ) {
     let should_clear = match active_tooltip.borrow().as_ref() {
@@ -3752,7 +3951,7 @@ pub(crate) fn clear_active_tooltip_if_not_hoverable(
     };
     if should_clear {
         active_tooltip.borrow_mut().take();
-        window.refresh();
+        window.redraw_view_for_interaction(view);
     }
 }
 
@@ -3807,7 +4006,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
         let active_tooltip = active_tooltip.clone();
         move |_: &MouseDownEvent, _phase, window: &mut Window, _cx| {
             if !tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)) {
-                clear_active_tooltip_if_not_hoverable(&active_tooltip, window);
+                clear_active_tooltip_if_not_hoverable(&active_tooltip, current_view, window);
             }
         }
     });
@@ -3828,6 +4027,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
                         &build_tooltip,
                         &check_is_hovered_during_prepaint,
                         Some(long_press_tooltip_active.clone()),
+                        current_view,
                         window,
                         cx,
                     ) {
@@ -3839,7 +4039,7 @@ pub(crate) fn register_tooltip_mouse_handlers(
                 TouchPhase::Ended | TouchPhase::Cancelled
                     if long_press_tooltip_active.replace(false) =>
                 {
-                    clear_active_tooltip(&active_tooltip, window);
+                    clear_active_tooltip(&active_tooltip, current_view, window);
                     cx.stop_propagation();
                 }
                 TouchPhase::Started
@@ -3852,9 +4052,9 @@ pub(crate) fn register_tooltip_mouse_handlers(
 
     window.on_mouse_event({
         let active_tooltip = active_tooltip.clone();
-        move |_: &ScrollWheelEvent, _phase, window: &mut Window, _cx| {
+        move |_: &ScrollEvent, _phase, window: &mut Window, _cx| {
             if !tooltip_id.is_some_and(|tooltip_id| tooltip_id.is_hovered(window)) {
-                clear_active_tooltip_if_not_hoverable(&active_tooltip, window);
+                clear_active_tooltip_if_not_hoverable(&active_tooltip, current_view, window);
             }
         }
     });
@@ -3954,6 +4154,7 @@ fn handle_tooltip_mouse_move(
                             &build_tooltip,
                             &check_is_hovered_during_prepaint,
                             None,
+                            current_view,
                             window,
                             cx,
                         );
@@ -3967,7 +4168,7 @@ fn handle_tooltip_mouse_move(
                     _task: delayed_show_task,
                 });
         }
-        Action::CheckVisible => cx.notify(current_view),
+        Action::CheckVisible => window.redraw_view_for_interaction(current_view),
     }
 }
 
@@ -3976,6 +4177,7 @@ fn show_tooltip(
     build_tooltip: &Rc<dyn Fn(&mut Window, &mut App) -> Option<(AnyView, bool)>>,
     check_is_hovered_during_prepaint: &Rc<dyn Fn(&Window) -> bool>,
     long_press_tooltip_active: Option<Rc<Cell<bool>>>,
+    owner: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
@@ -4001,6 +4203,7 @@ fn show_tooltip(
                         tooltip_is_hoverable,
                         &check_is_hovered_during_prepaint,
                         tooltip_bounds,
+                        owner,
                         window,
                         cx,
                     )
@@ -4011,7 +4214,8 @@ fn show_tooltip(
     });
     let did_show = new_tooltip.is_some();
     *active_tooltip.borrow_mut() = new_tooltip;
-    window.refresh();
+    // The element draws again to hand the window its tooltip.
+    window.redraw_view_for_interaction(owner);
     did_show
 }
 
@@ -4023,6 +4227,7 @@ fn handle_tooltip_check_visible_and_update(
     tooltip_is_hoverable: bool,
     check_is_hovered: &Rc<dyn Fn(&Window) -> bool>,
     tooltip_bounds: Bounds<Pixels>,
+    view: EntityId,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
@@ -4061,7 +4266,7 @@ fn handle_tooltip_check_visible_and_update(
 
     match action {
         Action::None => {}
-        Action::Hide => clear_active_tooltip(active_tooltip, window),
+        Action::Hide => clear_active_tooltip(active_tooltip, view, window),
         Action::ScheduleHide(tooltip) => {
             let delayed_hide_task = window.spawn(cx, {
                 let weak_active_tooltip = Rc::downgrade(active_tooltip);
@@ -4073,7 +4278,8 @@ fn handle_tooltip_check_visible_and_update(
                         return;
                     };
                     if active_tooltip.borrow_mut().take().is_some() {
-                        cx.update(|window, _cx| window.refresh()).ok();
+                        cx.update(|window, _cx| window.redraw_view_for_interaction(view))
+                            .ok();
                     }
                 }
             });
@@ -4492,7 +4698,7 @@ impl ScrollHandle {
     /// Set the offset explicitly. The offset is the distance from the top left of the
     /// parent container to the top left of the first child.
     /// As you scroll further down the offset becomes more negative.
-    pub fn set_offset(&self, mut position: Point<Pixels>) {
+    pub fn set_offset(&self, position: Point<Pixels>) {
         let state = self.0.borrow();
         *state.offset.borrow_mut() = position;
     }
@@ -5177,7 +5383,7 @@ mod tests {
     fn tooltip_respects_custom_show_delay() {
         let extra_delay = Duration::from_secs(1);
         let show_delay_override = DEFAULT_TOOLTIP_SHOW_DELAY + extra_delay;
-        let (mut test_app, _any_window, captured_active_tooltip) =
+        let (test_app, _any_window, captured_active_tooltip) =
             setup_tooltip_owner_test(Some(show_delay_override));
 
         let weak_active_tooltip = captured_active_tooltip.borrow().clone().unwrap();
@@ -5346,6 +5552,96 @@ mod tests {
     }
 
     #[test]
+    fn touch_tap_out_fires_once_after_release() {
+        let mut test_app = TestAppContext::single();
+        let mouse_down_out_count = Rc::new(RefCell::new(0));
+        let window = test_app.add_window({
+            let mouse_down_out_count = mouse_down_out_count.clone();
+            move |_, _| MouseDownOutOwner {
+                mouse_down_out_count,
+            }
+        });
+        let any_window: AnyWindowHandle = window.into();
+
+        test_app
+            .update_window(any_window, |_, window, cx| {
+                window.draw(cx).clear(cx);
+                let started = TouchEvent {
+                    id: TouchId(1),
+                    phase: TouchPhase::Started,
+                    position: point(px(75.), px(75.)),
+                    force: None,
+                    predicted_position: None,
+                };
+                window.dispatch_event(started.clone().to_platform_input(), cx);
+                assert_eq!(*mouse_down_out_count.borrow(), 0);
+                window.dispatch_event(
+                    TouchEvent {
+                        phase: TouchPhase::Ended,
+                        ..started
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+            })
+            .unwrap();
+
+        assert_eq!(
+            *mouse_down_out_count.borrow(),
+            1,
+            "a touch tap outside the element should use mouse-down-out listeners"
+        );
+    }
+
+    #[crate::test]
+    fn touch_pan_and_cancel_do_not_fire_mouse_down_out(cx: &mut TestAppContext) {
+        let mouse_down_out_count = Rc::new(RefCell::new(0));
+        let window = cx.add_window({
+            let mouse_down_out_count = mouse_down_out_count.clone();
+            move |_, _| MouseDownOutOwner {
+                mouse_down_out_count,
+            }
+        });
+        cx.update_window(window.into(), |_, window, cx| {
+            window.draw(cx).clear(cx);
+            for (id, samples) in [
+                (
+                    TouchId(1),
+                    [
+                        (TouchPhase::Started, 100.),
+                        (TouchPhase::Moved, 75.),
+                        (TouchPhase::Ended, 75.),
+                    ],
+                ),
+                (
+                    TouchId(2),
+                    [
+                        (TouchPhase::Started, 100.),
+                        (TouchPhase::Moved, 100.),
+                        (TouchPhase::Cancelled, 100.),
+                    ],
+                ),
+            ] {
+                for (phase, vertical_position) in samples {
+                    window.dispatch_event(
+                        TouchEvent {
+                            id,
+                            phase,
+                            position: point(px(75.), px(vertical_position)),
+                            predicted_position: None,
+                            force: None,
+                        }
+                        .to_platform_input(),
+                        cx,
+                    );
+                }
+            }
+        })
+        .unwrap();
+        assert_eq!(*mouse_down_out_count.borrow(), 0);
+    }
+
+    #[test]
     fn test_accessibility_id_builder_writes_author_id() {
         let mut element = div()
             .id("buffer-font-size")
@@ -5451,7 +5747,8 @@ mod tests {
     }
 
     fn key_down(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
-        let keystroke = Keystroke::parse(key).unwrap();
+        let os = cx.read(|cx| cx.platform_info().os);
+        let keystroke = Keystroke::parse_with_os(key, os).unwrap();
         cx.update_window(window, |_, window, cx| {
             window.dispatch_event(
                 KeyDownEvent {
@@ -5467,7 +5764,8 @@ mod tests {
     }
 
     fn key_up(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
-        let keystroke = Keystroke::parse(key).unwrap();
+        let os = cx.read(|cx| cx.platform_info().os);
+        let keystroke = Keystroke::parse_with_os(key, os).unwrap();
         cx.update_window(window, |_, window, cx| {
             window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
         })

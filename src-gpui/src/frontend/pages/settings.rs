@@ -560,7 +560,7 @@ impl Desktop {
         )
     }
 
-    fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(in crate::frontend) fn tray_page_setting(&self, cx: &mut Context<Self>) -> AnyElement {
         let modes = ["current", "default"];
         let current = self.prefs.get::<String>("trayPage", "current".into());
         let select = self.select(
@@ -579,7 +579,7 @@ impl Desktop {
         );
         self.setting_text(
             "trayPage",
-            "TrayIcon",
+            "AppIcon",
             "settings.startup.trayPage.title",
             "settings.startup.trayPage.desc",
             vec![select],
@@ -846,7 +846,14 @@ impl Desktop {
         if self.modal.as_ref().is_some_and(|m| m.kind == "filelock") {
             self.close_overlay(window, cx);
         }
-        self.preference("settingsSection", json!(section), window, cx);
+        // The tray's settings are on the Components page, in its first section.
+        if section == "components" {
+            if self.page != "components" {
+                self.act(Action::Page("components".into()), window, cx);
+            }
+        } else {
+            self.preference("settingsSection", json!(section), window, cx);
+        }
         self.ui.located = Some((item.to_owned(), Instant::now()));
     }
 
@@ -945,7 +952,7 @@ impl Desktop {
             .pt(px(4.))
             .pb(px(32.))
             .children(sections)
-            .on_scroll_wheel(cx.listener(|this, _, _, _| this.ui.settings_picked = false))
+            .on_scroll(cx.listener(|this, _, _, _| this.ui.settings_picked = false))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.ui.settings_picked = false),
@@ -1215,22 +1222,8 @@ impl Desktop {
                     vec![autostart],
                 ));
                 cards.push(self.start_page_setting(cx));
-                cards.push(self.tray_page_setting(cx));
-                let tray = self.setting_toggle(
-                    "closeToTray",
-                    boolean(settings, "closeToTray"),
-                    "set_close_to_tray",
-                    "value",
-                    window,
-                    cx,
-                );
-                cards.push(self.setting_text(
-                    "closeToTray",
-                    "TrayIcon",
-                    "settings.startup.closeToTray.title",
-                    "settings.startup.closeToTray.desc",
-                    vec![tray],
-                ));
+                // The tray's settings are on the Components page.
+                cards.push(self.components_link(cx));
             }
             "hotkey" => {
                 cards.push(self.hotkey_card(settings, window, cx));
@@ -1902,20 +1895,15 @@ impl Desktop {
             "settings.data.intervalDesc",
             vec![interval],
         ));
-        for (away, glyph) in [("minimized", "MinimizeIcon"), ("tray", "TrayIcon")] {
-            let select = self.background_select("settings", away, cx);
-            cards.push(self.setting_text(
-                if away == "minimized" {
-                    "minimizedInterval"
-                } else {
-                    "trayInterval"
-                },
-                glyph,
-                &format!("settings.data.{away}.title"),
-                &format!("settings.data.{away}.desc"),
-                vec![select],
-            ));
-        }
+        // The tray's interval is on the Components page.
+        let select = self.background_select("settings", "minimized", cx);
+        cards.push(self.setting_text(
+            "minimizedInterval",
+            "MinimizeIcon",
+            "settings.data.minimized.title",
+            "settings.data.minimized.desc",
+            vec![select],
+        ));
         let minutes = self.release_hidden_minutes();
         let release = self.select(
             "settings-release-hidden",
@@ -2856,6 +2844,21 @@ impl Desktop {
             "ready" | "available" | "downloading" | "installing"
         );
         let mut controls = vec![];
+        // What the offered release brings opens in the update dialog.
+        if offered && !version.is_empty() {
+            controls.push(
+                self.btn(
+                    "update-notes",
+                    label("updates.openDialog"),
+                    Some("NotesIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_dialog("update", json!({}), window, cx)
+                }))
+                .into_any_element(),
+            );
+        }
         if state == "ready" {
             controls.push(
                 self.btn(
@@ -2933,9 +2936,6 @@ impl Desktop {
                 controls,
             ),
         );
-        if offered && !version.is_empty() {
-            cards.push(self.inline_release(&status, &version, window, cx));
-        }
         let auto = self.toggle(
             "update-auto",
             label("settings.update.auto.title"),
@@ -3155,82 +3155,6 @@ impl Desktop {
         self.ui.busy.insert("install".into());
         self.ui.errors.remove("install");
         self.request("install_update", json!({}), None, window, cx);
-    }
-
-    /// The release on offer, inline.
-    fn inline_release(
-        &self,
-        status: &Value,
-        version: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let p = self.palette;
-        let current = text(&self.data["info"], "version").to_owned();
-        let open_version = version.to_owned();
-        div()
-            .my(px(4.))
-            .border_1()
-            .border_color(p.stroke)
-            .rounded(px(6.))
-            .bg(p.layer)
-            .child(
-                div()
-                    .pt(px(20.))
-                    .px(px(24.))
-                    .pb(px(18.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(14.))
-                    .child(self.update_head(
-                        tr!("updates.dialog.installed", version = version),
-                        self.update_subtitle(status, version, true),
-                    ))
-                    .child(self.update_versions(Some(&current), version, false))
-                    .child(self.release_reader(status, Some(&current), version, false, window, cx)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .justify_between()
-                    .gap(px(8.))
-                    .px(px(20.))
-                    .py(px(12.))
-                    .border_t_1()
-                    .border_color(p.stroke)
-                    .child(
-                        self.btn(
-                            "inline-github",
-                            label("updates.dialog.github"),
-                            Some("ExternalIcon"),
-                            Tone::Ghost,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.request(
-                                    "open_release_page",
-                                    json!({"version":open_version}),
-                                    None,
-                                    window,
-                                    cx,
-                                );
-                            },
-                        )),
-                    )
-                    .child(
-                        self.btn(
-                            "inline-dialog",
-                            label("updates.openDialog"),
-                            None,
-                            Tone::Plain,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_dialog("update", json!({}), window, cx)
-                        })),
-                    ),
-            )
-            .into_any_element()
     }
 
     // ---- Hotkey card ------------------------------------------------------------

@@ -3,12 +3,23 @@
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub(super) struct Update {
     pub title: String,
     pub badge: bool,
     pub generation: u64,
     pub closed: bool,
+    /// What the icon shows (`tray_icon`).
+    pub look: crate::settings::TrayIcon,
+    /// The latest CPU load in percent, for a live icon.
+    pub load: Option<u8>,
+    /// The recent loads, oldest first, ending with `load`: the columns of the
+    /// live icon that shows them.
+    pub recent: [Option<u8>; super::tray_icon::RECENT],
+    /// The taskbar is light (`SystemUsesLightTheme`).
+    pub light: bool,
+    /// The system tooltip shows on hover; off, the hover card does.
+    pub tip: bool,
 }
 
 struct State {
@@ -23,17 +34,12 @@ pub(super) struct Worker {
 
 impl Worker {
     pub fn spawn(
-        title: String,
+        initial: Update,
         mut write: impl FnMut(Update) + Send + 'static,
     ) -> std::io::Result<Self> {
         let shared = Arc::new((
             Mutex::new(State {
-                update: Update {
-                    title,
-                    badge: false,
-                    generation: 0,
-                    closed: false,
-                },
+                update: initial,
                 revision: 1,
                 done: false,
             }),
@@ -71,6 +77,42 @@ impl Worker {
             if state.title != title {
                 state.title = title.to_owned();
             }
+            true
+        });
+    }
+
+    /// A new sample: the tooltip and the load a live icon shows.
+    pub fn reading(&self, title: &str, load: u8) {
+        self.update(|state| {
+            if state.title != title {
+                state.title = title.to_owned();
+            }
+            state.load = Some(load);
+            state.recent.rotate_left(1);
+            *state.recent.last_mut().unwrap() = Some(load);
+            true
+        });
+    }
+
+    /// The icon's look and whether the system tooltip shows.
+    pub fn style(&self, look: crate::settings::TrayIcon, tip: bool) {
+        self.update(|state| {
+            if state.look == look && state.tip == tip {
+                return false;
+            }
+            state.look = look;
+            state.tip = tip;
+            true
+        });
+    }
+
+    /// The taskbar's theme, which a live icon's glyph follows.
+    pub fn taskbar(&self, light: bool) {
+        self.update(|state| {
+            if state.light == light {
+                return false;
+            }
+            state.light = light;
             true
         });
     }
@@ -125,11 +167,19 @@ impl Drop for Worker {
 
 #[cfg(test)]
 mod tests {
-    use super::Worker;
+    use super::{Update, Worker};
+    use crate::settings::TrayIcon;
     use std::{
         sync::mpsc,
         time::{Duration, Instant},
     };
+
+    fn initial() -> Update {
+        Update {
+            title: "initial".into(),
+            ..Update::default()
+        }
+    }
 
     #[test]
     fn a_hung_shell_does_not_block_updates_and_only_the_latest_state_is_sent() {
@@ -137,7 +187,7 @@ mod tests {
         let (release, gate) = mpsc::channel();
         let (seen, results) = mpsc::channel();
         let mut first = true;
-        let worker = Worker::spawn("initial".into(), move |update| {
+        let worker = Worker::spawn(initial(), move |update| {
             if first {
                 first = false;
                 entered.send(()).unwrap();
@@ -151,6 +201,11 @@ mod tests {
         for i in 0..20_000 {
             worker.title(&i.to_string());
         }
+        for load in 0..=100 {
+            worker.reading("19999", load);
+        }
+        worker.style(TrayIcon::Number, true);
+        worker.taskbar(true);
         worker.badge(true);
         worker.recreate();
         assert!(started.elapsed() < Duration::from_millis(200));
@@ -162,6 +217,10 @@ mod tests {
         let last = results.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(last.title, "19999");
         assert!(last.badge && last.generation == 1);
+        assert_eq!(last.load, Some(100));
+        // Readings sent while the shell was busy still reach the columns.
+        assert_eq!(last.recent, [95, 96, 97, 98, 99, 100].map(Some));
+        assert!(last.look == TrayIcon::Number && last.tip && last.light);
         worker.shutdown(Duration::from_secs(1));
         assert!(results.recv_timeout(Duration::from_secs(2)).unwrap().closed);
     }
@@ -171,7 +230,7 @@ mod tests {
         let (entered, waiting) = mpsc::channel();
         let (release, gate) = mpsc::channel();
         let mut first = true;
-        let worker = Worker::spawn("initial".into(), move |_| {
+        let worker = Worker::spawn(initial(), move |_| {
             if first {
                 first = false;
                 entered.send(()).unwrap();

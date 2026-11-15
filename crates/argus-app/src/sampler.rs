@@ -33,6 +33,20 @@ pub enum WindowState {
 
 type Probe = Box<dyn Fn() -> WindowState + Send>;
 
+/// Publish an action's refresh once a native process query that started after
+/// it is accepted. Cached rows and late pre-action replies
+/// must not consume it, even when their enclosing snapshot is newly built.
+fn publish_refresh(pending: &mut Option<Instant>, observed: Option<Instant>) -> bool {
+    let Some(requested) = *pending else {
+        return false;
+    };
+    let ready = observed.is_some_and(|started| started >= requested);
+    if ready {
+        *pending = None;
+    }
+    ready
+}
+
 pub enum Control {
     Subscribe(Channel<Snapshot>),
     SetInterval(Duration),
@@ -64,14 +78,17 @@ struct Schedule {
     last_sample: Instant,
     /// The cadence when the last sample was taken.
     last_period: Duration,
+    /// No snapshot has been taken since the collector established its baselines.
+    first_sample: bool,
 }
 
 impl Schedule {
     fn new(now: Instant, period: Duration) -> Self {
         Self {
-            next_tick: now + period,
+            next_tick: now + MIN_SAMPLE_GAP,
             last_sample: now,
             last_period: period,
+            first_sample: true,
         }
     }
 
@@ -81,7 +98,14 @@ impl Schedule {
 
     /// A changed cadence counts from the last sample.
     fn restart(&mut self, period: Duration) {
-        self.next_tick = self.last_sample + period;
+        // Startup controls may choose a long foreground or tray interval.
+        // Keep the first snapshot due once the rate counters have a baseline.
+        let wait = if self.first_sample {
+            MIN_SAMPLE_GAP
+        } else {
+            period
+        };
+        self.next_tick = self.last_sample + wait;
     }
 
     /// A timed tick. The next one stays on the grid of `period`, the cadence
@@ -107,6 +131,12 @@ impl Schedule {
         false
     }
 
+    /// A sample on demand came too soon and is owed: the next one comes once
+    /// the minimum gap is over, not a (paused, say) cadence later.
+    fn owe(&mut self) {
+        self.next_tick = self.next_tick.min(self.last_sample + MIN_SAMPLE_GAP);
+    }
+
     /// Records a sample taken now at the cadence `period`. Returns how old the
     /// results the service clients requested at the last sample may be by
     /// now: up to that sample's cadence, which on coming back is the slower
@@ -114,6 +144,10 @@ impl Schedule {
     /// back dropped them (no network column, no disk readings).
     fn taken(&mut self, now: Instant, forced: bool, period: Duration) -> Duration {
         let stale_after = period.max(self.last_period);
+        if self.first_sample {
+            self.next_tick = now + period;
+            self.first_sample = false;
+        }
         self.last_sample = now;
         self.last_period = period;
         if forced {
@@ -175,6 +209,9 @@ impl Sampler {
                 let mut tray = BACKGROUND_INTERVAL;
                 let mut paused = false;
                 let mut schedule = Schedule::new(Instant::now(), interval);
+                // Both immediately sampled and deferred actions need an
+                // accepted post-action process query before their refresh ends.
+                let mut owed = None;
 
                 loop {
                     let received = rx.recv_timeout(schedule.wait(Instant::now()));
@@ -239,7 +276,11 @@ impl Sampler {
                     if subscriber.is_none() {
                         continue;
                     }
+                    if forced {
+                        owed = Some(now);
+                    }
                     if forced && !schedule.demand(now, period) {
+                        schedule.owe();
                         continue;
                     }
 
@@ -256,8 +297,10 @@ impl Sampler {
                         recorder.record(&snapshot);
                     }
                     // A paused view stays as it is, except right after an action.
+                    let send =
+                        publish_refresh(&mut owed, collector.process_sample_started()) || !paused;
                     if let Some(ch) = &subscriber
-                        && (forced || !paused)
+                        && send
                         && ch.send(snapshot).is_err()
                     {
                         subscriber = None;
@@ -276,6 +319,41 @@ impl Sampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paused_action_refresh_survives_cached_rows_and_a_late_pre_action_reply() {
+        let before = Instant::now();
+        let requested = before + Duration::from_millis(250);
+        let mut pending = Some(requested);
+        // No result, a reused snapshot, and a newly delivered query that began
+        // before the action all leave the paused view waiting for the new state.
+        for observed in [
+            None,
+            Some(before),
+            Some(before),
+            Some(requested - Duration::from_millis(1)),
+        ] {
+            assert!(!publish_refresh(&mut pending, observed));
+            assert_eq!(pending, Some(requested));
+        }
+        assert!(publish_refresh(&mut pending, Some(requested)));
+        assert_eq!(pending, None);
+        assert!(!publish_refresh(
+            &mut pending,
+            Some(requested + Duration::from_secs(5))
+        ));
+    }
+
+    #[test]
+    fn another_action_requires_an_observation_after_the_latest_request() {
+        let first = Instant::now();
+        let second = first + Duration::from_secs(1);
+        let mut pending = Some(second);
+        assert!(!publish_refresh(&mut pending, Some(first)));
+        assert_eq!(pending, Some(second));
+        assert!(publish_refresh(&mut pending, Some(second)));
+        assert_eq!(pending, None);
+    }
 
     #[test]
     fn each_window_state_samples_at_its_own_cadence() {
@@ -315,6 +393,23 @@ mod tests {
     }
 
     #[test]
+    fn a_refresh_too_soon_after_a_paused_sample_comes_once_the_gap_is_over() {
+        let (s, ms) = (Duration::from_secs, Duration::from_millis);
+        let t0 = Instant::now();
+        // Paused: samples every 5 s, the last one at 5 s.
+        let mut schedule = Schedule::new(t0, s(5));
+        schedule.tick(t0 + s(5), s(5));
+        schedule.taken(t0 + s(5), false, s(5));
+        assert_eq!(schedule.next_tick, t0 + s(10));
+        // An action asks for a refresh 100 ms later: too soon, so it is owed
+        // and comes at the end of the gap rather than 5 s on.
+        assert!(!schedule.demand(t0 + s(5) + ms(100), s(5)));
+        schedule.owe();
+        assert_eq!(schedule.next_tick, t0 + s(5) + MIN_SAMPLE_GAP);
+        assert_eq!(schedule.wait(t0 + s(5) + ms(100)), MIN_SAMPLE_GAP - ms(100));
+    }
+
+    #[test]
     fn the_first_sample_back_takes_what_the_last_background_one_requested() {
         let s = Duration::from_secs;
         let t0 = Instant::now();
@@ -334,5 +429,51 @@ mod tests {
         schedule.restart(s(5));
         assert_eq!(schedule.next_tick, t0 + s(13));
         assert_eq!(schedule.taken(t0 + s(13), false, s(5)), s(5));
+    }
+
+    #[test]
+    fn startup_controls_keep_the_first_snapshot_on_the_minimum_gap() {
+        let t0 = Instant::now();
+        let (s, ms) = (Duration::from_secs, Duration::from_millis);
+        for state in [
+            WindowState::Shown,
+            WindowState::Minimized,
+            WindowState::Hidden,
+        ] {
+            let mut schedule = Schedule::new(t0, s(1));
+            assert_eq!(schedule.wait(t0), MIN_SAMPLE_GAP);
+            // Subscribe, saved interval, background intervals and pause may all
+            // arrive before the first snapshot; none may defer it to 1–30 s.
+            assert!(!schedule.demand(t0 + ms(10), s(1)));
+            schedule.owe();
+            schedule.restart(cadence(state, false, s(10), s(30), s(30)));
+            schedule.restart(cadence(state, true, s(10), s(30), s(30)));
+            assert_eq!(schedule.wait(t0 + ms(10)), MIN_SAMPLE_GAP - ms(10));
+            assert!(!schedule.demand(t0 + MIN_SAMPLE_GAP - ms(1), s(30)));
+            assert!(schedule.demand(t0 + MIN_SAMPLE_GAP, s(30)));
+        }
+    }
+
+    #[test]
+    fn the_first_snapshot_starts_the_selected_regular_cadence() {
+        let t0 = Instant::now();
+        let s = Duration::from_secs;
+        for period in [MIN_SAMPLE_GAP, s(1), s(5), s(30)] {
+            for forced in [false, true] {
+                let mut schedule = Schedule::new(t0, s(1));
+                schedule.restart(period);
+                let first = t0 + MIN_SAMPLE_GAP;
+                if !forced {
+                    schedule.tick(first, period);
+                }
+                schedule.taken(first, forced, period);
+                assert_eq!(schedule.next_tick, first + period);
+                // Once a snapshot exists, normal interval changes and refresh
+                // coalescing still count from that snapshot.
+                schedule.restart(s(10));
+                assert_eq!(schedule.next_tick, first + s(10));
+                assert!(!schedule.demand(first, s(1)));
+            }
+        }
     }
 }

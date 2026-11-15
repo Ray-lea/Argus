@@ -1,0 +1,52 @@
+name: 翻译问题 / Translation issue
+description: 译文错误、未翻译、文字截断，或请求新增语言 / Text is translated wrongly, not translated or cut off, or a new language is necessary
+labels: ["translation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        用于应用界面、安装程序、更新日志和官网的译文，简体中文为源文案。也可直接提交拉取请求修改 `locales/`，规则见[多语言说明](https://github.com/Ray-lea/Argus/blob/main/docs/development/i18n.md)。可使用中文或英文。
+
+        Use this form for the text in the app, the installer, the changelog and the website. Simplified Chinese is the source text. You can also send a pull request that changes `locales/`. Refer to the [localization guide](https://github.com/Ray-lea/Argus/blob/main/docs/development/i18n.md) (in Chinese). Write in Chinese or English.
+  - type: dropdown
+    id: language
+    attributes:
+      label: 语言 / Language
+      options:
+        - 繁體中文 (zh-TW)
+        - English (en-US)
+        - Español (es-ES)
+        - Deutsch (de-DE)
+        - 日本語 (ja-JP)
+        - Français (fr-FR)
+        - Русский (ru-RU)
+        - 简体中文 (zh-CN)
+        - 新语言 / New language
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: 位置 / Location
+      description: 页面、对话框或设置项；官网请给出网址。/ Give the page, the dialog or the setting. For the website, give the URL.
+      placeholder: 设置 → 权限 → 内核传感器 / Settings → Permissions → Kernel sensors
+    validations:
+      required: true
+  - type: textarea
+    id: text
+    attributes:
+      label: 当前文字与建议 / Current text and suggestion
+      description: |
+        复制当前文字，写出建议的译文，并说明原因。请求新增语言时，写明语言名称，并说明能否协助翻译或校对。
+        Copy the current text, write the suggested translation and give the reason. For a new language, give the language name. Tell if you can help to translate or review.
+      placeholder: |
+        当前 / Current:
+        建议 / Suggested:
+        原因 / Reason:
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: 截图与版本（选填）/ Screenshot and version (optional)
+      description: 附上截图，注明 Argus 版本。文字截断或重叠时请一并注明界面缩放和字号。/ Attach a screenshot and give the Argus version. For cut-off or overlapping text, also give the UI scale and the font size.

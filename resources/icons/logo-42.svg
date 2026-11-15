@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 42" width="42" height="42">
+  <!-- Argus at 42 px: whole pixels, 6 × 5 dots. -->
+  <rect x="1" y="1" width="40" height="40" rx="9.5" fill="#1f2228"/>
+  <rect x="1.5" y="1.5" width="39" height="39" rx="9" fill="none" stroke="#fff" stroke-opacity="0.2"/>
+  <g fill="#4cc2ff">
+    <rect x="4" y="4" width="3" height="3" rx="0.75"/>
+    <rect x="34" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="34" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="34" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="34" y="34" width="4" height="4" rx="1.6"/>
+  </g>
+  <g fill="#dfe1e5" fill-opacity=".7">
+    <rect x="9" y="4" width="3" height="3" rx="0.75"/>
+    <rect x="14" y="4" width="3" height="3" rx="0.75"/>
+  </g>
+  <g fill="#dfe1e5">
+    <rect x="4" y="34" width="4" height="4" rx="1.6"/>
+    <rect x="10" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="10" y="34" width="4" height="4" rx="1.6"/>
+    <rect x="16" y="34" width="4" height="4" rx="1.6"/>
+    <rect x="22" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="22" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="22" y="34" width="4" height="4" rx="1.6"/>
+    <rect x="28" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="28" y="34" width="4" height="4" rx="1.6"/>
+  </g>
+  <g fill="#dfe1e5" fill-opacity="0.12">
+    <rect x="4" y="10" width="4" height="4" rx="1.6"/>
+    <rect x="4" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="4" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="4" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="10" y="10" width="4" height="4" rx="1.6"/>
+    <rect x="10" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="10" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="16" y="10" width="4" height="4" rx="1.6"/>
+    <rect x="16" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="16" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="16" y="28" width="4" height="4" rx="1.6"/>
+    <rect x="22" y="10" width="4" height="4" rx="1.6"/>
+    <rect x="22" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="28" y="10" width="4" height="4" rx="1.6"/>
+    <rect x="28" y="16" width="4" height="4" rx="1.6"/>
+    <rect x="28" y="22" width="4" height="4" rx="1.6"/>
+    <rect x="34" y="10" width="4" height="4" rx="1.6"/>
+  </g>
+</svg>

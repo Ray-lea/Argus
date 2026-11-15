@@ -66,7 +66,7 @@
     "title": "Privilegierter Dienst (optional)",
     "body": "Argus läuft mit Standardrechten. Einige Systemprozesse lassen sich damit nicht auslesen, beenden oder anpassen. Der optionale privilegierte Dienst läuft im Hintergrund als SYSTEM und ermöglicht:",
     "features": {
-      "end": "Prozesse anderer Benutzer beenden, ausgenommen kritische Systemprozesse",
+      "end": "Prozesse anderer Benutzer beenden, anhalten oder fortsetzen, ausgenommen kritische Systemprozesse",
       "tune": "Priorität und Effizienzmodus festlegen, auch automatisch über Regeln",
       "inspect": "Dateisperren, Netzwerkverkehr sowie Datenträgerzugriffe aller Prozesse anzeigen",
       "control": "Windows-Dienste steuern und Netzwerkverbindungen schließen",

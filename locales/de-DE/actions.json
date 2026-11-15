@@ -30,7 +30,8 @@
     "partial": {
       "one": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
       "other": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
-    }
+    },
+    "unchecked": "{count} Prozesse beendet; {failed} nicht beendet, davon {unchecked} mit ungeprüftem kritischem Status."
   },
   "error": {
     "accessDenied": "{name} konnte nicht beendet werden: Zugriff verweigert. Den privilegierten Dienst in den Einstellungen aktivieren oder Argus als Administrator ausführen. Geschützte Prozesse können weiterhin eingeschränkt sein.",
@@ -38,7 +39,8 @@
     "critical": "{name} ist ein kritischer Systemprozess. Das Beenden würde Windows zum Absturz bringen; die Aktion wurde blockiert.",
     "refused": "{name} kann nicht beendet werden.",
     "serviceOutdated": "{name} konnte nicht beendet werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist inkompatibel. Den Dienst aktualisieren und erneut versuchen.",
-    "generic": "{name} konnte nicht beendet werden: {error}"
+    "generic": "{name} konnte nicht beendet werden: {error}",
+    "criticalityUnknown": "Es konnte nicht geprüft werden, ob {name} ein kritischer Systemprozess ist. Das Beenden wurde blockiert."
   },
   "priority": {
     "confirmTitle": "Priorität von {name} auf Echtzeit setzen?",
@@ -68,6 +70,38 @@
         "other": "Effizienzmodus für {count} Prozesse deaktiviert; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
       },
       "done": "Effizienzmodus für {name} deaktiviert."
+    }
+  },
+  "suspend": {
+    "title": "{name} anhalten?",
+    "body": "Alle Threads von PID {pid} werden angehalten, bis der Prozess fortgesetzt wird. Seine Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen.",
+    "bodyGroup": {
+      "one": "{count} Prozess von {name} wird angehalten, bis er fortgesetzt wird. Seine Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen.",
+      "other": "Alle {count} Prozesse von {name} werden angehalten, bis sie fortgesetzt werden. Ihre Fenster reagieren nicht mehr und Netzwerkverbindungen können ablaufen; manche Programme (Spiele, Apps mit Anti-Cheat oder Selbstschutz) können dadurch fehlschlagen."
+    },
+    "confirm": "Anhalten",
+    "error": {
+      "accessDenied": "Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus; geschützte Prozesse bleiben möglicherweise unerreichbar.",
+      "refused": "{name} kann nicht angehalten oder fortgesetzt werden.",
+      "serviceOutdated": "Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+      "critical": "{name} ist ein kritischer Systemprozess. Das Anhalten würde Windows einfrieren; die Aktion wurde blockiert.",
+      "stillSuspended": "{name} ist möglicherweise noch angehalten: Einige Threads konnten nicht fortgesetzt oder ihr Zustand nicht gelesen werden. Versuchen Sie es erneut."
+    },
+    "on": {
+      "failed": "{name} konnte nicht angehalten werden",
+      "partial": {
+        "one": "{count} Prozess angehalten; nicht angehalten: {failed}. {error}",
+        "other": "{count} Prozesse angehalten; nicht angehalten: {failed}. {error}"
+      },
+      "done": "{name} angehalten."
+    },
+    "off": {
+      "failed": "{name} konnte nicht fortgesetzt werden",
+      "partial": {
+        "one": "{count} Prozess fortgesetzt; nicht fortgesetzt: {failed}. {error}",
+        "other": "{count} Prozesse fortgesetzt; nicht fortgesetzt: {failed}. {error}"
+      },
+      "done": "{name} fortgesetzt."
     }
   },
   "ruleScope": {

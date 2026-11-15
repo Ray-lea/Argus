@@ -78,6 +78,9 @@ const WINDOW_SHARE: f32 = 0.45;
 /// The overview tips' text (`.overview-tips`).
 const TIP_SIZE: f32 = 12.;
 const TIP_LINE_HEIGHT: f32 = 1.5;
+/// The tips' heading row: 6 px above and below one line of tip text, the
+/// same space the tips keep between themselves.
+const TIP_HEADING_HEIGHT: f32 = 30.;
 /// The toolbar's panel button drawn in a tip (`.overview-key`): its box, the
 /// margin on either side, its glyph, how far below its top its baseline lies
 /// (the bottom of the glyph, centred inside the 1 px border), and how far that
@@ -328,6 +331,9 @@ impl Desktop {
         };
         let panel = div()
             .id("process-details")
+            // The pane's rows and buttons take their hover fills in place:
+            // the pane does not render for the pointer moving over it.
+            .hover_fills_in_place()
             .relative()
             .w(px(self.details_display_width(window)))
             .h_full()
@@ -691,17 +697,7 @@ impl Desktop {
                 .map(|value| label(&format!("{namespace}.{value}")))
                 .unwrap_or_else(missing)
         };
-        let priority = match process["basePriority"].as_u64() {
-            Some(4) => Some("idle"),
-            Some(6) => Some("belowNormal"),
-            Some(8) => Some("normal"),
-            Some(10) => Some("aboveNormal"),
-            Some(13) => Some("high"),
-            Some(24) => Some("realtime"),
-            _ => None,
-        }
-        .map(|class| label(&format!("processes.priority.{class}")))
-        .unwrap_or_else(missing);
+        let priority = tables::base_priority(process).unwrap_or_else(missing);
         let plain = |value: &Value| {
             value
                 .as_u64()
@@ -1494,13 +1490,59 @@ impl Desktop {
                 )
                 .child(div().flex_1().min_w_0().child(content))
         };
+        // The tips fold under their own heading, which stays as one line;
+        // the choice is kept like the hardware list's.
+        let expanded = self.prefs.get("overviewTipsExpanded", true);
+        let toggle = SharedString::from("overview-tips");
+        let heading = Button::new(toggle.clone())
+            .relative()
+            .w_full()
+            .h(px(TIP_HEADING_HEIGHT))
+            .px(px(12.))
+            .gap(px(8.))
+            .justify_start()
+            // Inside the box's 1 px border.
+            .rounded(px(5.))
+            .hover(move |style| style.bg(p.hover))
+            .active(move |style| style.bg(p.press))
+            .accessibility_label(label(if expanded {
+                "details.overview.tipsCollapse"
+            } else {
+                "details.overview.tipsExpand"
+            }))
+            .child(
+                div()
+                    .w(px(14.))
+                    .flex_shrink_0()
+                    .child(icon("TipIcon", accent).w(px(14.)).h(px(14.))),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .font_weight(theme::LABEL_WEIGHT)
+                    .child(label("details.overview.tips")),
+            )
+            .child(self.moving_icon(
+                &toggle,
+                if expanded { "ChevronUp" } else { "ChevronDown" },
+                Some(p.muted),
+                Some(px(14.)),
+            ))
+            .child(self.icon_probe(&toggle))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.act(
+                    Action::Preference("overviewTipsExpanded".into(), json!(!expanded)),
+                    window,
+                    cx,
+                )
+            }))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
         let tips = div()
             .mt(px(16.))
-            .px(px(12.))
-            .py(px(10.))
             .flex()
             .flex_col()
-            .gap(px(6.))
             .border_1()
             .border_dashed()
             .border_color(design_color("stroke-strong", cx))
@@ -1508,11 +1550,22 @@ impl Desktop {
             .text_color(p.muted)
             .text_size(theme::font(TIP_SIZE))
             .line_height(relative(TIP_LINE_HEIGHT))
-            .child(tip(
-                "PointerIcon",
-                label("details.overview.selectTip").into_any_element(),
-            ))
-            .child(tip("PanelIcon", self.overview_close_tip()));
+            .child(heading)
+            .when(expanded, |tips| {
+                tips.child(
+                    div()
+                        .px(px(12.))
+                        .pb(px(10.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .child(tip(
+                            "PointerIcon",
+                            label("details.overview.selectTip").into_any_element(),
+                        ))
+                        .child(tip("PanelIcon", self.overview_close_tip())),
+                )
+            });
         let mut body = div().flex().flex_col().child(head).child(tips);
         if visible {
             let ink = p.ink;
@@ -1609,6 +1662,23 @@ impl Desktop {
 
     /// This computer's parts, each a way to its view on the performance page
     ///.
+    /// Whether a new sample changes what the details pane shows. A picked
+    /// process shows its readings; the overview of the machine changes only
+    /// when a part of it does, and is otherwise left as drawn.
+    pub(in crate::frontend) fn details_follow_sample(&self) -> bool {
+        use std::hash::{Hash, Hasher};
+        let key = self.selected.get("processes").cloned().unwrap_or_default();
+        if self.details_pick(&key).is_some() {
+            return true;
+        }
+        let mut digest = std::collections::hash_map::DefaultHasher::new();
+        for part in self.overview_parts() {
+            (&part.device, &part.kind, &part.name, &part.detail).hash(&mut digest);
+        }
+        let digest = Some(digest.finish());
+        self.ui.overview_seen.replace(digest) != digest
+    }
+
     fn overview_parts(&self) -> Vec<Part> {
         let p = self.palette;
         let hw = &self.snapshot["hardware"];

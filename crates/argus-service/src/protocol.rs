@@ -83,6 +83,11 @@ pub enum Operation {
         create_time: i64,
         on: bool,
     },
+    Suspend {
+        pid: u32,
+        create_time: i64,
+        suspend: bool,
+    },
     ControlService {
         name: String,
         action: ServiceAction,
@@ -146,6 +151,9 @@ impl Operation {
                 pid, create_time, ..
             }
             | Self::Efficiency {
+                pid, create_time, ..
+            }
+            | Self::Suspend {
                 pid, create_time, ..
             } => {
                 if *pid <= 4 || *pid == std::process::id() || *create_time <= 0 {
@@ -256,6 +264,13 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             create_time,
             on,
         } => actions::set_efficiency_mode(pid, create_time, on),
+        // Suspending the host would freeze the window that asked.
+        Operation::Suspend { pid, .. } if pid == client_pid => Err(ActionError::Refused),
+        Operation::Suspend {
+            pid,
+            create_time,
+            suspend,
+        } => actions::set_suspended(pid, create_time, suspend),
         Operation::ControlService { name, action } => context.services.control(&name, action),
         Operation::ServiceStartType { name, start_type } => {
             context.services.set_start_type(&name, start_type)
@@ -285,6 +300,29 @@ mod tests {
         }
         assert!(Operation::DiskDetails { index: 0 }.validate().is_ok());
         assert!(Operation::DiskDetails { index: 4096 }.validate().is_err());
+    }
+
+    #[test]
+    fn suspend_refuses_system_service_unresolved_and_client_targets() {
+        let suspend = |pid, create_time| Operation::Suspend {
+            pid,
+            create_time,
+            suspend: true,
+        };
+        for (pid, create_time) in [(0, 1), (4, 1), (std::process::id(), 1), (1234, 0)] {
+            assert!(matches!(
+                suspend(pid, create_time).validate(),
+                Err(ActionError::Refused)
+            ));
+        }
+        assert!(suspend(1234, 1).validate().is_ok());
+        assert!(matches!(
+            execute(suspend(1234, 1), &Context::testing(), 1234),
+            Reply::Error(ActionError::Refused)
+        ));
+        let valid = r#"{"op":"suspend","pid":1234,"create_time":1,"suspend":true"#;
+        assert!(serde_json::from_str::<Operation>(&format!("{valid}}}")).is_ok());
+        assert!(serde_json::from_str::<Operation>(&format!(r#"{valid},"tree":true}}"#)).is_err());
     }
 
     #[test]

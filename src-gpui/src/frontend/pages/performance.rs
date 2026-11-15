@@ -39,14 +39,22 @@ const SIDE_MAX: f32 = 440.;
 const PAGE_GAP: f32 = 12.;
 /// Live figures: `repeat(auto-fill, minmax(120px, 1fr))` with 14 × 20 gaps.
 const STAT_MIN: f32 = 120.;
+/// Narrowest the figures' columns go where one more of them spares a row.
+const STAT_TIGHT: f32 = 112.;
 const STAT_GAP_X: f32 = 20.;
 const STAT_GAP_Y: f32 = 14.;
 /// Gap between the figures and the specs beside them.
 const STATS_GAP: f32 = 28.;
+/// Gap between the figures and the specs under them.
+const STACK_GAP: f32 = 20.;
 /// Widest a figure's explanation runs before it wraps.
 const HINT_WIDTH: f32 = 420.;
-/// Figures and specs go side by side from this width each at the base font size.
-const STATS_MIN: f32 = 320.;
+/// Figures and specs go side by side once the figures' share holds this many
+/// columns: with fewer, the figures take more rows beside the specs than both
+/// take stacked.
+const SIDE_COLUMNS: usize = 3;
+/// Narrowest a column of the specs under the figures at the base font size.
+const SPECS_MIN: f32 = 280.;
 /// Smallest chart heights before the page scrolls (main, half, small).
 const MAIN_MIN: f32 = 120.;
 const HALF_MIN: f32 = 80.;
@@ -128,19 +136,58 @@ impl CoreKind {
     }
 }
 
-fn stats_layout(width: f32, cpu: bool, text_scale: f32) -> (bool, u16) {
-    let stacked = width < 2. * STATS_MIN * text_scale + STATS_GAP;
-    let stats_width = if stacked {
-        width
-    } else if cpu {
+/// How a view arranges its live figures and its specs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StatsLayout {
+    /// The specs go under the figures instead of beside them.
+    stacked: bool,
+    /// The figures' columns.
+    columns: u16,
+    /// The columns the specs are spread over: one beside the figures.
+    spec_columns: u16,
+}
+
+/// Arranges `figures` and `specs` rows in `width`. The fewer rows they take,
+/// the more of the card's height the charts keep before the view scrolls.
+fn stats_layout(
+    width: f32,
+    cpu: bool,
+    text_scale: f32,
+    figures: usize,
+    specs: usize,
+) -> StatsLayout {
+    let fit = |width: f32, min: f32, gap: f32| {
+        ((width + gap) / (min * text_scale + gap)).floor().max(1.) as usize
+    };
+    let share = if cpu {
         (width - STATS_GAP) / 2.
     } else {
         (width - STATS_GAP) * 1.1 / 2.1
     };
-    let columns = ((stats_width + STAT_GAP_X) / (STAT_MIN * text_scale + STAT_GAP_X))
-        .floor()
-        .max(1.) as u16;
-    (stacked, columns)
+    let stacked = fit(share, STAT_MIN, STAT_GAP_X) < SIDE_COLUMNS;
+    let stats_width = if stacked { width } else { share };
+    let base = fit(stats_width, STAT_MIN, STAT_GAP_X);
+    let tight = fit(stats_width, STAT_TIGHT, STAT_GAP_X);
+    // Tighter columns only where they spare a row. Several rows are as even
+    // as they go, so that the last one is not left with a figure or two; a
+    // single row keeps the usual columns.
+    let rows = figures.div_ceil(tight);
+    let columns = if rows > 1 {
+        figures.div_ceil(rows)
+    } else {
+        base.max(figures)
+    };
+    // Under the figures the specs use the width too. No column for one row.
+    let spec_columns = if stacked {
+        fit(width, SPECS_MIN, STAT_GAP_X).min(specs.div_ceil(2).max(1))
+    } else {
+        1
+    };
+    StatsLayout {
+        stacked,
+        columns: columns as u16,
+        spec_columns: spec_columns as u16,
+    }
 }
 
 #[derive(Clone)]
@@ -153,6 +200,8 @@ pub(super) struct Device {
     pub(super) index: usize,
     /// What the device is remembered by once hidden from the list (`rail::stable_key`).
     pub(super) stable: String,
+    /// A disk's number and first drive letter, which the list can order disks by.
+    pub(super) disk: Option<(u64, Option<String>)>,
 }
 pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
     let hw = &snapshot["hardware"];
@@ -165,6 +214,7 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
             kind: "cpu",
             index: 0,
             stable: rail::stable_key("cpu", &Value::Null),
+            disk: None,
         },
         Device {
             id: "memory".into(),
@@ -174,6 +224,7 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
             kind: "memory",
             index: 0,
             stable: rail::stable_key("memory", &Value::Null),
+            disk: None,
         },
     ];
     let batteries = values(&hw["batteries"]).len();
@@ -214,6 +265,16 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
                 kind,
                 index,
                 stable: rail::stable_key(kind, info),
+                disk: (kind == "disk").then(|| {
+                    (
+                        info["index"].as_u64().unwrap_or(index as u64),
+                        values(&info["volumes"])
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .min()
+                            .map(str::to_owned),
+                    )
+                }),
             });
         }
     }
@@ -227,6 +288,19 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
     }
     out
 }
+/// What the list orders `devices` by (`rail::arrange`).
+fn order_entries(devices: &[Device]) -> Vec<rail::Entry<'_>> {
+    devices
+        .iter()
+        .map(|device| rail::Entry {
+            key: &device.stable,
+            disk: device
+                .disk
+                .as_ref()
+                .map(|(number, letter)| (*number, letter.as_deref())),
+        })
+        .collect()
+}
 /// The row the list marks: the chosen device while the list shows it, else
 /// the first row it shows.
 fn selected_device(devices: &[Device], shown: &[bool], chosen: &str) -> usize {
@@ -236,6 +310,16 @@ fn selected_device(devices: &[Device], shown: &[bool], chosen: &str) -> usize {
         .position(|(device, shown)| *shown && device.id == chosen)
         .or_else(|| shown.iter().position(|shown| *shown))
         .unwrap_or(0)
+}
+/// What a dragged device row carries; the list keeps the drag itself
+/// (`rail::RowDrag`).
+struct DevicePayload;
+/// Nothing follows the pointer but the row itself.
+struct DeviceGhost;
+impl Render for DeviceGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
 }
 /// The common look of a device row, whatever element draws it.
 fn device_row<E: Styled>(row: E, p: Palette, height: Pixels) -> E {
@@ -475,6 +559,86 @@ impl Desktop {
         keys.sort();
         self.prefs.set(rail::HIDDEN, keys);
     }
+    /// How the disks are ordered among themselves.
+    fn disk_order(&self) -> rail::DiskOrder {
+        rail::DiskOrder::parse(&self.prefs.get::<String>(rail::DISK_ORDER, String::new()))
+    }
+    /// The devices in the order the list shows them (`rail::arrange`).
+    fn listed_devices(&self) -> Vec<Device> {
+        let devices = available_devices(&self.snapshot, self.palette);
+        let order = rail::arrange(
+            &order_entries(&devices),
+            &self.prefs.get::<Vec<String>>(rail::ORDER, Vec::new()),
+            self.disk_order(),
+        );
+        let mut slots = devices.into_iter().map(Some).collect::<Vec<_>>();
+        order
+            .into_iter()
+            .filter_map(|index| slots.get_mut(index)?.take())
+            .collect()
+    }
+    /// Orders the disks by `order` (`rail::DISK_ORDER`). Ordering them by
+    /// hand starts from the list as it is, to drag from there.
+    pub(in crate::frontend) fn set_disk_order(&mut self, order: rail::DiskOrder) {
+        if order == rail::DiskOrder::Custom && self.disk_order() != order {
+            let keys = self
+                .listed_devices()
+                .into_iter()
+                .map(|device| device.stable)
+                .collect::<Vec<_>>();
+            self.save_device_order(&keys);
+        }
+        self.prefs.set(rail::DISK_ORDER, order.key());
+    }
+    /// Saves the order of the devices present now (stable keys); devices
+    /// absent now keep their saved places (`rail::merged_order`).
+    fn save_device_order(&mut self, present: &[String]) {
+        let saved = self.prefs.get::<Vec<String>>(rail::ORDER, Vec::new());
+        self.prefs
+            .set(rail::ORDER, rail::merged_order(&saved, present));
+    }
+    /// Puts every device back in the collector's order (`rail::RESET_ORDER`).
+    pub(in crate::frontend) fn reset_device_order(&mut self) {
+        self.prefs.set(rail::ORDER, Vec::<String>::new());
+        self.prefs
+            .set(rail::DISK_ORDER, rail::DiskOrder::default().key());
+    }
+    /// Lets go of a dragged device row: it glides into its place, and the
+    /// list keeps the order it arranged.
+    fn finish_device_drag(
+        &mut self,
+        rail: &Entity<rail::RailMotion>,
+        animate: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let released = rail.update(cx, |rail, _| {
+            rail.release(px(ROW_GAP), animate, Instant::now())
+        });
+        if let Some(drag) = released
+            && drag.order != drag.initial
+        {
+            self.keep_device_order(&drag.order);
+        }
+    }
+    /// Keeps the order a drag left the rows in (`order`, by id). The disks
+    /// keep the order chosen for them only while the drag kept it too;
+    /// otherwise they stay where they were dragged.
+    fn keep_device_order(&mut self, order: &[String]) {
+        let devices = available_devices(&self.snapshot, self.palette);
+        let indices = order
+            .iter()
+            .filter_map(|id| devices.iter().position(|device| &device.id == id))
+            .collect::<Vec<_>>();
+        if !rail::keeps(&order_entries(&devices), &indices, self.disk_order()) {
+            self.prefs
+                .set(rail::DISK_ORDER, rail::DiskOrder::Custom.key());
+        }
+        let keys = indices
+            .into_iter()
+            .map(|index| devices[index].stable.clone())
+            .collect::<Vec<_>>();
+        self.save_device_order(&keys);
+    }
     /// Which of `devices` the list shows.
     fn shown_devices(&self, devices: &[Device]) -> Vec<bool> {
         let keys = devices
@@ -490,7 +654,7 @@ impl Desktop {
             return;
         };
         let hide = boolean(change, "hidden");
-        let devices = available_devices(&self.snapshot, self.palette);
+        let devices = self.listed_devices();
         let keys = devices
             .iter()
             .map(|device| device.stable.as_str())
@@ -541,7 +705,7 @@ impl Desktop {
         if self.hidden_devices().is_empty() {
             return preferred;
         }
-        let devices = available_devices(&self.snapshot, self.palette);
+        let devices = self.listed_devices();
         let shown = self.shown_devices(&devices);
         let mut candidates = devices
             .iter()
@@ -556,7 +720,7 @@ impl Desktop {
     }
     /// The device list's menu, opened on `target`'s row or on the list itself.
     fn device_menu_items(&self, target: Option<&str>, window: &Window) -> Vec<MenuItem> {
-        let devices = available_devices(&self.snapshot, self.palette);
+        let devices = self.listed_devices();
         let shown = self.shown_devices(&devices);
         let visible = shown.iter().filter(|shown| **shown).count();
         let change = |device: &Device, hide: bool, staying: bool| {
@@ -603,6 +767,33 @@ impl Desktop {
                     .submenu(children),
             );
         }
+        // How the disks are ordered: by number, by drive letter, or as
+        // dragged. A drag that breaks the chosen order checks the last.
+        let disks = devices
+            .iter()
+            .filter(|device| device.disk.is_some())
+            .count();
+        let ordered = self.disk_order();
+        let orders = rail::DiskOrder::ALL
+            .into_iter()
+            .map(|order| {
+                MenuItem::new(
+                    label(&format!("performance.devices.diskOrder.{}", order.key())),
+                    Action::Preference(rail::DISK_ORDER.into(), json!(order.key())),
+                )
+                .checked(order == ordered)
+            })
+            .collect::<Vec<_>>();
+        items.push(
+            MenuItem::new(
+                label("performance.devices.diskOrder.title"),
+                Action::CloseOverlay,
+            )
+            .icon("OrderIcon")
+            .disabled(disks < 2)
+            .submenu(orders),
+        );
+        items.push(MenuItem::separator());
         items.push(
             MenuItem::new(
                 label("performance.devices.restore"),
@@ -610,6 +801,20 @@ impl Desktop {
             )
             .icon("ResetIcon")
             .disabled(self.hidden_devices().is_empty()),
+        );
+        items.push(
+            MenuItem::new(
+                label("performance.devices.resetOrder"),
+                Action::Preference(rail::RESET_ORDER.into(), Value::Null),
+            )
+            .icon("ResetIcon")
+            .disabled(
+                ordered == rail::DiskOrder::default()
+                    && self
+                        .prefs
+                        .get::<Vec<String>>(rail::ORDER, Vec::new())
+                        .is_empty(),
+            ),
         );
         items
     }
@@ -640,7 +845,7 @@ impl Desktop {
     /// The device list, the CPU graphs' kernel time layer and the logical
     /// processors' grid as tests see them (test control `inspectLayout`).
     pub(in crate::frontend) fn performance_test_state(&self) -> Value {
-        let devices = available_devices(&self.snapshot, self.palette);
+        let devices = self.listed_devices();
         let shown = self.shown_devices(&devices);
         let selected = selected_device(&devices, &shown, &self.device);
         let mut hidden = self.hidden_devices().into_iter().collect::<Vec<_>>();
@@ -653,6 +858,8 @@ impl Desktop {
                 .map(|(device, _)| device.id.as_str())
                 .collect::<Vec<_>>(),
             "hidden": hidden,
+            "diskOrder": self.disk_order().key(),
+            "arranged": self.prefs.get::<Vec<String>>(rail::ORDER, Vec::new()),
             "selected": devices.get(selected).map(|device| device.id.as_str()),
             "kernelTime": self.prefs.get(KERNEL_TIME, true),
             "overallSeries": self.chart_series("cpu-overall-plot"),
@@ -825,7 +1032,27 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let devices = available_devices(&self.snapshot, self.palette);
+        // A device hidden from the list collapses, and one shown again
+        // returns, while the rows below glide to their places (`rail`).
+        let rail =
+            window.use_keyed_state("perf-device-rail", cx, |_, _| rail::RailMotion::default());
+        let now = Instant::now();
+        let animate = !cx.reduce_motion();
+        // A row let go away from the list (no drop there) settles too.
+        if rail.read(cx).drag.is_some() && !cx.has_active_drag() {
+            self.finish_device_drag(&rail, animate, cx);
+        }
+        // While a row is dragged, the rows are in the order it arranges.
+        let mut devices = self.listed_devices();
+        let dragged = rail.read(cx).drag.clone();
+        if let Some(drag) = &dragged {
+            devices.sort_by_key(|device| {
+                drag.order
+                    .iter()
+                    .position(|id| *id == device.id)
+                    .unwrap_or(usize::MAX)
+            });
+        }
         let shown = self.shown_devices(&devices);
         let selected_index = selected_device(&devices, &shown, &self.device);
         let selected = devices.get(selected_index).cloned();
@@ -840,12 +1067,6 @@ impl Desktop {
             - ROW_PADDING
             - PREVIEW_GAP
             - PREVIEW_WIDTH);
-        // A device hidden from the list collapses, and one shown again
-        // returns, while the rows below glide to their places (`rail`).
-        let rail =
-            window.use_keyed_state("perf-device-rail", cx, |_, _| rail::RailMotion::default());
-        let now = Instant::now();
-        let animate = !cx.reduce_motion();
         let presence = rail.update(cx, |rail, _| {
             rail.presence(
                 &devices
@@ -869,6 +1090,48 @@ impl Desktop {
             })
             .collect();
         let places = rail::layout(&heights, &presence, px(ROW_GAP));
+        // Rows the order moved (a drag, another disk order, a device come or
+        // gone) glide from where they were to their new places.
+        let offsets = rail.update(cx, |rail, _| {
+            rail.arranged(
+                devices.iter().map(|device| device.id.clone()).collect(),
+                devices
+                    .iter()
+                    .zip(&heights)
+                    .zip(&presence)
+                    .map(|((device, height), presence)| (device.id.clone(), (*height, *presence)))
+                    .collect(),
+                px(ROW_GAP),
+                animate,
+                now,
+            );
+            devices
+                .iter()
+                .map(|device| rail.offset(&device.id, now))
+                .collect::<Vec<_>>()
+        });
+        // The dragged row is drawn under the pointer, within the list.
+        let list_end = places
+            .last()
+            .map_or(0., |place| f32::from(place.top + place.height));
+        let lifted = dragged.as_ref().and_then(|drag| {
+            let index = devices.iter().position(|device| device.id == drag.id)?;
+            let height = f32::from(heights[index]);
+            Some((index, drag.at().clamp(0., (list_end - height).max(0.))))
+        });
+        // Let go, it glides into its place from where it was drawn.
+        if let Some((_, top)) = lifted {
+            rail.update(cx, |rail, _| {
+                if let Some(drag) = rail.drag.as_mut() {
+                    drag.drawn = Some(top);
+                }
+            });
+        }
+        // Where each row is drawn: its place, moved by its glide or the pointer.
+        let drawn_top = |index: usize| match lifted {
+            Some((lifted, top)) if lifted == index => px(top),
+            _ => places[index].top + px(offsets[index]),
+        };
         let selected_place = places[selected_index];
         let selected_height = selected_place.height;
         // The selected device: a raised surface with an accent pill, sliding
@@ -876,7 +1139,7 @@ impl Desktop {
         let mark_top = rail.update(cx, |rail, _| {
             rail.mark_top(
                 selected.as_ref().map_or("", |device| device.id.as_str()),
-                selected_place.top,
+                drawn_top(selected_index),
                 animate,
                 now,
             )
@@ -905,6 +1168,22 @@ impl Desktop {
                 MouseButton::Right,
                 cx.listener(|this, _, window, cx| this.device_menu(None, window, cx)),
             )
+            // A dragged row follows the pointer and the others make room.
+            .on_drag_move(cx.listener({
+                let rail = rail.clone();
+                move |_, event: &DragMoveEvent<DevicePayload>, _, cx| {
+                    let pointer = f32::from(event.event.position.y);
+                    rail.update(cx, |rail, _| rail.follow(pointer, px(ROW_GAP)));
+                    cx.notify();
+                }
+            }))
+            .on_drop(cx.listener({
+                let rail = rail.clone();
+                move |this, _: &DevicePayload, _, cx| {
+                    this.finish_device_drag(&rail, !cx.reduce_motion(), cx);
+                    cx.notify();
+                }
+            }))
             .child(
                 div()
                     .absolute()
@@ -927,16 +1206,38 @@ impl Desktop {
                             .bg(p.accent),
                     ),
             );
+        let mut raised = None;
+        let raised_rect = lifted.map(|(index, top)| (top, top + f32::from(heights[index])));
         for (index, device) in devices.iter().enumerate() {
             let present = presence[index];
             if present <= 0. {
                 continue;
             }
             let (place, height) = (places[index], heights[index]);
-            // A row on its way in or out fades, and its curve, which the
-            // chart layer draws, with it.
-            let fading = (present < 1.).then(|| charts::Live {
-                transform: LiveTransform::new(LiveTransformValue::zoom(1., rail::opacity(present))),
+            let lifted = lifted
+                .filter(|(lifted, _)| *lifted == index)
+                .map(|(_, top)| top);
+            // A row on its way in or out fades, and one gliding to a new
+            // place moves; its curve, which the chart layer draws, with it.
+            let dy = if lifted.is_some() { 0. } else { offsets[index] };
+            // A row the dragged one passes over fades as far as it is
+            // covered: the chart layer draws every curve above the rows, and
+            // this one would show through the raised row.
+            let covered = raised_rect
+                .filter(|_| lifted.is_none())
+                .map_or(0., |(top, bottom)| {
+                    let (own_top, own_bottom) = (
+                        f32::from(place.top) + dy,
+                        f32::from(place.top + height) + dy,
+                    );
+                    (own_bottom.min(bottom) - own_top.max(top)).max(0.) / f32::from(height).max(1.)
+                });
+            let opacity = rail::opacity(present) * (1. - covered).clamp(0., 1.);
+            let fading = (present < 1. || dy != 0. || covered > 0.).then(|| charts::Live {
+                transform: LiveTransform::new(LiveTransformValue {
+                    offset: point(px(0.), px(dy)),
+                    ..LiveTransformValue::zoom(1., opacity)
+                }),
                 anchor: Rc::new(Cell::new(Point::default())),
             });
             if let Some(live) = &fading {
@@ -987,6 +1288,44 @@ impl Desktop {
                 .rounded(px(3.))
                 .overflow_hidden()
                 .child(div().size_full().bg(p.chart_surface).child(graph));
+            // The dragged row rises over the list under the pointer; its
+            // place stays as a tinted slot for it to drop into.
+            if let Some(top) = lifted {
+                raised = Some(
+                    device_row(div(), p, height)
+                        .absolute()
+                        .left_0()
+                        .top(px(top))
+                        .w(px(side_width - scrollbar::SIZE))
+                        .bg(p.raised)
+                        .border_color(p.accent.opacity(0.55))
+                        .cursor_grabbing()
+                        .when(current, |row| {
+                            row.child(
+                                div()
+                                    .absolute()
+                                    .left(px(-1.))
+                                    .top((height - px(2. + 18.)) / 2.)
+                                    .w(px(3.))
+                                    .h(px(18.))
+                                    .rounded(px(2.))
+                                    .bg(p.accent),
+                            )
+                        })
+                        .child(text)
+                        .child(preview),
+                );
+                list = list.child(
+                    div()
+                        .w_full()
+                        .flex_shrink_0()
+                        .mt(place.gap)
+                        .h(place.height)
+                        .rounded(px(6.))
+                        .bg(p.accent.opacity(0.08)),
+                );
+                continue;
+            }
             let row = if shown[index] {
                 device_row(
                     Button::new(SharedString::from(format!("device-{}", device.id)))
@@ -999,6 +1338,19 @@ impl Desktop {
                     let id = device.id.clone();
                     move |this, _, window, cx| this.act(Action::Device(id.clone()), window, cx)
                 }))
+                // Dragged up or down, the row takes another place in the list.
+                .on_drag(DevicePayload, {
+                    let rail = rail.clone();
+                    let id = device.id.clone();
+                    let top = f32::from(drawn_top(index));
+                    let desktop = cx.entity().downgrade();
+                    move |_, _, window, cx| {
+                        let pointer = f32::from(window.mouse_position().y);
+                        rail.update(cx, |rail, _| rail.take(&id, top, pointer));
+                        let _ = desktop.update(cx, |_, cx| cx.notify());
+                        cx.new(|_| DeviceGhost)
+                    }
+                })
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .on_mouse_down(
                     MouseButton::Right,
@@ -1055,6 +1407,8 @@ impl Desktop {
                     .children(anchor),
             );
         }
+        // Drawn after the rows, over them.
+        list = list.children(raised);
         // Replace the device at full contrast and slide it from its direction
         // in the list. Layout stays in place so the scroll range is stable.
         let arrival = window.use_keyed_state("perf-device-arrival", cx, |_, _| {
@@ -1403,16 +1757,28 @@ impl Desktop {
             }))
             .into_any_element()
     }
-    /// Stack figures and specs when the card cannot fit both at the chosen font size.
+    /// A view's live figures and its specs (`info_list` rows): side by side in
+    /// a wide card, the specs in columns under the figures in a narrower one
+    /// (`stats_layout`).
     fn perf_stats(
         &self,
         stats: Vec<AnyElement>,
-        info: AnyElement,
+        specs: Vec<(String, AnyElement)>,
         cpu: bool,
         window: &Window,
     ) -> AnyElement {
         let width = self.detail_width(window);
-        let (stacked, columns) = stats_layout(width, cpu, f32::from(theme::font(13.)) / 13.);
+        let StatsLayout {
+            stacked,
+            columns,
+            spec_columns,
+        } = stats_layout(
+            width,
+            cpu,
+            f32::from(theme::font(13.)) / 13.,
+            stats.len(),
+            specs.len(),
+        );
         let grid = div()
             .min_w_0()
             .grid()
@@ -1421,17 +1787,40 @@ impl Desktop {
             .gap_y(px(STAT_GAP_Y))
             .content_start()
             .children(stats);
+        let info = if spec_columns > 1 {
+            // In reading order down each column, the columns as even as they go.
+            let rows = specs.len().div_ceil(usize::from(spec_columns));
+            let mut specs = specs.into_iter().peekable();
+            let mut lists = Vec::new();
+            while specs.peek().is_some() {
+                lists.push(self.info_list(specs.by_ref().take(rows).collect()));
+            }
+            // The figures' column gap: the columns line up with an even grid of figures.
+            div()
+                .grid()
+                .grid_cols(lists.len() as u16)
+                .gap_x(px(STAT_GAP_X))
+                // A shorter column keeps its row spacing.
+                .items_start()
+                .children(lists)
+                .into_any_element()
+        } else {
+            self.info_list(specs)
+        };
         let info = div().min_w_0().child(info);
         div()
             .mt(px(20.))
             .flex_shrink_0()
             .flex()
-            .gap(px(STATS_GAP))
             .map(|d| {
                 if stacked {
-                    d.flex_col().child(grid.w_full()).child(info.w_full())
+                    d.flex_col()
+                        .gap(px(STACK_GAP))
+                        .child(grid.w_full())
+                        .child(info.w_full())
                 } else {
-                    d.items_start()
+                    d.gap(px(STATS_GAP))
+                        .items_start()
                         .child(
                             grid.flex_grow(if cpu { 1. } else { 1.1 })
                                 .flex_shrink(1.)
@@ -1778,7 +2167,7 @@ impl Desktop {
                 efficiency = count(CoreKind::Efficient)
             ),
         };
-        let info = self.info_list(vec![
+        let specs = vec![
             (label("performance.cpu.baseSpeed"), base_value),
             (
                 label("performance.cpu.sockets"),
@@ -1809,8 +2198,8 @@ impl Desktop {
                 tr!("performance.cpu.cache", level = 3),
                 plain(fmt_cache(number(cpu, "l3"))),
             ),
-        ]);
-        out.push(self.perf_stats(stats, info, true, window));
+        ];
+        out.push(self.perf_stats(stats, specs, true, window));
         if hw["cpuSensors"].is_null() && values(&hw["thermal"]).is_empty() {
             out.push(self.perf_note(label("performance.cpu.thermalMissing")));
         }
@@ -2690,7 +3079,7 @@ impl Desktop {
             ),
             bar.into_any_element(),
             legend.into_any_element(),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     fn disk_view(
@@ -2912,7 +3301,7 @@ impl Desktop {
                     ),
                 )
                 .into_any_element(),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     /// Addresses past the first three fold behind a toggle.
@@ -3071,7 +3460,7 @@ impl Desktop {
                     ]),
                 cx,
             ),
-            self.perf_stats(stats, self.info_list(rows), false, window),
+            self.perf_stats(stats, rows, false, window),
         ]
     }
     fn battery_view(
@@ -3252,7 +3641,7 @@ impl Desktop {
                     .into_any_element(),
             );
         }
-        out.push(self.perf_stats(stats, self.info_list(rows), false, window));
+        out.push(self.perf_stats(stats, rows, false, window));
         if let Some(health) = health.filter(|h| *h < 80.) {
             out.push(self.perf_note(tr!(
                 "performance.battery.wornNote",
@@ -3265,7 +3654,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{cpu_power, stats_layout};
+    use super::{StatsLayout, cpu_power, stats_layout};
     use serde_json::json;
 
     #[test]
@@ -3289,11 +3678,93 @@ mod tests {
     #[test]
     fn performance_figures_and_specs_stack_before_large_text_collides() {
         for cpu in [false, true] {
-            assert!(stats_layout(480., cpu, 1.).0);
-            assert!(!stats_layout(900., cpu, 1.).0);
-            assert!(stats_layout(900., cpu, 20. / 13.).0);
-            assert_eq!(stats_layout(80., cpu, 20. / 13.).1, 1);
-            assert!(stats_layout(1200., cpu, 20. / 13.).1 <= stats_layout(1200., cpu, 1.).1);
+            let layout = |width, scale| stats_layout(width, cpu, scale, 10, 8);
+            assert!(layout(480., 1.).stacked);
+            assert!(!layout(900., 1.).stacked);
+            // Large text stacks them, in columns no narrower than it allows.
+            let large = layout(900., 20. / 13.);
+            let columns = f32::from(large.columns);
+            let column = (900. - (columns - 1.) * super::STAT_GAP_X) / columns;
+            assert!(large.stacked && column >= super::STAT_TIGHT * 20. / 13.);
+            assert_eq!(layout(80., 20. / 13.).columns, 1);
+        }
+    }
+
+    /// Rows of figures and of specs a layout takes, and whether one is under the other.
+    fn rows(layout: StatsLayout, figures: usize, specs: usize) -> (usize, usize) {
+        (
+            figures.div_ceil(usize::from(layout.columns)),
+            specs.div_ceil(usize::from(layout.spec_columns)),
+        )
+    }
+
+    #[test]
+    fn the_default_window_spreads_figures_and_specs_over_its_width() {
+        // The detail card of a 1000 px window beside the default device list.
+        let width = 664.;
+        // A hybrid CPU with sensors: ten figures in two rows, the specs in two columns.
+        let cpu = stats_layout(width, true, 1., 10, 8);
+        assert!(cpu.stacked);
+        assert_eq!(rows(cpu, 10, 8), (2, 4));
+        // Tighter columns only where they spare a row; several rows are even.
+        assert_eq!(stats_layout(width, false, 1., 7, 8).columns, 4);
+        assert_eq!(stats_layout(width, false, 1., 6, 4).columns, 3);
+        assert_eq!(stats_layout(width, false, 1., 5, 4).columns, 5);
+        assert_eq!(stats_layout(width, false, 1., 2, 5).columns, 4);
+        // No column of specs for a single row.
+        assert_eq!(stats_layout(width, false, 1., 2, 2).spec_columns, 1);
+        assert_eq!(stats_layout(width, false, 1., 2, 3).spec_columns, 2);
+        // A narrow card keeps the specs in one list.
+        assert_eq!(stats_layout(464., true, 1., 10, 8).spec_columns, 1);
+    }
+
+    #[test]
+    fn a_wider_card_takes_no_more_height() {
+        // A figure is 44 px with 14 px between rows, a spec 18 px with 6 px.
+        let height = |layout: StatsLayout, figures: usize, specs: usize| {
+            let (figure_rows, spec_rows) = rows(layout, figures, specs);
+            let figures = figure_rows as f32 * 58. - 14.;
+            let specs = spec_rows as f32 * 24. - 6.;
+            if layout.stacked {
+                figures + super::STACK_GAP + specs
+            } else {
+                figures.max(specs)
+            }
+        };
+        for cpu in [false, true] {
+            for (figures, specs) in [
+                (11, 8),
+                (10, 8),
+                (8, 8),
+                (7, 8),
+                (7, 7),
+                (6, 4),
+                (5, 4),
+                (2, 5),
+            ] {
+                let mut previous = (f32::INFINITY, true);
+                for width in (300..=1600).map(|width| width as f32) {
+                    let layout = stats_layout(width, cpu, 1., figures, specs);
+                    let now = height(layout, figures, specs);
+                    // Going side by side may cost the gap of a row of figures:
+                    // the arrangement follows the width alone, the same for
+                    // every device.
+                    let allowed = if layout.stacked == previous.1 {
+                        0.
+                    } else {
+                        super::STAT_GAP_Y
+                    };
+                    assert!(
+                        now <= previous.0 + allowed,
+                        "{figures} figures and {specs} specs grow from {} to {now} at {width}",
+                        previous.0
+                    );
+                    previous = (now, layout.stacked);
+                    if !layout.stacked {
+                        assert_eq!(layout.spec_columns, 1);
+                    }
+                }
+            }
         }
     }
 }

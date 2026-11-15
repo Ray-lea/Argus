@@ -1,0 +1,43 @@
+{
+  "window": [1600, 1000],
+  "steps": [
+    { "note": "Automatic widths: the columns take what their contents need and no more; the long service name is cut short." },
+    { "control": { "page": "processes", "pointerOutside": true }, "wait": 2500, "inspect": "columns", "label": "wide",
+      "expect": { "state.scroll.maxX": 0, "state.visible.1.width": 64, "state.visible.2.width": 64 }, "capture": "wide" },
+    { "probe": "size 1100 800", "wait": 1500, "inspect": "columns", "label": "narrow", "capture": "narrow" },
+    { "probe": "size 1600 1000", "wait": 1500 },
+
+    { "note": "The column menu: auto-fit this column (nothing to restore yet) and full width." },
+    { "control": { "pointer": { "at": "header:cpu", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "header-menu",
+      "expect": { "state.items.3": "自动调整此列宽度", "state.disabled.3": true, "state.items.14": "全宽" }, "capture": "header-menu" },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+
+    { "note": "Hover the CPU column's edge: an accent line on the edge, then the hint." },
+    { "control": { "pointer": { "at": "header:cpu", "event": "hover", "dx": 33 } }, "wait": 300, "capture": "edge-hover" },
+    { "wait": 900, "capture": "edge-hint" },
+    { "crop": { "from": "edge-hint", "name": "edge-hint-crop", "region": [400, 230, 420, 160], "scale": 2 } },
+
+    { "note": "Drag the edge: the line runs down the rows; let go, the column keeps the width and the others stay." },
+    { "record": { "name": "resize", "ms": 2600 }, "wait": 700 },
+    { "control": { "pointer": { "at": "header:cpu", "event": "down", "dx": 33 } }, "wait": 150 },
+    { "control": { "pointer": { "event": "move", "dx": 50 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": 75 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": 93 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": 80 } }, "wait": 300, "capture": "resizing" },
+    { "control": { "pointer": { "event": "up", "dx": 80 } }, "wait": 1000, "inspect": "columns", "label": "resized",
+      "expect": { "state.visible.2.key": "cpu", "state.visible.0.width": 410, "state.visible.3.width": 80 }, "capture": "resized" },
+    { "control": { "pointer": { "at": "header:cpu", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "menu-overridden",
+      "expect": { "state.disabled.3": false } },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+
+    { "note": "Double-click the edge: the column is washed in the accent and eases back to its automatic width." },
+    { "record": { "name": "restore", "ms": 2000 }, "wait": 700 },
+    { "control": { "pointer": { "at": "header:cpu", "event": "double", "dx": 56 } }, "wait": 1300, "inspect": "columns", "label": "restored",
+      "expect": { "state.visible.2.width": 64, "state.preferences.overrides": {} }, "capture": "restored" },
+    { "sheet": { "name": "restore-sheet", "from": "restore", "region": [400, 230, 420, 200], "columns": 6, "every": 3 } },
+
+    { "note": "Full width: the name column takes the room the others leave." },
+    { "control": { "preference": { "processColumnsFullWidth": true } }, "wait": 900, "inspect": "columns", "label": "full", "capture": "full-width",
+      "expect": { "state.preferences.fullWidth": true } }
+  ]
+}

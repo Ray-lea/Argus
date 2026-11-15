@@ -200,6 +200,16 @@ try {
     await page.goto(base + "/en/");
     await page.waitFor(() => document.querySelector(".stage .a-nav")?.textContent.includes("Processes"));
     await clean(page, "/en/");
+
+    // A chosen language opens from the root address; a link within the site
+    // keeps the page asked for and offers the chosen one instead.
+    await page.eval(() => localStorage.setItem("argus-language", "en"));
+    await page.goto(base + "/");
+    await page.waitFor(() => location.pathname === "/en/");
+    await page.eval(() => { location.href = "/"; });
+    await page.waitFor(() => location.pathname === "/" && document.querySelector(".language-offer")?.lang === "en-US");
+    await clean(page, "language choice");
+    await page.eval(() => localStorage.removeItem("argus-language"));
     results.push({ width, theme: home.theme, app, article: target, searchResults: hits });
     await page.close();
   }

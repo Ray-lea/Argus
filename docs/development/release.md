@@ -98,6 +98,16 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 使用 `0.3.4+583.g4c638d7` 可保持与 `0.3.4` 相同的版本优先级；`0.3.4-583` 属于预发布版本，优先级低于 `0.3.4`。发布工作流把 `ARGUS_BUILD_METADATA` 置空后构建，并在静默安装后核对 EXE 的版本；本地构建也可用这个变量指定元数据，置空则不附加。打包脚本通过无窗口的 `--argus-build-info` 模式读取实际 EXE 的版本与构建类型，拒绝开发配置程序或包版本不一致的程序。
 
+## 更新日志的内容
+
+脚本按提交生成的条目只是草稿，发布前按以下规则整理成面向用户的更新日志：
+
+- 只收录应用内的功能与其他用户可明显感知的变化。官网、CI、构建脚本、测试和仅影响诊断日志的改动不列入。
+- 以上一个版本为基准：本周期新增的功能在之后又有修复或调整时，并入该功能条目，只写最终行为，不再单列修复；“修复”只列上一个版本已存在的问题。同一类型的功能或修复可合并为一条。
+- 用书面语，按 ASD-STE100 的原则写：短句，一句只说一件事，主动语态，术语与 `locales/` 的界面文案一致。单条控制在两三句，避免过长。
+- 外部贡献者的拉取请求在相关条目末尾注明贡献者与编号，并分别链接到其 GitHub 主页和该拉取请求。简体中文、繁体中文与日文写作 `（[@用户名](https://github.com/用户名) [#编号](https://github.com/Ray-lea/Argus/pull/编号)）`，多位贡献者以“、”分隔；其他语言写作 ` ([@用户名](…) [#编号](…))`，以 `, ` 分隔。同一贡献者的多个拉取请求依次列出编号。维护者自己的拉取请求不注明。
+- 条目对应的 issue 同样在末尾链接 `https://github.com/Ray-lea/Argus/issues/编号`，括号与分隔符同上；同一条目既有贡献者又有 issue 时写在同一对括号内。
+
 ## 发布步骤
 
 1. 切到 `main`，工作区干净，`start.bat check` 通过。第一次发布前先配置[更新签名密钥](#更新签名密钥)；`resources/app.json` 里没有公钥时脚本会拒绝发布。
@@ -112,17 +122,30 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
    ```
 
    脚本在本地同步四处版本号，写入中文发布说明与其他语言的草稿（小节标题已换成对应语言），创建 `chore(release): vX.Y.Z` 提交和附注标签 `vX.Y.Z`。首次打标签时默认使用当前版本号。
-5. 润色 `changelog/zh-CN.md`，把其他语言文件中的草稿逐条译成对应语言，用词与 `locales/<语言标签>` 的界面文案一致。带标签的条目在繁体中文与日文中写作 `**标签**：正文`（全角冒号），其他语言写作 `**Label**: text`（冒号紧跟标签，法文也不加空格），应用才能分出标签。保留脚本生成的二级版本标题 `## [X.Y.Z](比较链接) - YYYY-MM-DD`，条目内用三级标题。修改后执行 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 将本地标签移到最终提交。也可事先提交各语言的条目，由发布脚本补入比较链接和日期。
+5. 按[更新日志的内容](#更新日志的内容)润色 `changelog/zh-CN.md`，把其他语言文件中的草稿逐条译成对应语言，用词与 `locales/<语言标签>` 的界面文案一致。带标签的条目在繁体中文与日文中写作 `**标签**：正文`（全角冒号），其他语言写作 `**Label**: text`（冒号紧跟标签，法文也不加空格），应用才能分出标签。保留脚本生成的二级版本标题 `## [X.Y.Z](比较链接) - YYYY-MM-DD`，条目内用三级标题。修改后执行 `git commit --amend`，再用 `git tag -fa vX.Y.Z -m "Argus vX.Y.Z"` 将本地标签移到最终提交。也可事先提交各语言的条目，由发布脚本补入比较链接和日期。
 6. 推送前在本地核对：`node scripts/release.mjs verify vX.Y.Z`。它与发布工作流的第一步做同样的核对，读取条目的规则与应用相同：其他语言的条目缺失、仍含中文原文（链接地址除外；繁体中文与日文按简体字形判断）、小节与条目数和中文条目不同或日期不同时不通过；另外确认标签指向当前提交、版本文件和各语言更新日志没有未提交的改动。`node scripts/release.mjs notes X.Y.Z` 打印 GitHub Release 的正文：顶部一行按 README 的写法列出各语言，简体中文与英文加粗，其余语言链接到该标签下对应文件中的版本条目；之后是完整的“简体中文”和“English”两节。
 7. 推送分支和标签：`git push --atomic origin main vX.Y.Z`。`release.yml` 随即开始检查和构建，完成后版本出现在 GitHub Releases。
 
 推送前想撤销：`git tag -d vX.Y.Z`，然后 `git reset --hard HEAD~1`。
 
-发布工作流失败时，修复后发布新的修订版本，不要移动已经推送的标签。
+发布工作流失败时，按是否已经发布处理：
+
+- **尚未发布**：失败发生在“Publish release”步骤之前（核对、检查、构建、签名或静默安装测试），GitHub 上没有该标签的 Release，清单与官网也未更新。可在 `main` 上提交修复，正常推送（快进，不改写 `main` 的历史），然后把标签移到修复后的提交并覆盖推送，发布工作流随即重新运行：
+
+  ```bash
+  gh release view vX.Y.Z                            # 应提示 release not found
+  git push origin main
+  git tag -fa vX.Y.Z -m "Argus vX.Y.Z"              # 当前提交须包含发布提交
+  node scripts/release.mjs verify vX.Y.Z
+  git push origin +refs/tags/vX.Y.Z:refs/tags/vX.Y.Z
+  ```
+
+  失败与代码无关（例如偶发的网络错误）时，也可直接在 Actions 页面重新运行失败的任务，标签保持不动。
+- **已经发布**：“Publish release”已执行，Release、清单或官网中任何一项已对外可见。不要移动或删除该标签，修复后发布新的修订版本；问题严重时按[发布后发现严重问题时](#发布后发现严重问题时)处理。
 
 ### 推送标签前在 CI 上检查
 
-推送标签后，`release.yml` 先运行 `check.yml`，此时失败，该版本号即作废。`start.bat check` 不含发行构建和许可声明检查，也不在 CI 的环境里运行（英文 Windows、管理员账户、当时最新的 stable Rust，Clippy 与测试带 `--locked`），所以先推送 `main`，对它手动运行一次 `check.yml`，通过后再运行 `pnpm release`：
+推送标签后，`release.yml` 先运行 `check.yml`，此时失败需要修复后覆盖标签重新发布（见上文）。`start.bat check` 不含发行构建和许可声明检查，也不在 CI 的环境里运行（英文 Windows、管理员账户、当时最新的 stable Rust，Clippy 与测试带 `--locked`），所以先推送 `main`，对它手动运行一次 `check.yml`，通过后再运行 `pnpm release`：
 
 ```bash
 git push origin main

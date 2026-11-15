@@ -63,6 +63,70 @@ fn frame_at(records: &[Value], cursor: Option<i64>, peak: bool) -> Option<i64> {
     point["frameTs"].as_i64().or_else(|| point["ts"].as_i64())
 }
 
+/// Keep the resolved frame only while the same explicit selection survives.
+fn selected_frame(
+    records: &[Value],
+    cursor: Option<i64>,
+    peak: bool,
+    selection: Option<&Value>,
+) -> Option<i64> {
+    if let Some(at) = cursor
+        && let Some(saved) = selection
+        && saved["cursor"].as_i64() == Some(at)
+        && saved["peak"].as_bool() == Some(peak)
+        && let Some(frame) = saved["frame"].as_i64()
+    {
+        return Some(frame);
+    }
+    frame_at(records, cursor, peak)
+}
+
+fn bucket_of(at: i64, window: &Value) -> Option<usize> {
+    let (from, to, buckets) = (
+        window["from"].as_i64()?,
+        window["to"].as_i64()?,
+        window["buckets"].as_u64()? as usize,
+    );
+    let span = to.checked_sub(from).filter(|span| *span > 0)?;
+    if buckets == 0 || at < from || at > to {
+        return None;
+    }
+    Some(
+        (((at.checked_sub(from)? as f64 / span as f64) * buckets as f64) as usize).min(buckets - 1),
+    )
+}
+
+/// A peak belongs to its own bucket, even when its time is nearer another mean.
+fn selected_point<'a>(
+    records: &'a [Value],
+    cursor: i64,
+    peak: bool,
+    frame: Option<i64>,
+    window: &Value,
+) -> Option<&'a Value> {
+    if peak
+        && let Some(point) = records
+            .iter()
+            .find(|p| p["cpuPeakTs"].as_i64() == Some(cursor))
+    {
+        return Some(point);
+    }
+    if let Some(frame) = frame {
+        if let Some(bucket) = bucket_of(frame, window) {
+            return records
+                .iter()
+                .find(|p| p["ts"].as_i64().and_then(|at| bucket_of(at, window)) == Some(bucket));
+        }
+        if let Some(point) = records
+            .iter()
+            .find(|p| p["frameTs"].as_i64() == Some(frame))
+        {
+            return Some(point);
+        }
+    }
+    records.iter().find(|p| p["ts"].as_i64() == Some(cursor))
+}
+
 pub(super) fn range_label(id: &str) -> String {
     let hours = RANGES
         .iter()
@@ -378,8 +442,21 @@ impl Desktop {
         let peak = self
             .history_cursor
             .is_some_and(|at| self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at));
-        let moment = frame_at(records, self.history_cursor, peak)
-            .unwrap_or(self.history_cursor.unwrap_or(now));
+        let moment = selected_frame(
+            records,
+            self.history_cursor,
+            peak,
+            self.data.get("historySelection"),
+        )
+        .unwrap_or(self.history_cursor.unwrap_or(now));
+        if let Some(cursor) = self.history_cursor {
+            self.data.insert(
+                "historySelection".into(),
+                json!({"cursor":cursor,"peak":peak,"frame":moment}),
+            );
+        } else {
+            self.data.remove("historySelection");
+        }
         if self.data.get("historyMomentAt") != Some(&json!(moment)) {
             self.data.insert("historyMomentAt".into(), json!(moment));
             self.request(
@@ -402,7 +479,12 @@ impl Desktop {
         let (Some(from), Some(to)) = (args["from"].as_i64(), args["to"].as_i64()) else {
             return;
         };
-        let cursor = kept(self.history_cursor, from, to);
+        let cursor = kept(self.history_cursor, from, to).filter(|_| {
+            self.data
+                .get("historySelection")
+                .and_then(|selection| selection["frame"].as_i64())
+                .is_none_or(|frame| kept(Some(frame), from, to).is_some())
+        });
         if cursor != self.history_cursor {
             self.history_cursor = cursor;
         }
@@ -424,6 +506,7 @@ impl Desktop {
             }
             self.history_cursor = None;
             self.data.remove("historyPeakAt");
+            self.data.remove("historySelection");
             self.load_history(window, cx);
             cx.notify();
             return true;
@@ -447,6 +530,7 @@ impl Desktop {
         };
         self.history_cursor = Some(at);
         self.data.remove("historyPeakAt");
+        self.data.remove("historySelection");
         self.load_history(window, cx);
         cx.notify();
         true
@@ -475,8 +559,13 @@ impl Desktop {
         let span = (to - from).max(1.);
         let buckets = self
             .data
-            .get("historyQuery")
-            .and_then(|query| query["buckets"].as_f64())
+            .get("historyWindow")
+            .and_then(|window| window["buckets"].as_f64())
+            .or_else(|| {
+                self.data
+                    .get("historyQuery")
+                    .and_then(|query| query["buckets"].as_f64())
+            })
             .unwrap_or(records.len().max(1) as f64);
         let step = (span / buckets.max(1.)).max(FRAME);
         let ts = records.iter().map(|r| number(r, "ts")).collect::<Vec<_>>();
@@ -508,12 +597,23 @@ impl Desktop {
         .collect::<Vec<_>>();
         let shown_at =
             |at: f64| point_at(&ts, &joined, step, at).and_then(|index| records.get(index));
+        let picked = self.history_cursor.and_then(|at| {
+            let selection = self.data.get("historySelection");
+            selected_point(
+                &records,
+                at,
+                self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at),
+                selection.and_then(|saved| saved["frame"].as_i64()),
+                self.data.get("historyWindow").unwrap_or(&Value::Null),
+            )
+        });
         let read_ts = self.history_hover.or(self.history_cursor);
-        let readout = match read_ts {
-            Some(at) => shown_at(at as f64),
-            None => records.last(),
+        let readout = match (self.history_hover, self.history_cursor) {
+            (Some(at), _) => shown_at(at as f64),
+            (None, Some(_)) => picked,
+            (None, None) => records.last(),
         };
-        let cursor_point = read_ts.and_then(|at| shown_at(at as f64));
+        let cursor_point = read_ts.and(readout);
         let row = px((f32::from(window.viewport_size().height) * 0.075).clamp(36., 96.));
         let compact = f32::from(window.viewport_size().height) <= 720.;
 
@@ -873,6 +973,7 @@ impl Desktop {
                     if let Some(at) = click_time(event.position) {
                         this.history_cursor = Some(at);
                         this.data.remove("historyPeakAt");
+                        this.data.remove("historySelection");
                         this.load_history(window, cx);
                         cx.notify();
                     }
@@ -941,11 +1042,10 @@ impl Desktop {
             Some(time) => tr!("history.busiestAt", time = moment_label(time)),
             None => label("history.busiest"),
         };
-        let selected_point = match self.history_cursor {
-            Some(at) => records.iter().find(|point| {
-                point["ts"].as_i64() == Some(at) || point["cpuPeakTs"].as_i64() == Some(at)
-            }),
-            None => records.last(),
+        let selected_point = if self.history_cursor.is_some() {
+            picked
+        } else {
+            records.last()
         };
         let peak_at = selected_point.and_then(|point| point["cpuPeakTs"].as_i64());
         let summary = selected_point.and_then(|point| {
@@ -1231,7 +1331,10 @@ impl Desktop {
         let near = self
             .tips
             .begin(window)
-            .then(|| tips::row_under(&rows_scroll, TABLE_ROW, rows.len(), window))
+            .then(|| {
+                self.tips
+                    .row_under(&rows_scroll, TABLE_ROW, rows.len(), window)
+            })
             .flatten();
         let moved = self.tips.clone();
         let mut body = div()
@@ -1365,12 +1468,83 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAY, HOUR, MINUTE, frame_at, joins, kept, plan_load, point_at, recorded_target,
-        refresh_every, span_of, stepped,
+        DAY, HOUR, MINUTE, bucket_of, frame_at, joins, kept, plan_load, point_at, recorded_target,
+        refresh_every, selected_frame, selected_point, span_of, stepped,
     };
     use serde_json::{Value, json};
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn a_kept_frame_survives_rebucketing_without_turning_a_gap_click_into_a_frame() {
+        let cursor = NOW + 401_666;
+        let old = vec![json!({"ts":cursor,"frameTs":NOW,"cpuPeakTs":NOW+600_000})];
+        let frame = selected_frame(&old, Some(cursor), false, None).unwrap();
+        let saved = json!({"cursor":cursor,"peak":false,"frame":frame});
+        let regrouped = vec![
+            json!({"ts":NOW,"frameTs":NOW,"cpuPeakTs":NOW}),
+            json!({"ts":NOW+602_500,"frameTs":NOW+600_000,"cpuPeakTs":NOW+605_000}),
+        ];
+        assert_eq!(
+            selected_frame(&regrouped, Some(cursor), false, Some(&saved)),
+            Some(NOW)
+        );
+        assert_eq!(
+            selected_frame(&regrouped, Some(cursor), false, None),
+            Some(cursor)
+        );
+        assert_eq!(
+            selected_frame(&regrouped, Some(NOW + 605_000), true, Some(&saved)),
+            Some(NOW + 605_000)
+        );
+    }
+
+    #[test]
+    fn a_selected_peak_uses_its_own_bucket_instead_of_the_nearest_average() {
+        let records = vec![
+            json!({"ts":NOW+55_000,"frameTs":NOW+55_000,"cpuPeakTs":NOW+55_000,"cpu":2,"cpuPeak":2}),
+            json!({"ts":NOW+97_500,"frameTs":NOW+60_000,"cpuPeakTs":NOW+60_000,"cpu":34,"cpuPeak":98}),
+        ];
+        let picked = selected_point(
+            &records,
+            NOW + 60_000,
+            true,
+            Some(NOW + 60_000),
+            &Value::Null,
+        )
+        .unwrap();
+        assert_eq!(picked["cpu"], 34);
+        assert_eq!(picked["cpuPeak"], 98);
+        let collision = vec![json!({"ts":NOW+60_000,"frameTs":NOW,"cpuPeakTs":NOW+60_000})];
+        assert_eq!(
+            selected_frame(&collision, Some(NOW + 60_000), false, None),
+            Some(NOW)
+        );
+        assert_eq!(
+            selected_frame(&collision, Some(NOW + 60_000), true, None),
+            Some(NOW + 60_000)
+        );
+    }
+
+    #[test]
+    fn a_kept_frame_readout_uses_the_applied_windows_bucket_grid() {
+        let window = json!({"from":NOW-1_000_000,"to":NOW+3_800_000,"buckets":4});
+        let records = vec![
+            json!({"ts":NOW,"frameTs":NOW,"cpuPeakTs":NOW,"cpu":2}),
+            json!({"ts":NOW+602_500,"frameTs":NOW+600_000,"cpuPeakTs":NOW+605_000,"cpu":8}),
+        ];
+        let picked = selected_point(&records, NOW + 401_666, false, Some(NOW), &window).unwrap();
+        assert_eq!(picked["ts"], NOW);
+        assert_eq!(bucket_of(NOW - 1_000_001, &window), None);
+        assert_eq!(
+            bucket_of(NOW, &json!({"from":NOW,"to":NOW,"buckets":4})),
+            None
+        );
+        assert_eq!(
+            bucket_of(NOW, &json!({"from":NOW,"to":NOW+1,"buckets":0})),
+            None
+        );
+    }
 
     #[test]
     fn buckets_open_real_frames_without_reaching_across_gaps() {

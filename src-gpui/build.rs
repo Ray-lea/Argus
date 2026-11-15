@@ -17,8 +17,13 @@ fn main() {
         .map(std::path::PathBuf::from)
         .or_else(|| {
             (std::env::var("PROFILE").as_deref() == Ok("release")).then(|| {
+                // The helpers are next to Cargo's `build` directory. How deep
+                // OUT_DIR lies below it depends on the Cargo version
+                // (`build/<package>-<hash>/out`, `build/<package>/<hash>/out`
+                // since 1.100).
                 out.ancestors()
-                    .nth(3)
+                    .find(|path| path.file_name().is_some_and(|name| name == "build"))
+                    .and_then(std::path::Path::parent)
                     .expect("Cargo profile directory")
                     .to_owned()
             })

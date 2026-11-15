@@ -35,7 +35,8 @@
       "one": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
       "many": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados).",
       "other": "Procesos finalizados: {count}; sin finalizar: {failed} (acceso denegado o ya finalizados)."
-    }
+    },
+    "unchecked": "Procesos finalizados: {count}; sin finalizar: {failed}, incluidos {unchecked} cuyo estado crítico no se pudo comprobar."
   },
   "error": {
     "accessDenied": "No se pudo finalizar {name}: acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador. Los procesos protegidos pueden seguir restringidos.",
@@ -43,7 +44,8 @@
     "critical": "{name} es un proceso crítico del sistema. Finalizarlo provocaría un fallo de Windows, por lo que se ha bloqueado la operación.",
     "refused": "{name} no se puede finalizar.",
     "serviceOutdated": "No se pudo finalizar {name}: acceso denegado. La versión del servicio privilegiado es incompatible. Actualice el servicio y vuelva a intentarlo.",
-    "generic": "No se pudo finalizar {name}: {error}"
+    "generic": "No se pudo finalizar {name}: {error}",
+    "criticalityUnknown": "No se pudo comprobar si {name} es un proceso crítico del sistema. Se bloqueó la finalización."
   },
   "priority": {
     "confirmTitle": "¿Establecer la prioridad de {name} en Tiempo real?",
@@ -76,6 +78,41 @@
         "other": "Modo de eficiencia desactivado en {count} procesos; sin cambiar: {failed} (acceso denegado o ya finalizados)."
       },
       "done": "Modo de eficiencia desactivado para {name}."
+    }
+  },
+  "suspend": {
+    "title": "¿Suspender {name}?",
+    "body": "Todos los subprocesos del PID {pid} se detendrán hasta que se reanude. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+    "bodyGroup": {
+      "one": "Se suspenderá {count} proceso de {name} hasta que se reanude. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+      "many": "Se suspenderán los {count} procesos de {name} hasta que se reanuden. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar.",
+      "other": "Se suspenderán los {count} procesos de {name} hasta que se reanuden. Sus ventanas dejarán de responder y las conexiones de red pueden agotar el tiempo de espera; algunos programas (juegos, aplicaciones con antitrampas o autoprotección) pueden fallar."
+    },
+    "confirm": "Suspender",
+    "error": {
+      "accessDenied": "Acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador; los procesos protegidos pueden seguir sin estar disponibles.",
+      "refused": "{name} no se puede suspender ni reanudar.",
+      "serviceOutdated": "Acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio y vuelve a intentarlo.",
+      "critical": "{name} es un proceso crítico del sistema. Suspenderlo haría que Windows dejara de responder, por lo que se ha bloqueado la operación.",
+      "stillSuspended": "Es posible que {name} siga suspendido: no se pudieron reanudar algunos subprocesos o leer su estado. Inténtelo de nuevo."
+    },
+    "on": {
+      "failed": "No se pudo suspender {name}",
+      "partial": {
+        "one": "Suspendido {count} proceso; sin suspender: {failed}. {error}",
+        "many": "Suspendidos {count} procesos; sin suspender: {failed}. {error}",
+        "other": "Suspendidos {count} procesos; sin suspender: {failed}. {error}"
+      },
+      "done": "{name} suspendido."
+    },
+    "off": {
+      "failed": "No se pudo reanudar {name}",
+      "partial": {
+        "one": "Reanudado {count} proceso; sin reanudar: {failed}. {error}",
+        "many": "Reanudados {count} procesos; sin reanudar: {failed}. {error}",
+        "other": "Reanudados {count} procesos; sin reanudar: {failed}. {error}"
+      },
+      "done": "{name} reanudado."
     }
   },
   "ruleScope": {

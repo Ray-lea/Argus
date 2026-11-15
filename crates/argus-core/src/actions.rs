@@ -4,23 +4,22 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
-use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME};
+use windows::Win32::Foundation::{
+    ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, FILETIME, STATUS_ACCESS_DENIED,
+};
 use windows::Win32::System::Threading::{
     ABOVE_NORMAL_PRIORITY_CLASS, BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcessId,
-    GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS,
+    GetPriorityClass, GetProcessTimes, HIGH_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, IsProcessCritical,
     NORMAL_PRIORITY_CLASS, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_CREATION_FLAGS,
     PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
-    PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_SET_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
+    PROCESS_POWER_THROTTLING_STATE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_INFORMATION,
+    PROCESS_SUSPEND_RESUME, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, ProcessPowerThrottling,
     REALTIME_PRIORITY_CLASS, SetPriorityClass, SetProcessInformation, TerminateProcess,
     WaitForSingleObject,
 };
 
 use crate::process::list_lineage;
 use crate::util::{OwnedHandle, filetime_ticks, ticks_to_unix_ms};
-
-const PROCESS_BREAK_ON_TERMINATION: PROCESSINFOCLASS = PROCESSINFOCLASS(29);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "message", rename_all = "camelCase")]
@@ -31,12 +30,18 @@ pub enum ActionError {
     NotFound,
     /// Terminating it would crash the system; requires explicit confirmation.
     Critical,
+    /// The safety check failed; this never permits termination, including force.
+    CriticalityUnknown,
     /// Refused: the System process, Idle, or Argus itself.
     Refused,
     /// Denied to Argus's own rights, which acted because the privileged
     /// service speaks another protocol and refused it: updating the service
     /// lets it act again. Only the host reports it; the service never sends it.
     ServiceOutdated,
+    /// Resuming could not be confirmed: every thread is still suspended
+    /// (another tool suspended the process more than once, so it needs
+    /// another resume), or the thread states could not be read.
+    StillSuspended,
     Os(String),
 }
 
@@ -58,8 +63,10 @@ impl ActionError {
             Self::AccessDenied => "access denied".into(),
             Self::NotFound => "target exited or identity changed".into(),
             Self::Critical => "critical process requires confirmation".into(),
+            Self::CriticalityUnknown => "process criticality could not be checked".into(),
             Self::Refused => "operation refused by policy".into(),
             Self::ServiceOutdated => "privileged service protocol incompatible".into(),
+            Self::StillSuspended => "threads remain suspended or unreadable after resume".into(),
             Self::Os(message) => crate::diagnostics::failure(message),
         }
     }
@@ -109,9 +116,7 @@ pub fn terminate(pid: u32, create_time: i64, allow_critical: bool) -> Result<(),
         return Err(ActionError::Refused);
     }
     let handle = open_instance(pid, create_time, PROCESS_TERMINATE)?;
-    if !allow_critical && is_critical(pid) {
-        return Err(ActionError::Critical);
-    }
+    permit_termination(criticality(&handle), allow_critical)?;
     unsafe { TerminateProcess(handle.0, 1) }?;
     Ok(())
 }
@@ -129,9 +134,7 @@ pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
         .filter(|&&(pid, _)| pid != 0 && pid != 4 && pid != me)
         .filter_map(|&(pid, create_time)| {
             let handle = open_instance(pid, create_time, access).ok()?;
-            if is_critical(pid) {
-                return None;
-            }
+            permit_termination(criticality(&handle), false).ok()?;
             let _ = unsafe { SetPriorityClass(handle.0, HIGH_PRIORITY_CLASS) };
             unsafe { TerminateProcess(handle.0, 1) }.ok()?;
             Some(handle)
@@ -145,25 +148,24 @@ pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
     ended.len()
 }
 
-/// Whether the process is marked critical (terminating it bugchecks the
-/// system). Needs full query access, so this only detects it when elevated —
-/// which is also the only case where termination could succeed.
-fn is_critical(pid: u32) -> bool {
-    let Ok(handle) = (unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) }) else {
-        return false;
-    };
-    let handle = OwnedHandle(handle);
-    let mut flag = 0u32;
-    let status = unsafe {
-        NtQueryInformationProcess(
-            handle.0,
-            PROCESS_BREAK_ON_TERMINATION,
-            (&mut flag as *mut u32).cast(),
-            4,
-            std::ptr::null_mut(),
-        )
-    };
-    status.0 >= 0 && flag != 0
+/// Query the same instance handle used for termination. IsProcessCritical
+/// requires only QUERY_LIMITED_INFORMATION, which open_instance already has.
+/// A denied or failed check is distinct from a successful negative answer.
+fn criticality(handle: &OwnedHandle) -> Result<bool, ActionError> {
+    let mut critical = windows::core::BOOL::default();
+    unsafe { IsProcessCritical(handle.0, &mut critical) }
+        .inspect_err(|error| {
+            crate::diagnostics::windows_failure("process action IsProcessCritical", error)
+        })
+        .map_err(|_| ActionError::CriticalityUnknown)?;
+    Ok(critical.as_bool())
+}
+
+fn permit_termination(critical: Result<bool, ActionError>, allow: bool) -> Result<(), ActionError> {
+    match critical? {
+        true if !allow => Err(ActionError::Critical),
+        _ => Ok(()),
+    }
 }
 
 /// A process priority class.
@@ -249,11 +251,131 @@ pub fn set_efficiency_mode(pid: u32, create_time: i64, on: bool) -> Result<(), A
     Ok(())
 }
 
+/// How long a suspend or resume waits for the live thread states to show it:
+/// the native calls return before every thread has stopped or started again,
+/// and the refresh that follows an action would read the old state.
+const SETTLE: Duration = Duration::from_millis(250);
+
+/// Image names whose stall cannot be undone from Argus, though Windows does
+/// not mark them critical: the Desktop Window Manager (the whole screen,
+/// Argus's window included, stops updating) and Argus's own privileged
+/// service (`argus-service-<pid>-<stamp>.exe`, which every Argus waits on).
+fn essential_image(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name == "dwm.exe" || (name.starts_with("argus-service-") && name.ends_with(".exe"))
+}
+
+/// The file name of the process's image, from a handle with limited query rights.
+fn image_name(handle: windows::Win32::Foundation::HANDLE) -> Result<String, ActionError> {
+    use windows::Win32::System::Threading::{PROCESS_NAME_WIN32, QueryFullProcessImageNameW};
+    let mut buffer = [0u16; 1024];
+    let mut length = buffer.len() as u32;
+    unsafe {
+        QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+    }?;
+    let path = String::from_utf16_lossy(&buffer[..length as usize]);
+    Ok(path.rsplit('\\').next().unwrap_or_default().to_owned())
+}
+
+fn require_suspendable(handle: windows::Win32::Foundation::HANDLE) -> Result<(), ActionError> {
+    // Query the already verified instance with limited query rights. A failed
+    // query must stop the operation before any suspension.
+    let mut critical = windows::core::BOOL::default();
+    unsafe { windows::Win32::System::Threading::IsProcessCritical(handle, &mut critical) }?;
+    if critical.as_bool() {
+        return Err(ActionError::Critical);
+    }
+    if essential_image(&image_name(handle)?) {
+        return Err(ActionError::Refused);
+    }
+    Ok(())
+}
+
+/// Waits up to `SETTLE` for the instance's suspension to satisfy `done`;
+/// `None` is an instance that left the process list.
+fn settles(
+    pid: u32,
+    create_time: i64,
+    done: impl Fn(Option<crate::process::Suspension>) -> bool,
+) -> bool {
+    let start = Instant::now();
+    loop {
+        if crate::process::suspension(pid, create_time).is_ok_and(&done) {
+            return true;
+        }
+        if start.elapsed() >= SETTLE {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Suspends or resumes every thread of a process instance, the way Resource
+/// Monitor's "Suspend process" does. Suspending is refused for the System
+/// process, Argus itself, critical processes, whose stall hangs Windows, and
+/// the images `essential_image` names. Processes Windows froze are left to
+/// Windows in both directions: resuming does not thaw them.
+///
+/// Each native call moves every thread's suspend count by one, so a resume
+/// undoes exactly one suspend: threads the program or a debugger suspended
+/// on purpose stay suspended. A fully suspended process is not suspended
+/// again, so suspending twice never needs two resumes. When another tool
+/// suspended the process more than once, it stays suspended after a resume
+/// (`StillSuspended`) and each further resume takes one more off.
+pub fn set_suspended(pid: u32, create_time: i64, suspend: bool) -> Result<(), ActionError> {
+    use crate::process::{Suspension, suspension};
+    if pid == 0 || pid == 4 || pid == unsafe { GetCurrentProcessId() } {
+        return Err(ActionError::Refused);
+    }
+    if create_time <= 0 {
+        return Err(ActionError::NotFound);
+    }
+    let handle = open_instance(pid, create_time, PROCESS_SUSPEND_RESUME)?;
+    if crate::process::frozen(handle.0) {
+        return Err(ActionError::Refused);
+    }
+    let check = |status: windows::Win32::Foundation::NTSTATUS| {
+        if status == STATUS_ACCESS_DENIED {
+            return Err(ActionError::AccessDenied);
+        }
+        Ok(status.ok()?)
+    };
+    if suspend {
+        require_suspendable(handle.0)?;
+        // An unreadable state suspends anyway: skipping would leave the
+        // process running unasked.
+        if suspension(pid, create_time) == Ok(Some(Suspension::All)) {
+            return Ok(());
+        }
+        check(unsafe { crate::nt::NtSuspendProcess(handle.0) })?;
+        // Best effort: the suspension holds either way, only the next
+        // refresh might still list the process as running.
+        settles(pid, create_time, |state| {
+            matches!(state, None | Some(Suspension::All))
+        });
+        return Ok(());
+    }
+    check(unsafe { crate::nt::NtResumeProcess(handle.0) })?;
+    // Running, partly suspended by its own choice, or gone: resumed. Still
+    // fully suspended, or unreadable throughout: not confirmed.
+    if settles(pid, create_time, |state| state != Some(Suspension::All)) {
+        Ok(())
+    } else {
+        Err(ActionError::StillSuspended)
+    }
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TreeKillReport {
     pub terminated: u32,
     pub failed: u32,
+    pub criticality_unknown: u32,
     /// A descendant was denied while the privileged service needs an update
     /// (`ActionError::ServiceOutdated`), so the UI offers it. The count alone
     /// would lose that; a denied root fails the whole call with the error.
@@ -267,6 +389,7 @@ impl TreeKillReport {
             Ok(()) => self.terminated += 1,
             Err(e) => {
                 self.failed += 1;
+                self.criticality_unknown += u32::from(matches!(e, ActionError::CriticalityUnknown));
                 self.service_outdated |= matches!(e, ActionError::ServiceOutdated);
             }
         }
@@ -319,6 +442,142 @@ pub fn terminate_tree_with(
 
 #[cfg(test)]
 mod tests {
+    /// Waits up to two seconds for the suspend APCs to reach every thread.
+    fn settles(pid: u32, created: i64, want: bool) -> bool {
+        use crate::process::{Suspension, suspension};
+        let want = if want {
+            Suspension::All
+        } else {
+            Suspension::None
+        };
+        (0..40).any(|_| {
+            let now = suspension(pid, created) == Ok(Some(want));
+            if !now {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            now
+        })
+    }
+
+    /// Ends the child however the test ends: `Child` doesn't on drop, and a
+    /// suspended one would never finish on its own.
+    struct KillOnDrop(std::process::Child);
+
+    impl Drop for KillOnDrop {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    #[test]
+    fn a_resume_undoes_one_suspend_and_keeps_the_programs_own() {
+        use std::os::windows::process::CommandExt;
+        let child = KillOnDrop(
+            std::process::Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
+        let created = crate::process::list_lineage()
+            .into_iter()
+            .find(|&(p, ..)| p == pid)
+            .unwrap()
+            .2;
+        for stale in [0, -1, created + 1] {
+            assert!(matches!(
+                super::set_suspended(pid, stale, true),
+                Err(super::ActionError::NotFound)
+            ));
+        }
+        // A running process is not frozen, and a suspended one only suspended.
+        let handle = super::open_instance(pid, created, super::PROCESS_SUSPEND_RESUME).unwrap();
+        assert!(!crate::process::frozen(handle.0));
+        super::set_suspended(pid, created, true).unwrap();
+        // The call returns once the threads show it.
+        assert_eq!(
+            crate::process::suspension(pid, created).unwrap(),
+            Some(crate::process::Suspension::All)
+        );
+        assert!(!crate::process::frozen(handle.0));
+        // Suspending an already suspended process leaves its count alone, so
+        // one resume undoes both calls.
+        super::set_suspended(pid, created, true).unwrap();
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+
+        // Another tool's extra suspend survives one resume, and the next one clears it.
+        super::set_suspended(pid, created, true).unwrap();
+        assert!(unsafe { crate::nt::NtSuspendProcess(handle.0) }.is_ok());
+        assert!(matches!(
+            super::set_suspended(pid, created, false),
+            Err(super::ActionError::StillSuspended)
+        ));
+        super::set_suspended(pid, created, false).unwrap();
+        assert!(settles(pid, created, false));
+
+        // A thread the program suspended itself stays suspended after a
+        // suspend and resume, while the rest run again.
+        let mut buf = crate::util::AlignedBuf::with_capacity(512 * 1024);
+        crate::nt::query_system_information(
+            windows::Wdk::System::SystemInformation::SystemProcessInformation,
+            &mut buf,
+        )
+        .unwrap();
+        let threads: Vec<u32> = crate::nt::ProcessIter::new(&buf)
+            .find(|e| e.info.unique_process_id.0 as usize as u32 == pid)
+            .map(|e| {
+                e.threads
+                    .iter()
+                    .map(|t| t.unique_thread.0 as usize as u32)
+                    .collect()
+            })
+            .unwrap();
+        if threads.len() < 2 {
+            return; // Nothing would be left running to tell the cases apart.
+        }
+        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+        let own = super::OwnedHandle(
+            unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, threads[0]) }.unwrap(),
+        );
+        assert_ne!(unsafe { SuspendThread(own.0) }, u32::MAX);
+        super::set_suspended(pid, created, true).unwrap();
+        super::set_suspended(pid, created, false).unwrap();
+        assert_eq!(
+            crate::process::suspension(pid, created).unwrap(),
+            Some(crate::process::Suspension::Partial)
+        );
+    }
+
+    #[test]
+    fn the_desktop_window_manager_and_argus_service_are_essential() {
+        for name in ["dwm.exe", "DWM.EXE", "argus-service-123-456.exe"] {
+            assert!(super::essential_image(name), "{name}");
+        }
+        for name in [
+            "explorer.exe",
+            "argus.exe",
+            "argus-service.txt",
+            "notdwm.exe",
+        ] {
+            assert!(!super::essential_image(name), "{name}");
+        }
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        let own = super::image_name(unsafe { GetCurrentProcess() }).unwrap();
+        assert!(own.to_lowercase().ends_with(".exe") && !own.contains('\\'));
+    }
+
+    #[test]
+    fn suspension_requires_a_successful_critical_process_query() {
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::Threading::GetCurrentProcess;
+        assert!(super::require_suspendable(HANDLE::default()).is_err());
+        assert!(super::require_suspendable(unsafe { GetCurrentProcess() }).is_ok());
+    }
+
     #[test]
     fn unresolved_identity_never_uses_the_legacy_pid_only_action_path() {
         assert!(matches!(
@@ -333,6 +592,141 @@ mod tests {
     use super::*;
 
     #[test]
+    fn criticality_unknown_never_authorizes_an_operation_even_when_forced() {
+        for allow in [false, true] {
+            let mut called = false;
+            let result = permit_termination(Err(ActionError::CriticalityUnknown), allow)
+                .map(|()| called = true);
+            assert!(matches!(result, Err(ActionError::CriticalityUnknown)));
+            assert!(!called);
+            assert!(permit_termination(Ok(false), allow).is_ok());
+        }
+        assert!(matches!(
+            permit_termination(Ok(true), false),
+            Err(ActionError::Critical)
+        ));
+        assert!(permit_termination(Ok(true), true).is_ok());
+        let mut report = TreeKillReport::default();
+        report.note(Err(ActionError::CriticalityUnknown));
+        assert_eq!((report.failed, report.criticality_unknown), (1, 1));
+    }
+
+    #[test]
+    fn criticality_uses_limited_query_on_the_owned_dacl_fixture() {
+        use std::ffi::c_void;
+        use std::os::windows::{io::AsRawHandle, process::CommandExt};
+        use std::process::{Command, Stdio};
+        type Handle = *mut c_void;
+        #[link(name = "advapi32")]
+        unsafe extern "system" {
+            fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                s: *const u16,
+                revision: u32,
+                sd: *mut Handle,
+                len: *mut u32,
+            ) -> i32;
+            fn SetKernelObjectSecurity(h: Handle, info: u32, sd: Handle) -> i32;
+        }
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn LocalFree(h: Handle) -> Handle;
+        }
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "actions::tests::criticality_child", "--ignored"])
+            .creation_flags(0x08000000)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let sddl: Vec<u16> = "D:P(D;;0x0400;;;WD)(A;;0x00121001;;;WD)"
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let mut sd = std::ptr::null_mut();
+        unsafe {
+            assert_ne!(
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    1,
+                    &mut sd,
+                    std::ptr::null_mut()
+                ),
+                0
+            );
+            let result = SetKernelObjectSecurity(child.as_raw_handle(), 4, sd);
+            LocalFree(sd);
+            assert_ne!(result, 0);
+        }
+        // CI may enable SeDebugPrivilege on the process token. Limit only this
+        // thread's access checks so parallel tests keep their original rights.
+        use windows::Win32::Security::{
+            CreateRestrictedToken, DISABLE_MAX_PRIVILEGE, ImpersonateLoggedOnUser, RevertToSelf,
+            TOKEN_DUPLICATE, TOKEN_QUERY,
+        };
+        use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+        let mut token = windows::Win32::Foundation::HANDLE::default();
+        unsafe {
+            OpenProcessToken(
+                GetCurrentProcess(),
+                TOKEN_QUERY | TOKEN_DUPLICATE,
+                &mut token,
+            )
+        }
+        .unwrap();
+        let token = OwnedHandle(token);
+        let mut restricted = windows::Win32::Foundation::HANDLE::default();
+        unsafe {
+            CreateRestrictedToken(
+                token.0,
+                DISABLE_MAX_PRIVILEGE,
+                None,
+                None,
+                None,
+                &mut restricted,
+            )
+        }
+        .unwrap();
+        let restricted = OwnedHandle(restricted);
+        struct Revert;
+        impl Drop for Revert {
+            fn drop(&mut self) {
+                if unsafe { RevertToSelf() }.is_err() {
+                    std::process::abort();
+                }
+            }
+        }
+        unsafe { ImpersonateLoggedOnUser(restricted.0) }.unwrap();
+        let revert = Revert;
+        let full = unsafe {
+            OpenProcess(
+                windows::Win32::System::Threading::PROCESS_QUERY_INFORMATION,
+                false,
+                child.id(),
+            )
+        };
+        if let Ok(handle) = full {
+            drop(OwnedHandle(handle));
+            panic!("fixture must deny full query");
+        }
+        let handle = open_instance(child.id(), 0, PROCESS_TERMINATE).unwrap();
+        assert!(matches!(criticality(&handle), Ok(false)));
+        assert!(permit_termination(criticality(&handle), false).is_ok());
+        drop(handle);
+        drop(revert);
+        // No termination request is issued. EOF lets only this helper exit itself.
+        drop(child.stdin.take());
+        assert!(child.wait().unwrap().success());
+    }
+
+    #[test]
+    #[ignore = "owned subprocess fixture, called by the parent regression"]
+    fn criticality_child() {
+        use std::io::Read;
+        let mut byte = [0u8];
+        let _ = std::io::stdin().read(&mut byte);
+    }
+
+    #[test]
     fn errors_keep_their_wire_form() {
         // The UI (`actions.error.<kind>`) and the service protocol read these tags.
         let json = |e: ActionError| serde_json::to_string(&e).unwrap();
@@ -342,10 +736,18 @@ mod tests {
         );
         assert_eq!(json(ActionError::NotFound), r#"{"kind":"notFound"}"#);
         assert_eq!(json(ActionError::Critical), r#"{"kind":"critical"}"#);
+        assert_eq!(
+            json(ActionError::CriticalityUnknown),
+            r#"{"kind":"criticalityUnknown"}"#
+        );
         assert_eq!(json(ActionError::Refused), r#"{"kind":"refused"}"#);
         assert_eq!(
             json(ActionError::ServiceOutdated),
             r#"{"kind":"serviceOutdated"}"#
+        );
+        assert_eq!(
+            json(ActionError::StillSuspended),
+            r#"{"kind":"stillSuspended"}"#
         );
         assert_eq!(
             json(ActionError::Os("x".into())),
@@ -372,7 +774,7 @@ mod tests {
         // As the UI and the service protocol read it.
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
-            r#"{"terminated":2,"failed":3,"serviceOutdated":true}"#
+            r#"{"terminated":2,"failed":3,"criticalityUnknown":0,"serviceOutdated":true}"#
         );
     }
 }

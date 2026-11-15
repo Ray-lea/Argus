@@ -117,7 +117,7 @@ pub(crate) fn command_line(process: HANDLE) -> Option<String> {
     None
 }
 
-fn architecture(process: HANDLE) -> Option<&'static str> {
+pub(crate) fn architecture(process: HANDLE) -> Option<&'static str> {
     let mut proc_machine = IMAGE_FILE_MACHINE::default();
     let mut native_machine = IMAGE_FILE_MACHINE::default();
     unsafe { IsWow64Process2(process, &mut proc_machine, Some(&mut native_machine)) }.ok()?;
@@ -133,6 +133,14 @@ fn architecture(process: HANDLE) -> Option<&'static str> {
         IMAGE_FILE_MACHINE_ARMNT => "arm",
         _ => return None,
     })
+}
+
+/// Whether the process token is elevated; None when the token can't be read.
+pub(crate) fn elevated(process: HANDLE) -> Option<bool> {
+    let mut token = HANDLE::default();
+    unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.ok()?;
+    let token = OwnedHandle(token);
+    token_elevated(token.0)
 }
 
 fn priority_class(process: HANDLE) -> Option<&'static str> {

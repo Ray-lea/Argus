@@ -112,6 +112,22 @@
       "label": "Empresa",
       "title": "Nombre de la empresa de la información de la versión ejecutable."
     },
+    "version": {
+      "label": "Versión del archivo",
+      "title": "Versión del archivo según la información de versión del ejecutable."
+    },
+    "architecture": {
+      "label": "Arquitectura",
+      "title": "Arquitectura de procesador con la que se ejecuta el proceso."
+    },
+    "elevated": {
+      "label": "Elevado",
+      "title": "Si el proceso se ejecuta con derechos de administrador (un token elevado)."
+    },
+    "commandLine": {
+      "label": "Línea de comandos",
+      "title": "Línea de comandos completa con la que se inició el proceso, con sus argumentos."
+    },
     "sessionId": {
       "label": "ID de sesión",
       "title": "Número de la sesión de Windows a la que pertenece el proceso."
@@ -142,7 +158,7 @@
     },
     "basePriority": {
       "label": "Prioridad básica",
-      "title": "Valor numérico de la prioridad base del proceso indicado por Windows."
+      "title": "Prioridad base del proceso indicada por Windows, mostrada como su clase de prioridad. Un valor entre clases, que Windows asigna a algunos procesos del sistema, se muestra como número."
     },
     "workingSet": {
       "label": "Conjunto de trabajo",
@@ -165,15 +181,15 @@
       "title": "Fallos de página acumulados, incluidos fallos leves y graves."
     },
     "ioRead": {
-      "label": "Lectura de E/S",
+      "label": "Lectura de I/O",
       "title": "I/O bytes leídos por segundo, incluidos archivos, redes y dispositivos."
     },
     "ioWrite": {
-      "label": "Escritura de E/S",
+      "label": "Escritura de I/O",
       "title": "I/O bytes escritos por segundo, incluidos archivos, redes y dispositivos."
     },
     "ioOther": {
-      "label": "Otras E/S",
+      "label": "Otras I/O",
       "title": "Bytes transferidos por segundo por otras operaciones I/O."
     },
     "ioReadTotal": {
@@ -257,6 +273,8 @@
       "other": "Finalizar los {count} procesos"
     },
     "setPriority": "Establecer prioridad",
+    "suspend": "Suspender proceso",
+    "resume": "Reanudar proceso",
     "addRule": "Añadir regla",
     "copyPid": "Copiar PID",
     "copyPidWhat": "PID",
@@ -273,9 +291,17 @@
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "Temperatura de la zona térmica ACPI"
   },
+  "memoryScope": {
+    "vital": "Memoria física en uso en todo el sistema: el total menos la disponible, incluidas las páginas en uso y modificadas. Las filas de procesos muestran su propio conjunto de trabajo privado, que suma menos. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino).",
+    "header": "El porcentaje de arriba es la proporción de memoria física en uso en todo el sistema. Las filas muestran el conjunto de trabajo privado: la memoria física que usa solo ese proceso; los grupos de aplicaciones y las categorías lo suman. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino).",
+    "section": "Suma de los conjuntos de trabajo privados de los procesos de esta categoría. El uso de todo el sistema también incluye páginas compartidas, el kernel y los controladores, las tablas de páginas, la caché del sistema en uso y las páginas modificadas, por lo que supera la suma de las categorías. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino)."
+  },
   "columns": {
     "choose": "Seleccionar columnas",
     "autoWidth": "Ancho automático",
+    "fullWidth": "Ancho completo",
+    "fitWidth": "Ajustar automáticamente esta columna",
+    "edgeHint": "Arrastrar para cambiar el ancho; doble clic para ajustar automáticamente",
     "yes": "Sí",
     "no": "No",
     "reset": "Restaurar columnas predeterminadas",
@@ -290,7 +316,7 @@
       "general": "General",
       "cpu": "CPU",
       "memory": "Memoria",
-      "io": "Disco y E/S",
+      "io": "Disco y I/O",
       "network": "Red",
       "gpu": "GPU",
       "all": "Todos"
@@ -306,5 +332,7 @@
     "fixed": "Fija",
     "selectionSummary": "Seleccionadas: {count}",
     "virtualAliases": "memoria virtual bytes virtuales reserva de direcciones"
-  }
+  },
+  "basePriorityBetween": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema; está entre {below} y {above}.",
+  "basePriorityCustom": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema."
 }

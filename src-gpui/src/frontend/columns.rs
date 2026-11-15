@@ -60,6 +60,10 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("path", "general", Text, 300., false),
     column("description", "general", Text, 220., false),
     column("company", "general", Text, 200., false),
+    column("version", "general", Text, 130., false),
+    column("architecture", "general", Text, 110., false),
+    column("elevated", "general", Boolean, 90., false),
+    column("commandLine", "general", Text, 360., false),
     column("sessionId", "general", Identifier, 80., false),
     column("createTime", "general", Timestamp, 160., false),
     column("threads", "general", Count, 76., true),
@@ -113,6 +117,14 @@ pub(super) fn definition(key: &str) -> Option<&'static Definition> {
     DEFINITIONS.iter().find(|column| column.key == key)
 }
 
+/// A text column's value as the table shows it, which is also what it sorts by.
+pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> {
+    match key {
+        "architecture" => label(&format!("details.arch.{value}")).into(),
+        _ => value.into(),
+    }
+}
+
 pub(super) fn raw_key(key: &str) -> &str {
     match key {
         "imageName" => "name",
@@ -164,7 +176,14 @@ pub(super) struct Preferences {
     /// All known columns retain a position, including temporarily hidden columns.
     pub order: Vec<String>,
     pub auto_width: bool,
+    /// The widths the columns keep while automatic widths are off.
     pub widths: BTreeMap<String, f32>,
+    /// Columns dragged to a width while automatic widths are on: they keep
+    /// it until restored, the others still follow their contents.
+    pub overrides: BTreeMap<String, f32>,
+    /// The name column stretches over the room the others leave, so the
+    /// columns span the table with nothing empty on the right.
+    pub full_width: bool,
 }
 
 impl Default for Preferences {
@@ -174,6 +193,8 @@ impl Default for Preferences {
             order: Vec::new(),
             auto_width: true,
             widths: BTreeMap::new(),
+            overrides: BTreeMap::new(),
+            full_width: false,
         }
     }
 }
@@ -191,10 +212,22 @@ impl Preferences {
             .retain(|key| definition(key).is_some() && key != "name" && seen.insert(key.clone()));
         preferences.selected.insert(0, "name".into());
         preferences.normalize_order();
-        preferences.widths.retain(|key, width| {
+        let valid = |key: &String, width: &mut f32| {
             definition(key).is_some() && width.is_finite() && (48. ..=1200.).contains(width)
-        });
+        };
+        preferences.widths.retain(valid);
+        preferences.overrides.retain(valid);
         preferences
+    }
+
+    /// The width set by hand that column `key` is drawn at, if any: the
+    /// saved width while automatic widths are off, else its override.
+    pub(super) fn set_width(&self, key: &str) -> Option<f32> {
+        if self.auto_width {
+            self.overrides.get(key).copied()
+        } else {
+            self.widths.get(key).copied()
+        }
     }
 
     pub(super) fn visible(&self, network: bool) -> Vec<&'static Definition> {
@@ -288,12 +321,20 @@ mod tests {
     #[test]
     fn selection_keeps_name_and_rejects_unknown_duplicate_and_invalid_widths() {
         let preferences = Preferences::parse(
-            &json!({"selected":["gpu","unknown","pid","gpu","name"],"autoWidth":false,"widths":{"gpu":98,"pid":-1,"unknown":150,"name":2000}}),
+            &json!({"selected":["gpu","unknown","pid","gpu","name"],"autoWidth":false,"widths":{"gpu":98,"pid":-1,"unknown":150,"name":2000},
+                "overrides":{"cpu":90,"name":20}}),
         );
         assert_eq!(preferences.selected, ["name", "gpu", "pid"]);
         assert!(!preferences.auto_width);
         assert_eq!(preferences.widths.len(), 1);
         assert_eq!(preferences.widths["gpu"], 98.);
+        // Automatic widths off: the saved widths apply, not the overrides.
+        assert_eq!(preferences.set_width("gpu"), Some(98.));
+        assert_eq!(preferences.set_width("cpu"), None);
+        let auto = Preferences::parse(&json!({"overrides":{"cpu":90,"name":20}}));
+        assert_eq!(auto.set_width("cpu"), Some(90.));
+        assert_eq!(auto.set_width("name"), None);
+        assert_eq!(auto.set_width("gpu"), None);
         assert_eq!(
             Preferences::parse(&json!({"selected":[]})).selected,
             ["name"]

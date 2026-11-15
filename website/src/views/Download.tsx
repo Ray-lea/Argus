@@ -182,7 +182,8 @@ export function Download({ lang }: { lang: Language }) {
           <ol>
             {t.steps.map(([name, detail], i) => (
               <li key={name} style={{ "--i": i } as CSSProperties} data-rise={String(i + 1)}>
-                <span className="dl-step-number figures">{i + 1}</span>
+                {/* The list already numbers the steps for assistive technology and the Markdown copy. */}
+                <span className="dl-step-number figures" aria-hidden="true">{i + 1}</span>
                 <h3>{name}</h3>
                 <p>{detail}</p>
               </li>

@@ -1,0 +1,48 @@
+name: 读数异常 / Incorrect reading
+description: CPU、内存、磁盘、网络、GPU、传感器或进程的读数错误或缺失 / A CPU, memory, disk, network, GPU, sensor or process value is wrong or missing
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        用于 Argus 显示的数值错误、缺失或与对照工具不一致。功能失效、显示错位或 Argus 自身占用过高请使用“缺陷报告”。提交前请搜索已有的 Issue。可使用中文或英文。
+
+        Use this form when a value in Argus is wrong, missing or different from a reference tool. For a failure, a layout problem or high resource use by Argus, use "Bug report". Search the existing issues first. Write in Chinese or English.
+  - type: textarea
+    id: reading
+    attributes:
+      label: 异常读数 / Incorrect value
+      description: |
+        写明读数的位置、Argus 的读数和期望值。请用对照工具在同一时间读取同一指标，并写明工具名称、版本和指标名称。
+        Give the location of the value, the Argus value and the expected value. Use a reference tool to read the same metric at the same time. Give the tool name, the tool version and the metric name.
+      placeholder: |
+        位置 / Location: 性能 → CPU → 速度 — Performance → CPU → Speed
+        Argus 读数 / Argus value: 9.0 GHz
+        对照读数 / Reference value: 4.7 GHz（HWiNFO64 8.x, Core Clocks）
+        当时负载 / Workload: 空闲 / 游戏 / 编译 — Idle / Game / Build
+        出现情况 / Occurrence: 一直 / 偶尔 / 特定操作后 — Always / Sometimes / After a specific action
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断信息 / Diagnostic information
+      description: |
+        在“关于”页单击“复制诊断信息”，然后粘贴到此处。运行权限、特权服务和内核传感器决定部分读数的来源。旧版本没有此按钮，请填写 Argus 完整版本、Windows 版本、运行权限、特权服务和内核传感器的状态。
+        On the About page, click "Copy diagnostic information" and paste the result here. The permissions, the privileged service and the kernel sensors control the source of some values. Older versions do not have this button. In this condition, give the full Argus version, the Windows version, the permissions and the state of the privileged service and the kernel sensors.
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: 相关硬件（选填）/ Related hardware (optional)
+      description: |
+        填写诊断信息未包含的型号，例如主板或笔记本型号、BIOS 版本、网卡或电池。旧版本可在“进程”页取消选中，在详细信息面板单击“复制配置为文字”。请删除设备 ID、产品 ID 和序列号。
+        Give the models that the diagnostic information does not include, for example the motherboard or laptop model, the BIOS version, the network adapter or the battery. In older versions, clear the selection on the Processes page. Then click "Copy PC specifications as text" in the details pane. Remove device IDs, product IDs and serial numbers.
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图与日志（选填）/ Screenshots and logs (optional)
+      description: |
+        附上同一时刻 Argus 与对照工具的截图。读数缺失或不可用时，在“关于”页单击“打开日志文件夹”，附上 `argus.log`。
+        Attach screenshots of Argus and the reference tool from the same time. If a value is missing or unavailable, click "Open log folder" on the About page and attach `argus.log`.

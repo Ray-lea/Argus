@@ -134,7 +134,7 @@ impl Desktop {
                 if pending.command == "history_series" {
                     self.data.insert(
                         "historyWindow".into(),
-                        json!({"from":pending.args["from"],"to":pending.args["to"]}),
+                        json!({"from":pending.args["from"],"to":pending.args["to"],"buckets":pending.args["buckets"]}),
                     );
                 }
                 if let Some(key) = pending.cache {
@@ -212,6 +212,7 @@ impl Desktop {
                 "update-status" => {
                     changed |= self.data.get("updates") != Some(&event.value);
                     self.data.insert("updates".into(), event.value);
+                    self.refresh_tray(cx);
                 }
                 "argus-theme" => {
                     self.set_theme(event.value.as_bool().unwrap_or(false), window, cx);
@@ -226,6 +227,14 @@ impl Desktop {
                 "argus-restored" => self.restored(&event.value, window, cx),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
+                "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
+                "argus-tray-card" => self.tray_card(&event.value, window, cx),
+                // Another window took the foreground from a panel that did not
+                // take it (one opened from the hidden icons flyout).
+                "argus-tray-dismiss" => self.close_tray_panel(cx),
+                "argus-tray-warm" => {
+                    self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
+                }
                 "argus-files-dropped" => {
                     if let Ok(paths) = serde_json::from_value::<Vec<String>>(event.value) {
                         changed = true;
@@ -316,6 +325,7 @@ impl Desktop {
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
                         this.accept_snapshot_prepared(model, rows, window, cx);
+                        this.refresh_tray(cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);
@@ -355,7 +365,10 @@ impl Desktop {
 
     /// List data arrives through its own command/row notifications. A sample
     /// only changes the uncached status bar on these pages. Settings also read
-    /// sensor state and live process icons for rules, so retain full updates there.
+    /// sensor state and live process icons for rules, so the page is drawn
+    /// again there, as on the pages that show the sample. Only a change of
+    /// sensor state, an open dialog, menu or drag, and a hidden window draw
+    /// everything.
     pub(in crate::frontend) fn notify_snapshot(
         &self,
         full: bool,
@@ -364,19 +377,32 @@ impl Desktop {
     ) {
         let status_only = matches!(
             self.page.as_str(),
-            "services" | "startup" | "network" | "about"
+            "services" | "startup" | "network" | "components" | "about"
         ) || (self.page == "settings"
             && values(&self.data["settings"]["rules"]).is_empty());
         let visible = self.host.get_window("main").is_some_and(|window| {
             window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
         });
-        if status_only
-            && !full
-            && visible
-            && self.modal.is_none()
-            && self.popup.is_none()
-            && self.drag.is_none()
-        {
+        let quiet =
+            !full && visible && self.modal.is_none() && self.popup.is_none() && self.drag.is_none();
+        if quiet && status_only {
+            window.request_view_redraw(cx.entity_id());
+        } else if quiet && self.has_region(regions::RegionKind::Page) {
+            // The sample shows in the page, with the regions inside it, and in
+            // the status bar. The toolbar and the navigation read none of it:
+            // they replay.
+            if self.page == "processes" {
+                // The page places its regions and draws the list's scrollbar.
+                // The list was told when its rows were installed; the cards
+                // show every sample, the details pane what it follows.
+                self.redraw_region(regions::RegionKind::Page, window);
+                self.refresh_region(regions::RegionKind::Vitals, cx);
+                if self.details_follow_sample() {
+                    self.refresh_region(regions::RegionKind::Details, cx);
+                }
+            } else {
+                self.refresh_region(regions::RegionKind::Page, cx);
+            }
             window.request_view_redraw(cx.entity_id());
         } else {
             cx.notify();
@@ -489,6 +515,8 @@ impl Desktop {
         }
         self.hidden_since = Some((since, true));
         charts::release_textures(window, cx);
+        // The pointer reaching the tray icon makes it again before a click.
+        self.release_tray(cx);
         crate::memory_pressure::release_process_memory();
     }
     /// The chosen `memory.releaseHidden`; a hand edit to a value on offer
@@ -596,14 +624,6 @@ impl Desktop {
                 return message;
             }
         }
-        let key = format!(
-            "{}.{kind}",
-            if command == "run_task" {
-                "tasks.error"
-            } else {
-                "actions.error"
-            }
-        );
         let name = args["pid"]
             .as_u64()
             .and_then(|pid| {
@@ -613,6 +633,23 @@ impl Desktop {
                     .map(model::title)
             })
             .unwrap_or_else(|| text(args, "name").into());
+        // The general `actions.error` texts are about ending a process;
+        // suspending and resuming have their own wherever the cause differs.
+        if command == "set_suspended" {
+            let key = format!("actions.suspend.error.{kind}");
+            let result = argus_core::i18n::format(&key, &[("name", &name)]);
+            if result != key {
+                return result;
+            }
+        }
+        let key = format!(
+            "{}.{kind}",
+            if command == "run_task" {
+                "tasks.error"
+            } else {
+                "actions.error"
+            }
+        );
         let result = argus_core::i18n::format(&key, &[("name", &name)]);
         if result == key {
             error
@@ -681,7 +718,7 @@ impl Desktop {
                 self.search
                     .update(cx, |s, cx| s.set_value(self.query.clone(), window, cx));
                 self.horizontal = 0.;
-                self.popup = None;
+                self.drop_menu(cx);
                 // The network page shows its last rows when they were built for
                 // how it shows them now, without building thousands of rows
                 // while it enters; newer ones replace them after the entrance.

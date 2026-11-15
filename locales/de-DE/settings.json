@@ -170,7 +170,7 @@
     "incompatible": "Klicken Sie auf „Dienst aktualisieren“, um die zu Argus passende Version zu installieren und die Verbindung herzustellen.",
     "install": {
       "title": "Privilegierten Dienst aktivieren?",
-      "body": "Nach der Installation kann das aktuelle Windows-Konto über den Hintergrunddienst ohne erneute Freigabe:\n· Prozesse beliebiger Benutzer beenden, ausgenommen kritische Systemprozesse, sowie Priorität und Effizienzmodus festlegen;\n· beliebige Windows-Dienste starten und beenden und ihren Starttyp ändern, einschließlich Diensten von Sicherheitssoftware und Windows Update;\n· beliebige IPv4 TCP-Verbindungen schließen und Dateisperren, Netzwerkverkehr sowie Datenträger-Lese- und Schreibzugriffe aller Prozesse abfragen;\n· Datenträgeridentität, SMART-Attribute und Zustandsprotokolle über fest vorgegebene, ausschließlich lesende Befehle abfragen;\n· bei installiertem PawnIO CPU-Sensordaten und Mainboard-Lüfterdrehzahlen über fest vorgegebene Module auslesen.\n\nAndere Programme, die unter diesem Konto mit Standardrechten laufen, können diese Vorgänge ebenfalls aufrufen. Das Konto erhält damit einen Teil der Administratorrechte. Installieren Sie den Dienst nur für ein selbst genutztes Konto. Er startet mit Windows. Die Installation erfordert eine Administratorfreigabe; der Dienst kann später in den Einstellungen deinstalliert werden.",
+      "body": "Nach der Installation kann das aktuelle Windows-Konto über den Hintergrunddienst ohne erneute Freigabe:\n· Prozesse beliebiger Benutzer beenden, anhalten oder fortsetzen, ausgenommen kritische Systemprozesse, sowie Priorität und Effizienzmodus festlegen;\n· beliebige Windows-Dienste starten und beenden und ihren Starttyp ändern, einschließlich Diensten von Sicherheitssoftware und Windows Update;\n· beliebige IPv4 TCP-Verbindungen schließen und Dateisperren, Netzwerkverkehr sowie Datenträger-Lese- und Schreibzugriffe aller Prozesse abfragen;\n· Datenträgeridentität, SMART-Attribute und Zustandsprotokolle über fest vorgegebene, ausschließlich lesende Befehle abfragen;\n· bei installiertem PawnIO CPU-Sensordaten und Mainboard-Lüfterdrehzahlen über fest vorgegebene Module auslesen.\n\nAndere Programme, die unter diesem Konto mit Standardrechten laufen, können diese Vorgänge ebenfalls aufrufen. Das Konto erhält damit einen Teil der Administratorrechte. Installieren Sie den Dienst nur für ein selbst genutztes Konto. Er startet mit Windows. Die Installation erfordert eine Administratorfreigabe; der Dienst kann später in den Einstellungen deinstalliert werden.",
       "action": "Installieren und aktivieren"
     },
     "uninstall": {
@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Der Hinweis am Infobereichssymbol wird im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Das Symbol im Infobereich und sein Hinweis werden im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
@@ -409,6 +409,13 @@
       "copy": "Gruppennummer kopieren",
       "number": "Gruppennummer"
     },
+    "channel": {
+      "title": "Telegram-Kanal",
+      "desc": "Treten Sie dem Telegram-Kanal {channel} bei, um Neuigkeiten zu Versionen und zum Projekt zu erhalten.",
+      "join": "Kanal beitreten",
+      "copy": "Link kopieren",
+      "link": "Kanallink"
+    },
     "license": {
       "title": "Lizenz",
       "desc": "Argus ist freie Software unter der GNU Affero General Public License, Version 3 oder einer späteren Version (AGPL-3.0-or-later). Die Software darf gemäß dieser Lizenz weitergegeben und geändert werden. Argus wird ohne Garantie bereitgestellt.",
@@ -424,6 +431,33 @@
       "title": "Protokoll",
       "desc": "Zeichnet die Laufzeitumgebung, den Funktionsstatus, fehlgeschlagene Schritte, Fehlercodes und tatsächliche Pfade zugehöriger Dateien oder Ordner auf. Lokal gespeichert, mit bis zu 1 MB pro Datei und 3 vorherigen Protokollen. Befehlszeilen, Anmeldeinformationen und Dateiinhalte sind ausgeschlossen. Verwenden Sie diesen Eintrag, um Diagnoseprotokolle für Fehlerberichte zu finden.",
       "open": "Protokollordner öffnen"
+    },
+    "diagnostics": {
+      "title": "Diagnoseinformationen",
+      "desc": "Kopiert die aktuelle Version, den Laufzeitstatus sowie Hardware- und Anzeigeeinstellungen für einen Fehlerbericht. Fehlende Angaben werden als unbekannt gekennzeichnet.",
+      "copy": "Diagnoseinformationen kopieren",
+      "unknown": "Unbekannt",
+      "version": "Vollständige Argus-Version",
+      "windows": "Windows-Version",
+      "build": "Build-Typ",
+      "installation": "Installation",
+      "installed": "Installierte Version",
+      "portable": "Portable Version",
+      "source": "Entwicklungsbuild",
+      "permission": "Aktuelle Berechtigungen",
+      "administrator": "Administrator",
+      "standard": "Standardbenutzer",
+      "sampleTime": "Zeitpunkt der Momentaufnahme (UTC)",
+      "cpuCores": "CPU-Kerne / Threads",
+      "display": "Auflösung des aktuellen Bildschirms",
+      "window": "Clientbereich des Fensters",
+      "systemScale": "Windows-Skalierung",
+      "fontSize": "Schriftgröße",
+      "language": "Oberflächensprache",
+      "refresh": "Aktualisierungsintervall im Vordergrund",
+      "paused": "Abtastung pausiert",
+      "sensorReadings": "Sensorstatus in der Momentaufnahme",
+      "row": "{name}: {value}"
     }
   },
   "sensors": {

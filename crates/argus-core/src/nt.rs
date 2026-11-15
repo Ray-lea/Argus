@@ -16,6 +16,10 @@ unsafe extern "system" {
         output_len: u32,
         returned: *mut u32,
     ) -> NTSTATUS;
+    /// Suspends every thread of a process (raises each suspend count by one).
+    pub fn NtSuspendProcess(process: HANDLE) -> NTSTATUS;
+    /// Resumes every thread of a process (lowers each suspend count by one).
+    pub fn NtResumeProcess(process: HANDLE) -> NTSTATUS;
 }
 
 pub const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;

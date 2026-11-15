@@ -12,6 +12,7 @@
     "startup": "Startup",
     "network": "Connections",
     "history": "History",
+    "components": "Components",
     "settings": "Settings",
     "about": "About"
   },

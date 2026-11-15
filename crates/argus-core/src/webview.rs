@@ -198,6 +198,8 @@ pub(crate) fn resolve<'a>(start: Node<'a>, get: impl Fn(u32) -> Option<Node<'a>>
 pub(crate) struct State {
     hint: Hint,
     attempts: u8,
+    /// The line read for `hint`, which also serves the command-line column.
+    line: Option<Arc<str>>,
     context: Option<Context>,
     meta: Option<Arc<FileMeta>>,
     view: Option<Arc<WebViewInfo>>,
@@ -233,9 +235,21 @@ impl State {
         }
         self.attempts += 1;
         if let Some(line) = read() {
+            self.learn_command_line(line.into());
+        }
+    }
+
+    /// Share a successful background read, including after startup retries ended.
+    pub fn learn_command_line(&mut self, line: Arc<str>) {
+        if self.line.is_none() {
             self.hint = Hint::parse(&line);
+            self.line = Some(line);
             self.attempts = 3;
         }
+    }
+
+    pub fn command_line(&self) -> Option<&Arc<str>> {
+        self.line.as_ref()
     }
 
     /// `app`: the host's packaged app name, which takes the place of its file description.
@@ -463,6 +477,10 @@ mod tests {
             });
         }
         assert_eq!(reads, 1);
+        assert_eq!(
+            state.command_line().map(|line| &**line),
+            Some("msedgewebview2.exe --type=renderer")
+        );
         let mut state = State::default();
         reads = 0;
         for _ in 0..20 {
@@ -472,6 +490,11 @@ mod tests {
             });
         }
         assert_eq!(reads, 3);
+        let line: Arc<str> = "msedgewebview2.exe --type=renderer".into();
+        state.learn_command_line(line.clone());
+        state.query_with(|| panic!("the shared background read is already cached"));
+        assert!(Arc::ptr_eq(state.command_line().unwrap(), &line));
+        assert_eq!(state.hint.role, WebViewRole::Renderer);
     }
 
     #[test]

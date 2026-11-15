@@ -66,7 +66,7 @@
     "title": "Privileged service (optional)",
     "body": "By default, Argus runs as a standard user, so it can't read information about some system processes or end or adjust them. The optional privileged service runs in the background as SYSTEM. With it, Argus can:",
     "features": {
-      "end": "End other users' processes (except critical system processes)",
+      "end": "End, suspend or resume other users' processes (except critical system processes)",
       "tune": "Set priority and efficiency mode, also automatically through rules",
       "inspect": "See every process's file locks, network traffic, and disk reads and writes",
       "control": "Control Windows services and close network connections",

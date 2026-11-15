@@ -360,6 +360,11 @@ impl Desktop {
                 self.process_batch("efficiency", &args, window, cx);
                 return;
             }
+            // Resuming is harmless; suspending asks first.
+            "suspend" if !boolean(&args, "on") => {
+                self.process_batch("suspend", &args, window, cx);
+                return;
+            }
             "ruleScope" => {
                 self.add_rule_for(&name, window, cx);
                 return;
@@ -433,6 +438,15 @@ impl Desktop {
                 tr!("actions.priority.confirmTitle", name = name),
                 label("actions.priority.confirmBody"),
                 Some((label("actions.priority.confirm"), true)),
+            ),
+            "suspend" => (
+                tr!("actions.suspend.title", name = name),
+                if count > 1 {
+                    tr!("actions.suspend.bodyGroup", name = name, count = count)
+                } else {
+                    tr!("actions.suspend.body", pid = pid)
+                },
+                Some((label("actions.suspend.confirm"), true)),
             ),
             "restartExplorer" => (
                 label("tasks.explorer.title"),
@@ -893,6 +907,8 @@ impl Desktop {
 
     /// Drops what was kept for a dialog that closed.
     fn forget_dialog(&self, id: u64) {
+        // A card the pointer was on as it closed is not lit when it reopens.
+        self.ui.release_hover.take();
         self.ui.dialog_shown.borrow_mut().remove(&id);
         self.ui.dialog_frames.borrow_mut().remove(&id);
         let mut parts = self.ui.dialog_parts.borrow_mut();
@@ -956,7 +972,8 @@ impl Desktop {
                 // The tallest the component draws a dialog at this layer.
                 let limit = (viewport - px(32.) - shift).max(px(0.));
                 let now = Instant::now();
-                let length = if cx.reduce_motion() {
+                let following = self.ui.dialog_follow.is_some_and(|until| now < until);
+                let length = if cx.reduce_motion() || following {
                     Duration::ZERO
                 } else {
                     theme::motion_duration()
@@ -1371,7 +1388,7 @@ impl Desktop {
                 self.sign_out_user(args.clone(), window, cx);
                 return;
             }
-            "end" | "endTree" | "priority" => {
+            "end" | "endTree" | "priority" | "suspend" => {
                 self.close_overlay(window, cx);
                 self.process_batch(&modal.kind, args, window, cx);
                 return;
@@ -1791,7 +1808,8 @@ impl Desktop {
                         move |this: &mut Desktop,
                               window: &mut Window,
                               cx: &mut Context<Desktop>| {
-                            this.locate_setting("data", field, window, cx)
+                            let section = if tray { "components" } else { "data" };
+                            this.locate_setting(section, field, window, cx)
                         },
                     ),
                 ),

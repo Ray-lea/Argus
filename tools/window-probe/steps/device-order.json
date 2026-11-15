@@ -1,0 +1,43 @@
+{
+  "window": [1240, 860],
+  "steps": [
+    { "note": "Performance page: the devices in the collector's order, disks by number." },
+    { "control": { "page": "performance", "device": "cpu", "pointerOutside": true }, "wait": 1500, "inspect": "layout", "label": "start",
+      "expect": { "performance.diskOrder": "number", "performance.devices.2": "disk:0", "performance.devices.3": "disk:1" }, "capture": "start" },
+
+    { "note": "Disk 0 gets a later letter: ordered by letter, disk 1 (D: E:) comes first and the rows glide." },
+    { "control": { "sample": { "at": 0, "set": { "/hardware/disks/0/info/volumes": ["F:"] } } }, "wait": 800 },
+    { "record": { "name": "by-letter", "ms": 1400 }, "wait": 700 },
+    { "control": { "preference": { "perfDiskOrder": "letter" } }, "wait": 900, "inspect": "layout", "label": "letter", "capture": "by-letter",
+      "expect": { "performance.diskOrder": "letter", "performance.devices.2": "disk:1", "performance.devices.3": "disk:0" } },
+    { "control": { "preference": { "perfDiskOrder": "number" } }, "wait": 900, "inspect": "layout", "label": "number",
+      "expect": { "performance.diskOrder": "number", "performance.devices.2": "disk:0", "performance.devices.3": "disk:1" } },
+
+    { "note": "Drag the Wi-Fi row to the top: the rows make room as it goes; the disks keep their order, so it stays by number." },
+    { "record": { "name": "drag-nic", "ms": 2600 }, "wait": 700 },
+    { "drag": { "at": "device-nic:1", "dy": -300, "steps": 30, "interval": 30 }, "wait": 1000 },
+    { "inspect": "layout", "label": "nic-top", "capture": "nic-top",
+      "expect": { "performance.diskOrder": "number", "performance.devices.0": "nic:1", "performance.devices.1": "cpu" } },
+    { "sheet": { "name": "drag-nic-sheet", "from": "drag-nic", "region": [0, 90, 300, 560], "columns": 9, "every": 9 } },
+
+    { "note": "Drag disk 1 above disk 0: the disk order turns custom." },
+    { "record": { "name": "drag-disk", "ms": 1800 }, "wait": 700 },
+    { "drag": { "at": "device-disk:1", "dy": -75, "steps": 16, "interval": 30 }, "wait": 800 },
+    { "inspect": "layout", "label": "custom", "capture": "custom",
+      "expect": { "performance.diskOrder": "custom", "performance.devices.2": "memory", "performance.devices.3": "disk:1", "performance.devices.4": "disk:0" } },
+
+    { "note": "The menu's disk order shows the custom order checked." },
+    { "control": { "pointer": { "at": "device-disk:0", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "menu",
+      "expect": { "state.items": ["隐藏“磁盘 0 (F:)”", "", "显示的设备", "磁盘排序", "", "恢复默认显示", "恢复默认顺序"],
+        "state.disabled": [false, false, false, false, false, true, false] } },
+    { "control": { "keys": ["down", "down", "right", "down", "down"] }, "wait": 600, "inspect": "menu", "label": "submenu",
+      "expect": { "state.focus.in": "submenu", "state.focus.item.label": "自定义（拖动调整）", "state.focus.item.checked": true },
+      "capture": "submenu" },
+    { "control": { "keys": ["escape", "escape"] }, "wait": 300 },
+
+    { "note": "Restore default order: every device back in the collector's order, disks by number." },
+    { "record": { "name": "reset", "ms": 1400 }, "wait": 700 },
+    { "control": { "preference": { "perfDeviceOrderReset": null } }, "wait": 900, "inspect": "layout", "label": "reset", "capture": "reset",
+      "expect": { "performance.diskOrder": "number", "performance.arranged": [], "performance.devices.0": "cpu", "performance.devices.2": "disk:0" } }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "window": [1500, 900],
+  "steps": [
+    {"control":{"page":"processes","view":"list","details":"closed","motion":"off","preference":{"processColumns":{"selected":["name","version","architecture","elevated","commandLine"],"order":["name","version","architecture","elevated","commandLine"],"autoWidth":true},"processSort":{"key":"architecture","desc":false}},"sample":{"set":{"/processes":[{"pid":10001,"createTime":100,"name":"Review.exe","path":"C:/Review.exe","version":"1.2.3.4","architecture":"x64","elevated":false,"commandLine":"Review.exe --input example.txt --output result.txt"},{"pid":10002,"createTime":200,"name":"Review.exe","path":"C:/Review.exe","version":"1.2.3.4","architecture":"x64","elevated":true,"commandLine":"Review.exe --worker --input example.txt"},{"pid":10003,"createTime":300,"name":"Legacy.exe","version":"2.0","architecture":"x86","elevated":false,"commandLine":"Legacy.exe"},{"pid":10004,"createTime":400,"name":"Unknown.exe","version":null,"architecture":null,"elevated":null,"commandLine":null}]}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"optional-columns","expect":{"state.visible.length":5,"state.visible.1.key":"version","state.visible.2.key":"architecture","state.visible.3.key":"elevated","state.visible.4.key":"commandLine"},"capture":"facts-dark"},
+    {"control":{"view":"apps","pointerOutside":true},"wait":600,"capture":"group-facts-dark"},
+    {"control":{"theme":"light","view":"list","pointerOutside":true},"wait":600,"capture":"facts-light"},
+    {"probe":"size 900 700","wait":500,"inspect":"columns","label":"narrow","capture":"facts-narrow"},
+    {"control":{"preference":{"processColumns":{}},"pointerOutside":true},"wait":500,"inspect":"columns","label":"defaults","expect":{"state.visible.1.key":"pid"},"capture":"default-columns"}
+  ]
+}

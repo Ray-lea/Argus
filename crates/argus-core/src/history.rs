@@ -822,6 +822,8 @@ mod tests {
             path: None,
             description: None,
             company: None,
+            version: None,
+            facts: Default::default(),
             icon: None,
             web_view: None,
             windows_process: false,
@@ -847,6 +849,7 @@ mod tests {
             session_id: 1,
             base_priority: 8,
             suspended: false,
+            frozen: false,
             efficiency: false,
             app_window: false,
         }

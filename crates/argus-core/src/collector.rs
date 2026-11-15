@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -46,6 +46,12 @@ pub struct Collector {
 }
 
 impl Collector {
+    /// Start of the latest accepted process query, retained while a query is
+    /// pending or fails. Roster-only updates do not advance this observation.
+    pub fn process_sample_started(&self) -> Option<Instant> {
+        self.processes.sample_started()
+    }
+
     /// Creates a collector and takes a priming sample, so the first real
     /// snapshot already has meaningful rates.
     pub fn new(meta: Arc<MetaStore>) -> Self {

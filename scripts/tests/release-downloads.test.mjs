@@ -23,6 +23,7 @@ async function fixture(t, version, translated = true, others = {}) {
   for (const [locale, text] of Object.entries(others)) await writeFile(join(root, `changelog/${locale}.md`), text);
   const run = (...args) => execFileSync(process.execPath, [join(root, "scripts/release.mjs"), ...args], {
     cwd: root, encoding: "utf8", windowsHide: true,
+    env: { ...process.env, GITHUB_REPOSITORY: "fixture/argus", GITHUB_SERVER_URL: "https://github.com" },
   });
   return { root, zh, en, run };
 }
@@ -78,7 +79,7 @@ test("other languages are linked at the top of the GitHub notes, as in the READM
   const [first, blank, ...rest] = f.run("notes", "1.2.3").split("\n");
   assert.equal(
     first,
-    "**简体中文** · **English** · [Deutsch](changelog/de-DE.md#123---2026-11-10) · [日本語](changelog/ja-JP.md#123---2026-11-10)",
+    "**简体中文** · **English** · [Deutsch](https://github.com/fixture/argus/blob/v1.2.3/changelog/de-DE.md#123---2026-11-10) · [日本語](https://github.com/fixture/argus/blob/v1.2.3/changelog/ja-JP.md#123---2026-11-10)",
   );
   assert.equal(blank, "");
   const body = rest.join("\n");

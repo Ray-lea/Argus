@@ -11,7 +11,7 @@ mod pdh;
 #[path = "../src/util.rs"]
 mod util;
 
-use argus_core::{Collector, MetaStore};
+use argus_core::{Collector, MetaStore, diagnostics};
 use serde_json::json;
 use std::{
     collections::HashMap,

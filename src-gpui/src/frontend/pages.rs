@@ -1,5 +1,6 @@
 //! Page composition keeps domain queries separate from native widgets.
 mod about;
+mod components;
 mod details;
 mod history;
 mod performance;
@@ -81,14 +82,12 @@ impl Desktop {
                 // A search narrows the list: an accent ring around it says so at a glance.
                 let filtered = !self.query.trim().is_empty();
                 let accent = self.palette.accent;
-                let viewport = self.process_viewport_observer(cx);
                 div()
                     .relative()
                     .size_full()
                     .min_h_0()
                     .flex()
                     .flex_col()
-                    .child(viewport)
                     .child(vitals)
                     .child(
                         div()
@@ -162,6 +161,7 @@ impl Desktop {
             }
             "performance" => self.performance_view(window, cx),
             "history" => self.history_view(window, cx),
+            "components" => self.components_view(window, cx),
             "settings" => self.settings_view(window, cx),
             "about" => self.about_view(window, cx),
             "services" | "startup" | "network" => {
@@ -361,7 +361,23 @@ impl Desktop {
                 if !preferences.auto_width && preferences.widths.is_empty() {
                     self.capture_process_widths(&mut preferences, cx);
                 }
+                // Turned on again: every column follows its contents.
+                if preferences.auto_width {
+                    preferences.overrides.clear();
+                }
                 self.set_process_columns(preferences, cx);
+                return;
+            }
+            "processColumnsFullWidth" => {
+                let mut preferences = columns::Preferences::load(&self.prefs);
+                preferences.full_width = value.as_bool().unwrap_or(false);
+                self.set_process_columns(preferences, cx);
+                return;
+            }
+            "fitProcessColumn" => {
+                if let Some(key) = value.as_str() {
+                    self.fit_process_column_now(key, cx);
+                }
                 return;
             }
             "processColumnsReset" => {
@@ -466,6 +482,18 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            performance::rail::DISK_ORDER => {
+                self.set_disk_order(performance::rail::DiskOrder::parse(
+                    value.as_str().unwrap_or_default(),
+                ));
+                cx.notify();
+                return;
+            }
+            performance::rail::RESET_ORDER => {
+                self.reset_device_order();
+                cx.notify();
+                return;
+            }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {
@@ -488,6 +516,7 @@ impl Desktop {
             }
             "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
             "historyPeak" => {
+                self.data.remove("historySelection");
                 if let Some(at) = value.as_i64() {
                     self.history_hover = None;
                     self.history_cursor = Some(at);

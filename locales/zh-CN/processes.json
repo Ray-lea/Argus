@@ -108,6 +108,22 @@
       "label": "公司名称",
       "title": "可执行文件版本信息中的公司名称。"
     },
+    "version": {
+      "label": "文件版本",
+      "title": "可执行文件版本信息中的文件版本。"
+    },
+    "architecture": {
+      "label": "架构",
+      "title": "进程运行的处理器架构。"
+    },
+    "elevated": {
+      "label": "已提升",
+      "title": "进程是否以管理员权限（提升的令牌）运行。"
+    },
+    "commandLine": {
+      "label": "命令行",
+      "title": "启动进程时使用的完整命令行，包括参数。"
+    },
     "sessionId": {
       "label": "会话 ID",
       "title": "进程所属的 Windows 会话编号。"
@@ -138,7 +154,7 @@
     },
     "basePriority": {
       "label": "基本优先级",
-      "title": "Windows 报告的进程基本优先级数值。"
+      "title": "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。"
     },
     "workingSet": {
       "label": "工作集",
@@ -245,6 +261,8 @@
   "menu": {
     "endAll": "结束全部 {count} 个进程",
     "setPriority": "设置优先级",
+    "suspend": "暂停进程",
+    "resume": "恢复进程",
     "addRule": "添加规则",
     "copyPid": "复制 PID",
     "copyPidWhat": " PID",
@@ -261,9 +279,17 @@
     "netRates": "收 {received} 发 {sent}",
     "acpiTemperature": "ACPI 热区温度"
   },
+  "memoryScope": {
+    "vital": "整机已用物理内存：总内存减去可用内存，包含使用中与已修改的部分。进程行显示各自的专用工作集，合计会小于此值。详见使用指南的“内存统计口径”。",
+    "header": "上方百分比为整机已用物理内存的占比；各行为专用工作集，即进程独占且驻留在物理内存中的部分，应用组与分类按此合计。详见使用指南的“内存统计口径”。",
+    "section": "该分类各进程专用工作集的合计。整机占用还包括共享页、内核与驱动、页表、使用中的系统缓存和已修改页，因此高于各分类之和。详见使用指南的“内存统计口径”。"
+  },
   "columns": {
     "choose": "选择列",
     "autoWidth": "自动宽度",
+    "fullWidth": "全宽",
+    "fitWidth": "自动调整此列宽度",
+    "edgeHint": "拖动调整宽度，双击自动调整",
     "yes": "是",
     "no": "否",
     "reset": "恢复默认列",
@@ -294,5 +320,7 @@
     "fixed": "固定",
     "selectionSummary": "已选 {count} 列",
     "virtualAliases": "虚拟内存 虚拟字节 地址预留"
-  }
+  },
+  "basePriorityBetween": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级，介于{below}与{above}之间。",
+  "basePriorityCustom": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级。"
 }

@@ -116,6 +116,7 @@ impl Desktop {
         let manifest = argus_app::config::manifest();
         let privilege = self.data.get("privilege").cloned().unwrap_or(Value::Null);
         let group = text(&manifest["community"], "group").to_owned();
+        let channel = text(&manifest["community"], "channel").to_owned();
         let line = |text: String| {
             div()
                 .mt(px(2.))
@@ -136,7 +137,11 @@ impl Desktop {
             .border_color(p.stroke)
             .rounded(px(8.))
             .bg(p.layer)
-            .child(widgets::logo(64.))
+            // The hundred dots: drawn by their own layer (`hundred`).
+            .child(hundred::placeholder(
+                self.hundred_place.clone(),
+                self.page_epoch,
+            ))
             .child(
                 div()
                     .flex_1()
@@ -212,6 +217,36 @@ impl Desktop {
                     ),
             );
         let mut cards = Vec::new();
+        cards.push(self.setting_text(
+            "diagnostics",
+            "DocumentIcon",
+            "settings.about.diagnostics.title",
+            "settings.about.diagnostics.desc",
+            vec![
+                self.btn(
+                    "copy-diagnostics",
+                    label("settings.about.diagnostics.copy"),
+                    Some("CopyIcon"),
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let summary = this.diagnostic_summary(window, cx);
+                    if this.options.fixture.is_some() {
+                        // Fixture input must not overwrite the user's clipboard.
+                        this.data.insert("diagnosticCopy".into(), json!(summary));
+                    } else {
+                        cx.write_to_clipboard(ClipboardItem::new_string(summary));
+                    }
+                    this.notify_toast_for(
+                        ToastKind::Success,
+                        tr!("actions.copied", what = label("settings.about.diagnostics.title")),
+                        1800,
+                    );
+                    cx.notify();
+                }))
+                .into_any_element(),
+            ],
+        ));
         let copy_group = group.clone();
         cards.push(self.setting(
             "community",
@@ -247,6 +282,42 @@ impl Desktop {
                 )
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.request("open_community", json!({}), None, window, cx)
+                }))
+                .into_any_element(),
+            ],
+        ));
+        let channel_address = channel.trim_start_matches("https://").to_owned();
+        cards.push(self.setting(
+            "channel",
+            self.glyph("ChannelIcon"),
+            label("settings.about.channel.title"),
+            Some(tr!("settings.about.channel.desc", channel = channel_address).into_any_element()),
+            None,
+            vec![
+                self.btn(
+                    "copy-channel",
+                    label("settings.about.channel.copy"),
+                    None,
+                    Tone::Plain,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(channel.clone()));
+                    this.notify_toast_for(
+                        ToastKind::Success,
+                        tr!("actions.copied", what = label("settings.about.channel.link")),
+                        1800,
+                    );
+                    cx.notify();
+                }))
+                .into_any_element(),
+                self.btn(
+                    "channel",
+                    label("settings.about.channel.join"),
+                    None,
+                    Tone::Accent,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.request("open_channel", json!({}), None, window, cx)
                 }))
                 .into_any_element(),
             ],

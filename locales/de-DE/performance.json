@@ -17,6 +17,13 @@
   "devices": {
     "hide": "{name} ausblenden",
     "shown": "Angezeigte Geräte",
+    "diskOrder": {
+      "title": "Reihenfolge der Datenträger",
+      "number": "Nach Datenträgernummer",
+      "letter": "Nach Laufwerksbuchstabe",
+      "custom": "Benutzerdefiniert (per Ziehen anordnen)"
+    },
+    "resetOrder": "Standardreihenfolge wiederherstellen",
     "restore": "Standardansicht wiederherstellen"
   },
   "cpu": {
