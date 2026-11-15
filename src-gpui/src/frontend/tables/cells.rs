@@ -18,8 +18,19 @@ impl NativeTable {
         let value = self
             .cell_values
             .entry((row_index, field.key))
-            .or_insert_with(|| display_cell(row, field, bits))
+            .or_insert_with(|| display_cell(row, field, bits).into())
             .clone();
+        // A cell that shows one line of text is one element (`cell_text`).
+        let marked = matches!(
+            field.kind,
+            CellKind::Enabled
+                | CellKind::ServiceState
+                | CellKind::ConnectionState
+                | CellKind::Protocol
+        );
+        if column > 0 && (row.section.is_some() || !marked) {
+            return self.text_cell(row_index, row, field, value, cx);
+        }
         let owner = self.owner.clone();
         let mut element = div()
             .text_size(cx.theme().font_size)
@@ -31,33 +42,8 @@ impl NativeTable {
             .overflow_hidden()
             .whitespace_nowrap()
             .when(field.end, |d| d.justify_end());
-        let processes = self.page == "processes";
-        if processes
-            && row.section.is_none()
-            && matches!(
-                field.kind,
-                CellKind::Percent | CellKind::Memory | CellKind::Rate | CellKind::NetworkRate
-            )
-            && let Some(value) = row.metric(field.key)
-        {
-            element = element.bg(p.heat.opacity(theme::heat_alpha(field.key, value)));
-        }
         if column == 0 {
             return self.name_cell(row_index, element, cx).into_any_element();
-        }
-        if row.section.is_some() {
-            // Folded headings show their totals a step brighter.
-            let collapsed = !row.expanded;
-            let element = element
-                .text_size(theme::font(12.))
-                .text_color(if collapsed { p.muted } else { faint })
-                .child(value);
-            // A heading's memory adds up private working sets, not system usage.
-            let hint = (processes && field.key == "mem" && self.is_near(row_index))
-                .then(|| label("processes.memoryScope.section"));
-            return self
-                .hint_text(element, row, field.key, hint)
-                .into_any_element();
         }
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
         // The interface's `title` on this cell, for the row under the pointer.
@@ -136,16 +122,6 @@ impl NativeTable {
                     element = element.child(value);
                 }
             }
-            CellKind::StartType => {
-                element = element
-                    .when(text(&row.raw, "startType") == "manual", |d| {
-                        d.text_color(faint)
-                    })
-                    .when(text(&row.raw, "startType") == "disabled", |d| {
-                        d.text_color(p.io)
-                    })
-                    .child(value);
-            }
             CellKind::Protocol => {
                 element = element
                     .gap(px(6.))
@@ -154,52 +130,8 @@ impl NativeTable {
                         d.child(tag("v6", p.stroke_strong, p.muted))
                     });
             }
-            CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
-                element = element
-                    .font_family(theme::mono_font(cx))
-                    .text_size(theme::font(12.))
-                    .when(
-                        matches!(field.kind, CellKind::MonoDim | CellKind::PortDim),
-                        |d| d.text_color(faint),
-                    )
-                    .child(self.hint_text(div().truncate().child(value), row, field.key, hint));
-            }
-            CellKind::Dim
-            | CellKind::ServicePid
-            | CellKind::StartupLocation
-            | CellKind::ProcessText => {
-                element = element.text_color(faint).child(self.hint_text(
-                    div().truncate().child(value),
-                    row,
-                    field.key,
-                    hint,
-                ));
-            }
-            CellKind::Pid | CellKind::Identifier => {
-                // A priority class name may be wider than a column set by hand.
-                element = element.text_color(faint).child(self.hint_text(
-                    div().truncate().child(value),
-                    row,
-                    field.key,
-                    hint,
-                ));
-            }
-            _ => {
-                // Idle readings stay quiet so real load stands out.
-                let reading = row.metric(field.key);
-                let dim = match field.kind {
-                    CellKind::Percent => reading.is_none_or(|v| v < 0.05),
-                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
-                    _ => false,
-                };
-                let delayed = row.native_pending(field.key)
-                    && row.members.iter().any(|member| boolean(member, "stale"));
-                element = element
-                    .when(dim || delayed, |d| d.text_color(faint))
-                    .child(value);
-                // A figure's `title` covers its whole cell.
-                element = self.hint_text(element, row, field.key, hint);
-            }
+            // Every other kind is text (`text_cell`).
+            _ => element = element.child(value),
         }
         element.into_any_element()
     }
@@ -224,6 +156,102 @@ fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
         .child(text.into())
 }
 impl NativeTable {
+    /// A cell that shows one line of text, with its `title` for the row under
+    /// the pointer: the value at the cell's padding, its style by kind.
+    fn text_cell(
+        &self,
+        row_index: usize,
+        row: &Row,
+        field: &Field,
+        value: SharedString,
+        cx: &App,
+    ) -> AnyElement {
+        let p = Palette::current(cx);
+        let processes = self.page == "processes";
+        let near = self.is_near(row_index);
+        let id = tips::id((&self.page, &row.key, field.key));
+        let cell =
+            cell_text::cell_text(value, cx.theme().font_size, px(CELL_PADDING)).end(field.end);
+        if row.section.is_some() {
+            // Folded headings show their totals a step brighter.
+            let color = if row.expanded { p.faint } else { p.muted };
+            let cell = cell.font_size(theme::font(12.)).color(color);
+            // A heading's memory adds up private working sets, not system usage.
+            let cell = if processes && field.key == "mem" && near {
+                cell.hint(&self.tips, id, label("processes.memoryScope.section"), true)
+            } else {
+                cell
+            };
+            return cell.into_any_element();
+        }
+        // The interface's `title` on this cell, for the row under the pointer.
+        let hint = near.then(|| self.cell_hint(row, field, cx)).flatten();
+        // Over the text of values that may be cut short, else the whole cell.
+        let mut whole = false;
+        let cell = match field.kind {
+            CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
+                let cell = cell
+                    .font_family(theme::mono_font(cx))
+                    .font_size(theme::font(12.))
+                    .truncate();
+                if matches!(field.kind, CellKind::MonoDim | CellKind::PortDim) {
+                    cell.color(p.faint)
+                } else {
+                    cell
+                }
+            }
+            // Cut short in a narrower column: long text, or a priority class
+            // name in a column set by hand.
+            CellKind::Dim
+            | CellKind::ServicePid
+            | CellKind::StartupLocation
+            | CellKind::ProcessText
+            | CellKind::Pid
+            | CellKind::Identifier => cell.color(p.faint).truncate(),
+            // Without a `title`.
+            CellKind::StartType => {
+                return match text(&row.raw, "startType") {
+                    "manual" => cell.color(p.faint),
+                    "disabled" => cell.color(p.io),
+                    _ => cell,
+                }
+                .into_any_element();
+            }
+            _ => {
+                whole = true;
+                // Idle readings stay quiet so real load stands out.
+                let reading = row.metric(field.key);
+                let dim = match field.kind {
+                    CellKind::Percent => reading.is_none_or(|v| v < 0.05),
+                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
+                    _ => false,
+                };
+                let delayed = row.native_pending(field.key)
+                    && row.members.iter().any(|member| boolean(member, "stale"));
+                if dim || delayed {
+                    cell.color(p.faint)
+                } else {
+                    cell
+                }
+            }
+        };
+        let heat = (processes
+            && matches!(
+                field.kind,
+                CellKind::Percent | CellKind::Memory | CellKind::Rate | CellKind::NetworkRate
+            ))
+        .then(|| row.metric(field.key))
+        .flatten();
+        let cell = match heat {
+            Some(value) => cell.background(p.heat.opacity(theme::heat_alpha(field.key, value))),
+            None => cell,
+        };
+        match hint {
+            Some(hint) => cell.hint(&self.tips, id, hint, whole),
+            None => cell,
+        }
+        .into_any_element()
+    }
     /// Whether the row reports its hinted parts in this render (`tips`).
     pub(super) fn is_near(&self, row_index: usize) -> bool {
         self.near == Some(row_index)
@@ -482,11 +510,9 @@ impl NativeTable {
         if processes {
             element = element.pl(px(6. + inset + row.depth as f32 * 20.));
             element = if row.expandable {
-                element.child(
-                    div()
-                        .mr(px(-4.))
-                        .child(fold(row.expanded, row.key.clone(), owner)),
-                )
+                // The button carries the margin itself: a wrapper for it would
+                // be one more node in every row, laid out on every frame.
+                element.child(fold(row.expanded, row.key.clone(), owner).mr(px(-4.)))
             } else {
                 element.child(div().w(px(14.)).flex_shrink_0())
             };
@@ -498,13 +524,18 @@ impl NativeTable {
                 && !boolean(&row.raw, "countersPending")
                 && row.raw["path"].is_null()
                 && row.members.len() <= 1;
-            element = element.child(div().relative().size_4().flex_shrink_0().child(
-                if let Some(image) = image {
-                    img(image).size_4().into_any_element()
-                } else {
-                    icon(if kernel { "KernelIcon" } else { "AppIcon" }, p.glyph).into_any_element()
-                },
-            ));
+            // An image is the flex item itself, where the box around the
+            // fallback icon gives that icon its place.
+            element = element.child(if let Some(image) = image {
+                img(image).size_4().flex_shrink_0().into_any_element()
+            } else {
+                div()
+                    .relative()
+                    .size_4()
+                    .flex_shrink_0()
+                    .child(icon(if kernel { "KernelIcon" } else { "AppIcon" }, p.glyph))
+                    .into_any_element()
+            });
         }
         let group = processes && row.members.len() > 1;
         let off = self.page == "startup" && !boolean(&row.raw, "enabled");

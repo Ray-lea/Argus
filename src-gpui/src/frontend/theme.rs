@@ -415,7 +415,12 @@ pub fn base_font_size() -> f32 {
 /// GPUI's default (about 1.618) made wrapped text,
 /// and the boxes it sizes, taller than the interface's.
 pub fn line_height() -> DefiniteLength {
-    relative(design()["lineHeight"].as_f64().expect("theme line height") as f32)
+    // Read once: every table cell asks for it on every frame.
+    static LINE_HEIGHT: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    relative(
+        *LINE_HEIGHT
+            .get_or_init(|| design()["lineHeight"].as_f64().expect("theme line height") as f32),
+    )
 }
 /// A text size written for the theme's 13 px base, following the base font
 /// size the user chose: the interface's `calc(N rem / 13)`. Spacing and

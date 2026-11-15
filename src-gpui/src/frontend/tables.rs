@@ -1,5 +1,6 @@
 //! Native virtual tables share one column model and preserve process-instance identity.
 use super::*;
+mod cell_text;
 mod cells;
 mod header;
 use header::{HeaderDrag, HeaderPayload};

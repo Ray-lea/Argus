@@ -13,7 +13,9 @@ use super::*;
 use std::ops::Range;
 use std::time::Duration;
 
-pub(super) type CellValues = HashMap<(usize, &'static str), String>;
+/// What each cell shows, kept between frames: a frame clones a value by
+/// its reference count rather than copying the text.
+pub(super) type CellValues = HashMap<(usize, &'static str), SharedString>;
 
 /// How often every row is measured, besides when rows come or go; the
 /// visible ones are measured with each sample.
@@ -357,11 +359,11 @@ impl AutoWidths {
         let text = contents
             .values
             .entry((index, field.key))
-            .or_insert_with(|| display_cell(row, field, contents.bits));
+            .or_insert_with(|| display_cell(row, field, contents.bits).into());
         let text = if numeric(field.kind) {
             figures(text)
         } else {
-            text.clone()
+            text.to_string()
         };
         Some(self.measure(&text, Role::Cell, system, cx) + CELL_PADDING * 2.)
     }
