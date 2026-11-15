@@ -224,11 +224,10 @@ pub(in crate::frontend) struct Lift {
     /// Where they are heading: hovered, held down.
     pub hovered: bool,
     pub pressed: bool,
-    /// The card (raised by hover, pressed in), its hover face, its mark, the
+    /// The card (raised by hover, let down by a press), its hover face, the
     /// line along its top edge and its arrow (muted, and in its colour).
     pub card: LiveTransform,
     pub face: LiveTransform,
-    pub mark: LiveTransform,
     pub line: LiveTransform,
     pub arrow: LiveTransform,
     pub lit: LiveTransform,

@@ -594,6 +594,7 @@ impl Desktop {
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
                 "diagnosticCopy":if self.options.fixture.is_some() { self.data.get("diagnosticCopy") } else { None },
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
+                "skippedRequest":self.data.get("skippedRequest"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),

@@ -381,11 +381,15 @@
     "links": {
       "website": {
         "title": "Argus 官网",
-        "desc": "下载稳定版，阅读使用文档、常见问题和更新日志。"
+        "download": "下载",
+        "guide": "使用指南",
+        "changelog": "更新日志"
       },
       "repository": {
         "title": "GitHub 仓库",
-        "desc": "查看源代码，报告问题或提出建议，获取各版本的安装包。"
+        "issues": "问题反馈",
+        "discussions": "讨论区",
+        "releases": "发行版"
       }
     },
     "onboarding": {

@@ -393,11 +393,15 @@
     "links": {
       "website": {
         "title": "Site Web Argus",
-        "desc": "Téléchargez les versions stables et lisez la documentation, FAQ et le journal des modifications."
+        "download": "Télécharger",
+        "guide": "Guide",
+        "changelog": "Modifications"
       },
       "repository": {
         "title": "Dépôt GitHub",
-        "desc": "Parcourez le code source, signalez des problèmes ou suggérez des modifications et obtenez le programme d’installation de n’importe quelle version."
+        "issues": "Signalements",
+        "discussions": "Discussions",
+        "releases": "Versions"
       }
     },
     "onboarding": {

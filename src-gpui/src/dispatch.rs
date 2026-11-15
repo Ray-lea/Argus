@@ -301,6 +301,11 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "open_repository" => crate::commands::open_repository()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "open_project_page" => {
+            crate::commands::open_project_page(argument::<String>(&args, "page")?)
+                .map(|value| serde_json::to_value(value).expect("serializable command response"))
+                .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
+        }
         "open_download_page" => crate::commands::open_download_page()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

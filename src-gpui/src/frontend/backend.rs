@@ -32,6 +32,12 @@ impl Desktop {
                     | "set_theme"
                     | "set_language"
             ) {
+                // Kept for the tests to read (`inspectLayout.skippedRequest`):
+                // what a control asked for, in place of doing it.
+                self.data.insert(
+                    "skippedRequest".into(),
+                    json!({"command": command, "args": args}),
+                );
                 return;
             }
         }

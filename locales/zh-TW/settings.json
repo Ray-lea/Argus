@@ -363,11 +363,15 @@
     "links": {
       "website": {
         "title": "Argus 官網",
-        "desc": "下載穩定版，閱讀使用文件、常見問題與更新記錄。"
+        "download": "下載",
+        "guide": "使用指南",
+        "changelog": "更新記錄"
       },
       "repository": {
         "title": "GitHub 存放庫",
-        "desc": "檢視原始碼，回報問題或提出建議，取得各版本的安裝套件。"
+        "issues": "問題回報",
+        "discussions": "討論區",
+        "releases": "發行版本"
       }
     },
     "onboarding": {

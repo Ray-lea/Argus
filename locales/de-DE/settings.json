@@ -390,11 +390,15 @@
     "links": {
       "website": {
         "title": "Argus-Website",
-        "desc": "Laden Sie stabile Versionen herunter und lesen Sie die Dokumentation, FAQ und das Änderungsprotokoll."
+        "download": "Download",
+        "guide": "Handbuch",
+        "changelog": "Änderungen"
       },
       "repository": {
         "title": "GitHub-Repository",
-        "desc": "Durchsuchen Sie den Quellcode, melden Sie Probleme oder schlagen Sie Änderungen vor und holen Sie sich das Installationsprogramm für jede Version."
+        "issues": "Probleme melden",
+        "discussions": "Diskussionen",
+        "releases": "Versionen"
       }
     },
     "onboarding": {

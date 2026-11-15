@@ -58,6 +58,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`diagnostic-summary.json`](../../tools/window-probe/steps/diagnostic-summary.json) 检查关于页的诊断信息复制入口、深浅主题及小窗口大字号布局。模拟快照下单击复制按钮时将生成内容写入 `inspectLayout.diagnosticCopy`，保留系统剪贴板内容；摘要字段筛选、缺失值和缩放换算由相关单元测试覆盖。
 
+[`about-links.json`](../../tools/window-probe/steps/about-links.json) 检查关于页官网与 GitHub 卡片的悬停、深浅主题、最小窗口和大字号布局，并核对单击卡片底部的按钮只打开对应页面、不触发整张卡片。模拟快照不执行打开网页等命令，`inspectLayout.skippedRequest` 记录最近一次被跳过的命令及其参数；各页面的地址由 `commands.rs` 的单元测试覆盖。
+
 [`file-lock-layout.json`](../../tools/window-probe/steps/file-lock-layout.json) 检查文件选择、查询状态与结果变化后的弹窗稳定性。模拟快照实例可通过 `contentZoom`（0.5–3）复现分数缩放布局；`inspectLayout` 的 `dialog.settled` 表示高度过渡已结束。
 
 [`window-restore.json`](../../tools/window-probe/steps/window-restore.json) 用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。

@@ -387,11 +387,15 @@
     "links": {
       "website": {
         "title": "Argus ウェブサイト",
-        "desc": "安定リリースをダウンロードし、ドキュメント、FAQ、および変更ログを読んでください。"
+        "download": "ダウンロード",
+        "guide": "使い方",
+        "changelog": "更新履歴"
       },
       "repository": {
         "title": "GitHub リポジトリ",
-        "desc": "ソース コードを参照し、問題を報告したり変更を提案したり、任意のリリースのインストーラーを入手したりできます。"
+        "issues": "問題を報告",
+        "discussions": "ディスカッション",
+        "releases": "リリース"
       }
     },
     "onboarding": {
