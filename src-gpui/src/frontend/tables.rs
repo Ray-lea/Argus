@@ -1316,8 +1316,17 @@ impl TableDelegate for NativeTable {
             .disabled(!sortable)
             .accessibility_label(field.label.clone())
             .when(self.page == "processes" && !resizing, |button| {
-                let title = theme::label(&format!("processes.column.{key}.title"));
-                button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
+                // The memory header's figure is whole-system usage, its rows
+                // private working sets: the hint names both.
+                let title = theme::label(&if key == "mem" {
+                    "processes.memoryScope.header".to_owned()
+                } else {
+                    format!("processes.column.{key}.title")
+                });
+                // Wrapped like the cells' tips: some descriptions run to a few sentences.
+                button.tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(title.clone().into(), px(420.), window, cx)
+                })
             })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {

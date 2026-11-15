@@ -10,6 +10,10 @@ use super::*;
 use charts::{Line, Look, Overlay, Scale};
 use gpui_kit::gpui::transparent_black;
 
+/// Where a card's tooltip wraps, as the table's own tips do: a sentence
+/// or two stays inside a window that isn't maximized.
+const TIP_WIDTH: f32 = 420.;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BandMode {
     Auto,
@@ -284,7 +288,9 @@ impl Face {
                     .child(self.unit.clone()),
             )
             .when_some(tip(&self.figure_tip), |d, tip| {
-                d.tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+                d.tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(tip.clone().into(), px(TIP_WIDTH), window, cx)
+                })
             });
         let readings = match &self.readings {
             Readings::Detail(text, hint) => div()
@@ -296,7 +302,9 @@ impl Face {
                 .text_color(ink(p.muted))
                 .child(text.clone())
                 .when_some(tip(hint), |d, hint| {
-                    d.tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
+                    d.tooltip(move |window, cx| {
+                        widgets::wrapping_tooltip(hint.clone().into(), px(TIP_WIDTH), window, cx)
+                    })
                 })
                 .into_any_element(),
             Readings::Metrics(metrics, font) => div()
@@ -546,8 +554,12 @@ impl Desktop {
                 scale: format!("{} GB", gb(mem_total)),
                 figure: gb(number(sys, "memUsed")),
                 unit: format!("/ {} GB", gb(mem_total)),
-                readings: Readings::Detail(format!("{mem_percent}%"), None),
-                figure_tip: None,
+                // Whole-system usage, unlike the process rows' private working sets.
+                readings: Readings::Detail(
+                    format!("{mem_percent}%"),
+                    Some(label("processes.memoryScope.vital")),
+                ),
+                figure_tip: Some(label("processes.memoryScope.vital")),
             },
             Card {
                 id: "disk",
