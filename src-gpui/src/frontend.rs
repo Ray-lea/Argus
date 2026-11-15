@@ -9,6 +9,7 @@ mod diagnostic_summary;
 mod dialogs;
 mod flip;
 mod gpu_usage;
+mod hundred;
 mod icon_motion;
 mod inline;
 mod layout;
@@ -30,6 +31,7 @@ mod tables;
 mod test_control;
 mod theme;
 mod tips;
+mod tray;
 mod type_search;
 mod users;
 mod visibility;
@@ -57,22 +59,23 @@ use theme::{Palette, icon, label};
 /// Minutes hidden before the window gives its memory back; 0 for never.
 const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
 const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
-const PAGES: [(&str, &str); 8] = [
+const PAGES: [(&str, &str); 9] = [
     ("processes", "ProcessesIcon"),
     ("performance", "PulseIcon"),
     ("services", "ServicesIcon"),
     ("startup", "PowerIcon"),
     ("network", "GlobeIcon"),
     ("history", "HistoryIcon"),
+    ("components", "ComponentsIcon"),
     ("settings", "SettingsIcon"),
     ("about", "InfoIcon"),
 ];
 /// The pages a start can open on (the `startPage` preference): all but
-/// Settings and About.
+/// Components, Settings and About.
 fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
     PAGES
         .iter()
-        .filter(|(page, _)| !matches!(*page, "settings" | "about"))
+        .filter(|(page, _)| !matches!(*page, "components" | "settings" | "about"))
 }
 /// The page a start opens on: the saved `startPage` when it names one of
 /// `start_pages`, the process page otherwise.
@@ -250,6 +253,8 @@ struct Desktop {
     /// last laid out: the card's height in a viewport of any height.
     perf_card_chrome: Rc<Cell<Option<Pixels>>>,
     chart_tick_queued: bool,
+    /// Where the about page left room for the hundred dots (`hundred`).
+    hundred_place: Rc<RefCell<hundred::Place>>,
     /// A fixture fed made-up samples (the `sample` test control): its chart
     /// clock runs as in a live session instead of standing still.
     fixture_samples: bool,
@@ -259,6 +264,7 @@ struct Desktop {
     /// The columns the logical processors' grid was last arranged in.
     core_columns: Cell<usize>,
     settings_scroll: ScrollHandle,
+    components_scroll: ScrollHandle,
     about_scroll: ScrollHandle,
     device_scroll: ScrollHandle,
     settings_target: Option<usize>,
@@ -379,6 +385,8 @@ struct Desktop {
     history_cursor: Option<i64>,
     history_hover: Option<i64>,
     settings_section: String,
+    /// The tray's open flyouts (`tray`).
+    tray: tray::Flyouts,
 }
 impl Desktop {
     fn process_image(&self, id: u32) -> Option<Arc<Image>> {
@@ -431,12 +439,14 @@ impl Desktop {
             live_motions: Rc::default(),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
+            hundred_place: Rc::default(),
             fixture_samples: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
             core_columns: Cell::new(0),
             settings_scroll: ScrollHandle::new(),
+            components_scroll: ScrollHandle::new(),
             about_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),
             settings_target: None,
@@ -549,6 +559,7 @@ impl Desktop {
             history_cursor: None,
             history_hover: None,
             settings_section: "language".into(),
+            tray: tray::Flyouts::default(),
             ui_scale: appearance::SCALE.load(&prefs),
             font_size: appearance::FONT_SIZE.load(&prefs),
             prefs,
@@ -786,12 +797,17 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     charts::ChartLayer::new(placements, clock, active, shift, pane, motions)
                 });
                 view.update(cx, |desktop, _| desktop.chart_layer = Some(charts.clone()));
+                let place = view.read(cx).hundred_place.clone();
+                let shift = view.read(cx).page_shift.clone();
+                let owner = view.downgrade();
+                let hundred = cx.new(|_| hundred::HundredLayer::new(owner, place, shift));
                 let state = view.read(cx).scrim.clone();
                 let scrim = cx.new(|_| dialogs::Scrim { state });
                 view.update(cx, |desktop, _| desktop.scrim_view = Some(scrim.clone()));
                 cx.new(|_| DesktopRoot {
                     desktop: view,
                     charts,
+                    hundred,
                     scrim,
                 })
             })
@@ -835,6 +851,7 @@ fn trace_work(event: &str, detail: Option<&str>, started: Instant) {
 struct DesktopRoot {
     desktop: Entity<Desktop>,
     charts: Entity<charts::ChartLayer>,
+    hundred: Entity<hundred::HundredLayer>,
     scrim: Entity<dialogs::Scrim>,
 }
 
@@ -849,6 +866,7 @@ impl Render for DesktopRoot {
                     .cached(StyleRefinement::default().size_full()),
             )
             .child(self.charts.clone())
+            .child(self.hundred.clone())
             .child(self.scrim.clone())
     }
 }
@@ -874,7 +892,7 @@ mod tests {
 
     #[test]
     fn a_start_opens_a_saved_page_other_than_settings() {
-        // Every page can be chosen except Settings itself.
+        // Every page can be chosen except Components, Settings and About.
         let choices = start_pages().map(|(page, _)| *page).collect::<Vec<_>>();
         assert_eq!(
             choices,
@@ -895,6 +913,7 @@ mod tests {
         for saved in [
             Value::Null,
             json!("settings"),
+            json!("components"),
             json!("Performance"),
             json!(""),
             json!(2),

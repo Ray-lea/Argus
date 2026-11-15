@@ -9,3 +9,7 @@
 ## 窗口演示
 
 首页窗口演示的系统读数为虚构值：按采样序号由确定性噪声生成（几种快慢不同的起伏，叠加偶发的负载突增），不循环重复，服务器与浏览器生成的首帧一致；各进程按权重分摊同一时刻的系统合计，列合计与整机读数一致。进程、服务、启动项与连接为虚构的演示数据，地址使用文档地址段。
+
+## 项目支持与特别致谢
+
+`supporters.json` 列出首页“开源”区与各语言 README 致谢部分展示的支持者，每人一张卡片：`id`、昵称 `name`、主页链接 `url`，头像为 `supporters/<id>.webp`（256 像素正方形）。添加或修改支持者后运行 `node scripts/supporters.mjs`：它从头像取色，写入 `colors`（首页卡片的浅色与深色光场配色）；用 Great Vibes 手写体把昵称转为矢量轮廓，写入 `signature`（100 像素字号下的路径与墨迹范围，首页与 README 卡片共用，字体缺少某个字符时省略，卡片改用常规文字）；在 `docs/images/supporters/` 生成各语言、各主题的 README 卡片，并更新 README 中 `supporters` 标记之间的内容。字体文件位于 `scripts/lib/fonts/`，按 SIL Open Font License 1.1 授权（同目录 `OFL.txt`），仅供生成脚本使用。新头像可由同一脚本裁成正方形并转换格式：`node scripts/supporters.mjs --avatar <id> <图片文件>`。

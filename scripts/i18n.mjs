@@ -18,6 +18,7 @@ import { join, relative } from "node:path";
 import { macroCalls } from "./lib/rust-calls.mjs";
 import { maySpellOne, textErrors } from "./lib/locale-validation.mjs";
 import { installerLanguages } from "./lib/installer-locales.mjs";
+import { terminology, terminologyErrors } from "./lib/terminology.mjs";
 
 const root = join(import.meta.dirname, "..");
 const SOURCE = "zh-CN";
@@ -97,7 +98,7 @@ for (const [locale, namespaces] of catalogs) {
 for (const [ns, keys] of source) {
   for (const [key, text] of keys) {
     if (typeof text !== "string") error(`locales/${SOURCE}/${ns}.json`, `${key}: the source has no plural forms`);
-    else for (const message of textErrors(text, text)) error(`locales/${SOURCE}/${ns}.json`, `${key}: ${message}`);
+    else for (const message of textErrors(text, text, { key: `${ns}.${key}` })) error(`locales/${SOURCE}/${ns}.json`, `${key}: ${message}`);
   }
 }
 
@@ -137,9 +138,30 @@ for (const [locale, namespaces] of catalogs) {
         if (tags(text) !== tags(original)) error(file, `${label}: tags differ from ${SOURCE}`);
         if (!/^(zh|ja)(-|$)/.test(locale) && !(ns === "common" && key.startsWith("languageName.")) && HAN.test(text)) error(file, `${label}: untranslated Chinese text`);
         if (/QZX\d|XZQ|\[ZX\d+XZ\]/.test(text)) error(file, `${label}: translation marker left in text`);
-        for (const message of textErrors(original, text)) error(file, `${label}: ${message}`);
+        for (const message of textErrors(original, text, { key: `${ns}.${key}` })) error(file, `${label}: ${message}`);
       }
     }
+  }
+}
+
+// Policy references must follow catalog renames rather than silently losing coverage.
+for (const key of [...Object.keys(terminology.exactLabels), ...Object.keys(terminology.localizedPhrases)]) {
+  const dot = key.indexOf(".");
+  if (!source.get(key.slice(0, dot))?.has(key.slice(dot + 1))) error("resources/terminology.json", `unknown catalog key: ${key}`);
+}
+
+// Website marketing and demo-only copy use the English message as their key.
+const siteDir = join(root, "website/src/locales");
+const siteSources = new Set();
+for (const name of readdirSync(siteDir).filter(name => name.endsWith(".json"))) {
+  const file = `website/src/locales/${name}`;
+  const messages = JSON.parse(readFileSync(join(siteDir, name), "utf8"));
+  for (const [original, text] of Object.entries(messages)) {
+    if (!siteSources.has(original)) {
+      for (const message of terminologyErrors(original, original)) error(file, `English source ${original}: ${message}`);
+      siteSources.add(original);
+    }
+    for (const message of terminologyErrors(original, text)) error(file, `${original}: ${message}`);
   }
 }
 

@@ -331,6 +331,9 @@ impl Desktop {
         };
         let panel = div()
             .id("process-details")
+            // The pane's rows and buttons take their hover fills in place:
+            // the pane does not render for the pointer moving over it.
+            .hover_fills_in_place()
             .relative()
             .w(px(self.details_display_width(window)))
             .h_full()
@@ -694,17 +697,7 @@ impl Desktop {
                 .map(|value| label(&format!("{namespace}.{value}")))
                 .unwrap_or_else(missing)
         };
-        let priority = match process["basePriority"].as_u64() {
-            Some(4) => Some("idle"),
-            Some(6) => Some("belowNormal"),
-            Some(8) => Some("normal"),
-            Some(10) => Some("aboveNormal"),
-            Some(13) => Some("high"),
-            Some(24) => Some("realtime"),
-            _ => None,
-        }
-        .map(|class| label(&format!("processes.priority.{class}")))
-        .unwrap_or_else(missing);
+        let priority = tables::base_priority(process).unwrap_or_else(missing);
         let plain = |value: &Value| {
             value
                 .as_u64()
@@ -1690,6 +1683,23 @@ impl Desktop {
 
     /// This computer's parts, each a way to its view on the performance page
     ///.
+    /// Whether a new sample changes what the details pane shows. A picked
+    /// process shows its readings; the overview of the machine changes only
+    /// when a part of it does, and is otherwise left as drawn.
+    pub(in crate::frontend) fn details_follow_sample(&self) -> bool {
+        use std::hash::{Hash, Hasher};
+        let key = self.selected.get("processes").cloned().unwrap_or_default();
+        if self.details_pick(&key).is_some() {
+            return true;
+        }
+        let mut digest = std::collections::hash_map::DefaultHasher::new();
+        for part in self.overview_parts() {
+            (&part.device, &part.kind, &part.name, &part.detail).hash(&mut digest);
+        }
+        let digest = Some(digest.finish());
+        self.ui.overview_seen.replace(digest) != digest
+    }
+
     fn overview_parts(&self) -> Vec<Part> {
         let p = self.palette;
         let hw = &self.snapshot["hardware"];

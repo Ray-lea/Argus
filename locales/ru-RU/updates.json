@@ -1,5 +1,5 @@
 {
-  "updated": "Argus обновлён до {version}.",
+  "updated": "Argus обновлён до версии {version}.",
   "whatsNew": "Что нового",
   "readyToast": "Argus {version} готов к установке",
   "availableToast": "Argus {version} доступен",
@@ -7,11 +7,11 @@
   "openDialog": "Посмотреть изменения",
   "button": {
     "title": "Argus {version} готов к установке. Нажмите, чтобы посмотреть изменения и установить обновление.",
-    "availableTitle": "Argus {version} доступен. Нажмите, чтобы узнать, что нового"
+    "availableTitle": "Доступен Argus {version}. Нажмите, чтобы узнать, что нового"
   },
   "menu": {
     "view": "Посмотреть изменения",
-    "dismiss": "Не напоминать мне об этой версии"
+    "dismiss": "Не напоминать об этой версии"
   },
   "dialog": {
     "ready": "Argus {version} готов",

@@ -507,7 +507,27 @@ struct DirectComposition {
     comp_device: IDCompositionDevice,
     comp_target: IDCompositionTarget,
     swap_visual: Option<IDCompositionVisual>,
+    /// With `ARGUS_GPUI_COMPOSED_PRESENT`: the bitmap `swap_visual` shows in
+    /// place of the flip chain.
+    flat: Option<FlatBitmap>,
     charts: chart_composition::ChartComposition,
+}
+
+struct FlatBitmap {
+    surface: IDCompositionSurface,
+    size: (u32, u32),
+    /// A bitmap's first update covers all of it.
+    drawn: bool,
+}
+
+/// Whether frames reach the screen through a DirectComposition bitmap rather
+/// than by flipping the swap chain (`ARGUS_GPUI_COMPOSED_PRESENT`). The
+/// compositor always draws a bitmap itself; a flip chain it may hand to a
+/// hardware overlay plane, whose blending with what lies behind a translucent
+/// window is the display driver's.
+fn composed_present_requested() -> bool {
+    static REQUESTED: OnceLock<bool> = OnceLock::new();
+    *REQUESTED.get_or_init(|| std::env::var_os("ARGUS_GPUI_COMPOSED_PRESENT").is_some())
 }
 
 impl DirectXRendererDevices {
@@ -700,9 +720,71 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// Copies the frame into the bitmap of the flat visual and commits it, in
+    /// place of a flip. The render target is then never presented, as while a
+    /// chart tree is shown, and keeps the last frame for partial paints.
+    fn present_composed(&mut self) -> Result<()> {
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        let source = resources
+            .render_target
+            .as_ref()
+            .context("render target missing")?;
+        let comp = self
+            .direct_composition
+            .as_mut()
+            .context("composition missing")?;
+        let visual = comp.swap_visual.as_ref().context("flat visual missing")?;
+        let size = (self.width, self.height);
+        if comp.flat.as_ref().is_none_or(|flat| flat.size != size) {
+            let surface = unsafe {
+                comp.comp_device.CreateSurface(
+                    size.0,
+                    size.1,
+                    RENDER_TARGET_FORMAT,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED,
+                )?
+            };
+            unsafe { visual.SetContent(&surface)? };
+            if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
+                println!(
+                    "{{\"event\":\"gpu-composed-present\",\"width\":{},\"height\":{}}}",
+                    size.0, size.1
+                );
+            }
+            comp.flat = Some(FlatBitmap {
+                surface,
+                size,
+                drawn: false,
+            });
+        }
+        let flat = comp.flat.as_mut().context("flat bitmap missing")?;
+        match resources.present_dirty.as_deref().filter(|_| flat.drawn) {
+            Some(rects) => {
+                for rect in rects {
+                    chart_composition::copy_scene(&flat.surface, devices, source, Some(*rect))?;
+                }
+            }
+            None => chart_composition::copy_scene(&flat.surface, devices, source, None)?,
+        }
+        flat.drawn = true;
+        unsafe { comp.comp_device.Commit()? };
+        Ok(())
+    }
+
     #[inline]
     fn present(&mut self) -> Result<()> {
         crate::frame_trace::record(3, 0);
+        if composed_present_requested()
+            && self
+                .direct_composition
+                .as_ref()
+                .is_some_and(|comp| comp.swap_visual.is_some())
+        {
+            let result = self.present_composed();
+            crate::frame_trace::record(4, u64::from(result.is_ok()));
+            return result.context("Presenting through the compositor failed");
+        }
         let resources = self.resources.as_ref().expect("resources missing");
         let parameters = resources
             .present_dirty
@@ -1524,7 +1606,7 @@ impl DirectXRenderer {
     /// goes through MetalRenderer; this is the Windows analogue). Draws into
     /// the existing render target, copies it into a `D3D11_USAGE_STAGING`
     /// texture, maps it, and converts BGRA to RGBA.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(feature = "test-support")]
     pub(crate) fn render_to_image(
         &mut self,
         scene: &Scene,
@@ -2215,7 +2297,7 @@ impl DirectComposition {
                 get_comp_device(dxgi)?
             };
             unsafe {
-                let comp_target = comp_device.CreateTargetForHwnd(hwnd, true)?;
+                let comp_target = comp_device.CreateTargetForHwnd(hwnd, false)?;
                 let swap_visual = if let Some(chain) = swap_chain {
                     let visual = comp_device.CreateVisual()?;
                     visual.SetContent(chain)?;
@@ -2231,6 +2313,7 @@ impl DirectComposition {
                     comp_device,
                     comp_target,
                     swap_visual,
+                    flat: None,
                     charts,
                 })
             }
@@ -2875,9 +2958,6 @@ fn create_over_blend_state(device: &ID3D11Device, source: D3D11_BLEND) -> Result
     desc.RenderTarget[0].SrcBlend = source;
     desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
     desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    // Argus: "over" coverage. The premultiplied swap chain is composited over
-    // the system backdrop; additive alpha made stacked translucent layers (and
-    // antialiased edges on them) opaque, hiding the backdrop they let through.
     desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
     unsafe {
@@ -2939,7 +3019,6 @@ fn create_blend_state_for_path_sprite(device: &ID3D11Device) -> Result<ID3D11Ble
     desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
     desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
     desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-    // Argus: "over" coverage, as in `create_blend_state`.
     desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
     desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL.0 as u8;
     unsafe {
@@ -3097,7 +3176,6 @@ pub(crate) mod shader_resources {
         PolychromeSprite,
         ChartFilter,
         ChartBackdrop,
-        EmojiRasterization,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3179,10 +3257,6 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => POLYCHROME_SPRITE_VERTEX_BYTES,
                     ShaderTarget::Fragment => POLYCHROME_SPRITE_FRAGMENT_BYTES,
                 },
-                ShaderModule::EmojiRasterization => match target {
-                    ShaderTarget::Vertex => EMOJI_RASTERIZATION_VERTEX_BYTES,
-                    ShaderTarget::Fragment => EMOJI_RASTERIZATION_FRAGMENT_BYTES,
-                },
             };
             Self { inner: bytes }
         }
@@ -3193,12 +3267,6 @@ pub(crate) mod shader_resources {
         unsafe {
             use windows::Win32::Graphics::{
                 Direct3D::ID3DInclude, Hlsl::D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            };
-
-            let shader_name = if matches!(entry, ShaderModule::EmojiRasterization) {
-                "color_text_raster.hlsl"
-            } else {
-                "shaders.hlsl"
             };
 
             let entry = format!(
@@ -3217,7 +3285,7 @@ pub(crate) mod shader_resources {
             let mut compile_blob = None;
             let mut error_blob = None;
             let shader_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(&format!("src/{}", shader_name))
+                .join("src/shaders.hlsl")
                 .canonicalize()?;
 
             let entry_point = PCSTR::from_raw(entry.as_ptr());
@@ -3271,7 +3339,6 @@ pub(crate) mod shader_resources {
                 ShaderModule::PolychromeSprite => "polychrome_sprite",
                 ShaderModule::ChartFilter => "chart_filter",
                 ShaderModule::ChartBackdrop => "chart_backdrop",
-                ShaderModule::EmojiRasterization => "emoji_rasterization",
             }
         }
     }

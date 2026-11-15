@@ -1138,7 +1138,10 @@ impl Desktop {
         let near = self
             .tips
             .begin(window)
-            .then(|| tips::row_under(&rows_scroll, TABLE_ROW, rows.len(), window))
+            .then(|| {
+                self.tips
+                    .row_under(&rows_scroll, TABLE_ROW, rows.len(), window)
+            })
             .flatten();
         let moved = self.tips.clone();
         let mut body = div()

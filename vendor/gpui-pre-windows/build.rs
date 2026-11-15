@@ -26,7 +26,6 @@ mod shader_compilation {
 
         println!("cargo:rerun-if-changed=src/shaders.hlsl");
         println!("cargo:rerun-if-changed=src/alpha_correction.hlsl");
-        println!("cargo:rerun-if-changed=src/color_text_raster.hlsl");
 
         // Check if fxc.exe is available
         let fxc_path = find_fxc_compiler();
@@ -53,18 +52,6 @@ mod shader_compilation {
         for module in modules {
             compile_shader_for_module(
                 module,
-                &out_dir,
-                &fxc_path,
-                shader_path.to_str().unwrap(),
-                &rust_binding_path,
-            );
-        }
-
-        {
-            let shader_path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-                .join("src/color_text_raster.hlsl");
-            compile_shader_for_module(
-                "emoji_rasterization",
                 &out_dir,
                 &fxc_path,
                 shader_path.to_str().unwrap(),

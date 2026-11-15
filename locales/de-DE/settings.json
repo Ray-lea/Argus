@@ -237,7 +237,7 @@
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Der Hinweis am Infobereichssymbol wird im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Das Symbol im Infobereich und sein Hinweis werden im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"

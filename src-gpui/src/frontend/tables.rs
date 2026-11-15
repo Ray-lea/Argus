@@ -219,6 +219,38 @@ fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Fiel
         })
         .collect()
 }
+/// A process's base priority as its priority class, or as the number Windows
+/// reports when it matches no class.
+pub(in crate::frontend) fn base_priority(process: &Value) -> Option<String> {
+    let value = process["basePriority"].as_i64()?;
+    Some(match model::priority_class(process) {
+        Some(class) => label(&format!("processes.priority.{class}")),
+        None => crate::regional::number!("{value}"),
+    })
+}
+
+/// Why a base priority shows as a number: it lies between two classes.
+pub(in crate::frontend) fn base_priority_hint(process: &Value) -> Option<String> {
+    if model::priority_class(process).is_some() {
+        return None;
+    }
+    let base = process["basePriority"].as_i64()?;
+    let class = |(value, class): (i64, &str)| {
+        format!(
+            "{} ({value})",
+            label(&format!("processes.priority.{class}"))
+        )
+    };
+    Some(match model::priority_neighbours(base) {
+        (Some(below), Some(above)) => tr!(
+            "processes.basePriorityBetween",
+            below = class(below),
+            above = class(above)
+        ),
+        _ => label("processes.basePriorityCustom"),
+    })
+}
+
 fn cell(row: &Row, field: &Field) -> String {
     let raw = &row.raw;
     let missing = || label("format.missing");
@@ -227,6 +259,11 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::ProcessText => row
             .column_text(field.key)
             .map(|value| columns::shown(field.key, value).into_owned())
+            .unwrap_or_else(missing),
+        // A process's priority class by name; groups mix them and show none.
+        CellKind::Identifier if field.key == "basePriority" => row
+            .metric(field.key)
+            .and_then(|_| base_priority(&row.members[0]))
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)
@@ -1316,8 +1353,17 @@ impl TableDelegate for NativeTable {
             .disabled(!sortable)
             .accessibility_label(field.label.clone())
             .when(self.page == "processes" && !resizing, |button| {
-                let title = theme::label(&format!("processes.column.{key}.title"));
-                button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
+                // The memory header's figure is whole-system usage, its rows
+                // private working sets: the hint names both.
+                let title = theme::label(&if key == "mem" {
+                    "processes.memoryScope.header".to_owned()
+                } else {
+                    format!("processes.column.{key}.title")
+                });
+                // Wrapped like the cells' tips: some descriptions run to a few sentences.
+                button.tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(title.clone().into(), px(420.), window, cx)
+                })
             })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {
@@ -1346,10 +1392,10 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
         if std::mem::take(&mut self.near_due) {
-            self.near = self
-                .list
-                .as_ref()
-                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
+            self.near = self.list.as_ref().and_then(|list| {
+                self.tips
+                    .row_under(list, ROW_HEIGHT, self.rows.len(), window)
+            });
         }
         let p = Palette::current(cx);
         let row = &self.rows[index];
@@ -1646,6 +1692,21 @@ impl Desktop {
                 .view(table.entity_id()),
         )
     }
+    /// Where the list draws the row at `index`, scrolled as it is: where a
+    /// test presses on it (see `Tips::row_under` for the same measure).
+    pub(in crate::frontend) fn row_bounds(&self, index: usize, cx: &App) -> Option<Bounds<Pixels>> {
+        let list = self.table.as_ref()?.read(cx).delegate().list.clone()?;
+        let viewport = list.bounds();
+        (index < self.rows.len()).then(|| {
+            Bounds::new(
+                point(
+                    viewport.left(),
+                    viewport.top() + list.offset().y + px(ROW_HEIGHT * index as f32),
+                ),
+                size(viewport.size.width, px(ROW_HEIGHT)),
+            )
+        })
+    }
     pub(in crate::frontend) fn table_view(
         &mut self,
         window: &mut Window,
@@ -1740,18 +1801,7 @@ impl Desktop {
                         }
                     }
                     TableEvent::RightClickedRow(Some(index)) => {
-                        // A right press selects the row, as a left one does, then opens its menu.
-                        if let Some(row) = this.rows.get(*index).cloned()
-                            && row.section.is_none()
-                        {
-                            this.selected.insert(this.page.clone(), row.key.clone());
-                            let items = this.row_menu(&row);
-                            this.open_popup(items, window, cx);
-                            if let Some(table) = &this.table {
-                                table.update(cx, |state, cx| state.set_right_clicked_row(None, cx));
-                            }
-                            cx.notify();
-                        }
+                        this.open_row_menu(*index, window, cx);
                     }
                     TableEvent::ClearSelection => {
                         // A selection the current filter or folding hides stays
@@ -1785,7 +1835,6 @@ impl Desktop {
         let network = boolean(&self.snapshot, "processNetwork");
         let sort = (self.sort.as_str(), self.descending);
         let column_preferences = columns::Preferences::load(&self.prefs);
-        let totals = self.process_column_totals(&column_preferences);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         let scope = (self.view.as_str(), self.query.as_str());
         let available = window.viewport_size().width
@@ -1804,6 +1853,24 @@ impl Desktop {
             .selected
             .get(&page)
             .and_then(|key| rows.iter().position(|r| &r.key == key));
+        // Whether the table is laid out anew. The column totals read every
+        // process and only that uses them: a frame that scrolls the list or
+        // moves a highlight leaves them alone.
+        let stale = {
+            let state = table.read(cx);
+            let delegate = state.delegate();
+            !Arc::ptr_eq(&delegate.rows, &rows)
+                || delegate.available != available
+                || (page == "processes" && delegate.process_columns != column_preferences)
+                || delegate.font_size != theme::font(12.)
+                || delegate.bits != bits
+                || delegate.locale != argus_core::i18n::locale()
+        };
+        let totals = if stale {
+            self.process_column_totals(&column_preferences)
+        } else {
+            HashMap::new()
+        };
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
             // A column dragged to a width is drawn at it already: a glide to
@@ -1815,13 +1882,7 @@ impl Desktop {
                     }
                 }
             }
-            if !Arc::ptr_eq(&state.delegate().rows, &rows)
-                || state.delegate().available != available
-                || (page == "processes" && state.delegate().process_columns != column_preferences)
-                || state.delegate().font_size != theme::font(12.)
-                || state.delegate().bits != bits
-                || state.delegate().locale != argus_core::i18n::locale()
-            {
+            if stale {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
@@ -1860,6 +1921,10 @@ impl Desktop {
         div()
             .id("table-region")
             .size_full()
+            // A row under the pointer takes its fill in place: the list does
+            // not render for the pointer moving over it. What a row shows for
+            // the pointer otherwise asks for its own render (`tips`).
+            .hover_fills_in_place()
             .on_hover(cx.listener(|this, hovered, window, cx| {
                 this.pointer_in_table = *hovered;
                 if !hovered {
@@ -1869,7 +1934,10 @@ impl Desktop {
                         this.rebuild_rows(false, cx);
                     }
                 }
-                cx.notify();
+                // Outside the list, only the status bar says the order is
+                // held: the desktop draws its own tree again. Rows put back
+                // in order told the list themselves (`install_rows`).
+                window.request_view_redraw(cx.entity_id());
             }))
             // Cell hints follow the pointer here, one listener for the table.
             .on_mouse_move(move |event, window, cx| tips.moved(event, window, cx))

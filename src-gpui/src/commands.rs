@@ -19,7 +19,8 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, UpdateChannel, UpdateRoute,
+    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, TrayIcon, TrayMenu,
+    UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -477,6 +478,32 @@ pub fn set_close_to_tray(
     app.state::<SettingsStore>()
         .update(|s| s.close_to_tray = value)
         .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
+/// The tray icon's look, its hover card and what a right click opens; each
+/// one given changes, and the icon follows at once.
+pub fn set_tray(
+    app: crate::native_runtime::Host,
+    icon: Option<TrayIcon>,
+    card: Option<bool>,
+    menu: Option<TrayMenu>,
+) -> Result<SettingsView, String> {
+    let saved = app
+        .state::<SettingsStore>()
+        .update(|s| {
+            if let Some(icon) = icon {
+                s.tray_icon = icon;
+            }
+            if let Some(card) = card {
+                s.tray_card = card;
+            }
+            if let Some(menu) = menu {
+                s.tray_menu = menu;
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    shell::apply_tray(&saved);
     Ok(settings_view(&app))
 }
 

@@ -99,6 +99,40 @@ pub fn disk_rate(disks: &[Value]) -> Option<f64> {
 pub fn values(value: &Value) -> &[Value] {
     value.as_array().map(Vec::as_slice).unwrap_or_default()
 }
+/// The priority class a process's base priority stands for. Windows also
+/// gives some system processes base priorities between the classes (9 for
+/// services.exe, 11 for smss.exe): those match no class.
+pub fn priority_class(process: &Value) -> Option<&'static str> {
+    let base = process["basePriority"].as_i64()?;
+    PRIORITY_CLASSES
+        .iter()
+        .find(|(value, _)| *value == base)
+        .map(|(_, class)| *class)
+}
+
+/// A priority class: the base priority it gives, and its name.
+pub type PriorityClass = (i64, &'static str);
+
+/// The priority classes by the base priority each gives.
+pub const PRIORITY_CLASSES: [PriorityClass; 6] = [
+    (4, "idle"),
+    (6, "belowNormal"),
+    (8, "normal"),
+    (10, "aboveNormal"),
+    (13, "high"),
+    (24, "realtime"),
+];
+
+/// The classes either side of a base priority that matches none.
+pub fn priority_neighbours(base: i64) -> (Option<PriorityClass>, Option<PriorityClass>) {
+    let below = PRIORITY_CLASSES
+        .iter()
+        .rev()
+        .find(|(value, _)| *value < base);
+    let above = PRIORITY_CLASSES.iter().find(|(value, _)| *value > base);
+    (below.copied(), above.copied())
+}
+
 pub fn identity(p: &Value) -> String {
     if let Some(key) = p["instanceKey"].as_str() {
         return key.to_owned();
@@ -2897,5 +2931,27 @@ mod tests {
         assert_eq!(cpu(&timeline, None), None);
         assert_eq!(cpu(&timeline, Some(bob)), None);
         assert!(timeline.shared.is_empty());
+    }
+
+    #[test]
+    fn base_priorities_name_only_the_classes() {
+        let class = |base: i64| priority_class(&json!({ "basePriority": base }));
+        assert_eq!(class(4), Some("idle"));
+        assert_eq!(class(8), Some("normal"));
+        assert_eq!(class(13), Some("high"));
+        assert_eq!(class(24), Some("realtime"));
+        // services.exe and smss.exe sit between the classes.
+        assert_eq!(class(9), None);
+        assert_eq!(class(11), None);
+        assert_eq!(priority_class(&json!({})), None);
+        assert_eq!(
+            priority_neighbours(9),
+            (Some((8, "normal")), Some((10, "aboveNormal")))
+        );
+        assert_eq!(
+            priority_neighbours(11),
+            (Some((10, "aboveNormal")), Some((13, "high")))
+        );
+        assert_eq!(priority_neighbours(2), (None, Some((4, "idle"))));
     }
 }

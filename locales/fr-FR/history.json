@@ -81,7 +81,7 @@
     "runSummary": "{shown}/{total} lancements affichés ; {points} points enregistrés pour ce lancement",
     "earlier": "Points antérieurs",
     "latest": "Derniers points",
-    "programNote": "Les lancements actuels et futurs de ce chemin sont enregistrés séparément. Jusqu’à 7 jours, 131072 points et 9 Mio ; la première limite atteinte supprime les données les plus anciennes. Jusqu’à 512 instances simultanées. La liste affiche les 256 derniers lancements ; chaque page jusqu’à 1000 points enregistrés et des repères de lacunes. Les points antérieurs restent consultables. En général toutes les 5 secondes ; un échantillonnage plus lent laisse des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer les efface. Redémarrer Argus ne reprend pas l’enregistrement.",
+    "programNote": "Les lancements actuels et futurs de ce chemin sont enregistrés séparément. Jusqu’à 7 jours, 131072 points et 9 MiB ; la première limite atteinte supprime les données les plus anciennes. Jusqu’à 512 instances simultanées. La liste affiche les 256 derniers lancements ; chaque page jusqu’à 1000 points enregistrés et des repères de lacunes. Les points antérieurs restent consultables. En général toutes les 5 secondes ; un échantillonnage plus lent laisse des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer les efface. Redémarrer Argus ne reprend pas l’enregistrement.",
     "damaged": "Certains enregistrements ont échoué au contrôle d’intégrité ; les intervalles manquants restent des lacunes.",
     "earlierRuns": "Lancements antérieurs",
     "latestRuns": "Derniers lancements",

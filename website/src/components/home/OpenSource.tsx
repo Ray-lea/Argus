@@ -4,6 +4,7 @@ import { Icon, type IconName } from "@/components/site/Icon";
 import { SiteLink } from "@/components/site/SiteLink";
 import { localized, repo, site, type Language } from "@/lib/site";
 import { dateLocale } from "@/lib/languages";
+import { Supporters } from "./Supporters";
 
 // The project in figures and in the open: GitHub's counts (left out when the
 // build could not fetch them), the published releases, the commit history and
@@ -167,6 +168,7 @@ export function OpenSource({ lang, guide }: { lang: Language; guide: string }) {
           ))}
         </ul>
       </article>
+      <Supporters lang={lang} />
     </div>
   );
 }

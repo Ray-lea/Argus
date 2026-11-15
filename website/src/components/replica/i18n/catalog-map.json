@@ -529,7 +529,7 @@
   "累计用户态与内核态 CPU 时间；分组显示成员合计。": "processes.json:column.cpuTime.title",
   "进程累计使用的用户态 CPU 时间。": "processes.json:column.cpuUserTime.title",
   "进程累计使用的内核态 CPU 时间。": "processes.json:column.cpuKernelTime.title",
-  "Windows 报告的进程基本优先级数值。": "processes.json:column.basePriority.title",
+  "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。": "processes.json:column.basePriority.title",
   "当前驻留的物理内存，含共享页面；分组为成员工作集之和。": "processes.json:column.workingSet.title",
   "单进程自启动以来的工作集峰值；展开应用分组查看各进程。": "processes.json:column.peakWorkingSet.title",
   "进程专用的已提交内存。": "processes.json:column.commit.title",

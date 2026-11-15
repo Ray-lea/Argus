@@ -48,10 +48,15 @@ impl NativeTable {
         if row.section.is_some() {
             // Folded headings show their totals a step brighter.
             let collapsed = !row.expanded;
-            return element
+            let element = element
                 .text_size(theme::font(12.))
                 .text_color(if collapsed { p.muted } else { faint })
-                .child(value)
+                .child(value);
+            // A heading's memory adds up private working sets, not system usage.
+            let hint = (processes && field.key == "mem" && self.is_near(row_index))
+                .then(|| label("processes.memoryScope.section"));
+            return self
+                .hint_text(element, row, field.key, hint)
                 .into_any_element();
         }
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
@@ -171,7 +176,13 @@ impl NativeTable {
                 ));
             }
             CellKind::Pid | CellKind::Identifier => {
-                element = element.text_color(faint).child(value);
+                // A priority class name may be wider than a column set by hand.
+                element = element.text_color(faint).child(self.hint_text(
+                    div().truncate().child(value),
+                    row,
+                    field.key,
+                    hint,
+                ));
             }
             _ => {
                 // Idle readings stay quiet so real load stands out.
@@ -264,6 +275,12 @@ impl NativeTable {
                     *cached = Some((app.sequence, app.missing_disk_hint()));
                 }
                 cached.as_ref().map(|(_, hint)| hint.clone())
+            }
+            // Keep the full class name available when a manual width truncates it;
+            // custom values instead explain where they sit between the classes.
+            ("processes", "basePriority") if row.metric(field.key).is_some() => {
+                super::base_priority_hint(&row.members[0])
+                    .or_else(|| super::base_priority(&row.members[0]))
             }
             // The busiest engine, which the figure is the share of.
             ("processes", "gpu") => row.gpu_usage().engine.clone().filter(|e| !e.is_empty()),

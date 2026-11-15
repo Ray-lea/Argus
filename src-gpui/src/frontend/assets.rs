@@ -92,6 +92,8 @@ product_icons! {
     "BranchEndIcon" => ListX,
     "GaugeIcon" => Gauge,
     "TrayIcon" => PanelBottom,
+    "ComponentsIcon" => Blocks,
+    "DashboardIcon" => LayoutDashboard,
     "TimerIcon" => Timer,
     "TransferIcon" => ArrowUpDown,
     // The filled one is the same outline, filled as it is loaded (`icon_path`).

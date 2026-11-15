@@ -157,7 +157,7 @@
     },
     "basePriority": {
       "label": "Basispriorität",
-      "title": "Numerische Prozessbasispriorität, gemeldet von Windows."
+      "title": "Von Windows gemeldete Basispriorität des Prozesses als Prioritätsklasse. Ein Wert zwischen den Klassen, den Windows manchen Systemprozessen gibt, wird als Zahl angezeigt."
     },
     "workingSet": {
       "label": "Arbeitssatz",
@@ -180,15 +180,15 @@
       "title": "Kumulierte Seitenfehler, einschließlich Soft- und Hard-Fehler."
     },
     "ioRead": {
-      "label": "E/A lesen",
+      "label": "I/O lesen",
       "title": "Pro Sekunde gelesene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioWrite": {
-      "label": "E/A schreiben",
+      "label": "I/O schreiben",
       "title": "Pro Sekunde geschriebene I/O-Bytes, einschließlich Dateien, Netzwerk und Geräte."
     },
     "ioOther": {
-      "label": "Sonstige E/A",
+      "label": "Sonstige I/O",
       "title": "Von anderen I/O-Vorgängen pro Sekunde übertragene Bytes."
     },
     "ioReadTotal": {
@@ -288,6 +288,11 @@
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "ACPI Temperatur der thermischen Zone"
   },
+  "memoryScope": {
+    "vital": "Belegter physischer Speicher des gesamten Systems: Gesamtspeicher abzüglich verfügbarem Speicher, einschließlich verwendeter und geänderter Seiten. Prozesszeilen zeigen ihren eigenen privaten Arbeitssatz, der in Summe kleiner ist. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch).",
+    "header": "Der Prozentwert oben ist der Anteil des belegten physischen Speichers des gesamten Systems. Die Zeilen zeigen den privaten Arbeitssatz: physischen Speicher, den der Prozess allein nutzt; App-Gruppen und Kategorien summieren ihn. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch).",
+    "section": "Summe der privaten Arbeitssätze der Prozesse dieser Kategorie. Die Systembelegung umfasst zusätzlich gemeinsam genutzte Seiten, Kernel und Treiber, Seitentabellen, den genutzten Systemcache und geänderte Seiten und liegt daher über der Summe der Kategorien. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch)."
+  },
   "columns": {
     "choose": "Spalten auswählen",
     "autoWidth": "Automatische Breite",
@@ -308,7 +313,7 @@
       "general": "Allgemein",
       "cpu": "CPU",
       "memory": "Arbeitsspeicher",
-      "io": "Datenträger und E/A",
+      "io": "Datenträger und I/O",
       "network": "Netzwerk",
       "gpu": "GPU",
       "all": "Alle"
@@ -324,5 +329,7 @@
     "fixed": "Fest",
     "selectionSummary": "{count} ausgewählt",
     "virtualAliases": "Virtueller Speicher virtuelle Bytes Adressreservierung"
-  }
+  },
+  "basePriorityBetween": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt; sie liegt zwischen {below} und {above}.",
+  "basePriorityCustom": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt."
 }

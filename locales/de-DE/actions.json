@@ -30,7 +30,8 @@
     "partial": {
       "one": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet).",
       "other": "Beendete Prozesse: {count}; fehlgeschlagen: {failed} (Zugriff verweigert oder bereits beendet)."
-    }
+    },
+    "unchecked": "{count} Prozesse beendet; {failed} nicht beendet, davon {unchecked} mit ungeprüftem kritischem Status."
   },
   "error": {
     "accessDenied": "{name} konnte nicht beendet werden: Zugriff verweigert. Den privilegierten Dienst in den Einstellungen aktivieren oder Argus als Administrator ausführen. Geschützte Prozesse können weiterhin eingeschränkt sein.",
@@ -38,7 +39,8 @@
     "critical": "{name} ist ein kritischer Systemprozess. Das Beenden würde Windows zum Absturz bringen; die Aktion wurde blockiert.",
     "refused": "{name} kann nicht beendet werden.",
     "serviceOutdated": "{name} konnte nicht beendet werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist inkompatibel. Den Dienst aktualisieren und erneut versuchen.",
-    "generic": "{name} konnte nicht beendet werden: {error}"
+    "generic": "{name} konnte nicht beendet werden: {error}",
+    "criticalityUnknown": "Es konnte nicht geprüft werden, ob {name} ein kritischer Systemprozess ist. Das Beenden wurde blockiert."
   },
   "priority": {
     "confirmTitle": "Priorität von {name} auf Echtzeit setzen?",

@@ -1,0 +1,19 @@
+{
+  "window": [1100, 760],
+  "steps": [
+    {"control":{"page":"components"},"wait":700,"capture":"components-dark"},
+    {"control":{"trayFlyout":"card"},"wait":900,"captureFlyout":"card-dark"},
+    {"control":{"trayFlyout":"close"},"wait":500},
+    {"control":{"trayFlyout":"panel"},"wait":900,"captureFlyout":"panel-dark"},
+    {"control":{"trayFlyout":"close"},"wait":500},
+    {"control":{"data":{"updates":{"state":"ready","version":"0.5.1"}}},"wait":200},
+    {"control":{"trayFlyout":"panel"},"wait":900,"captureFlyout":"panel-update-dark"},
+    {"control":{"trayFlyout":"close"},"wait":500},
+    {"control":{"theme":"light"},"wait":700,"capture":"components-light"},
+    {"control":{"trayFlyout":"card"},"wait":900,"captureFlyout":"card-light"},
+    {"control":{"trayFlyout":"close"},"wait":500},
+    {"control":{"trayFlyout":"panel"},"wait":900,"captureFlyout":"panel-light"},
+    {"control":{"trayFlyout":"close"},"wait":500},
+    {"control":{"page":"settings","settingsSection":"startup"},"wait":700,"capture":"settings-startup-light"}
+  ]
+}
