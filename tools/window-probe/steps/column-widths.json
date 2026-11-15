@@ -1,11 +1,11 @@
 {
-  "window": [1600, 1000],
+  "window": [1700, 1000],
   "steps": [
     { "note": "Automatic widths: the columns take what their contents need and no more; the long service name is cut short." },
     { "control": { "page": "processes", "pointerOutside": true }, "wait": 2500, "inspect": "columns", "label": "wide",
       "expect": { "state.scroll.maxX": 0, "state.visible.1.width": 64, "state.visible.2.width": 64 }, "capture": "wide" },
     { "probe": "size 1100 800", "wait": 1500, "inspect": "columns", "label": "narrow", "capture": "narrow" },
-    { "probe": "size 1600 1000", "wait": 1500 },
+    { "probe": "size 1700 1000", "wait": 1500 },
 
     { "note": "The column menu: auto-fit this column (nothing to restore yet) and full width." },
     { "control": { "pointer": { "at": "header:cpu", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "header-menu",
@@ -25,7 +25,7 @@
     { "control": { "pointer": { "event": "move", "dx": 93 } }, "wait": 120 },
     { "control": { "pointer": { "event": "move", "dx": 80 } }, "wait": 300, "capture": "resizing" },
     { "control": { "pointer": { "event": "up", "dx": 80 } }, "wait": 1000, "inspect": "columns", "label": "resized",
-      "expect": { "state.visible.2.key": "cpu", "state.visible.0.width": 410, "state.visible.3.width": 80 }, "capture": "resized" },
+      "expect": { "state.visible.2.key": "cpu", "state.visible.0.width": 440, "state.visible.3.width": 80 }, "capture": "resized" },
     { "control": { "pointer": { "at": "header:cpu", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "menu-overridden",
       "expect": { "state.disabled.3": false } },
     { "control": { "keys": ["escape"] }, "wait": 300 },
