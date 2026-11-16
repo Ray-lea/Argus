@@ -51,6 +51,8 @@
   },
   "filtered": "The list is filtered by the search",
   "orderHeld": "Sorting paused: rows keep their places while readings update. They re-sort once the pointer leaves the list or the menu or dialog closes.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Name",

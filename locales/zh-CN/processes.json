@@ -45,6 +45,8 @@
   "totalHidden": "{total} ({count} 个隐藏)",
   "filtered": "列表已按搜索内容筛选",
   "orderHeld": "排序已暂停：行位置保持不变，读数照常刷新。移开指针或关闭菜单、对话框后重新排序。",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "名称",

@@ -32,6 +32,14 @@ pub struct Palette {
     pub gpu: Hsla,
     pub battery: Hsla,
     pub danger: Hsla,
+    /// The process list's categories (`processes.section.*`): apps,
+    /// background processes and Windows processes. Apart from the heat of
+    /// busy cells and the green of new processes.
+    pub group_apps: Hsla,
+    pub group_background: Hsla,
+    pub group_windows: Hsla,
+    /// Users' groups, in turn; the system's group takes `group_windows`.
+    pub group_users: [Hsla; 3],
     pub heat: Hsla,
     /// Icons standing in for a missing process icon.
     pub glyph: Hsla,
@@ -166,6 +174,14 @@ impl Palette {
             gpu: colors.chart_5,
             battery: colors.chart_bullish,
             danger: role(cx, "danger"),
+            group_apps: token("group-apps", dark),
+            group_background: token("group-background", dark),
+            group_windows: token("group-windows", dark),
+            group_users: [
+                token("group-user-1", dark),
+                token("group-user-2", dark),
+                token("group-user-3", dark),
+            ],
             heat: parse_color(&format!(
                 "rgb({})",
                 design()[if theme.mode == ThemeMode::Dark {

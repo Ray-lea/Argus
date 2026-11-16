@@ -2,6 +2,7 @@
 use super::*;
 mod cell_text;
 mod cells;
+mod groups;
 mod header;
 pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};
@@ -449,6 +450,8 @@ pub(super) struct NativeTable {
     /// so the widths it reports then are its rounding of the fit, not a
     /// width to keep.
     edge_fitted: Option<&'static str>,
+    /// The process list's user and category groups (`groups`).
+    group_view: groups::GroupView,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -498,6 +501,16 @@ impl Render for TableFrame {
         if gliding {
             window.request_animation_frame();
         }
+        // The process list's held headings and its groups beside the scrollbar
+        // (`groups`): planned before the table renders, from where it is scrolled.
+        let groups = self.state.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            if delegate.page != "processes" {
+                return None;
+            }
+            delegate.plan_groups(window, cx);
+            delegate.group_overlay(process_header_band(), window, cx)
+        });
         // Process headers carry a total above the label; the other tables use the
         // 34 px header cell. Both sit in a 4 px padded header row.
         let state = self.state.read(cx);
@@ -527,6 +540,7 @@ impl Render for TableFrame {
                     // The interface's scrollbars are drawn below.
                     .scrollbar_visible(false, false),
             )
+            .children(groups)
             // The process page draws the list's bar itself (`Desktop::table_scrollbar`).
             .when(!processes, |d| {
                 d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
@@ -641,6 +655,7 @@ impl NativeTable {
             restored: None,
             resizing: None,
             edge_fitted: None,
+            group_view: Default::default(),
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -687,6 +702,13 @@ impl NativeTable {
         let locale = argus_core::i18n::locale();
         if rows_changed || bits != self.bits || self.locale != locale {
             self.cell_values.clear();
+        }
+        if rows_changed || self.page != page {
+            self.group_view.groups = Rc::new(if page == "processes" {
+                groups::groups(&rows)
+            } else {
+                Vec::new()
+            });
         }
         self.rows = rows;
         self.totals = totals;
@@ -1453,9 +1475,15 @@ impl TableDelegate for NativeTable {
             self.near = self.list.as_ref().and_then(|list| {
                 self.tips
                     .row_under(list, ROW_HEIGHT, self.rows.len(), window)
+                    // Under a held heading, the row is out of sight.
+                    .filter(|_| !self.group_view.covers(list, window))
             });
         }
         let p = Palette::current(cx);
+        let tint = self
+            .group_view
+            .tone(index)
+            .map(|tone| tone.color(&p).opacity(groups::HEADING_TINT));
         let row = &self.rows[index];
         let (selected, fresh, searching) = self
             .owner
@@ -1510,7 +1538,8 @@ impl TableDelegate for NativeTable {
             None => tr,
         };
         tr.when_some(refold, |d, refold| d.on_click(refold))
-            .when(row.user.is_some(), |d| d.bg(p.hover))
+            // A group's heading in its colour (`groups`).
+            .when_some(tint, |d, tint| d.bg(tint))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
@@ -2354,8 +2383,13 @@ impl Desktop {
             json!({"x":f32::from(handle.offset().x),"maxX":f32::from(handle.max_offset().x),
                 "y":f32::from(state.vertical_scroll_handle.0.borrow().base_handle.offset().y)})
         });
+        // The groups, the headings held at the top and the name beside the scrollbar.
+        let groups = table.map(|table| {
+            let delegate = table.read(cx).delegate();
+            delegate.group_view.diagnostics(&delegate.rows)
+        });
         json!({"preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
-            "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},
+            "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},"groups":groups,
             "popup":self.popup.is_some(),"modal":self.modal.as_ref().filter(|modal|modal.kind=="columns").map(|modal|&modal.args)})
     }
 

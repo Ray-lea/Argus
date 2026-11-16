@@ -28,6 +28,8 @@
   "totalHidden": "{total} ({count} 個隱藏)",
   "filtered": "清單已依搜尋內容篩選",
   "orderHeld": "排序已暫停：列位置保持不變，讀數照常更新。移開游標或關閉選單、對話方塊後重新排序。",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "名稱",

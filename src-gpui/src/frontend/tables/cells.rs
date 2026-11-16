@@ -415,6 +415,10 @@ impl NativeTable {
         };
         // Rows of a user's group stand in from its heading.
         let inset = if row.nested { USER_INSET } else { 0. };
+        let tone = self
+            .group_view
+            .tone(row_index)
+            .map_or(p.accent, |tone| tone.color(&p));
         if let Some(user) = row.user {
             let locked = self
                 .owner
@@ -428,16 +432,27 @@ impl NativeTable {
                     row.key.clone(),
                     owner,
                 )))
+                // The user's mark in the group's colour.
                 .child(
-                    icon(
-                        if user.system {
-                            "ComputerIcon"
-                        } else {
-                            "UserIcon"
-                        },
-                        p.muted,
-                    )
-                    .flex_shrink_0(),
+                    div()
+                        .size(px(20.))
+                        .flex_shrink_0()
+                        .rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(tone.opacity(groups::COUNT_TINT))
+                        .child(
+                            icon(
+                                if user.system {
+                                    "ComputerIcon"
+                                } else {
+                                    "UserIcon"
+                                },
+                                tone,
+                            )
+                            .size(px(12.)),
+                        ),
                 )
                 .child(
                     div()
@@ -472,6 +487,7 @@ impl NativeTable {
                     row.key.clone(),
                     owner,
                 )))
+                .child(div().size(px(8.)).flex_shrink_0().rounded(px(2.)).bg(tone))
                 .child(
                     div()
                         .flex_shrink(1.)
@@ -488,8 +504,8 @@ impl NativeTable {
                         .min_w(px(22.))
                         .px(px(7.))
                         .rounded_full()
-                        .bg(p.accent.opacity(0.14))
-                        .text_color(p.accent.blend(p.ink.opacity(0.22)))
+                        .bg(tone.opacity(groups::COUNT_TINT))
+                        .text_color(tone.blend(p.ink.opacity(0.22)))
                         .text_size(theme::font(11.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(px(18.))
@@ -500,8 +516,8 @@ impl NativeTable {
                 .child(div().flex_1().min_w_0().h(px(1.)).ml_1().bg(
                     gpui_kit::gpui::linear_gradient(
                         90.,
-                        gpui_kit::gpui::linear_color_stop(p.stroke_strong, 0.),
-                        gpui_kit::gpui::linear_color_stop(p.stroke_strong.opacity(0.), 1.),
+                        gpui_kit::gpui::linear_color_stop(tone.opacity(0.35), 0.),
+                        gpui_kit::gpui::linear_color_stop(tone.opacity(0.), 1.),
                     ),
                 ));
         }

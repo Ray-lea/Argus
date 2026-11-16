@@ -53,6 +53,8 @@
   },
   "filtered": "La liste est filtrée par la recherche",
   "orderHeld": "Tri suspendu : les lignes restent en place et les valeurs continuent d’être actualisées. Elles sont triées de nouveau dès que le pointeur quitte la liste ou que le menu ou la boîte de dialogue se ferme.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Nom",
