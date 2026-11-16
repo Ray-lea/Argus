@@ -17,9 +17,11 @@ mod sensors;
 pub mod startup_probe;
 mod vendor_gpu;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::diagnostics::startup_phase;
+use crate::gpu_process::GpuMemoryLayout;
 use serde::Serialize;
 
 pub use battery::{BatteryInfo, BatteryStats};
@@ -37,6 +39,13 @@ pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
 pub use sensors::{CpuIdle, CpuPower, ThermalZone};
 pub use vendor_gpu::GpuPowerSource;
+
+/// The adapters the performance page lists, by LUID, with how their memory is
+/// grouped, as `GpuProcessTracker::new` takes them. For diagnostics; the
+/// collector reuses its own adapter list.
+pub fn gpu_memory_layouts() -> HashMap<u64, GpuMemoryLayout> {
+    gpu::GpuTracker::new_with_vendor(false).memory_layouts()
+}
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +163,9 @@ pub(crate) struct HardwareTracker {
 impl HardwareTracker {
     pub(crate) fn gpu_node_engine(&self, luid: u64, node: u32) -> Option<usize> {
         self.gpus.node_engine(luid, node)
+    }
+    pub(crate) fn gpu_memory_layouts(&self) -> HashMap<u64, GpuMemoryLayout> {
+        self.gpus.memory_layouts()
     }
     pub fn new() -> Self {
         let cpu = startup_phase("hardware.cpu-info", cpu::cpu_info);

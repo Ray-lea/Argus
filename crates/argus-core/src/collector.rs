@@ -60,12 +60,18 @@ impl Collector {
         startup_phase("collector.prime-processes", || {
             processes.sample(system.logical_cpus(), system.precise_idle_fraction())
         });
+        let sessions = startup_phase("collector.sessions", SessionTracker::new);
+        let hardware = startup_phase("collector.hardware", HardwareTracker::new);
+        // How each adapter groups its memory splits the processes' GPU memory.
+        let gpu_processes = startup_phase("collector.gpu-pdh", || {
+            GpuProcessTracker::new(hardware.gpu_memory_layouts())
+        });
         Self {
             system,
             processes,
-            sessions: startup_phase("collector.sessions", SessionTracker::new),
-            hardware: startup_phase("collector.hardware", HardwareTracker::new),
-            gpu_processes: startup_phase("collector.gpu-pdh", GpuProcessTracker::new),
+            sessions,
+            hardware,
+            gpu_processes,
             network: None,
             engine_labels: HashMap::new(),
             engine_ids: HashMap::new(),

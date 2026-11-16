@@ -6,8 +6,10 @@ use std::time::{Duration, Instant};
 use argus_core::gpu_process::GpuProcessTracker;
 
 fn main() {
+    let adapters = argus_core::hardware::gpu_memory_layouts();
+    println!("adapters: {adapters:x?}");
     let t0 = Instant::now();
-    let Some(mut tracker) = GpuProcessTracker::new() else {
+    let Some(mut tracker) = GpuProcessTracker::new(adapters) else {
         println!("no GPU counters on this machine");
         return;
     };

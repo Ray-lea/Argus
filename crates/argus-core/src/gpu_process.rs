@@ -17,13 +17,25 @@ fn utilization(value: f64) -> Option<f32> {
     (value.is_finite() && value > 0.0).then_some(value.min(100.0) as f32)
 }
 
+/// How an adapter's memory falls into the budget segment groups that the
+/// `Local Usage` and `Non Local Usage` counters report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuMemoryLayout {
+    /// Video memory is local and system memory non-local.
+    Discrete,
+    /// Unified memory: Windows groups all of it, system memory included, as
+    /// local, and the non-local group is empty.
+    Unified,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ProcessGpu {
     /// The process's share of its busiest engine, percent.
     pub util: f32,
     /// Adapter (LUID, as in `GpuInfo::id`) and name of that engine.
     pub engine: Option<(u64, Arc<str>)>,
-    /// Resident/budgeted GPU memory, bytes; absent when its source is unavailable.
+    /// Resident GPU memory, bytes: in the adapters' own memory and in system
+    /// memory. Absent when its source is unavailable.
     pub dedicated: Option<u64>,
     pub shared: Option<u64>,
     pub engines: Vec<ProcessGpuEngine>,
@@ -47,16 +59,22 @@ pub struct GpuEngineUsage {
     pub util: f32,
 }
 
+/// Memory counter readings by process, adapter LUID and physical adapter.
+type MemoryReadings = HashMap<(u32, u64, u32), Option<u64>>;
+
 pub struct GpuProcessTracker {
     query: Query,
+    /// How the adapters the performance page lists group their memory, by
+    /// LUID; the counters of other adapters keep their discrete meaning.
+    adapters: HashMap<u64, GpuMemoryLayout>,
     engines: Option<PDH_HCOUNTER>,
-    dedicated: Option<PDH_HCOUNTER>,
-    shared: Option<PDH_HCOUNTER>,
+    /// `Local Usage`, `Non Local Usage` and, with a unified adapter, `Dedicated Usage`.
+    memory_counters: [Option<PDH_HCOUNTER>; 3],
     buf: AlignedBuf,
     /// Pretty engine names by counter engine type (`VideoDecode` -> `Video Decode`).
     names: HashMap<String, Arc<str>>,
     memory_available: [bool; 2],
-    memory: HashMap<(u32, u64, u32), Option<u64>>,
+    memory: [MemoryReadings; 3],
 }
 
 // PDH handles are process-wide; the sampler uses them from one thread at a time.
@@ -64,27 +82,35 @@ unsafe impl Send for GpuProcessTracker {}
 
 impl GpuProcessTracker {
     /// None when the machine publishes no GPU counters (no WDDM 2.x adapter).
-    pub fn new() -> Option<Self> {
+    /// `adapters` tells how the listed adapters group their memory.
+    pub fn new(adapters: HashMap<u64, GpuMemoryLayout>) -> Option<Self> {
         let query = Query::open()?;
         let engines = query.add(w!(r"\GPU Engine(*)\Utilization Percentage"));
         // Local/Non Local Usage report resident budget usage. Dedicated/Shared Usage
-        // are committed counters and can inflate on affected Windows/driver versions.
-        let dedicated = query.add(w!(r"\GPU Process Memory(*)\Local Usage"));
-        let shared = query.add(w!(r"\GPU Process Memory(*)\Non Local Usage"));
-        if engines.is_none() && dedicated.is_none() && shared.is_none() {
+        // are committed counters and can inflate on affected Windows/driver versions,
+        // so Dedicated Usage only bounds the carve-out of unified adapters.
+        let unified = adapters.values().any(|a| *a == GpuMemoryLayout::Unified);
+        let memory_counters = [
+            query.add(w!(r"\GPU Process Memory(*)\Local Usage")),
+            query.add(w!(r"\GPU Process Memory(*)\Non Local Usage")),
+            unified
+                .then(|| query.add(w!(r"\GPU Process Memory(*)\Dedicated Usage")))
+                .flatten(),
+        ];
+        if engines.is_none() && memory_counters[..2].iter().all(Option::is_none) {
             return None;
         }
         // Utilization is a rate: the first collection only sets the baseline.
         query.collect();
         Some(Self {
             query,
+            adapters,
             engines,
-            dedicated,
-            shared,
+            memory_counters,
             buf: AlignedBuf::with_capacity(256 * 1024),
             names: HashMap::new(),
             memory_available: [false; 2],
-            memory: HashMap::new(),
+            memory: Default::default(),
         })
     }
 
@@ -95,7 +121,7 @@ impl GpuProcessTracker {
         if !self.query.collect() {
             return out;
         }
-        let (buf, names) = (&mut self.buf, &mut self.names);
+        let (buf, names, adapters) = (&mut self.buf, &mut self.names, &self.adapters);
         if let Some(c) = self.engines {
             // One instance per process and engine node; the busiest node wins,
             // as for the adapter-wide figures.
@@ -136,38 +162,58 @@ impl GpuProcessTracker {
             });
         }
         // Retain distinct physical adapters, but count duplicate instances once.
-        for (index, counter) in [self.dedicated, self.shared].into_iter().enumerate() {
-            let Some(c) = counter else { continue };
-            self.memory.clear();
-            self.memory_available[index] = pdh::each_value(c, buf, |instance, value| {
-                record_memory(&mut self.memory, instance, value);
-            });
-            let mut totals: HashMap<u32, Option<u64>> = HashMap::new();
-            for ((pid, _, _), value) in &self.memory {
-                let total = totals.entry(*pid).or_insert(Some(0));
-                *total = total.zip(*value).map(|(a, b)| a.saturating_add(b));
-            }
-            if self.memory_available[index] {
-                for entry in out.values_mut() {
-                    if index == 0 {
-                        entry.dedicated = Some(0);
-                    } else {
-                        entry.shared = Some(0);
-                    }
-                }
-            }
-            for (pid, value) in totals {
-                let entry = out.entry(pid).or_insert_with(|| ProcessGpu {
-                    dedicated: self.memory_available[0].then_some(0),
-                    shared: self.memory_available[1].then_some(0),
-                    ..Default::default()
+        let mut read = [false; 3];
+        for ((counter, values), read) in self
+            .memory_counters
+            .into_iter()
+            .zip(&mut self.memory)
+            .zip(&mut read)
+        {
+            values.clear();
+            if let Some(c) = counter {
+                *read = pdh::each_value(c, buf, |instance, value| {
+                    record_memory(values, instance, value);
                 });
-                if index == 0 {
-                    entry.dedicated = value;
-                } else {
-                    entry.shared = value;
-                }
             }
+        }
+        self.memory_available = [read[0], read[1]];
+        let available = self.memory_available;
+        for entry in out.values_mut() {
+            entry.dedicated = available[0].then_some(0);
+            entry.shared = available[1].then_some(0);
+        }
+        let [local, non_local, committed] = &self.memory;
+        let keys = local
+            .keys()
+            .chain(non_local.keys().filter(|key| !local.contains_key(*key)));
+        for &key in keys {
+            let (pid, luid, _) = key;
+            let reading = |values: &MemoryReadings, read: bool| {
+                if read {
+                    values.get(&key).copied().unwrap_or(Some(0))
+                } else {
+                    None
+                }
+            };
+            let (dedicated, shared) = split_memory(
+                adapters
+                    .get(&luid)
+                    .copied()
+                    .unwrap_or(GpuMemoryLayout::Discrete),
+                reading(local, read[0]),
+                reading(non_local, read[1]),
+                committed.get(&key).copied().flatten(),
+            );
+            let entry = out.entry(pid).or_insert_with(|| ProcessGpu {
+                dedicated: available[0].then_some(0),
+                shared: available[1].then_some(0),
+                ..Default::default()
+            });
+            entry.dedicated = entry
+                .dedicated
+                .zip(dedicated)
+                .map(|(a, b)| a.saturating_add(b));
+            entry.shared = entry.shared.zip(shared).map(|(a, b)| a.saturating_add(b));
         }
         out
     }
@@ -177,11 +223,33 @@ impl GpuProcessTracker {
     }
 }
 
-fn record_memory(
-    values: &mut HashMap<(u32, u64, u32), Option<u64>>,
-    instance: &str,
-    value: Option<f64>,
-) {
+/// One process's resident memory on one adapter as (dedicated, shared), from
+/// its `Local Usage`, `Non Local Usage` and committed `Dedicated Usage`.
+/// A unified adapter reports system memory as local: only what fits in its
+/// own memory segments (a firmware carve-out, if any) is dedicated.
+fn split_memory(
+    layout: GpuMemoryLayout,
+    local: Option<u64>,
+    non_local: Option<u64>,
+    committed_dedicated: Option<u64>,
+) -> (Option<u64>, Option<u64>) {
+    match layout {
+        GpuMemoryLayout::Discrete => (local, non_local),
+        GpuMemoryLayout::Unified => {
+            let dedicated = local.map(|local| committed_dedicated.unwrap_or(0).min(local));
+            let shared =
+                local
+                    .zip(dedicated)
+                    .zip(non_local)
+                    .map(|((local, dedicated), non_local)| {
+                        (local - dedicated).saturating_add(non_local)
+                    });
+            (dedicated, shared)
+        }
+    }
+}
+
+fn record_memory(values: &mut MemoryReadings, instance: &str, value: Option<f64>) {
     let Some(instance) = parse(instance).filter(|i| i.node.is_none()) else {
         return;
     };
@@ -242,7 +310,7 @@ fn parse(instance: &str) -> Option<Instance<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, record_memory, utilization};
+    use super::{GpuMemoryLayout, parse, record_memory, split_memory, utilization};
     use std::collections::HashMap;
 
     #[test]
@@ -267,6 +335,49 @@ mod tests {
         assert_eq!(memory[&(42, 0x10A2B, 1)], Some(0));
         assert_eq!(memory[&(7, 0x10A2B, 0)], None);
         assert_eq!(memory[&(8, 0x10A2B, 0)], None);
+    }
+
+    #[test]
+    fn discrete_adapters_report_video_memory_as_local() {
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Discrete, Some(266), Some(136), Some(300)),
+            (Some(266), Some(136))
+        );
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Discrete, None, Some(136), None),
+            (None, Some(136))
+        );
+    }
+
+    #[test]
+    fn unified_adapters_count_local_system_memory_as_shared() {
+        // No carve-out: Dedicated Usage is zero or unavailable.
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, Some(400), Some(0), Some(0)),
+            (Some(0), Some(400))
+        );
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, Some(400), Some(0), None),
+            (Some(0), Some(400))
+        );
+        // A carve-out holds what is committed to it, up to what is resident.
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, Some(400), Some(0), Some(150)),
+            (Some(150), Some(250))
+        );
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, Some(100), Some(20), Some(900)),
+            (Some(100), Some(20))
+        );
+        // An unknown resident reading stays unknown.
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, None, Some(0), Some(150)),
+            (None, None)
+        );
+        assert_eq!(
+            split_memory(GpuMemoryLayout::Unified, Some(400), None, Some(150)),
+            (Some(150), None)
+        );
     }
 
     #[test]

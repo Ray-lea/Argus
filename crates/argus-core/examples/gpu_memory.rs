@@ -58,7 +58,8 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(std::process::id());
-    let mut tracker = GpuProcessTracker::new();
+    let adapters = argus_core::hardware::gpu_memory_layouts();
+    let mut tracker = GpuProcessTracker::new(adapters.clone());
     let mut samples = Vec::new();
     for _ in 0..3 {
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -78,9 +79,13 @@ fn main() {
             "shared":reading.map(|v|v.shared).unwrap_or(available[1].then_some(0)),
             "native":native_usage(pid)}));
     }
+    let adapters: Vec<Value> = adapters
+        .iter()
+        .map(|(luid, layout)| json!({"luid":format!("{:08x}:{:08x}",luid>>32,luid&0xffff_ffff),"layout":format!("{layout:?}")}))
+        .collect();
     println!(
         "{}",
-        serde_json::to_string_pretty(&json!({"pid":pid,
+        serde_json::to_string_pretty(&json!({"pid":pid,"adapters":adapters,
         "elevated":argus_core::privilege::is_elevated(),"samples":samples}))
         .unwrap()
     );

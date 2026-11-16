@@ -5,6 +5,7 @@
 //! NVIDIA cards leave power out of that perf data; their board power comes
 //! from NVML (`nvml.rs`), matched to the adapter by PCI address.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -14,13 +15,14 @@ use windows::Wdk::Graphics::Direct3D::{
     D3DKMT_ADAPTERINFO, D3DKMT_ADAPTERREGISTRYINFO, D3DKMT_ADAPTERTYPE, D3DKMT_CLOSEADAPTER,
     D3DKMT_ENUMADAPTERS2, D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERY_DEVICE_IDS,
     D3DKMT_QUERYADAPTERINFO, D3DKMT_QUERYSTATISTICS, D3DKMT_QUERYSTATISTICS_ADAPTER,
-    D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTSIZEINFO,
-    D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo, D3DKMTQueryStatistics,
-    DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY, DXGK_ENGINE_TYPE_CRYPTO,
-    DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY, DXGK_ENGINE_TYPE_VIDEO_DECODE,
-    DXGK_ENGINE_TYPE_VIDEO_ENCODE, DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS,
-    KMTQAITYPE_ADAPTERPERFDATA, KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO,
-    KMTQAITYPE_ADAPTERTYPE, KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA,
+    D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTGROUPSIZEINFO,
+    D3DKMT_SEGMENTSIZEINFO, D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo,
+    D3DKMTQueryStatistics, DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY,
+    DXGK_ENGINE_TYPE_CRYPTO, DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY,
+    DXGK_ENGINE_TYPE_VIDEO_DECODE, DXGK_ENGINE_TYPE_VIDEO_ENCODE,
+    DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS, KMTQAITYPE_ADAPTERPERFDATA,
+    KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO, KMTQAITYPE_ADAPTERTYPE,
+    KMTQAITYPE_GETSEGMENTGROUPSIZE, KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA,
     KMTQAITYPE_NODEPERFDATA, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, KMTQUERYADAPTERINFOTYPE,
 };
 use windows::Win32::Foundation::LUID;
@@ -29,6 +31,7 @@ use super::nvml::Nvml;
 use super::query::Retry;
 use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
 use crate::diagnostics::{startup_native, startup_phase};
+use crate::gpu_process::GpuMemoryLayout;
 use crate::util::from_wide;
 mod metadata;
 pub use metadata::DirectXInfo;
@@ -130,6 +133,7 @@ struct Adapter {
     handle: u32,
     luid: LUID,
     info: Arc<GpuInfo>,
+    memory: GpuMemoryLayout,
     /// Engine index (into `info.engines`) for every node.
     node_engine: Vec<usize>,
     prev_running: Vec<NodeCounter>,
@@ -160,6 +164,13 @@ impl GpuTracker {
             .node_engine
             .get(node as usize)
             .copied()
+    }
+    /// The listed adapters by LUID, with how their memory is grouped.
+    pub(crate) fn memory_layouts(&self) -> HashMap<u64, GpuMemoryLayout> {
+        self.adapters
+            .iter()
+            .map(|a| (luid_key(a.luid), a.memory))
+            .collect()
     }
     pub fn new() -> Self {
         Self::new_with_vendor(true)
@@ -441,6 +452,11 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
 
     let mut sizes = D3DKMT_SEGMENTSIZEINFO::default();
     query_info(a.hAdapter, KMTQAITYPE_GETSEGMENTSIZE, &mut sizes);
+    let mut groups = D3DKMT_SEGMENTGROUPSIZEINFO::default();
+    let memory = memory_layout(
+        query_info(a.hAdapter, KMTQAITYPE_GETSEGMENTGROUPSIZE, &mut groups).then_some(&groups),
+    );
+    log::info!(target: "argus_startup", "phase=gpu.memory-groups; instance={}; local_mb={}; non_local_mb={}; layout={memory:?}", luid_key(a.AdapterLuid), groups.LocalMemory >> 20, groups.NonLocalMemory >> 20);
 
     let mut engines: Vec<String> = Vec::new();
     let mut node_engine = Vec::with_capacity(nodes as usize);
@@ -501,6 +517,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
             driver_date: driver.date,
             direct_x: metadata.direct_x(luid),
         }),
+        memory,
         node_engine,
         node_3d,
         prev_running: (0..nodes).map(|_| NodeCounter::default()).collect(),
@@ -513,6 +530,18 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
 
 fn processor_graphics(vendor: Option<u32>, pci: Option<Pci>) -> bool {
     vendor == Some(0x8086) && pci == Some((0, 2, 0))
+}
+
+/// A unified-memory (integrated) adapter puts all of its memory, the system
+/// memory it shares included, in the local budget group and has no non-local
+/// memory. Without the WDDM 2.0 query, the counters keep their discrete meaning.
+fn memory_layout(groups: Option<&D3DKMT_SEGMENTGROUPSIZEINFO>) -> GpuMemoryLayout {
+    match groups {
+        Some(groups) if groups.LocalMemory > 0 && groups.NonLocalMemory == 0 => {
+            GpuMemoryLayout::Unified
+        }
+        _ => GpuMemoryLayout::Discrete,
+    }
 }
 
 /// Hz to MHz; drivers report 0 for "not supported".
@@ -561,6 +590,29 @@ mod tests {
         assert_eq!(mhz(1_194_400_000), Some(1194.4));
         assert_eq!(mhz(0), None);
         assert_eq!(mhz(u64::MAX), None);
+    }
+
+    #[test]
+    fn adapters_without_non_local_memory_have_unified_memory() {
+        let groups = |local: u64, non_local: u64| D3DKMT_SEGMENTGROUPSIZEINFO {
+            LocalMemory: local << 20,
+            NonLocalMemory: non_local << 20,
+            ..Default::default()
+        };
+        // Measured: an RTX 4060 Laptop GPU and the Microsoft Basic Render Driver.
+        assert_eq!(
+            memory_layout(Some(&groups(7956, 78419))),
+            GpuMemoryLayout::Discrete
+        );
+        assert_eq!(
+            memory_layout(Some(&groups(78419, 0))),
+            GpuMemoryLayout::Unified
+        );
+        assert_eq!(
+            memory_layout(Some(&groups(0, 0))),
+            GpuMemoryLayout::Discrete
+        );
+        assert_eq!(memory_layout(None), GpuMemoryLayout::Discrete);
     }
 
     #[test]
