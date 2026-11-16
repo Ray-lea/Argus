@@ -1658,6 +1658,12 @@ fn row_mark(marks: &Value, key: &str) -> (Option<String>, bool) {
 }
 /// The icon a row shows: a WebView's host application's, else its own.
 impl Desktop {
+    /// Whether the process list holds its order: the pointer is over it, or
+    /// a menu or dialog is open. Its rows keep their places while samples
+    /// arrive and groups fold or unfold, until neither holds.
+    pub(in crate::frontend) fn holds_order(&self) -> bool {
+        self.pointer_in_table || self.modal.is_some() || self.popup.is_some()
+    }
     pub(in crate::frontend) fn rebuild_rows(&mut self, hold: bool, cx: &mut Context<Self>) {
         self.rebuild_rows_prepared(hold, None, cx);
     }

@@ -446,10 +446,8 @@ impl Desktop {
         // press on another row must still find the rows it was aimed at.
         cx.spawn_in(window, async move |this, cx| {
             let _ = this.update_in(cx, |this, _, cx| {
-                this.rebuild_rows(
-                    this.pointer_in_table || this.modal.is_some() || this.popup.is_some(),
-                    cx,
-                );
+                let hold = this.holds_order();
+                this.rebuild_rows(hold, cx);
                 cx.notify();
             });
         })

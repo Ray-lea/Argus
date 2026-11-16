@@ -157,10 +157,7 @@ impl Desktop {
                     // shows them: rebuilt only when one of those changed.
                     self.refresh_connections(cx);
                 } else {
-                    self.rebuild_rows(
-                        self.pointer_in_table || self.modal.is_some() || self.popup.is_some(),
-                        cx,
-                    );
+                    self.rebuild_rows(self.holds_order(), cx);
                 }
             }
             Err(error) => {
@@ -490,11 +487,7 @@ impl Desktop {
                 None if rows.is_none() => self.refresh_width_rows(Some(Duration::ZERO), cx),
                 None => {}
             }
-            self.rebuild_rows_prepared(
-                self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
-                rows,
-                cx,
-            );
+            self.rebuild_rows_prepared(self.holds_order(), rows, cx);
         } else if self.page == "network" {
             // Connections take their owners' names and icons from the sample:
             // rebuilt off the UI thread, and only when those changed.
@@ -810,7 +803,8 @@ impl Desktop {
                         set.insert(key);
                     }
                 }
-                self.rebuild_rows(false, cx);
+                // Rows unfolded under the pointer join the order it holds.
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::TreeExpand(key, expand) => {
                 if self.page != "processes"
@@ -825,7 +819,7 @@ impl Desktop {
                 } else {
                     self.tree_expanded.remove(&key);
                 }
-                self.rebuild_rows(false, cx);
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::TreeExpandAll(expand) => {
                 if self.page != "processes" || self.view != "tree" || !self.query.trim().is_empty()
@@ -837,7 +831,7 @@ impl Desktop {
                 } else {
                     HashSet::new()
                 };
-                self.rebuild_rows(false, cx);
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::Details(mode) => {
                 self.set_details_mode(mode.unwrap_or(self.details_mode.next()));
