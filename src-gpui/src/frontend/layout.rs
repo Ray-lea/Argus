@@ -937,6 +937,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A second click on the control closes its menu, as in Windows.
+        if self.menu_just_shut(anchor) {
+            return;
+        }
         let bounds = self.ui.anchors.borrow().get(anchor).copied();
         match bounds {
             Some(b) => {
@@ -949,6 +953,7 @@ impl Desktop {
             }
             None => self.open_popup(items, window, cx),
         }
+        self.anchor_menu(anchor);
     }
     /// A choice between labelled options: segments, or (`compact`) a button
     /// naming the chosen option that drops the list down.
@@ -1480,22 +1485,8 @@ impl Desktop {
             .rounded_full()
             .overflow_hidden()
             .text_color(color)
-            .child(
-                Button::new("status-pause")
-                    .h_full()
-                    .px(px(6.))
-                    .flex()
-                    .items_center()
-                    .hover(move |s| s.bg(p.hover))
-                    .active(move |s| s.bg(p.press))
-                    .accessibility_label(pause)
-                    .child(icon(if paused { "PlayIcon" } else { "PauseIcon" }, color).size(px(12.)))
-                    .tooltip(move |window, cx| widgets::tooltip(pause_tip.clone(), window, cx))
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.act(Action::Pause, window, cx)),
-                    ),
-            )
-            .child(div().w(px(1.)).h_full().bg(p.stroke))
+            // The reading, then the pause button at the end: the button stays
+            // where it is as the reading changes length with the state.
             .child(
                 Button::new("status-interval")
                     .h_full()
@@ -1517,6 +1508,22 @@ impl Desktop {
                     .tooltip(move |window, cx| widgets::tooltip(rate.clone(), window, cx))
                     .on_click(
                         cx.listener(|this, _, window, cx| this.open_interval_menu(window, cx)),
+                    ),
+            )
+            .child(div().w(px(1.)).h_full().bg(p.stroke))
+            .child(
+                Button::new("status-pause")
+                    .h_full()
+                    .px(px(6.))
+                    .flex()
+                    .items_center()
+                    .hover(move |s| s.bg(p.hover))
+                    .active(move |s| s.bg(p.press))
+                    .accessibility_label(pause)
+                    .child(icon(if paused { "PlayIcon" } else { "PauseIcon" }, color).size(px(12.)))
+                    .tooltip(move |window, cx| widgets::tooltip(pause_tip.clone(), window, cx))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.act(Action::Pause, window, cx)),
                     ),
             )
             .child(anchor_probe(RATE, self.ui.anchors.clone()))
