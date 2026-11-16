@@ -385,12 +385,6 @@ impl NativeTable {
             .top(top)
             .h(px(height))
             .overflow_hidden();
-        if max >= 0.5 {
-            layer = layer.child(self.group_marks(&p, scroll, height, max));
-        }
-        if let Some(name) = self.group_name(&p, scroll, height, max) {
-            layer = layer.child(name);
-        }
         for (n, (heading, y)) in bands.into_iter().enumerate() {
             let band = self.held_heading(heading, y, n == last, &p, window, cx);
             let (Some(list), groups, count) = (
@@ -413,6 +407,14 @@ impl NativeTable {
                 child: band,
                 shift: Box::new(shift),
             });
+        }
+        // Over the held headings: they reach across the scrollbar's track,
+        // where the first group's mark is, often shorter than a heading.
+        if max >= 0.5 {
+            layer = layer.child(self.group_marks(&p, scroll, height, max));
+        }
+        if let Some(name) = self.group_name(&p, scroll, height, max) {
+            layer = layer.child(name);
         }
         Some(layer.into_any_element())
     }
