@@ -182,7 +182,7 @@
     "notAllowed": "This operation isn't allowed in the current state; refresh and try again",
     "helperNotStarted": "Couldn't start the administrator maintenance helper",
     "helperBusy": "The maintenance helper is still working; refresh the status and don't repeat the operation",
-    "helperFailed": "The Task Manager setup didn't finish; check the maintenance helper's message and refresh the status",
+    "helperExited": "The maintenance helper exited unexpectedly (exit code: {code}). Check the security software blocking reports and refresh the status.",
     "invalidCaller": "Invalid UI process",
     "invalidInstance": "Invalid process instance",
     "noLauncher": "This build doesn't include the standalone launcher",

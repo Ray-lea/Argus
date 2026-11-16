@@ -183,7 +183,7 @@
     "notAllowed": "Cette opération n’est pas autorisée dans l’état actuel ; actualisez et réessayez",
     "helperNotStarted": "Impossible de démarrer l’assistant de maintenance de l’administrateur",
     "helperBusy": "L’assistant de maintenance travaille encore ; actualisez l’état sans répéter l’opération",
-    "helperFailed": "La configuration de Gestionnaire des tâches n’a pas été terminée ; vérifiez le message de l’assistant de maintenance et actualisez l’état",
+    "helperExited": "L’assistant de maintenance s’est arrêté de façon inattendue (code de sortie : {code}). Consultez les rapports de blocage du logiciel de sécurité et actualisez l’état.",
     "invalidCaller": "Processus UI non valide",
     "invalidInstance": "Instance de processus non valide",
     "noLauncher": "Cette version n’inclut pas le lanceur autonome",

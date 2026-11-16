@@ -351,6 +351,9 @@ pub struct Failure {
     /// The replacement's state, when the action is not allowed in it.
     #[serde(skip)]
     state: Option<&'static str>,
+    /// Observed by the caller after the helper exits, never read from its report.
+    #[serde(skip)]
+    exit_code: Option<u32>,
 }
 
 impl Failure {
@@ -365,6 +368,7 @@ impl Failure {
             kept_registry: None,
             kept_cause: None,
             state: None,
+            exit_code: None,
         }
     }
 
@@ -373,6 +377,17 @@ impl Failure {
             cause,
             ..Self::new(step, explain(error, cause))
         }
+    }
+
+    fn exited(code: u32, reported: Option<Self>) -> Self {
+        let mut failure = reported.unwrap_or_else(|| {
+            Self::new(
+                Step::Helper,
+                tr!("taskManager.helperExited", code = format!("0x{code:08X}")),
+            )
+        });
+        failure.exit_code = Some(code);
+        failure
     }
 
     /// The self-test failed, and so did its cleanup: artifacts stay.
@@ -403,6 +418,9 @@ impl Failure {
         }
         if let Some(cause) = self.cause {
             line += cause.log();
+        }
+        if let Some(code) = self.exit_code {
+            line += &format!("; helper_exit=0x{code:08X}");
         }
         if let Some(kept) = &self.kept {
             line += &format!("; self-test artifacts kept ({}", failure(kept));
@@ -1058,7 +1076,7 @@ fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
     if code == 0 {
         Ok(())
     } else {
-        Err(helper_error(started).unwrap_or_else(|| helper(tr!("taskManager.helperFailed"))))
+        Err(Failure::exited(code, helper_error(started)))
     }
 }
 
@@ -1395,6 +1413,26 @@ mod tests {
             status.summary(),
             "enabled; the interface copy is version 0.1.0"
         );
+    }
+
+    #[test]
+    fn terminated_helpers_keep_the_observed_exit_code_without_losing_a_report() {
+        let failed = Failure::exited(0x40000015, None);
+        assert!(matches!(failed.step, Step::Helper));
+        assert_eq!(failed.exit_code, Some(0x40000015));
+        assert!(failed.message.contains("0x40000015"));
+        assert!(failed.log().contains("helper_exit=0x40000015"));
+
+        let reported = Failure::new(Step::Check, "private-detail".into());
+        let result = Failure::exited(1, Some(reported));
+        assert!(matches!(result.step, Step::Check));
+        assert_eq!(result.message, "private-detail");
+        assert_eq!(result.exit_code, Some(1));
+        assert!(!result.log().contains("private-detail"));
+        let serialized = serde_json::to_value(&result).unwrap();
+        assert!(serialized.get("exitCode").is_none());
+        let loaded: Failure = serde_json::from_value(serialized).unwrap();
+        assert_eq!(loaded.exit_code, None);
     }
 
     #[test]

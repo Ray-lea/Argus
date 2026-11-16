@@ -182,7 +182,7 @@
     "notAllowed": "Dieser Vorgang ist im aktuellen Zustand nicht zulässig. Aktualisieren Sie den Status und versuchen Sie es erneut",
     "helperNotStarted": "Der Administrator-Wartungshelfer konnte nicht gestartet werden",
     "helperBusy": "Der Wartungshelfer arbeitet noch. Aktualisieren Sie den Status und wiederholen Sie den Vorgang nicht",
-    "helperFailed": "Das Task-Manager-Setup wurde nicht abgeschlossen. Überprüfen Sie die Meldung des Wartungshelfers und aktualisieren Sie den Status",
+    "helperExited": "Das Wartungshilfsprogramm wurde unerwartet beendet (Exitcode: {code}). Prüfen Sie die Blockierungsberichte Ihrer Sicherheitssoftware und aktualisieren Sie den Status.",
     "invalidCaller": "Ungültiger UI-Prozess",
     "invalidInstance": "Ungültige Prozessinstanz",
     "noLauncher": "Dieser Build enthält keinen eigenständigen Launcher",

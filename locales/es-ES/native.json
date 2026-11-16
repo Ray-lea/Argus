@@ -183,7 +183,7 @@
     "notAllowed": "Esta operación no está permitida en el estado actual; actualice y vuelva a intentarlo",
     "helperNotStarted": "No se pudo iniciar el asistente de mantenimiento del administrador",
     "helperBusy": "El asistente de mantenimiento sigue trabajando; actualice el estado y no repita la operación",
-    "helperFailed": "La configuración del Administrador de tareas no ha finalizado. Compruebe el mensaje del asistente de mantenimiento y actualice el estado",
+    "helperExited": "El asistente de mantenimiento finalizó de forma inesperada (código de salida: {code}). Revise los informes de bloqueo del software de seguridad y actualice el estado.",
     "invalidCaller": "Proceso UI no válido",
     "invalidInstance": "Instancia de proceso no válida",
     "noLauncher": "Esta compilación no incluye el iniciador independiente",

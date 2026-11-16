@@ -179,7 +179,7 @@
     "notAllowed": "目前狀態不允許此操作，請重新整理後重試",
     "helperNotStarted": "未能啟動系統管理員維護輔助程式",
     "helperBusy": "維護輔助程式仍在處理中，請重新整理狀態；請勿重複操作",
-    "helperFailed": "工作管理員設定未完成，請檢視維護輔助程式提示並重新整理狀態",
+    "helperExited": "維護輔助程式異常結束（結束代碼：{code}）。請檢查安全軟體的攔截記錄，並重新整理狀態。",
     "invalidCaller": "無效介面處理程序",
     "invalidInstance": "無效處理程序執行個體",
     "noLauncher": "此版本未包含獨立啟動器",

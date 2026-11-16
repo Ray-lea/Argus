@@ -179,7 +179,7 @@
     "notAllowed": "当前状态不允许此操作，请刷新后重试",
     "helperNotStarted": "未能启动管理员维护助手",
     "helperBusy": "维护助手仍在处理，请刷新状态；不要重复操作",
-    "helperFailed": "任务管理器设置未完成，请查看维护助手提示并刷新状态",
+    "helperExited": "维护助手异常退出（退出码：{code}）。请检查安全软件的拦截记录，并刷新状态。",
     "invalidCaller": "无效界面进程",
     "invalidInstance": "无效进程实例",
     "noLauncher": "此版本未包含独立启动器",
