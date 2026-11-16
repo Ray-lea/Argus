@@ -1310,6 +1310,31 @@ impl Desktop {
                     "settings.motion.chart.desc",
                     vec![chart],
                 ));
+                let acceleration = self.toggle(
+                    "hardwareAcceleration",
+                    label("settings.motion.acceleration.title"),
+                    // Until the settings are read, as saved settings without it.
+                    settings["hardwareAcceleration"].as_bool().unwrap_or(true),
+                    false,
+                    |this, on, window, cx| {
+                        this.request(
+                            "set_hardware_acceleration",
+                            json!({"enabled": on}),
+                            Some("settings"),
+                            window,
+                            cx,
+                        );
+                    },
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "hardwareAcceleration",
+                    "GpuIcon",
+                    "settings.motion.acceleration.title",
+                    "settings.motion.acceleration.desc",
+                    vec![acceleration],
+                ));
             }
             "data" => self.data_cards(settings, &mut cards, window, cx),
             "rules" => self.rule_cards(settings, &mut cards, window, cx),
@@ -4067,6 +4092,10 @@ impl Desktop {
             "set_update_settings" | "set_whats_new" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.update.error"))
             }
+            "set_hardware_acceleration" => self.notify_toast(
+                ToastKind::Error,
+                wrapped("settings.motion.acceleration.error"),
+            ),
             _ => return false,
         }
         cx.notify();

@@ -458,6 +458,20 @@ pub fn set_whats_new(
     Ok(settings_view(&app))
 }
 
+/// Draws the interface with the graphics card or, turned off, with the
+/// system's software rasterizer. The open windows change renderer in place.
+pub fn set_hardware_acceleration(
+    app: crate::native_runtime::Host,
+    enabled: bool,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.hardware_acceleration = enabled)
+        .map_err(|e| e.to_string())?;
+    log::info!("hardware acceleration set; enabled={enabled}");
+    gpui_kit::gpui::set_windows_software_rendering(!enabled);
+    Ok(settings_view(&app))
+}
+
 /// Records that the first start of this version has been dealt with, so what
 /// it changed does not show again.
 pub fn note_version_seen(app: crate::native_runtime::Host) -> Result<SettingsView, String> {

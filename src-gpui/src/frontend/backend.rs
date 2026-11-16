@@ -31,6 +31,7 @@ impl Desktop {
                     | "update_status"
                     | "set_theme"
                     | "set_language"
+                    | "set_hardware_acceleration"
             ) {
                 // Kept for the tests to read (`inspectLayout.skippedRequest`):
                 // what a control asked for, in place of doing it.

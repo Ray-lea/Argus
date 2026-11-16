@@ -997,6 +997,7 @@ export function Settings({
     tray: true,
     hotkey: true,
     windowMotion: true,
+    hardwareAcceleration: true,
     history: true,
     autoUpdate: true,
     whatsNew: true,
@@ -1278,6 +1279,18 @@ export function Settings({
                 { value: "smooth", label: "流畅（跟随刷新率）" },
                 { value: "step", label: "关闭（每次采样跳一格）" },
               ]}
+            />
+          </Setting>
+          <Setting
+            icon="gpu"
+            title="硬件加速"
+            desc="默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。"
+          >
+            <Switch
+              state
+              label="硬件加速"
+              checked={values.hardwareAcceleration}
+              onChange={(v) => set("hardwareAcceleration", v)}
             />
           </Setting>
         </section>

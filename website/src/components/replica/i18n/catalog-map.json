@@ -566,6 +566,8 @@
   "窗口过渡动画": "settings.json:motion.window.title",
   "窗口显示、隐藏、最小化与还原时的淡入淡出。关闭后由系统或其他窗口管理软件处理窗口过渡。默认跟随 Windows 的“动画效果”设置。": "settings.json:motion.window.desc",
   "页面和弹窗的过渡、滑动的选中标记，以及图标的动效。默认跟随 Windows 的“动画效果”设置。": "settings.json:motion.ui.desc",
+  "硬件加速": "settings.json:motion.acceleration.title",
+  "默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。": "settings.json:motion.acceleration.desc",
   "隐藏时释放内存": "settings.json:data.releaseHidden.title",
   "窗口最小化或隐藏到托盘达到设定时长后，Argus 释放图表图像，并将未使用的内存归还 Windows。采样和历史记录照常进行。再次打开窗口时会先重绘图表，可能稍有停顿。": "settings.json:data.releaseHidden.desc",
   "从不": "settings.json:data.releaseHidden.never",

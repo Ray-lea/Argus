@@ -233,6 +233,11 @@
       "balanced": "Équilibré ({fps} fps)",
       "pixel": "Économie d’énergie (pas de pixel)",
       "off": "Désactivé (un pas par échantillon)"
+    },
+    "acceleration": {
+      "title": "Accélération matérielle",
+      "desc": "Par défaut, le GPU dessine l’interface. Une fois l’option désactivée, le CPU la dessine et Argus n’utilise plus le GPU. Utile si l’interface saccade lorsque le GPU est saturé, ou pour éviter qu’Argus sollicite le GPU. L’utilisation du CPU augmente ; si nécessaire, les animations des graphiques peuvent être réduites. S’applique immédiatement, sans redémarrage.",
+      "error": "Impossible de changer l’accélération matérielle : {error}"
     }
   },
   "data": {

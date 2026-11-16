@@ -23,6 +23,8 @@ const chartGap = process.argv.includes("--chart-gap");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
 const interactions = process.argv.includes("--interactions");
+// Hardware acceleration off: the software rasterizer draws the window.
+const softwareRendering = process.argv.includes("--software-rendering");
 assert(!(interactions && (live || retained || chartScroll || chartGap || snapshots)), "interaction comparisons require a dedicated fixed replay");
 const previewFlag = process.argv.indexOf("--readme");
 const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
@@ -39,7 +41,13 @@ const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
-  JSON.stringify({ language: preview ?? "zh-CN", theme: "dark", closeToTray: false, updateCheck: false }),
+  JSON.stringify({
+    language: preview ?? "zh-CN",
+    theme: "dark",
+    closeToTray: false,
+    updateCheck: false,
+    hardwareAcceleration: !softwareRendering,
+  }),
 );
 let fixture;
 if (preview) {
@@ -621,8 +629,12 @@ try {
         events.push({ event: "pixel-comparison", label: picture, ...scoped });
         // An unchanged parent can keep the composited charts. Their floating
         // blend allows `chartRounding` code values (two, three under a hover
-        // tint); static ink outside their clips allows one.
-        assert(scoped.maxChannelDelta <= chartRounding && scoped.maxOutsideCharts <= 1,
+        // tint); static ink outside their clips allows one. On the software
+        // rasterizer, a foreground composed from its own 8-bit image differs
+        // from one drawn straight into the frame by two at antialiased edges
+        // (a tooltip corner over a tinted cell).
+        const inkRounding = softwareRendering ? 2 : 1;
+        assert(scoped.maxChannelDelta <= Math.max(chartRounding, inkRounding) && scoped.maxOutsideCharts <= inkRounding,
           `${picture}: retained rendering differs from a full paint: ${JSON.stringify(scoped)}`);
         }
       }

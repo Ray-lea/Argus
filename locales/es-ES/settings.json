@@ -233,6 +233,11 @@
       "balanced": "Equilibrada ({fps} fps)",
       "pixel": "Ahorro de energía (pasos de píxel)",
       "off": "Desactivada (un paso por muestra)"
+    },
+    "acceleration": {
+      "title": "Aceleración por hardware",
+      "desc": "De forma predeterminada, la GPU dibuja la interfaz. Al desactivarla, la dibuja la CPU y Argus deja de usar la GPU. Resulta útil si la interfaz se entrecorta con la GPU al máximo o para evitar que Argus use la GPU. El uso de CPU aumenta; si es necesario, se puede reducir la animación de los gráficos. Se aplica de inmediato, sin reiniciar.",
+      "error": "No se pudo cambiar la aceleración por hardware: {error}"
     }
   },
   "data": {

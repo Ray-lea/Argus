@@ -5,7 +5,7 @@ use windows::Wdk::Graphics::Direct3D::{
     D3DKMTCloseAdapter, D3DKMTOpenAdapterFromLuid, D3DKMTQueryAdapterInfo,
     KMTQAITYPE_WDDM_2_7_CAPS,
 };
-use windows::Win32::Foundation::POINT;
+use windows::Win32::Foundation::{LUID, POINT};
 use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromWindow};
 use windows_numerics::Matrix3x2;
 #[path = "chart_backdrop.rs"]
@@ -22,6 +22,10 @@ struct FrameKey {
 const BAR_PHASES: u32 = 128;
 const MAX_BAR_BYTES: u64 = 48 * 1024 * 1024;
 const MAX_TREE_BYTES: u64 = 256 * 1024 * 1024;
+/// The tree budget of an adapter that reports no dedicated memory.
+const UNKNOWN_TREE_BYTES: u64 = 48 * 1024 * 1024;
+/// Visuals and draws for a grouped foreground split at the chart clips.
+const MAX_FOREGROUND_PIECES: usize = 64;
 
 #[derive(Default)]
 pub(super) struct ChartComposition {
@@ -29,6 +33,8 @@ pub(super) struct ChartComposition {
     output: Option<ChartOutput>,
     skipped: Option<FrameKey>,
     unavailable: bool,
+    /// The software rasterizer draws the layers (`compositing_adapter`).
+    software_device: bool,
     standard_sdr: Option<bool>,
     tree_budget: u64,
     used_since_hide: bool,
@@ -206,15 +212,63 @@ fn foreground_is_above(
     })
 }
 
+/// The graphics card the compositor moves retained charts on.
+struct CompositingAdapter {
+    luid: LUID,
+    dedicated_memory: u64,
+    /// The charts are drawn by the software rasterizer, not by this card.
+    software_device: bool,
+}
+
+/// The rendering adapter itself or, for the software rasterizer, the hardware
+/// adapter showing the window's monitor (the first with a display when none
+/// does): the compositor moves the layers on that card, and the software
+/// device draws them only when their content changes. `None` without such an
+/// adapter.
+fn compositing_adapter(device: &IDXGIDevice, hwnd: HWND) -> Option<CompositingAdapter> {
+    let software = |desc: &DXGI_ADAPTER_DESC1| desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0;
+    let found = |desc: DXGI_ADAPTER_DESC1, software_device| CompositingAdapter {
+        luid: desc.AdapterLuid,
+        dedicated_memory: desc.DedicatedVideoMemory as u64,
+        software_device,
+    };
+    unsafe {
+        let adapter: IDXGIAdapter1 = device.GetAdapter().ok()?.cast().ok()?;
+        let desc = adapter.GetDesc1().ok()?;
+        if !software(&desc) {
+            return Some(found(desc, false));
+        }
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let factory = CreateDXGIFactory1::<IDXGIFactory1>().ok()?;
+        let mut first = None;
+        let mut index = 0;
+        while let Ok(adapter) = factory.EnumAdapters1(index) {
+            index += 1;
+            let Ok(desc) = adapter.GetDesc1() else {
+                continue;
+            };
+            if software(&desc) {
+                continue;
+            }
+            let mut output = 0;
+            while let Ok(display) = adapter.EnumOutputs(output) {
+                output += 1;
+                if display.GetDesc().is_ok_and(|d| d.Monitor == monitor) {
+                    return Some(found(desc, true));
+                }
+                first.get_or_insert(desc);
+            }
+        }
+        first.map(|desc| found(desc, true))
+    }
+}
+
 // Both WDDM scheduler modes can move retained charts without drawing them
 // into the swap chain on every frame. Keep the existing hardware capability gate.
-fn chart_layers_supported(device: &IDXGIDevice) -> bool {
+fn chart_layers_supported(compositing: &CompositingAdapter) -> bool {
     unsafe {
-        let Ok(desc) = device.GetAdapter().and_then(|a| a.GetDesc()) else {
-            return false;
-        };
         let mut adapter = D3DKMT_OPENADAPTERFROMLUID {
-            AdapterLuid: desc.AdapterLuid,
+            AdapterLuid: compositing.luid,
             hAdapter: 0,
         };
         if D3DKMTOpenAdapterFromLuid(&mut adapter).is_err() {
@@ -237,8 +291,9 @@ fn chart_layers_supported(device: &IDXGIDevice) -> bool {
             status.is_ok() && caps.Anonymous.Value & 1 != 0 && (!hardware_scheduling || clock);
         if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
             println!(
-                "{{\"event\":\"gpu-chart-policy\",\"queryOk\":{},\"supported\":{supported},\"hardwareScheduling\":{hardware_scheduling},\"compositorClock\":{clock}}}",
+                "{{\"event\":\"gpu-chart-policy\",\"queryOk\":{},\"supported\":{supported},\"hardwareScheduling\":{hardware_scheduling},\"compositorClock\":{clock},\"softwareDevice\":{}}}",
                 status.is_ok(),
+                compositing.software_device,
             );
         }
         supported
@@ -276,7 +331,9 @@ struct Tree {
     stationary: Option<scene_cache::Snapshot>,
     bar_count: usize,
     clips: Vec<RECT>,
-    grouped_foreground: bool,
+    /// The layer of a grouped foreground shows it outside the chart clips
+    /// too, over a backdrop without it: a backdrop patch would draw it twice.
+    overlay_covers_backdrop: bool,
 }
 
 pub(super) struct BackdropPatch {
@@ -443,6 +500,40 @@ fn clip(bounds: Bounds<ScaledPixels>, width: u32, height: u32) -> RECT {
         right: pixel(bounds.right(), width),
         bottom: pixel(bounds.bottom(), height),
     }
+}
+
+/// Splits `bounds` into disjoint rectangles inside `clips` and outside all of
+/// them; `None` when that takes more than `limit` rectangles.
+fn split_by_clips(bounds: RECT, clips: &[RECT], limit: usize) -> Option<(Vec<RECT>, Vec<RECT>)> {
+    let (mut inside, mut outside, mut taken) = (Vec::new(), vec![bounds], Vec::<RECT>::new());
+    for clip in clips {
+        let part = RECT {
+            left: clip.left.max(bounds.left),
+            top: clip.top.max(bounds.top),
+            right: clip.right.min(bounds.right),
+            bottom: clip.bottom.min(bounds.bottom),
+        };
+        if part.left >= part.right || part.top >= part.bottom {
+            continue;
+        }
+        let mut pieces = vec![part];
+        for earlier in &taken {
+            pieces = pieces
+                .into_iter()
+                .flat_map(|piece| subtract_rect(piece, *earlier))
+                .collect();
+        }
+        inside.extend(pieces);
+        outside = outside
+            .into_iter()
+            .flat_map(|piece| subtract_rect(piece, part))
+            .collect();
+        taken.push(part);
+        if inside.len() + outside.len() > limit {
+            return None;
+        }
+    }
+    Some((inside, outside))
 }
 
 fn supported_image(s: &PolychromeSprite) -> bool {
@@ -988,7 +1079,7 @@ impl DirectXRenderer {
             || tree.key.order != next.order
             || tree.key.size != next.size
             || tree.key.opaque != next.opaque
-            || tree.grouped_foreground
+            || tree.overlay_covers_backdrop
             || comp.charts.unavailable
             || comp.charts.standard_sdr != Some(true)
             || tree.bar_count != scene.retained_bars.len()
@@ -1463,7 +1554,13 @@ impl DirectXRenderer {
         let mut bar_keys = Vec::new();
         let mut dynamic_images = std::collections::BTreeSet::new();
         let mut dynamic_bytes = 0u64;
-        let mut grouped_foreground = comp.charts.grouped_foreground == Some(key);
+        // Text over a curve splits its backdrop into many narrow columns, each
+        // stored at every eighth-pixel phase. On the process overview that is
+        // ten times the surface of curves over a uniform backdrop, and the
+        // software rasterizer draws all of it again for each sample. As one
+        // layer above the group, the foreground leaves the curves one backdrop.
+        let mut grouped_foreground = comp.charts.grouped_foreground == Some(key)
+            || (comp.charts.software_device && foreground_rect.is_some());
         let mut images = 0;
         let mut image_bytes = 0u64;
         let mut untrimmed_bytes = 0u64;
@@ -1605,13 +1702,24 @@ impl DirectXRenderer {
         else {
             return Ok(false);
         };
+        // On the software rasterizer, a grouped foreground's layer covers only
+        // the chart clips, where moving ink lies under it. Elsewhere the
+        // backdrop holds the foreground, composed as the strips compose it:
+        // the frame matches a complete paint there, and a backdrop patch
+        // outside the clips keeps it. Graphics cards group a foreground in
+        // rare cases only and keep one layer over all of it.
+        let foreground_split = foreground_rect
+            .filter(|_| grouped_foreground && comp.charts.software_device)
+            .and_then(|f| split_by_clips(f, &masks, MAX_FOREGROUND_PIECES));
         if grouped_foreground && let Some(f) = foreground_rect {
-            area = RECT {
-                left: area.left.min(f.left),
-                top: area.top.min(f.top),
-                right: area.right.max(f.right),
-                bottom: area.bottom.max(f.bottom),
-            };
+            if foreground_split.is_none() {
+                area = RECT {
+                    left: area.left.min(f.left),
+                    top: area.top.min(f.top),
+                    right: area.right.max(f.right),
+                    bottom: area.bottom.max(f.bottom),
+                };
+            }
             comp.charts.grouped_foreground = Some(key);
         }
         // Reserve space for the compositor's intermediate as well as our bitmaps.
@@ -1708,11 +1816,9 @@ impl DirectXRenderer {
             )?;
             comp.charts.foreground_overlay = Some((key, bitmap));
         }
-        let foreground_view = if grouped_foreground {
-            None
-        } else {
-            comp.charts.foreground.as_ref().map(|(_, f)| f.view.clone())
-        };
+        let foreground_view = comp.charts.foreground.as_ref().map(|(_, f)| f.view.clone());
+        // A grouped foreground stays out of the strips and their scan.
+        let strip_foreground = foreground_view.as_ref().filter(|_| !grouped_foreground);
         let mut sparse_images = 0;
         let mut opaque_strips = 0;
         if comp.charts.filter.is_none() {
@@ -1746,7 +1852,7 @@ impl DirectXRenderer {
                     &devices,
                     filter,
                     &prefix_view,
-                    foreground_view.as_ref(),
+                    strip_foreground,
                     foreground_origin,
                 )?);
             }
@@ -2066,7 +2172,7 @@ impl DirectXRenderer {
                                 &rows,
                                 sheet,
                                 &prefix_view,
-                                foreground_view.as_ref(),
+                                strip_foreground,
                                 foreground_origin,
                                 None,
                             )?;
@@ -2107,7 +2213,7 @@ impl DirectXRenderer {
                                 &rows,
                                 &extra,
                                 &prefix_view,
-                                foreground_view.as_ref(),
+                                strip_foreground,
                                 foreground_origin,
                                 Some(mask),
                             ) {
@@ -2185,25 +2291,36 @@ impl DirectXRenderer {
             layer.place(scene)?;
         }
         copy_scene(&background, &devices, &prefix, None)?;
-        if let (Some(view), Some(bounds)) = (foreground_view.as_ref(), foreground_rect) {
-            filter.foreground(
-                &background,
-                &devices,
-                &prefix_view,
-                view,
-                foreground_origin,
-                bounds,
-            )?;
+        // The backdrop holds the foreground wherever its own layer does not.
+        let (overlay, composed_foreground) = match (&foreground_split, foreground_rect) {
+            (Some((inside, outside)), _) => (inside.clone(), outside.clone()),
+            (None, Some(bounds)) if grouped_foreground => (vec![bounds], Vec::new()),
+            (None, Some(bounds)) => (Vec::new(), vec![bounds]),
+            (None, None) => (Vec::new(), Vec::new()),
+        };
+        if let Some(view) = foreground_view.as_ref() {
+            for rect in composed_foreground {
+                filter.foreground(
+                    &background,
+                    &devices,
+                    &prefix_view,
+                    view,
+                    foreground_origin,
+                    rect,
+                )?;
+            }
         }
         if grouped_foreground
             && let (Some((_, bitmap)), Some(bounds)) = (&charts.foreground_overlay, foreground_rect)
         {
-            let visual = child(dev, &group, bounds, bitmap)?;
-            unsafe {
-                visual.SetOffsetX2(bounds.left as f32)?;
-                visual.SetOffsetY2(bounds.top as f32)?;
+            for clip in overlay {
+                let visual = child(dev, &group, clip, bitmap)?;
+                unsafe {
+                    visual.SetOffsetX2(bounds.left as f32)?;
+                    visual.SetOffsetY2(bounds.top as f32)?;
+                }
+                visual_count += 1;
             }
-            visual_count += 1;
         }
         unsafe {
             if let Some(frame) = &output {
@@ -2238,7 +2355,7 @@ impl DirectXRenderer {
             stationary: scene_cache::Snapshot::stationary(scene),
             bar_count: scene.retained_bars.len(),
             clips: chart_clips,
-            grouped_foreground,
+            overlay_covers_backdrop: grouped_foreground && foreground_split.is_none(),
         });
         charts.used_since_hide = true;
         Ok(true)
@@ -2321,6 +2438,58 @@ mod tests {
             assert!(filtered_rows(top, height, 200, 0..0).is_empty());
         }
     }
+
+    #[test]
+    fn a_split_foreground_covers_each_pixel_once() {
+        use windows::Win32::Foundation::RECT;
+        let rect = |left, top, right, bottom| RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let bounds = rect(2, 3, 30, 20);
+        // Overlapping, partly outside, empty and disjoint chart clips.
+        let clips = [
+            rect(0, 0, 12, 10),
+            rect(8, 6, 16, 14),
+            RECT::default(),
+            rect(20, 15, 40, 40),
+        ];
+        let (inside, outside) = super::split_by_clips(bounds, &clips, 64).expect("split");
+        let covers = |r: &RECT, x, y| x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+        for y in 0..40 {
+            for x in 0..40 {
+                let count = |rects: &[RECT]| rects.iter().filter(|r| covers(r, x, y)).count();
+                let in_clip = covers(&bounds, x, y) && clips.iter().any(|c| covers(c, x, y));
+                assert_eq!(count(&inside), usize::from(in_clip), "inside at {x},{y}");
+                assert_eq!(
+                    count(&outside),
+                    usize::from(covers(&bounds, x, y) && !in_clip),
+                    "outside at {x},{y}"
+                );
+            }
+        }
+        assert!(super::split_by_clips(bounds, &clips, 3).is_none());
+    }
+
+    #[test]
+    fn a_software_device_is_composed_on_a_display_adapter() {
+        use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+        use windows::core::Interface;
+        let devices = crate::DirectXDevices::create(true).expect("software devices");
+        let dxgi: IDXGIDevice = devices.device.cast().expect("DXGI device");
+        let own = unsafe { devices.adapter.GetDesc1() }.expect("adapter description");
+        // A machine without a display adapter has no card to move layers on.
+        let window = unsafe { windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow() };
+        if let Some(compositing) = super::compositing_adapter(&dxgi, window) {
+            assert!(compositing.software_device);
+            assert_ne!(
+                (compositing.luid.LowPart, compositing.luid.HighPart),
+                (own.AdapterLuid.LowPart, own.AdapterLuid.HighPart),
+            );
+        }
+    }
 }
 
 impl ChartComposition {
@@ -2332,21 +2501,32 @@ impl ChartComposition {
     pub(super) fn enabled(&self) -> bool {
         !self.unavailable
     }
-    pub(super) fn new(device: &IDXGIDevice) -> Self {
+    pub(super) fn new(device: &IDXGIDevice, hwnd: HWND) -> Self {
+        let compositing = compositing_adapter(device, hwnd);
+        let software_device = compositing.as_ref().is_some_and(|c| c.software_device);
         // Bound the whole resident tree, including the window background. A
         // flat cap sized for a 1440p client rejects a normal 4K graph on a
         // 16 GiB adapter; small cards should not reserve a desktop-card budget.
-        let dedicated = unsafe { device.GetAdapter().and_then(|a| a.GetDesc()) }
-            .map_or(0, |d| d.DedicatedVideoMemory as u64);
+        // The card composes a software device's surfaces as well, and its
+        // memory sets their budget as it does for its own. Those surfaces are
+        // in system memory: behind an integrated card, which reports little of
+        // its own, they keep the budget of a card without any.
+        let dedicated = compositing.as_ref().map_or(0, |c| c.dedicated_memory);
         let tree_budget = if dedicated == 0 {
-            48 * 1024 * 1024
+            UNKNOWN_TREE_BYTES
         } else {
             (dedicated / 64).min(MAX_TREE_BYTES)
         };
+        let tree_budget = if software_device {
+            tree_budget.max(UNKNOWN_TREE_BYTES)
+        } else {
+            tree_budget
+        };
         Self {
             tree_budget,
+            software_device,
             unavailable: std::env::var_os("ARGUS_GPUI_DISABLE_CHART_LAYERS").is_some()
-                || !chart_layers_supported(device),
+                || !compositing.as_ref().is_some_and(chart_layers_supported),
             ..Self::default()
         }
     }

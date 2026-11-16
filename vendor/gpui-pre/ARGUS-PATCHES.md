@@ -1,5 +1,7 @@
 # Argus patches
 
+`set_windows_software_rendering` records whether the application wants the Windows renderer on the system's software rasterizer, and `windows_software_rendering_requested` reads it. The flag is process-wide: the Windows platform reads it when it creates its DirectX devices and on every tick of its frame clock, so it can be set before the application starts or while windows are open.
+
 On Windows, an unclaimed touch long press dispatches a right-button press and release to the existing context-menu listeners. Text selection and tooltip handlers retain first refusal, and the contact is claimed so releasing it cannot click through the newly opened menu. A release that first reports movement beyond the tap slop scrolls from the original contact instead of clicking its destination. Argus's `touch_input` regression covers taps, double taps, panning, cancellation, coalesced movement and claimed/unclaimed long presses.
 
 Raw touch callbacks queue events during reentrant App updates and native modal loops, preserving contact order until the window can be updated. Consecutive moves from the same contact coalesce while queued; closing the window discards pending input. The normal path dispatches synchronously. Regressions cover cancellation followed by a new tap during a nested loop, and closing a window with queued input.

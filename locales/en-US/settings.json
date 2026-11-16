@@ -233,6 +233,11 @@
       "balanced": "Balanced ({fps} fps)",
       "pixel": "Power saving (pixel steps)",
       "off": "Off (one step per sample)"
+    },
+    "acceleration": {
+      "title": "Hardware acceleration",
+      "desc": "Draws the interface with the GPU by default. When off, the CPU draws it and Argus no longer uses the GPU. Use this if the interface stutters while the GPU is fully loaded, or to keep Argus off the GPU. CPU usage rises, so a lower chart animation setting can help. Takes effect immediately, without a restart.",
+      "error": "Couldn't change hardware acceleration: {error}"
     }
   },
   "data": {

@@ -788,6 +788,8 @@ export const exact: Record<string, string> = {
   "窗口过渡动画": "Window transitions",
   "窗口显示、隐藏、最小化与还原时的淡入淡出。关闭后由系统或其他窗口管理软件处理窗口过渡。默认跟随 Windows 的“动画效果”设置。": "Fade the window when showing, hiding, minimizing or restoring it. Turn off to let Windows or another window manager handle transitions. Follows the Windows Animation effects setting by default.",
   "页面和弹窗的过渡、滑动的选中标记，以及图标的动效。默认跟随 Windows 的“动画效果”设置。": "Page and dialog transitions, the sliding selection marker, and icon motion. Follows the Windows Animation effects setting by default.",
+  "硬件加速": "Hardware acceleration",
+  "默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。": "Draws the interface with the GPU by default. When off, the CPU draws it and Argus no longer uses the GPU. Use this if the interface stutters while the GPU is fully loaded, or to keep Argus off the GPU. CPU usage rises, so a lower chart animation setting can help. Takes effect immediately, without a restart.",
   "隐藏时释放内存": "Free memory when hidden",
   "窗口最小化或隐藏到托盘达到设定时长后，Argus 释放图表图像，并将未使用的内存归还 Windows。采样和历史记录照常进行。再次打开窗口时会先重绘图表，可能稍有停顿。": "After the window has been minimized or in the tray for this long, Argus frees its chart images and returns unused memory to Windows. Sampling and history continue. When you open the window again, charts are drawn again first, which can take a moment.",
   "从不": "Never",

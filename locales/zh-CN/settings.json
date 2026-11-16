@@ -233,6 +233,11 @@
       "balanced": "均衡（{fps} 帧/秒）",
       "pixel": "省电（逐像素移动）",
       "off": "关闭（每次采样跳一格）"
+    },
+    "acceleration": {
+      "title": "硬件加速",
+      "desc": "默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。",
+      "error": "无法切换硬件加速：{error}"
     }
   },
   "data": {

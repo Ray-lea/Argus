@@ -41,6 +41,8 @@ const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 // This configuration is used for MSAA rendering on paths only, and it's guaranteed to be supported by DirectX 11.
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
 const MAX_INSTANCE_BUFFER_SIZE: usize = 256 * 1024 * 1024;
+/// Compositor passes the old frame covers a window that changes device.
+const TAKEOVER_PASSES: usize = 4;
 
 pub(crate) struct FontInfo {
     pub gamma_ratios: [f32; 4],
@@ -81,7 +83,22 @@ pub(crate) struct DirectXRenderer {
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
     disable_direct_composition: bool,
+    /// Whether the devices were made for a software-rendering request.
+    software: bool,
+    /// What showed the window before a requested change of device, still on
+    /// screen until the new device has presented a frame
+    /// (`finish_device_change`).
+    retired: Option<Retired>,
 }
+
+/// The objects of a replaced device that still works, released in this
+/// order: the composition target and its tree, the swap chain, the device.
+#[derive(Default)]
+struct Retired(
+    Option<DirectComposition>,
+    Option<DirectXResources>,
+    Option<DirectXRendererDevices>,
+);
 
 /// Direct3D objects
 #[derive(Clone)]
@@ -777,6 +794,7 @@ impl DirectXRendererDevices {
             dxgi_factory,
             device,
             device_context,
+            ..
         } = directx_devices;
         let dxgi_device = if disable_direct_composition {
             None
@@ -855,6 +873,8 @@ impl DirectXRenderer {
             height: 1,
             skip_draws: false,
             disable_direct_composition,
+            software: directx_devices.software,
+            retired: None,
         })
     }
 
@@ -1068,6 +1088,23 @@ impl DirectXRenderer {
 
     fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
         let disable_direct_composition = self.disable_direct_composition;
+        let hwnd_swap_chain = disable_direct_composition || windows_opaque_window_requested();
+        // A requested change of renderer leaves a working device behind. Its
+        // last frame stays on screen until the new device has presented one;
+        // the window would otherwise show nothing while the pipelines are
+        // built and the whole scene is drawn again. A window takes one flip
+        // chain of its own and its frame callback stops while it is hidden or
+        // minimized, so only a composed, visible window keeps the old frame.
+        let keep_showing = directx_devices.software != self.software
+            && !hwnd_swap_chain
+            && self
+                .devices
+                .as_ref()
+                .is_some_and(|devices| unsafe { devices.device.GetDeviceRemovedReason() }.is_ok())
+            && unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+                IsWindowVisible(self.hwnd).as_bool() && !IsIconic(self.hwnd).as_bool()
+            };
 
         unsafe {
             #[cfg(debug_assertions)]
@@ -1077,24 +1114,36 @@ impl DirectXRenderer {
                     .log_err();
             }
 
-            self.resources.take();
+            let mut old = Retired(None, self.resources.take(), None);
+            if !keep_showing {
+                old.1 = None;
+            }
             if let Some(devices) = &self.devices {
                 devices.device_context.OMSetRenderTargets(None, None);
                 devices.device_context.ClearState();
                 devices.device_context.Flush();
                 #[cfg(debug_assertions)]
-                report_live_objects(&devices.device)
-                    .context("Failed to report live objects after device lost")
-                    .log_err();
+                if !keep_showing {
+                    report_live_objects(&devices.device)
+                        .context("Failed to report live objects after device lost")
+                        .log_err();
+                }
             }
 
-            self.direct_composition.take();
-            self.devices.take();
+            old.0 = self.direct_composition.take();
+            old.2 = self.devices.take();
+            if !keep_showing {
+                // With what an unfinished change still kept on screen.
+                self.retired = None;
+            } else if self.retired.is_none() {
+                self.retired = Some(old);
+            }
+            // Otherwise an earlier change still waits for its first frame:
+            // what it replaced stays on screen, what it made is released.
         }
 
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Recreating DirectX devices")?;
-        let hwnd_swap_chain = disable_direct_composition || windows_opaque_window_requested();
         let resources = DirectXResources::new(
             &devices,
             self.width,
@@ -1108,19 +1157,31 @@ impl DirectXRenderer {
         let pipelines = DirectXRenderPipelines::new(&devices.device)
             .context("Creating DirectXRenderPipelines")?;
 
-        let direct_composition = DirectComposition::for_window(
-            &devices,
-            self.hwnd,
-            (!hwnd_swap_chain).then_some(&resources.swap_chain),
-        )?;
-
-        self.atlas.handle_device_lost(
-            &devices.device,
-            &devices.device_context,
-            direct_composition
+        // While the old frame is shown, the window's target is still that of
+        // the old device: this one is bound after its first present.
+        let direct_composition = if self.retired.is_some() {
+            None
+        } else {
+            DirectComposition::for_window(
+                &devices,
+                self.hwnd,
+                (!hwnd_swap_chain).then_some(&resources.swap_chain),
+            )?
+        };
+        let chart_layers = match &direct_composition {
+            Some(composition) => composition.charts.enabled(),
+            // As the composition bound later will find.
+            None if self.retired.is_some() => devices
+                .dxgi_device
                 .as_ref()
-                .is_some_and(|c| c.charts.enabled()),
-        );
+                .is_some_and(|dxgi| {
+                    chart_composition::ChartComposition::new(dxgi, self.hwnd).enabled()
+                }),
+            None => false,
+        };
+
+        self.atlas
+            .handle_device_lost(&devices.device, &devices.device_context, chart_layers);
         self.fresh.clear();
         self.gpu_timing = crate::gpu_timing::GpuTimings::from_environment(
             &devices.device,
@@ -1139,7 +1200,44 @@ impl DirectXRenderer {
         self.globals = globals;
         self.pipelines = pipelines;
         self.direct_composition = direct_composition;
+        self.software = directx_devices.software;
         self.skip_draws = true;
+        Ok(())
+    }
+
+    /// Shows the window from the new device once its swap chain has been
+    /// presented to, and releases what showed it until then. The old target
+    /// goes right before the new one is made, since a window has one of a
+    /// kind. A failure leaves the change unfinished for the next frame.
+    fn finish_device_change(&mut self) -> Result<()> {
+        let Some(retired) = &mut self.retired else {
+            return Ok(());
+        };
+        // Only the target goes between the two: releasing a swap chain and
+        // its device takes long enough for the compositor to show the window
+        // without either.
+        let Retired(old_composition, old_resources, old_devices) = std::mem::take(retired);
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        let bound = DirectComposition::for_window_after(
+            devices,
+            self.hwnd,
+            Some(&resources.swap_chain),
+            old_resources.as_ref().map(|old| &old.swap_chain),
+            move || drop(old_composition),
+        )
+        .or_else(|error| {
+            // The old frame could not cover the takeover (its device may be
+            // gone by now). The old target is released either way: bind the
+            // new chain alone rather than leave the window without one.
+            log::warn!("Taking the window over from the old device: {error:#}");
+            DirectComposition::for_window(devices, self.hwnd, Some(&resources.swap_chain))
+        })
+        .context("Binding the window to the new device");
+        drop(old_resources);
+        drop(old_devices);
+        self.direct_composition = bound?;
+        self.retired = None;
         Ok(())
     }
 
@@ -1269,7 +1367,15 @@ impl DirectXRenderer {
         if let (Some(timing), Some(started)) = (&mut self.gpu_timing, started) {
             timing.present(started.elapsed().as_secs_f64() * 1_000_000.);
         }
+        // A changed device takes the window once it has presented a frame;
+        // after a failed present the old frame stays until recovery.
+        let bound = if result.is_ok() {
+            self.finish_device_change()
+        } else {
+            Ok(())
+        };
         result?;
+        bound?;
         if restore_root {
             let comp = self.direct_composition.as_mut().unwrap();
             unsafe {
@@ -2942,10 +3048,25 @@ impl DirectComposition {
         hwnd: HWND,
         swap_chain: Option<&IDXGISwapChain1>,
     ) -> Result<Option<Self>> {
+        Self::for_window_after(devices, hwnd, swap_chain, None, || {})
+    }
+
+    /// As `for_window`, taking a window over from another device.
+    /// `before_target` runs once the composition device exists, right before
+    /// the window's target is made, and releases the target it replaces.
+    /// `previous` is the swap chain that showed the window so far: its frame
+    /// covers the window while the compositor first reads `swap_chain`.
+    fn for_window_after(
+        devices: &DirectXRendererDevices,
+        hwnd: HWND,
+        swap_chain: Option<&IDXGISwapChain1>,
+        previous: Option<&IDXGISwapChain1>,
+        before_target: impl FnOnce(),
+    ) -> Result<Option<Self>> {
         let Some(dxgi) = &devices.dxgi_device else {
             return Ok(None);
         };
-        let mut charts = chart_composition::ChartComposition::new(dxgi);
+        let mut charts = chart_composition::ChartComposition::new(dxgi, hwnd);
         if swap_chain.is_none() && !charts.enabled() {
             return Ok(None);
         }
@@ -2958,11 +3079,41 @@ impl DirectComposition {
             } else {
                 get_comp_device(dxgi)?
             };
+            before_target();
             unsafe {
                 let comp_target = comp_device.CreateTargetForHwnd(hwnd, false)?;
                 let swap_visual = if let Some(chain) = swap_chain {
                     let visual = comp_device.CreateVisual()?;
                     visual.SetContent(chain)?;
+                    if let Some(previous) = previous {
+                        // The compositor shows nothing of a swap chain for
+                        // the first passes after it enters a tree; that of
+                        // the software rasterizer stayed empty for two of
+                        // them. The old frame covers the window meanwhile,
+                        // with one pixel of the new chain over it (a corner
+                        // of the window, the same in both frames) for the
+                        // compositor to read the chain.
+                        let cover = comp_device.CreateVisual()?;
+                        let old = comp_device.CreateVisual()?;
+                        old.SetContent(previous)?;
+                        let first = comp_device.CreateVisual()?;
+                        first.SetContent(chain)?;
+                        let pixel = comp_device.CreateRectangleClip()?;
+                        pixel.SetLeft2(0.)?;
+                        pixel.SetTop2(0.)?;
+                        pixel.SetRight2(1.)?;
+                        pixel.SetBottom2(1.)?;
+                        first.SetClip(&pixel)?;
+                        cover.AddVisual(&old, false, None)?;
+                        cover.AddVisual(&first, true, &old)?;
+                        comp_target.SetRoot(&cover)?;
+                        comp_device.Commit()?;
+                        for _ in 0..TAKEOVER_PASSES {
+                            if windows::Win32::Graphics::Dwm::DwmFlush().is_err() {
+                                break;
+                            }
+                        }
+                    }
                     comp_target.SetRoot(&visual)?;
                     comp_device.Commit()?;
                     Some(visual)

@@ -233,6 +233,11 @@
       "balanced": "Ausgewogen ({fps} fps)",
       "pixel": "Energiesparend (Pixelschritte)",
       "off": "Aus (ein Schritt je Messung)"
+    },
+    "acceleration": {
+      "title": "Hardwarebeschleunigung",
+      "desc": "Zeichnet die Oberfläche standardmäßig mit der GPU. Bei deaktivierter Option zeichnet die CPU, und Argus belegt die GPU nicht mehr. Das hilft, wenn die Oberfläche bei voll ausgelasteter GPU ruckelt oder Argus die GPU nicht beanspruchen soll. Die CPU-Auslastung steigt; bei Bedarf lassen sich die Diagrammanimationen reduzieren. Wird sofort wirksam, ohne Neustart.",
+      "error": "Die Hardwarebeschleunigung konnte nicht geändert werden: {error}"
     }
   },
   "data": {

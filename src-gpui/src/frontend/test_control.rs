@@ -634,6 +634,8 @@ impl Desktop {
                 "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
+                "graphics":{"softwareRequested":gpui_kit::gpui::windows_software_rendering_requested(),
+                    "software":window.gpu_specs().map(|specs| specs.is_software_emulated)},
                 "userGroups":{"mode":self.user_grouping().key(),"grouped":self.user_groups().is_some(),
                     "users":model::UserGroups::new(values(&self.snapshot["sessions"])).users(),
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},

@@ -167,6 +167,12 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))
                 .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
         }
+        "set_hardware_acceleration" => crate::commands::set_hardware_acceleration(
+            host.clone(),
+            argument::<bool>(&args, "enabled")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "note_version_seen" => crate::commands::note_version_seen(host.clone())
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
