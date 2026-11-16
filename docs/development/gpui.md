@@ -92,6 +92,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`device-order.json`](../../tools/window-probe/steps/device-order.json) 检查设备列表的排序：用 `sample` 改写磁盘的盘符后在“按盘符”与“按磁盘编号”间切换，拖动网络适配器到顶部时磁盘顺序不变，拖动磁盘打乱顺序后改为“自定义”，并核对菜单的勾选与“恢复默认顺序”，录制行的让位与滑动。`inspectLayout.performance` 的 `diskOrder` 为磁盘排序方式，`arranged` 为拖动保存的顺序。
 
+[`process-groups.json`](../../tools/window-probe/steps/process-groups.json) 检查进程页分组：按名称排序的三个分类及其颜色，滚动后分类标题固定在顶部、被下一组的标题推出，单击固定的标题折叠该组，按用户分组时用户标题与分类标题两层叠放，以及滚动时的组名在停止滚动后消失；另截取浅色主题、150% 缩放和横向滚动后的画面。`inspect columns` 的 `state.groups` 输出各分组的标题键、颜色与行数（`groups`）、固定的标题及其位置（`held`）和组名（`name`，未显示时为 `null`）。
+
 [`column-widths.json`](../../tools/window-probe/steps/column-widths.json) 检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。[`column-widths-stable.json`](../../tools/window-probe/steps/column-widths-stable.json) 在进程树中折叠、展开分支和搜索，检查各列宽度保持不变。
 
 [`process-order-held.json`](../../tools/window-probe/steps/process-order-held.json) 检查指针悬停时进程表的排序暂停：指针停在列表上时用 `sample` 改变 CPU 读数，行序保持不变；随后双击展开、折叠，以及单击展开按钮，展开的行跟在所属条目之后，其余行不移动；指针移出列表后恢复排序；关闭 `holdOrderOnHover` 偏好后悬停不再保持行序。`inspectLayout.processTree` 的 `titles` 为各行标题，`heldOrder` 表示当前行序与排序结果不同。
