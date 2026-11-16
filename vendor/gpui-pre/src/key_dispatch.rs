@@ -68,6 +68,18 @@ use std::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct DispatchNodeId(usize);
 
+impl DispatchNodeId {
+    /// Argus patch: the node at `index` in a tree's list of nodes.
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+
+    /// Argus patch: where the node lies in its tree's list of nodes.
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+}
+
 pub(crate) struct DispatchTree {
     node_stack: Vec<DispatchNodeId>,
     pub(crate) context_stack: Vec<KeyContext>,
@@ -109,6 +121,28 @@ impl ReusedSubtree {
 
     pub fn contains_focus(&self) -> bool {
         self.contains_focus
+    }
+}
+
+/// Argus patch: a replay of a view's nodes in stretches, with nodes pushed
+/// anew between them in place of a view drawn again (`splice` in view.rs).
+/// [`DispatchTree::reuse_subtree`] closes every node it copied; here the last
+/// one stays open, so that what is drawn next goes inside it.
+#[derive(Default)]
+pub(crate) struct StretchReuse {
+    /// The source nodes whose copies are open, outermost first.
+    source_stack: Vec<DispatchNodeId>,
+    /// Each stretch copied so far: its range in the source and where its copy starts.
+    stretches: SmallVec<[(Range<usize>, usize); 4]>,
+}
+
+impl StretchReuse {
+    /// Where the copy of a source node copied in some stretch lies.
+    pub fn refresh_node_id(&self, node_id: DispatchNodeId) -> Option<DispatchNodeId> {
+        self.stretches
+            .iter()
+            .find(|(old, _)| old.contains(&node_id.0))
+            .map(|(old, new)| DispatchNodeId(node_id.0 - old.start + new))
     }
 }
 
@@ -305,6 +339,72 @@ impl DispatchTree {
             new_range,
             contains_focus,
         }
+    }
+
+    /// Argus patch: copies the nodes of `old_range` as [`Self::reuse_subtree`]
+    /// does, continuing the stretches `reuse` copied before (a node may lie
+    /// inside one copied in an earlier stretch). The nodes copied stay open
+    /// until the next stretch, [`Self::reuse_enter`] or [`Self::finish_reuse`]
+    /// closes them. Returns whether the stretch holds the focused node.
+    pub fn reuse_stretch(
+        &mut self,
+        reuse: &mut StretchReuse,
+        old_range: Range<usize>,
+        source: &mut Self,
+        focus: Option<FocusId>,
+    ) -> bool {
+        let new_start = self.nodes.len();
+        let mut contains_focus = false;
+        for (source_node_id, source_node) in source
+            .nodes
+            .iter_mut()
+            .enumerate()
+            .skip(old_range.start)
+            .take(old_range.len())
+        {
+            let source_node_id = DispatchNodeId(source_node_id);
+            while let Some(source_ancestor) = reuse.source_stack.last() {
+                if source_node.parent == Some(*source_ancestor) {
+                    break;
+                } else {
+                    reuse.source_stack.pop();
+                    self.pop_node();
+                }
+            }
+            reuse.source_stack.push(source_node_id);
+            if source_node.focus_id.is_some() && source_node.focus_id == focus {
+                contains_focus = true;
+            }
+            self.move_node(source_node);
+        }
+        reuse.stretches.push((old_range, new_start));
+        contains_focus
+    }
+
+    /// Argus patch: closes the nodes copied since `parent` (a source node
+    /// whose copy is open), so that the nodes pushed next go inside its copy.
+    /// False, with every copied node closed, if `parent`'s copy is not open.
+    pub fn reuse_enter(&mut self, reuse: &mut StretchReuse, parent: DispatchNodeId) -> bool {
+        while let Some(open) = reuse.source_stack.last() {
+            if *open == parent {
+                return true;
+            }
+            reuse.source_stack.pop();
+            self.pop_node();
+        }
+        false
+    }
+
+    /// Argus patch: closes every node the stretches of `reuse` left open.
+    pub fn finish_reuse(&mut self, reuse: &mut StretchReuse) {
+        while reuse.source_stack.pop().is_some() {
+            self.pop_node();
+        }
+    }
+
+    /// Argus patch: the view a node was drawn for, if any.
+    pub fn node_view(&self, node_id: DispatchNodeId) -> Option<EntityId> {
+        self.nodes.get(node_id.0).and_then(|node| node.view_id)
     }
 
     pub fn truncate(&mut self, index: usize) {
