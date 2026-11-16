@@ -345,6 +345,15 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            tables::HOLD_ORDER => {
+                self.prefs.set(key, value.as_bool().unwrap_or(true));
+                // Turned off under the pointer: the rows re-sort at once.
+                if self.page == "processes" {
+                    self.rebuild_rows(self.holds_order(), cx);
+                }
+                cx.notify();
+                return;
+            }
             model::USER_GROUPING => {
                 self.prefs
                     .set(key, model::UserGrouping::parse(&value).key());

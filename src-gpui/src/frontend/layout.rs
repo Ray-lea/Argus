@@ -1272,14 +1272,36 @@ impl Desktop {
             .child(version)
             .child(figures)
             .when(
-                self.held_order && self.pointer_in_table && !self.paused,
+                self.held_order
+                    && self.pointer_in_table
+                    && self.hover_holds_order()
+                    && !self.paused,
                 |d| {
+                    // A badge in the accent, as the privilege badge beside it;
+                    // the pointer, not the pause button beside it.
                     d.child(
                         div()
                             .id("order-held")
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .h(px(20.))
+                            .my(px(-2.))
+                            .px(px(8.))
+                            .border_1()
+                            .border_color(p.accent.opacity(0.4))
+                            .bg(p.accent.opacity(0.08))
+                            .rounded_full()
+                            .text_color(p.accent)
+                            .child(icon("PointerIcon", p.accent).size(px(12.)))
                             .child(label("shell.status.orderHeld"))
                             .tooltip(|window, cx| {
-                                widgets::tooltip(label("shell.status.orderHeldHint"), window, cx)
+                                widgets::wrapping_tooltip(
+                                    label("shell.status.orderHeldHint").into(),
+                                    px(320.),
+                                    window,
+                                    cx,
+                                )
                             }),
                     )
                 },

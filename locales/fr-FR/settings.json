@@ -32,6 +32,10 @@
     "on": "Toujours grouper",
     "off": "Ne jamais grouper"
   },
+  "holdOrder": {
+    "title": "Suspendre le tri au survol",
+    "desc": "Tant que le pointeur est sur la liste des processus, les lignes restent en place et les valeurs continuent d’être actualisées ; elles sont triées de nouveau quand le pointeur quitte la liste. Option désactivée, la liste est triée à chaque actualisation. Les lignes restent en place tant qu’un menu contextuel ou une boîte de dialogue est ouvert."
+  },
   "language": {
     "title": "Langue d’affichage",
     "desc": "S’applique immédiatement, y compris aux menus de la zone de notification et aux messages. « Comme Windows » suit la langue d’affichage de Windows.",

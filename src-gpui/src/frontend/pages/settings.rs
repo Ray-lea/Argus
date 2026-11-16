@@ -1204,6 +1204,24 @@ impl Desktop {
                     "settings.userGroups.desc",
                     vec![self.user_grouping_setting(cx)],
                 ));
+                let hold = self.toggle(
+                    "holdOrder",
+                    label("settings.holdOrder.title"),
+                    self.hover_holds_order(),
+                    false,
+                    |this, on, window, cx| {
+                        this.preference(tables::HOLD_ORDER, json!(on), window, cx);
+                    },
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "holdOrder",
+                    "OrderIcon",
+                    "settings.holdOrder.title",
+                    "settings.holdOrder.desc",
+                    vec![hold],
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(

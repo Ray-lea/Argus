@@ -32,6 +32,10 @@
     "on": "Immer gruppieren",
     "off": "Nie gruppieren"
   },
+  "holdOrder": {
+    "title": "Sortierung beim Daraufzeigen anhalten",
+    "desc": "Solange sich der Zeiger über der Prozessliste befindet, bleiben die Zeilen an ihrem Platz und die Werte werden weiter aktualisiert; verlässt der Zeiger die Liste, werden sie neu sortiert. Ist die Option deaktiviert, wird die Liste bei jeder Aktualisierung neu sortiert. Solange ein Kontextmenü oder Dialog geöffnet ist, bleiben die Zeilen weiterhin an ihrem Platz."
+  },
   "language": {
     "title": "Anzeigesprache",
     "desc": "Gilt sofort, auch für das Menü im Infobereich und Meldungen. „Wie Windows“ übernimmt die Windows-Anzeigesprache.",

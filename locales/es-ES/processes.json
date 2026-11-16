@@ -52,6 +52,7 @@
     "other": "{total} ({count} ocultos)"
   },
   "filtered": "La lista se filtra por la búsqueda.",
+  "orderHeld": "Ordenación en pausa: las filas mantienen su posición y los valores se siguen actualizando. Se vuelven a ordenar cuando el puntero sale de la lista o se cierra el menú o el cuadro de diálogo.",
   "column": {
     "name": {
       "label": "Nombre",

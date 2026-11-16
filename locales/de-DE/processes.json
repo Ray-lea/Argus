@@ -50,6 +50,7 @@
     "other": "{total} ({count} ausgeblendet)"
   },
   "filtered": "Die Liste wird durch die Suche gefiltert",
+  "orderHeld": "Sortierung angehalten: Die Zeilen bleiben an ihrem Platz, die Werte werden weiter aktualisiert. Sie werden neu sortiert, sobald der Zeiger die Liste verlässt oder das Menü bzw. der Dialog geschlossen wird.",
   "column": {
     "name": {
       "label": "Name",

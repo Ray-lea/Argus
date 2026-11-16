@@ -32,6 +32,10 @@
     "on": "Agrupar siempre",
     "off": "No agrupar nunca"
   },
+  "holdOrder": {
+    "title": "Pausar la ordenación al señalar",
+    "desc": "Mientras el puntero está sobre la lista de procesos, las filas mantienen su posición y los valores se siguen actualizando; se vuelven a ordenar cuando el puntero sale de la lista. Si se desactiva, la lista se ordena en cada actualización. Las filas mantienen su posición mientras haya un menú contextual o un cuadro de diálogo abierto."
+  },
   "language": {
     "title": "Idioma de la interfaz",
     "desc": "Se aplica al instante, también a los menús y mensajes de la bandeja. «Igual que Windows» utiliza el idioma de visualización de Windows.",

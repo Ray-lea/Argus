@@ -1333,7 +1333,7 @@ impl TableDelegate for NativeTable {
             .upgrade()
             .map(|owner| {
                 let app = owner.read(cx);
-                (app.sort == key, app.descending)
+                (app.sort == key, app.descending, app.held_order)
             })
             .unwrap_or_default();
         let label = div()
@@ -1349,11 +1349,26 @@ impl TableDelegate for NativeTable {
             .text_color(if sort.0 { p.ink } else { p.muted })
             .when(sort.0, |d| d.font_weight(theme::LABEL_WEIGHT))
             .child(div().min_w_0().truncate().child(field.label.clone()))
-            .when(sort.0, |d| {
+            .when(sort.0 && !sort.2, |d| {
                 d.child(
                     icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink)
                         .size(px(12.))
                         .flex_shrink_0(),
+                )
+            })
+            // Rows held out of this order (`Desktop::holds_order`): the
+            // arrow gives way to a pause mark in the accent until they re-sort.
+            .when(sort.0 && sort.2, |d| {
+                let tip = theme::label("processes.orderHeld");
+                d.child(
+                    div()
+                        .id("order-held-mark")
+                        .flex()
+                        .flex_shrink_0()
+                        .child(icon("PauseIcon", p.accent).size(px(12.)))
+                        .tooltip(move |window, cx| {
+                            widgets::wrapping_tooltip(tip.clone().into(), px(320.), window, cx)
+                        }),
                 )
             });
         let hover = p.hover;
@@ -1657,12 +1672,21 @@ fn row_mark(marks: &Value, key: &str) -> (Option<String>, bool) {
     )
 }
 /// The icon a row shows: a WebView's host application's, else its own.
+/// The interface's preference: whether the pointer over the process list
+/// holds its order (on unless turned off).
+pub(in crate::frontend) const HOLD_ORDER: &str = "holdOrderOnHover";
 impl Desktop {
-    /// Whether the process list holds its order: the pointer is over it, or
-    /// a menu or dialog is open. Its rows keep their places while samples
-    /// arrive and groups fold or unfold, until neither holds.
+    /// Whether the process list holds its order: the pointer is over it (as
+    /// `HOLD_ORDER` allows), or a menu or dialog is open. Its rows keep their
+    /// places while samples arrive and groups fold or unfold, until neither holds.
     pub(in crate::frontend) fn holds_order(&self) -> bool {
-        self.pointer_in_table || self.modal.is_some() || self.popup.is_some()
+        (self.pointer_in_table && self.hover_holds_order())
+            || self.modal.is_some()
+            || self.popup.is_some()
+    }
+    /// Whether the pointer over the process list holds its order (`HOLD_ORDER`).
+    pub(in crate::frontend) fn hover_holds_order(&self) -> bool {
+        self.prefs.get(HOLD_ORDER, true)
     }
     pub(in crate::frontend) fn rebuild_rows(&mut self, hold: bool, cx: &mut Context<Self>) {
         self.rebuild_rows_prepared(hold, None, cx);
