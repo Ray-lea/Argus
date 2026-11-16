@@ -537,7 +537,7 @@ impl Desktop {
         category: &'static str,
         columns: &[&'static Definition],
         preferences: &Preferences,
-        network_note: bool,
+        sources: super::Sources,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
@@ -609,14 +609,14 @@ impl Desktop {
             .flex_col()
             .gap(px(2.))
             .child(head)
-            .when(network_note && category == "network", |section| {
+            .when(!sources.measures(category), |section| {
                 section.child(
                     div()
                         .px(px(8.))
                         .pb(px(4.))
                         .text_size(theme::font(12.))
                         .text_color(p.muted)
-                        .child(label("processes.columns.networkUnavailable")),
+                        .child(label(&format!("processes.columns.{category}Unavailable"))),
                 )
             })
             .children(
@@ -984,7 +984,7 @@ impl Desktop {
                 .collect(),
             cx,
         );
-        let network_note = !boolean(&self.snapshot, "processNetwork");
+        let sources = super::Sources::of(&self.snapshot);
         let sections = CATEGORIES
             .into_iter()
             .filter_map(|group| {
@@ -993,9 +993,8 @@ impl Desktop {
                     .copied()
                     .filter(|column| column.category == group)
                     .collect::<Vec<_>>();
-                (!columns.is_empty()).then(|| {
-                    self.column_section(id, group, &columns, &preferences, network_note, cx)
-                })
+                (!columns.is_empty())
+                    .then(|| self.column_section(id, group, &columns, &preferences, sources, cx))
             })
             .collect::<Vec<_>>();
         let generation = charts::hash_of((id, category, query));

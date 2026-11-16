@@ -304,6 +304,7 @@
     "hide": "隐藏“{name}”列",
     "description": "勾选要显示的列；拖动右侧列表或表头可调整顺序。",
     "networkUnavailable": "已选网络列将在采集可用时显示。",
+    "gpuUnavailable": "未检测到 GPU，已选 GPU 列暂不显示。",
     "category": {
       "general": "基本信息",
       "cpu": "CPU",

@@ -316,6 +316,7 @@
     "hide": "{name}-Spalte ausblenden",
     "description": "Markieren Sie die anzuzeigenden Spalten. Verschieben Sie Einträge in der rechten Liste oder ziehen Sie die Spaltenüberschriften, um die Reihenfolge zu ändern.",
     "networkUnavailable": "Ausgewählte Netzwerkspalten werden angezeigt, wenn Verkehrsdaten verfügbar sind.",
+    "gpuUnavailable": "Keine GPU erkannt. Ausgewählte GPU-Spalten sind ausgeblendet.",
     "category": {
       "general": "Allgemein",
       "cpu": "CPU",

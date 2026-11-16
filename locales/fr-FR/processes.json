@@ -320,6 +320,7 @@
     "hide": "Masquer la colonne {name}",
     "description": "Cochez les colonnes à afficher. Faites-les glisser dans la liste de droite ou faites glisser les en-têtes de colonnes pour modifier leur ordre.",
     "networkUnavailable": "Les colonnes du réseau sélectionnées apparaissent lorsque les données de trafic sont disponibles.",
+    "gpuUnavailable": "Aucun GPU détecté. Les colonnes GPU sélectionnées sont masquées.",
     "category": {
       "general": "Général",
       "cpu": "CPU",

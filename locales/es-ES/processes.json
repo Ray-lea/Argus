@@ -320,6 +320,7 @@
     "hide": "Ocultar columna {name}",
     "description": "Marque las columnas que desea mostrar. Arrástrelas en la lista de la derecha o arrastre sus encabezados para cambiar el orden.",
     "networkUnavailable": "Las columnas de red seleccionadas aparecen cuando los datos de tráfico están disponibles.",
+    "gpuUnavailable": "No se detectó ninguna GPU. Las columnas de GPU seleccionadas están ocultas.",
     "category": {
       "general": "General",
       "cpu": "CPU",

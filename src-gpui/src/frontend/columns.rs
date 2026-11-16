@@ -113,6 +113,39 @@ pub(super) const DEFAULTS: [&str; 11] = [
     "handles",
 ];
 
+/// The optional sources of process columns that the snapshot measures.
+/// Selected columns of an unmeasured category stay selected but hidden.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Sources {
+    /// Per-process network traffic, measured locally or by the service.
+    pub network: bool,
+    /// A GPU the performance page lists; without one, the software renderer
+    /// of a machine without a GPU is not reported as GPU usage.
+    pub gpu: bool,
+}
+
+impl Sources {
+    pub(super) const ALL: Self = Self {
+        network: true,
+        gpu: true,
+    };
+
+    pub(super) fn of(snapshot: &Value) -> Self {
+        Self {
+            network: boolean(snapshot, "processNetwork"),
+            gpu: !values(&snapshot["hardware"]["gpus"]).is_empty(),
+        }
+    }
+
+    pub(super) fn measures(self, category: &str) -> bool {
+        match category {
+            "network" => self.network,
+            "gpu" => self.gpu,
+            _ => true,
+        }
+    }
+}
+
 pub(super) fn definition(key: &str) -> Option<&'static Definition> {
     DEFINITIONS.iter().find(|column| column.key == key)
 }
@@ -230,11 +263,11 @@ impl Preferences {
         }
     }
 
-    pub(super) fn visible(&self, network: bool) -> Vec<&'static Definition> {
+    pub(super) fn visible(&self, sources: Sources) -> Vec<&'static Definition> {
         self.ordered_selected()
             .into_iter()
             .filter_map(|key| definition(key))
-            .filter(|column| network || column.category != "network")
+            .filter(|column| sources.measures(column.category))
             .collect()
     }
 
@@ -314,9 +347,14 @@ impl Preferences {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULTS, DEFINITIONS, Preferences};
+    use super::{DEFAULTS, DEFINITIONS, Preferences, Sources};
     use serde_json::json;
     use std::collections::HashSet;
+
+    const WITHOUT_NETWORK: Sources = Sources {
+        network: false,
+        gpu: true,
+    };
 
     #[test]
     fn selection_keeps_name_and_rejects_unknown_duplicate_and_invalid_widths() {
@@ -345,8 +383,11 @@ mod tests {
     fn unavailable_network_columns_remain_selected_for_recovery() {
         let preferences = Preferences::default();
         assert!(preferences.auto_width);
-        assert_eq!(preferences.visible(true).len(), DEFAULTS.len());
-        assert_eq!(preferences.visible(false).len(), DEFAULTS.len() - 1);
+        assert_eq!(preferences.visible(Sources::ALL).len(), DEFAULTS.len());
+        assert_eq!(
+            preferences.visible(WITHOUT_NETWORK).len(),
+            DEFAULTS.len() - 1
+        );
         assert!(preferences.selected.iter().any(|key| key == "net"));
         assert_eq!(
             DEFINITIONS
@@ -381,12 +422,47 @@ mod tests {
         assert!(!prefs.move_before("cpu", Some("name")));
         assert_eq!(
             prefs
-                .visible(false)
+                .visible(WITHOUT_NETWORK)
                 .iter()
                 .map(|field| field.key)
                 .collect::<Vec<_>>(),
             ["name", "mem", "gpu", "cpu"]
         );
+    }
+
+    #[test]
+    fn gpu_columns_hide_without_a_gpu_and_stay_selected() {
+        let mut prefs = Preferences::default();
+        for key in ["gpuEngine", "gpuDedicated", "gpuShared"] {
+            prefs.set_selected(key, true);
+        }
+        // The software renderer is all a machine without a GPU has.
+        let snapshot = json!({"processNetwork":true,"hardware":{"gpus":[]}});
+        assert_eq!(
+            Sources::of(&snapshot),
+            Sources {
+                network: true,
+                gpu: false
+            }
+        );
+        let shown = prefs
+            .visible(Sources::of(&snapshot))
+            .iter()
+            .map(|column| column.key)
+            .collect::<Vec<_>>();
+        assert!(shown.contains(&"net"));
+        assert!(!shown.iter().any(|key| key.starts_with("gpu")));
+        assert!(prefs.selected.iter().any(|key| key == "gpuShared"));
+        let snapshot = json!({"processNetwork":false,"hardware":{"gpus":[{"info":{"id":"1"}}]}});
+        let shown = prefs
+            .visible(Sources::of(&snapshot))
+            .iter()
+            .map(|column| column.key)
+            .collect::<Vec<_>>();
+        assert!(!shown.contains(&"net"));
+        for key in ["gpu", "gpuEngine", "gpuDedicated", "gpuShared"] {
+            assert!(shown.contains(&key));
+        }
     }
 
     #[test]

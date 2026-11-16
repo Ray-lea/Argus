@@ -88,7 +88,7 @@ pub(super) fn process_header_height() -> Pixels {
 pub(super) fn process_table_height(rows: usize) -> Pixels {
     process_header_height() + px(ROW_HEIGHT * rows as f32 + scrollbar::SIZE + 2.)
 }
-fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
+fn fields(page: &str, sources: columns::Sources, _available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
     let definitions: Vec<(&str, &str, CellKind, Track)> = match page {
@@ -167,7 +167,7 @@ fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
             ),
             ("state", "common.status", ConnectionState, Fixed(96.)),
         ],
-        _ => return process_fields(&columns::Preferences::default(), network),
+        _ => return process_fields(&columns::Preferences::default(), sources),
     };
     definitions
         .into_iter()
@@ -184,10 +184,10 @@ fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
         .collect()
 }
 
-fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Field> {
+fn process_fields(preferences: &columns::Preferences, sources: columns::Sources) -> Vec<Field> {
     use columns::Format;
     preferences
-        .visible(network)
+        .visible(sources)
         .into_iter()
         .map(|column| {
             let kind = match column.format {
@@ -679,7 +679,7 @@ impl NativeTable {
         &mut self,
         page: &str,
         rows: Arc<Vec<Row>>,
-        network: bool,
+        sources: columns::Sources,
         layout: TableLayout<'_>,
         sort: (&str, bool),
         cx: &App,
@@ -717,9 +717,9 @@ impl NativeTable {
             return false;
         }
         let mut fields = if page == "processes" {
-            process_fields(preferences, network)
+            process_fields(preferences, sources)
         } else {
-            fields(page, network, f32::from(available))
+            fields(page, sources, f32::from(available))
         };
         let font_size = theme::font(12.);
         let same_layout = self.page == page
@@ -1653,7 +1653,7 @@ impl WidthSource {
                 open: true,
             },
         );
-        let fields = process_fields(&self.columns, boolean(snapshot, "processNetwork"));
+        let fields = process_fields(&self.columns, columns::Sources::of(snapshot));
         WidthRows {
             rows: Arc::new(
                 rows.iter()
@@ -1944,7 +1944,7 @@ impl Desktop {
         if let Some(table) = &self.table {
             let rows = self.rows.clone();
             let page = self.page.clone();
-            let network = boolean(&self.snapshot, "processNetwork");
+            let sources = columns::Sources::of(&self.snapshot);
             let sort = (self.sort.as_str(), self.descending);
             let column_preferences = columns::Preferences::load(&self.prefs);
             let totals = self.process_column_totals(&column_preferences);
@@ -1963,7 +1963,7 @@ impl Desktop {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
-                    network,
+                    sources,
                     TableLayout {
                         available,
                         columns: &column_preferences,
@@ -2148,7 +2148,7 @@ impl Desktop {
         let table = self.table.as_ref().expect("table initialized").clone();
         let rows = self.rows.clone();
         let page = self.page.clone();
-        let network = boolean(&self.snapshot, "processNetwork");
+        let sources = columns::Sources::of(&self.snapshot);
         let sort = (self.sort.as_str(), self.descending);
         let column_preferences = columns::Preferences::load(&self.prefs);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
@@ -2203,7 +2203,7 @@ impl Desktop {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
-                    network,
+                    sources,
                     TableLayout {
                         available,
                         columns: &column_preferences,
@@ -2582,7 +2582,7 @@ impl Desktop {
 }
 /// A table's first column, which orders by name.
 pub(super) fn first_column(page: &str) -> &'static str {
-    fields(page, false, f32::MAX)
+    fields(page, columns::Sources::ALL, f32::MAX)
         .first()
         .map(|field| field.key)
         .unwrap_or("name")
