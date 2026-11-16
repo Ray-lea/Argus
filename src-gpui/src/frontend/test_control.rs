@@ -368,7 +368,8 @@ impl Desktop {
         // table's `row:<index>`) moved by `dx`, `dy`. Without `at`, it is measured
         // from where the gesture began, so a drag reads the same however the
         // element moves under it.
-        let step = &control["pointer"];
+        let touch = control.get("touch");
+        let step = touch.unwrap_or(&control["pointer"]);
         let target = step["at"]
             .as_str()
             .and_then(|name| {
@@ -376,11 +377,28 @@ impl Desktop {
                     self.header_bounds.borrow().get(key).copied()
                 } else if let Some(index) = name.strip_prefix("row:") {
                     self.row_bounds(index.parse().ok()?, cx)
+                } else if name == "about-scroll" {
+                    Some(self.about_scroll.bounds())
                 } else {
                     anchor(&step["at"])
                 }
             })
-            .map(|bounds| bounds.center());
+            .map(|bounds| {
+                let fraction =
+                    |axis| step["fraction"][axis].as_f64().unwrap_or(0.5).clamp(0., 1.) as f32;
+                bounds.origin
+                    + point(
+                        bounds.size.width * fraction(0),
+                        bounds.size.height * fraction(1),
+                    )
+            })
+            .or_else(|| {
+                let at = step["at"].as_array().filter(|at| at.len() == 2)?;
+                Some(point(
+                    px(at[0].as_f64()? as f32),
+                    px(at[1].as_f64()? as f32),
+                ))
+            });
         if target.is_some() {
             self.ui.gesture_origin.set(target);
         }
@@ -392,52 +410,74 @@ impl Desktop {
                     px(step["dx"].as_f64().unwrap_or(0.) as f32),
                     px(step["dy"].as_f64().unwrap_or(0.) as f32),
                 );
-            match step["event"].as_str() {
-                Some("hover") => pointer.push(moved(at, None)),
-                _ if !presses => {}
-                // A right press and release, as opens a context menu.
-                Some("context") => pointer.extend([
-                    moved(at, None),
-                    PlatformInput::MouseDown(MouseDownEvent {
+            if touch.is_some() && presses {
+                let id = TouchId(step["id"].as_u64().unwrap_or(1));
+                let event = |phase| {
+                    PlatformInput::Touch(TouchEvent {
+                        id,
+                        phase,
                         position: at,
-                        button: MouseButton::Right,
-                        click_count: 1,
                         ..Default::default()
-                    }),
-                    PlatformInput::MouseUp(MouseUpEvent {
-                        position: at,
-                        button: MouseButton::Right,
-                        click_count: 1,
-                        ..Default::default()
-                    }),
-                ]),
-                // `clicks` 2: the second press of a double-click, held.
-                Some("down") => pointer.push(PlatformInput::MouseDown(MouseDownEvent {
-                    position: at,
-                    button: MouseButton::Left,
-                    click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
-                    ..Default::default()
-                })),
-                Some("up") => pointer.push(press(at, false)),
-                // A second click in place, as the platform reports one.
-                Some("double") => pointer.extend([
-                    moved(at, None),
-                    press(at, true),
-                    press(at, false),
-                    PlatformInput::MouseDown(MouseDownEvent {
+                    })
+                };
+                match step["event"].as_str() {
+                    Some("down") => pointer.push(event(TouchPhase::Started)),
+                    Some("up") => pointer.push(event(TouchPhase::Ended)),
+                    Some("cancel") => pointer.push(event(TouchPhase::Cancelled)),
+                    Some("tap") => {
+                        pointer.extend([event(TouchPhase::Started), event(TouchPhase::Ended)])
+                    }
+                    Some("move") => pointer.push(event(TouchPhase::Moved)),
+                    _ => {}
+                }
+            } else if touch.is_none() {
+                match step["event"].as_str() {
+                    Some("hover") => pointer.push(moved(at, None)),
+                    _ if !presses => {}
+                    // A right press and release, as opens a context menu.
+                    Some("context") => pointer.extend([
+                        moved(at, None),
+                        PlatformInput::MouseDown(MouseDownEvent {
+                            position: at,
+                            button: MouseButton::Right,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                        PlatformInput::MouseUp(MouseUpEvent {
+                            position: at,
+                            button: MouseButton::Right,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                    ]),
+                    // `clicks` 2: the second press of a double-click, held.
+                    Some("down") => pointer.push(PlatformInput::MouseDown(MouseDownEvent {
                         position: at,
                         button: MouseButton::Left,
-                        click_count: 2,
+                        click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
                         ..Default::default()
-                    }),
-                    PlatformInput::MouseUp(MouseUpEvent {
-                        position: at,
-                        button: MouseButton::Left,
-                        click_count: 2,
-                        ..Default::default()
-                    }),
-                ]),
-                _ => pointer.push(moved(at, Some(MouseButton::Left))),
+                    })),
+                    Some("up") => pointer.push(press(at, false)),
+                    // A second click in place, as the platform reports one.
+                    Some("double") => pointer.extend([
+                        moved(at, None),
+                        press(at, true),
+                        press(at, false),
+                        PlatformInput::MouseDown(MouseDownEvent {
+                            position: at,
+                            button: MouseButton::Left,
+                            click_count: 2,
+                            ..Default::default()
+                        }),
+                        PlatformInput::MouseUp(MouseUpEvent {
+                            position: at,
+                            button: MouseButton::Left,
+                            click_count: 2,
+                            ..Default::default()
+                        }),
+                    ]),
+                    _ => pointer.push(moved(at, Some(MouseButton::Left))),
+                }
             }
         }
         if !pointer.is_empty() {
@@ -590,6 +630,7 @@ impl Desktop {
                 "visibility":{"enabled":self.prefs.get::<bool>(visibility::preference(&self.page),false),
                     "pids":self.rows.iter().filter(|row|row.section.is_none()).flat_map(|row| if row.members.is_empty(){std::slice::from_ref(&row.raw)}else{row.members.as_slice()}).filter_map(|p|p["pid"].as_u64()).collect::<std::collections::BTreeSet<_>>()},
                 "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.section.is_none() && row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty(),"titles":self.rows.iter().map(|row|row.title.as_str()).collect::<Vec<_>>(),"heldOrder":self.held_order},
+                "selectedRow":self.rows.iter().find(|row|self.selected.get(&self.page)==Some(&row.key)).map(|row|row.title.as_str()),
                 "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,

@@ -1,5 +1,9 @@
 # Argus patches
 
+On Windows, an unclaimed touch long press dispatches a right-button press and release to the existing context-menu listeners. Text selection and tooltip handlers retain first refusal, and the contact is claimed so releasing it cannot click through the newly opened menu. A release that first reports movement beyond the tap slop scrolls from the original contact instead of clicking its destination. Argus's `touch_input` regression covers taps, double taps, panning, cancellation, coalesced movement and claimed/unclaimed long presses.
+
+Raw touch callbacks queue events during reentrant App updates and native modal loops, preserving contact order until the window can be updated. Consecutive moves from the same contact coalesce while queued; closing the window discards pending input. The normal path dispatches synchronously. Regressions cover cancellation followed by a new tap during a nested loop, and closing a window with queued input.
+
 Resize notifications that re-enter while App is borrowed are coalesced and retried after the update, reading the latest platform size and scale. Uncontended resizes remain synchronous. This keeps saved-placement and maximized startup layouts aligned with the native client instead of retaining a clipped initial viewport.
 
 Complete paints register decorative image and load-bar animation before presentation. Scene sorting remaps bar records to their sorted quads. `Window::invalidate_render_cache` requests a one-shot full platform redraw, used by isolated pixel comparisons.

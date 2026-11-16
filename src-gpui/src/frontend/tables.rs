@@ -3,6 +3,7 @@ use super::*;
 mod cell_text;
 mod cells;
 mod header;
+pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};
 mod widths;
 use gpui_kit::base::ElementExt;
@@ -2229,6 +2230,7 @@ impl Desktop {
             }))
             // Cell hints follow the pointer here, one listener for the table.
             .on_mouse_move(move |event, window, cx| tips.moved(event, window, cx))
+            .child(self.table_touch(cx))
             .child(
                 self.table_frame
                     .as_ref()

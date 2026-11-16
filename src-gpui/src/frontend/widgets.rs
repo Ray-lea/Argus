@@ -106,6 +106,8 @@ pub(in crate::frontend) struct UiState {
     pub order_flips: flip::Flips,
     /// Where a test's pointer gesture began (test control `pointer`).
     pub gesture_origin: Cell<Option<Point<Pixels>>>,
+    /// The table item under a new contact, retained while live rows reorder.
+    pub table_touch: Rc<RefCell<Option<tables::touch::Target>>>,
     pub focus: RefCell<HashMap<SharedString, FocusHandle>>,
     /// Dialogs under the top one (`Desktop::modal`), bottom first.
     pub below: Vec<dialogs::Modal>,

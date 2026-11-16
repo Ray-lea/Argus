@@ -51,6 +51,7 @@ use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
     cmp,
+    collections::VecDeque,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -2538,7 +2539,44 @@ impl Window {
         }));
         platform_window.on_input({
             let mut cx = cx.to_async();
+            let touches = Rc::new(RefCell::new(VecDeque::<TouchEvent>::new()));
+            let retrying = Rc::new(Cell::new(false));
             Box::new(move |event| {
+                if let PlatformInput::Touch(event) = event {
+                    {
+                        let mut pending = touches.borrow_mut();
+                        if event.phase == crate::TouchPhase::Moved
+                            && let Some(last) = pending.back_mut()
+                            && last.id == event.id
+                            && last.phase == crate::TouchPhase::Moved
+                        {
+                            *last = event;
+                        } else {
+                            pending.push_back(event);
+                        }
+                    }
+                    if !retrying.get() && !Window::try_touch_input(handle, &cx, &touches) {
+                        retrying.set(true);
+                        let touches = touches.clone();
+                        let retrying = retrying.clone();
+                        let cx = cx.clone();
+                        cx.foreground_executor()
+                            .clone()
+                            .spawn(async move {
+                                while !Window::try_touch_input(handle, &cx, &touches) {
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(1))
+                                        .await;
+                                }
+                                retrying.set(false);
+                            })
+                            .detach();
+                    }
+                    return DispatchEventResult {
+                        propagate: false,
+                        default_prevented: true,
+                    };
+                }
                 handle
                     .update(&mut cx, |_, window, cx| window.dispatch_event(event, cx))
                     .with_context(|| {
@@ -3523,6 +3561,35 @@ impl Window {
         self.bounds_observers
             .clone()
             .retain(|callback| callback(self, cx));
+    }
+
+    fn try_touch_input(
+        handle: AnyWindowHandle,
+        cx: &crate::AsyncApp,
+        touches: &RefCell<VecDeque<TouchEvent>>,
+    ) -> bool {
+        let Some(app) = cx.app.upgrade() else {
+            touches.borrow_mut().clear();
+            return true;
+        };
+        let Ok(mut app) = app.try_borrow_mut() else {
+            return false;
+        };
+        // Native modal loops can deliver cancellation while the outer window
+        // update is still borrowed. Keep contacts ordered until it returns.
+        let result = app.update(|cx| {
+            handle.update(cx, |_, window, cx| {
+                loop {
+                    let event = touches.borrow_mut().pop_front();
+                    let Some(event) = event else { break };
+                    window.dispatch_event(PlatformInput::Touch(event), cx);
+                }
+            })
+        });
+        if result.is_err() {
+            touches.borrow_mut().clear();
+        }
+        true
     }
 
     fn try_display_changed(handle: AnyWindowHandle, cx: &crate::AsyncApp) -> bool {
@@ -7230,6 +7297,33 @@ impl Window {
                 );
                 self.dispatch_mouse_event(&long_press, cx);
                 if started {
+                    // Windows touch users reach existing context menus with
+                    // press-and-hold. Text selection and tooltips can claim
+                    // the gesture first; a held contact never becomes a tap.
+                    #[cfg(target_os = "windows")]
+                    if !self.default_prevented {
+                        cx.propagate_event = true;
+                        self.dispatch_mouse_event(
+                            &crate::MouseDownEvent {
+                                button: MouseButton::Right,
+                                position: long_press.start_position,
+                                click_count: 1,
+                                ..Default::default()
+                            },
+                            cx,
+                        );
+                        cx.propagate_event = true;
+                        self.dispatch_mouse_event(
+                            &MouseUpEvent {
+                                button: MouseButton::Right,
+                                position: long_press.start_position,
+                                click_count: 1,
+                                ..Default::default()
+                            },
+                            cx,
+                        );
+                        self.default_prevented = true;
+                    }
                     let claimed = self.default_prevented;
                     self.touch_gestures.resolve_long_press(claimed);
                     if !claimed {
