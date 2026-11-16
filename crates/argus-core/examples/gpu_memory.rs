@@ -58,7 +58,7 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(std::process::id());
-    let adapters = argus_core::hardware::gpu_memory_layouts();
+    let adapters = argus_core::hardware::gpu_adapters();
     let mut tracker = GpuProcessTracker::new(adapters.clone());
     let mut samples = Vec::new();
     for _ in 0..3 {
@@ -80,6 +80,7 @@ fn main() {
             "native":native_usage(pid)}));
     }
     let adapters: Vec<Value> = adapters
+        .listed
         .iter()
         .map(|(luid, layout)| json!({"luid":format!("{:08x}:{:08x}",luid>>32,luid&0xffff_ffff),"layout":format!("{layout:?}")}))
         .collect();

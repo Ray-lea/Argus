@@ -3,7 +3,7 @@
 //! users (Task Manager's GPU columns read the same data), and one PDH
 //! collection per sample covers all processes and adapters.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use windows::Win32::System::Performance::PDH_HCOUNTER;
@@ -26,6 +26,20 @@ pub enum GpuMemoryLayout {
     /// Unified memory: Windows groups all of it, system memory included, as
     /// local, and the non-local group is empty.
     Unified,
+}
+
+/// The adapters an enumeration found, by LUID. The counters also cover
+/// adapters the performance page leaves out; a LUID in neither set is one
+/// the enumeration has not seen, such as an adapter restarted by a driver
+/// update or newly attached.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GpuAdapters {
+    /// The adapters the performance page lists, with how their memory is grouped.
+    pub listed: HashMap<u64, GpuMemoryLayout>,
+    /// Adapters it leaves out: software renderers such as the Microsoft Basic
+    /// Render Driver that renders on the CPU, display-only and compute-only
+    /// adapters, and LUIDs an enumeration did not return.
+    pub ignored: HashSet<u64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -64,10 +78,10 @@ type MemoryReadings = HashMap<(u32, u64, u32), Option<u64>>;
 
 pub struct GpuProcessTracker {
     query: Query,
-    /// The adapters the performance page lists, by LUID. The counters also
-    /// cover adapters it leaves out, such as the Microsoft Basic Render Driver
-    /// that renders on the CPU.
-    adapters: HashMap<u64, GpuMemoryLayout>,
+    /// Only the listed adapters count.
+    adapters: GpuAdapters,
+    /// LUIDs the last sample met that are neither listed nor ignored.
+    unknown: HashSet<u64>,
     engines: Option<PDH_HCOUNTER>,
     /// `Local Usage`, `Non Local Usage` and, with a unified adapter, `Dedicated Usage`.
     memory_counters: [Option<PDH_HCOUNTER>; 3],
@@ -82,11 +96,11 @@ pub struct GpuProcessTracker {
 unsafe impl Send for GpuProcessTracker {}
 
 impl GpuProcessTracker {
-    /// Measures the processes' use of `adapters`. None without an adapter
+    /// Measures the processes' use of the listed adapters. None without one
     /// (a machine without a GPU has only the software renderer) or when the
     /// machine publishes no GPU counters (no WDDM 2.x adapter).
-    pub fn new(adapters: HashMap<u64, GpuMemoryLayout>) -> Option<Self> {
-        if adapters.is_empty() {
+    pub fn new(adapters: GpuAdapters) -> Option<Self> {
+        if adapters.listed.is_empty() {
             return None;
         }
         let query = Query::open()?;
@@ -94,13 +108,10 @@ impl GpuProcessTracker {
         // Local/Non Local Usage report resident budget usage. Dedicated/Shared Usage
         // are committed counters and can inflate on affected Windows/driver versions,
         // so Dedicated Usage only bounds the carve-out of unified adapters.
-        let unified = adapters.values().any(|a| *a == GpuMemoryLayout::Unified);
         let memory_counters = [
             query.add(w!(r"\GPU Process Memory(*)\Local Usage")),
             query.add(w!(r"\GPU Process Memory(*)\Non Local Usage")),
-            unified
-                .then(|| query.add(w!(r"\GPU Process Memory(*)\Dedicated Usage")))
-                .flatten(),
+            committed_dedicated(&query, &adapters),
         ];
         if engines.is_none() && memory_counters[..2].iter().all(Option::is_none) {
             return None;
@@ -110,6 +121,7 @@ impl GpuProcessTracker {
         Some(Self {
             query,
             adapters,
+            unknown: HashSet::new(),
             engines,
             memory_counters,
             buf: AlignedBuf::with_capacity(256 * 1024),
@@ -123,10 +135,16 @@ impl GpuProcessTracker {
     pub fn sample(&mut self) -> HashMap<u32, ProcessGpu> {
         let mut out: HashMap<u32, ProcessGpu> = HashMap::new();
         self.memory_available = [false; 2];
+        self.unknown.clear();
         if !self.query.collect() {
             return out;
         }
-        let (buf, names, adapters) = (&mut self.buf, &mut self.names, &self.adapters);
+        let (buf, names, adapters, unknown) = (
+            &mut self.buf,
+            &mut self.names,
+            &self.adapters,
+            &mut self.unknown,
+        );
         if let Some(c) = self.engines {
             // One instance per process and engine node; the busiest node wins,
             // as for the adapter-wide figures.
@@ -134,7 +152,7 @@ impl GpuProcessTracker {
                 let Some(util) = utilization(value) else {
                     return;
                 };
-                let Some(i) = listed(instance, adapters) else {
+                let Some(i) = listed(instance, adapters, unknown) else {
                     return;
                 };
                 let entry = out.entry(i.pid).or_default();
@@ -179,7 +197,7 @@ impl GpuProcessTracker {
             values.clear();
             if let Some(c) = counter {
                 *read = pdh::each_value(c, buf, |instance, value| {
-                    record_memory(values, adapters, instance, value);
+                    record_memory(values, adapters, unknown, instance, value);
                 });
             }
         }
@@ -203,7 +221,7 @@ impl GpuProcessTracker {
                 }
             };
             let (dedicated, shared) = split_memory(
-                adapters[&luid],
+                adapters.listed[&luid],
                 reading(local, read[0]),
                 reading(non_local, read[1]),
                 committed.get(&key).copied().flatten(),
@@ -225,6 +243,31 @@ impl GpuProcessTracker {
     pub fn memory_available(&self) -> [bool; 2] {
         self.memory_available
     }
+
+    /// LUIDs the last sample met that the enumeration did not return: the
+    /// adapters are worth enumerating again.
+    pub fn unknown_adapters(&self) -> &HashSet<u64> {
+        &self.unknown
+    }
+
+    /// Follows a new enumeration from the next sample on, keeping the query
+    /// and its utilization baseline.
+    pub fn set_adapters(&mut self, adapters: GpuAdapters) {
+        if self.memory_counters[2].is_none() {
+            self.memory_counters[2] = committed_dedicated(&self.query, &adapters);
+        }
+        self.adapters = adapters;
+    }
+}
+
+/// `Dedicated Usage`, read only to bound the carve-out of unified adapters.
+fn committed_dedicated(query: &Query, adapters: &GpuAdapters) -> Option<PDH_HCOUNTER> {
+    adapters
+        .listed
+        .values()
+        .any(|a| *a == GpuMemoryLayout::Unified)
+        .then(|| query.add(w!(r"\GPU Process Memory(*)\Dedicated Usage")))
+        .flatten()
 }
 
 /// One process's resident memory on one adapter as (dedicated, shared), from
@@ -255,11 +298,12 @@ fn split_memory(
 
 fn record_memory(
     values: &mut MemoryReadings,
-    adapters: &HashMap<u64, GpuMemoryLayout>,
+    adapters: &GpuAdapters,
+    unknown: &mut HashSet<u64>,
     instance: &str,
     value: Option<f64>,
 ) {
-    let Some(instance) = listed(instance, adapters).filter(|i| i.node.is_none()) else {
+    let Some(instance) = listed(instance, adapters, unknown).filter(|i| i.node.is_none()) else {
         return;
     };
     let value = value
@@ -277,10 +321,21 @@ fn record_memory(
         .or_insert(value);
 }
 
-/// A counter instance on one of `adapters`; the counters also cover software
-/// and compute-only adapters that the performance page leaves out.
-fn listed<'a>(instance: &'a str, adapters: &HashMap<u64, GpuMemoryLayout>) -> Option<Instance<'a>> {
-    parse(instance).filter(|i| adapters.contains_key(&i.luid))
+/// A counter instance on a listed adapter. An instance on an adapter that is
+/// neither listed nor ignored adds its LUID to `unknown`.
+fn listed<'a>(
+    instance: &'a str,
+    adapters: &GpuAdapters,
+    unknown: &mut HashSet<u64>,
+) -> Option<Instance<'a>> {
+    let instance = parse(instance)?;
+    if adapters.listed.contains_key(&instance.luid) {
+        return Some(instance);
+    }
+    if !adapters.ignored.contains(&instance.luid) {
+        unknown.insert(instance.luid);
+    }
+    None
 }
 
 struct Instance<'a> {
@@ -325,58 +380,56 @@ fn parse(instance: &str) -> Option<Instance<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GpuMemoryLayout, listed, parse, record_memory, split_memory, utilization};
-    use std::collections::HashMap;
+    use super::{
+        GpuAdapters, GpuMemoryLayout, listed, parse, record_memory, split_memory, utilization,
+    };
+    use std::collections::{HashMap, HashSet};
 
-    fn adapters() -> HashMap<u64, GpuMemoryLayout> {
-        HashMap::from([(0x10A2B, GpuMemoryLayout::Discrete)])
+    /// An RTX 4060 Laptop GPU and the Microsoft Basic Render Driver, as measured.
+    fn adapters() -> GpuAdapters {
+        GpuAdapters {
+            listed: HashMap::from([(0x10A2B, GpuMemoryLayout::Discrete)]),
+            ignored: HashSet::from([0x196FB]),
+        }
     }
 
     #[test]
     fn memory_deduplicates_physical_instances_and_keeps_zero_and_missing_distinct() {
         let mut memory = HashMap::new();
-        let adapters = adapters();
+        let (adapters, mut unknown) = (adapters(), HashSet::new());
+        let mut record = |instance: &str, value| {
+            record_memory(&mut memory, &adapters, &mut unknown, instance, value)
+        };
         let instance = "pid_42_luid_0x00000000_0x00010A2B_phys_0";
-        record_memory(&mut memory, &adapters, instance, Some(128.));
-        record_memory(&mut memory, &adapters, &format!("{instance}#1"), Some(128.));
-        assert_eq!(memory.len(), 1);
-        assert_eq!(memory[&(42, 0x10A2B, 0)], Some(128));
-        record_memory(
-            &mut memory,
-            &adapters,
-            "pid_42_luid_0x00000000_0x00010A2B_phys_1",
-            Some(0.),
-        );
-        record_memory(
-            &mut memory,
-            &adapters,
-            "pid_7_luid_0x00000000_0x00010A2B_phys_0",
-            None,
-        );
-        record_memory(
-            &mut memory,
-            &adapters,
+        record(instance, Some(128.));
+        record(&format!("{instance}#1"), Some(128.));
+        record("pid_42_luid_0x00000000_0x00010A2B_phys_1", Some(0.));
+        record("pid_7_luid_0x00000000_0x00010A2B_phys_0", None);
+        record(
             "pid_8_luid_0x00000000_0x00010A2B_phys_0",
             Some(f64::INFINITY),
         );
+        assert_eq!(memory.len(), 4);
+        assert_eq!(memory[&(42, 0x10A2B, 0)], Some(128));
         assert_eq!(memory[&(42, 0x10A2B, 1)], Some(0));
         assert_eq!(memory[&(7, 0x10A2B, 0)], None);
         assert_eq!(memory[&(8, 0x10A2B, 0)], None);
+        assert!(unknown.is_empty());
     }
 
     #[test]
     fn adapters_the_performance_page_leaves_out_contribute_no_usage() {
         // The Microsoft Basic Render Driver (WARP) is all a machine without a
         // GPU has, and its CPU rendering is published as 3D engine time.
-        let adapters = adapters();
+        let (adapters, mut unknown) = (adapters(), HashSet::new());
         let warp_engine = "pid_42_luid_0x00000000_0x000196FB_phys_0_eng_3_engtype_3D";
         assert!(parse(warp_engine).is_some());
-        assert!(listed(warp_engine, &adapters).is_none());
-        assert!(listed(warp_engine, &HashMap::new()).is_none());
+        assert!(listed(warp_engine, &adapters, &mut unknown).is_none());
         assert!(
             listed(
                 "pid_42_luid_0x00000000_0x00010A2B_phys_0_eng_0_engtype_3D",
-                &adapters
+                &adapters,
+                &mut unknown
             )
             .is_some()
         );
@@ -384,10 +437,35 @@ mod tests {
         record_memory(
             &mut memory,
             &adapters,
+            &mut unknown,
             "pid_42_luid_0x00000000_0x000196FB_phys_0",
             Some(384. * 1048576.),
         );
         assert!(memory.is_empty());
+        assert!(unknown.is_empty(), "an ignored adapter is not news");
+    }
+
+    #[test]
+    fn an_adapter_no_enumeration_returned_is_reported_and_not_counted() {
+        // A driver update restarts the adapter under a new LUID.
+        let (adapters, mut unknown) = (adapters(), HashSet::new());
+        let restarted = "pid_42_luid_0x00000000_0x00020C11_phys_0_eng_0_engtype_3D";
+        assert!(listed(restarted, &adapters, &mut unknown).is_none());
+        let mut memory = HashMap::new();
+        record_memory(
+            &mut memory,
+            &adapters,
+            &mut unknown,
+            "pid_42_luid_0x00000000_0x00020C11_phys_0",
+            Some(1048576.),
+        );
+        assert!(memory.is_empty());
+        assert_eq!(unknown, HashSet::from([0x20C11]));
+        // Without any listed adapter, every non-ignored LUID is unknown.
+        let none = GpuAdapters::default();
+        let mut unknown = HashSet::new();
+        assert!(listed(restarted, &none, &mut unknown).is_none());
+        assert_eq!(unknown, HashSet::from([0x20C11]));
     }
 
     #[test]
