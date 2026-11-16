@@ -51,7 +51,7 @@
 
 进程列的附加计数来自同一次 `SystemProcessInformation`：用户态／内核态 CPU 时间按 100 ns 转为毫秒，工作集峰值、虚拟地址空间与累计 I/O 保持字节，缺页保留次数。虚拟地址空间包含预留与已提交范围；它和工作集峰值均按单进程展示。`ProcessCounters` 展平到进程 JSON 中，采样不增加逐进程系统调用。界面仍以 PID 与创建时间关联进程实例。结构字段与单位可参考 [Windows 进程快照](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation)及[内存计数](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters)。
 
-进程显存使用驻留计数，与 DXGI 的预算用量口径对应。`Dedicated Usage` / `Shared Usage` 属于另一组提交计数，部分 Windows／驱动组合下会累积异常，因此不作为驻留计数的回退来源。来源关系可参照 [System Informer 的 GPU 计数实现](https://github.com/winsiderss/systeminformer/blob/master/plugins/ExtendedTools/counters.c)与 [Microsoft 的计数异常说明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/gpu-process-memory-counters-report-wrong-value)。应用分组累加成员的有效读数，任一成员缺失时保留未知；整机显存继续取适配器统计，避免重复归属的共享资源进入物理总量。
+进程显存使用驻留计数，与 DXGI 的预算用量口径对应：独立显卡的 local 组是显存，non-local 组是共享的系统内存；统一内存（集成）显卡把共享的系统内存也归入 local 组。`Dedicated Usage` / `Shared Usage` 属于另一组提交计数，部分 Windows／驱动组合下会累积异常，因此不作为驻留计数的回退来源，只在统一内存显卡上作为专用部分的上限。来源关系可参照 [System Informer 的 GPU 计数实现](https://github.com/winsiderss/systeminformer/blob/master/plugins/ExtendedTools/counters.c)与 [Microsoft 的计数异常说明](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/gpu-process-memory-counters-report-wrong-value)。应用分组累加成员的有效读数，任一成员缺失时保留未知；整机显存继续取适配器统计，避免重复归属的共享资源进入物理总量。
 
 ## CPU 占用
 
