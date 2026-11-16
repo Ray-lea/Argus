@@ -1734,7 +1734,11 @@ impl Desktop {
         };
         let offset = window.pixel_snap_point(offset);
         self.page_shift.set(offset);
-        super::shift::shifted(element, offset, 1.).into_any_element()
+        // On whole device pixels and at full opacity, each frame only moves
+        // the page: the renderer copies it from the last frame.
+        super::shift::shifted(element, offset, 1.)
+            .reports_motion(PAGE_MOTION)
+            .into_any_element()
     }
     /// Starts the page's slide again after each frame until the entering page
     /// has been presented, and once more after that frame. Its first frame
@@ -1760,6 +1764,10 @@ impl Desktop {
 /// How long a page takes to enter after a page change, as long as the
 /// navigation's selection takes to glide to its tab (`theme::ease_enter`).
 pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(250);
+
+/// The id the entering page reports its slide under: scroll containers use
+/// the address of their state, which is never 1.
+const PAGE_MOTION: usize = 1;
 
 /// The shadow of dialogs (`--shadow-flyout`); the interface's menus, lists and
 /// toasts have none.

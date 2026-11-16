@@ -4025,6 +4025,24 @@ impl Window {
         self.text_style().line_height_in_pixels(self.rem_size())
     }
 
+    /// Argus: tells the renderer that the content painted inside `bounds`
+    /// (within the current content mask) is drawn `offset` away from where it
+    /// was laid out, as a scroll container or a sliding page draws it, under
+    /// an `id` that stays the same while it moves. A renderer may copy what
+    /// only moved by whole device pixels since its last frame, after checking
+    /// each primitive (`ScrollRegion`).
+    pub fn report_moving_region(&mut self, id: usize, bounds: Bounds<Pixels>, offset: Point<Pixels>) {
+        let scale = self.scale_factor();
+        let clip = bounds.intersect(&self.content_mask().bounds);
+        if clip.size.width > Pixels::ZERO && clip.size.height > Pixels::ZERO {
+            self.next_frame.scene.scroll_regions.push(crate::ScrollRegion {
+                id,
+                clip: clip.scale(scale),
+                offset: point(offset.x.scale(scale), offset.y.scale(scale)),
+            });
+        }
+    }
+
     /// Rounds a logical value to the nearest device pixel.
     #[inline]
     pub fn pixel_snap(&self, value: Pixels) -> Pixels {

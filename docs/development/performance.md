@@ -146,6 +146,8 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。追加 `--software-rendering` 在测试实例的设置中关闭“硬件加速”，以同样的容差核对软件渲染设备的图层路径。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
 
+`--scroll-copy` 在固定快照下以滚轮逐格滚动进程列表（指针停在列表上，悬停行随之变化），覆盖深浅主题、详情窗格以及 125%、150% 界面缩放：每次滑动结束后捕获画面，再强制完整重绘并捕获，两者须逐像素一致（软件渲染下字形边缘允许两个色阶），且每种情形都须有经复制绘制的帧。诊断事件 `gpu-scroll-copy` 记录每个复制帧的移动图元数、位移、复制与重绘的像素数和裁剪绘制次数。同一程序设置 `ARGUS_GPUI_DISABLE_SCROLL_COPY=1` 可关闭复制，对照滚动与页面切换的开销。
+
 追加 `--hover-retained` 可对照深浅主题下的顶部曲线和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
 
 帧跟踪阶段 14 记录新场景复用未变化的合成树。测试控制 `fullPaint` 会清除平台渲染缓存并重新绘制，作为缓存像素对照的独立参照。

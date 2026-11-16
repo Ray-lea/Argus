@@ -34,6 +34,8 @@ mod chart_composition;
 
 #[path = "scene_cache.rs"]
 mod scene_cache;
+#[path = "scroll_copy.rs"]
+mod scroll_copy;
 
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
 
@@ -89,6 +91,8 @@ pub(crate) struct DirectXRenderer {
     /// screen until the new device has presented a frame
     /// (`finish_device_change`).
     retired: Option<Retired>,
+    /// The scroll containers of earlier scenes, by id, as last prepainted.
+    scroll_seen: std::collections::HashMap<usize, ScrollRegion>,
 }
 
 /// The objects of a replaced device that still works, released in this
@@ -140,6 +144,8 @@ struct DirectXResources {
     render_target_view: Option<ID3D11RenderTargetView>,
 
     paths: Option<PathTargets>,
+    /// The last frame, kept while a list scrolls (`scroll_copy`).
+    scroll_copy: Option<scroll_copy::ScrollCopy>,
 
     // Cached viewport
     viewport: D3D11_VIEWPORT,
@@ -875,6 +881,7 @@ impl DirectXRenderer {
             disable_direct_composition,
             software: directx_devices.software,
             retired: None,
+            scroll_seen: Default::default(),
         })
     }
 
@@ -1455,25 +1462,39 @@ impl DirectXRenderer {
             started: render_started,
             ..Default::default()
         };
-        let result = match (prefix_end, animated_order) {
-            (Some(end), Some(order)) => self.render_cached(
-                scene,
-                &batches,
-                end,
-                order,
-                background_appearance,
-                partial,
-                only,
-                &mut report,
-            ),
-            _ => self.render_whole(
-                scene,
-                &batches,
-                background_appearance,
-                partial,
-                cache,
-                &mut report,
-            ),
+        // A list that only scrolled is copied from the last frame.
+        let scroll = self.note_scroll(scene);
+        let copied = if cache && partial && only.is_none() && scene.surfaces.is_empty() {
+            self.render_scrolled(scene, &batches, background_appearance, &scroll, &mut report)
+        } else {
+            Ok(false)
+        };
+        let result = match copied {
+            Ok(true) => Ok(()),
+            Err(error) => Err(error),
+            Ok(false) => match (prefix_end, animated_order) {
+                (Some(end), Some(order)) => self.render_cached(
+                    scene,
+                    &batches,
+                    end,
+                    order,
+                    background_appearance,
+                    partial,
+                    only,
+                    &mut report,
+                ),
+                _ => self.render_whole(
+                    scene,
+                    &batches,
+                    background_appearance,
+                    partial,
+                    cache,
+                    &mut report,
+                ),
+            }
+            .and_then(|()| {
+                self.keep_scroll_copy(scene, &batches, background_appearance, &scroll, only)
+            }),
         };
         // A scissored pass may have stopped halfway.
         self.restore_rasterizer();
@@ -2886,6 +2907,7 @@ impl DirectXResources {
             render_target: Some(render_target),
             render_target_view,
             paths: None,
+            scroll_copy: None,
             viewport,
         })
     }
@@ -2908,6 +2930,7 @@ impl DirectXResources {
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
         self.paths = None;
+        self.scroll_copy = None;
         self.viewport = viewport;
         Ok(())
     }
@@ -2917,6 +2940,7 @@ impl DirectXResources {
     fn forget(&mut self) {
         self.prefix_key = None;
         self.prefix_snapshot = None;
+        self.scroll_copy = None;
         self.forget_frames();
     }
 

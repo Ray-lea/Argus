@@ -2584,6 +2584,10 @@ impl Interactivity {
                 scroll_handle_state.bounds = bounds;
             }
 
+            // Argus: where the content shows and how far it is scrolled, for
+            // the renderer to copy what only moved (`ScrollRegion`).
+            window.report_moving_region(key, bounds, *scroll_offset);
+
             *scroll_offset
         } else {
             Point::default()
@@ -6243,15 +6247,21 @@ pub mod smooth_scroll {
                 glide.slope = (glide.velocity * duration / distance).clamp(-1000., 1000.);
             }
             let now = Instant::now();
-            *offset = clamp(glide.value(now));
+            // On whole device pixels, each frame of a glide moves the content
+            // by a whole number of them: the renderer can copy it instead of
+            // drawing it again (`ScrollRegion`).
+            *offset = window.pixel_snap_point(clamp(glide.value(now)));
             glide.written = *offset;
             if glide.progress(now) >= 1. {
-                *offset = to;
-                glide.written = to;
+                *offset = window.pixel_snap_point(to);
+                glide.written = *offset;
                 glides.remove(&key);
-            } else {
-                window.request_animation_frame();
             }
+            // Once more after the last step: what reads the offset while
+            // rendering, before this prepaint moves it (a pinned group
+            // header), shows where the glide ended. On whole pixels, the
+            // last step can be a pixel or two.
+            window.request_animation_frame();
         });
     }
 

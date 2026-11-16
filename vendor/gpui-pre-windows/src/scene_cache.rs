@@ -42,11 +42,105 @@ trait Ink: Copy + PartialEq {
     fn tile(&self) -> Option<&AtlasTile> {
         None
     }
+    fn mask(&self) -> Bounds<ScaledPixels>;
+    fn order(&self) -> DrawOrder;
+    /// The same primitive moved by `by`, its mask too when `with_mask`;
+    /// `None` when moving its bounds does not move its ink by `by`.
+    fn shifted(&self, by: Point<ScaledPixels>, with_mask: bool) -> Option<Self>;
+    fn bounds(&self) -> Bounds<ScaledPixels>;
+    /// The same primitive within another mask.
+    fn with_mask(&self, mask: Bounds<ScaledPixels>) -> Self;
+    /// A fill of one color, but for its corner radius and border width (the
+    /// largest of each): `None` for anything else.
+    fn plain_fill(&self) -> Option<(f32, f32)> {
+        None
+    }
+}
+
+macro_rules! movable {
+    () => {
+        movable!(|_: &Self| true);
+    };
+    // `$moves`: whether its pixels move with its bounds.
+    ($moves:expr) => {
+        fn mask(&self) -> Bounds<ScaledPixels> {
+            self.content_mask.bounds
+        }
+        fn bounds(&self) -> Bounds<ScaledPixels> {
+            self.bounds
+        }
+        fn with_mask(&self, mask: Bounds<ScaledPixels>) -> Self {
+            let mut masked = *self;
+            masked.content_mask.bounds = mask;
+            masked
+        }
+        fn order(&self) -> DrawOrder {
+            self.order
+        }
+        fn shifted(&self, by: Point<ScaledPixels>, with_mask: bool) -> Option<Self> {
+            if !($moves)(self) {
+                return None;
+            }
+            let mut moved = *self;
+            moved.bounds.origin = moved.bounds.origin + by;
+            if with_mask {
+                moved.content_mask.bounds.origin = moved.content_mask.bounds.origin + by;
+            }
+            Some(moved)
+        }
+    };
+}
+
+macro_rules! movable_glyph {
+    () => {
+        fn mask(&self) -> Bounds<ScaledPixels> {
+            self.content_mask.bounds
+        }
+        fn bounds(&self) -> Bounds<ScaledPixels> {
+            self.bounds
+        }
+        fn with_mask(&self, mask: Bounds<ScaledPixels>) -> Self {
+            let mut masked = *self;
+            masked.content_mask.bounds = mask;
+            masked
+        }
+        fn order(&self) -> DrawOrder {
+            self.order
+        }
+        fn shifted(&self, by: Point<ScaledPixels>, with_mask: bool) -> Option<Self> {
+            // A transformation turns or scales the move as well.
+            if self.transformation != TransformationMatrix::unit() {
+                return None;
+            }
+            let mut moved = *self;
+            moved.bounds.origin = moved.bounds.origin + by;
+            if with_mask {
+                moved.content_mask.bounds.origin = moved.content_mask.bounds.origin + by;
+            }
+            Some(moved)
+        }
+    };
 }
 
 impl Ink for Quad {
     fn ink(&self) -> Bounds<ScaledPixels> {
         self.bounds.intersect(&self.content_mask.bounds)
+    }
+    // A gradient is dithered by screen position (`gradient_color`): moved,
+    // it draws other pixels.
+    movable!(|quad: &Self| quad.background.as_solid().is_some());
+    fn plain_fill(&self) -> Option<(f32, f32)> {
+        let w = self.border_widths;
+        let r = self.corner_radii;
+        self.background.as_solid().is_some().then(|| {
+            let corner = r
+                .top_left
+                .0
+                .max(r.top_right.0)
+                .max(r.bottom_left.0)
+                .max(r.bottom_right.0);
+            (corner, w.top.0.max(w.right.0).max(w.bottom.0).max(w.left.0))
+        })
     }
 }
 
@@ -54,6 +148,7 @@ impl Ink for Underline {
     fn ink(&self) -> Bounds<ScaledPixels> {
         self.bounds.intersect(&self.content_mask.bounds)
     }
+    movable!();
 }
 
 impl Ink for MonochromeSprite {
@@ -63,6 +158,7 @@ impl Ink for MonochromeSprite {
     fn tile(&self) -> Option<&AtlasTile> {
         Some(&self.tile)
     }
+    movable_glyph!();
 }
 
 impl Ink for SubpixelSprite {
@@ -72,6 +168,7 @@ impl Ink for SubpixelSprite {
     fn tile(&self) -> Option<&AtlasTile> {
         Some(&self.tile)
     }
+    movable_glyph!();
 }
 
 impl Ink for PolychromeSprite {
@@ -80,6 +177,53 @@ impl Ink for PolychromeSprite {
     }
     fn tile(&self) -> Option<&AtlasTile> {
         Some(&self.tile)
+    }
+    movable!();
+}
+
+/// Where a shadow draws, as `shadow_vertex` places it: an inset shadow
+/// within its element, a drop shadow with three blur radii of tail around it.
+fn shadow_area(shadow: &Shadow) -> Bounds<ScaledPixels> {
+    if shadow.inset != 0 {
+        shadow.element_bounds
+    } else {
+        let margin = ScaledPixels(3. * shadow.blur_radius.0);
+        Bounds {
+            origin: point(shadow.bounds.origin.x - margin, shadow.bounds.origin.y - margin),
+            size: size(
+                shadow.bounds.size.width + margin * 2.,
+                shadow.bounds.size.height + margin * 2.,
+            ),
+        }
+    }
+}
+
+impl Ink for Shadow {
+    fn ink(&self) -> Bounds<ScaledPixels> {
+        shadow_area(self).intersect(&self.content_mask.bounds)
+    }
+    fn mask(&self) -> Bounds<ScaledPixels> {
+        self.content_mask.bounds
+    }
+    fn order(&self) -> DrawOrder {
+        self.order
+    }
+    fn bounds(&self) -> Bounds<ScaledPixels> {
+        shadow_area(self)
+    }
+    fn with_mask(&self, mask: Bounds<ScaledPixels>) -> Self {
+        let mut masked = *self;
+        masked.content_mask.bounds = mask;
+        masked
+    }
+    fn shifted(&self, by: Point<ScaledPixels>, with_mask: bool) -> Option<Self> {
+        let mut moved = *self;
+        moved.bounds.origin = moved.bounds.origin + by;
+        moved.element_bounds.origin = moved.element_bounds.origin + by;
+        if with_mask {
+            moved.content_mask.bounds.origin = moved.content_mask.bounds.origin + by;
+        }
+        Some(moved)
     }
 }
 
@@ -102,13 +246,14 @@ fn is_fresh<T: Ink>(item: &T, fresh: &FreshTiles) -> bool {
 /// Puts into `local`, emptied first, the primitives of `batches` whose ink
 /// can reach one of `rects`, in their order. Drawn under a scissor inside the
 /// rects they give the same pixels as the complete scene: the rest cannot
-/// touch them. False for paths, shadows and surfaces.
+/// touch them. False for paths and surfaces.
 pub(super) fn local_scene(
     local: &mut Scene,
     scene: &Scene,
     batches: &[PrimitiveBatch],
     rects: &[RECT],
 ) -> bool {
+    local.shadows.clear();
     local.quads.clear();
     local.underlines.clear();
     local.monochrome_sprites.clear();
@@ -154,6 +299,11 @@ pub(super) fn local_scene(
     };
     for batch in batches {
         match batch {
+            PrimitiveBatch::Shadows(r) => local.shadows.extend(
+                scene.shadows[r.clone()]
+                    .iter()
+                    .filter(|s| reaches(&s.content_mask.bounds) && reaches(&shadow_area(s))),
+            ),
             PrimitiveBatch::Quads(r) => local.quads.extend(
                 scene.quads[r.clone()]
                     .iter()
@@ -192,8 +342,9 @@ pub(super) fn local_scene(
 /// The ink of some batches of a scene, per kind of primitive in draw order.
 /// Equal kinds draw the same pixels: their draw orders decide how the kinds
 /// interleave.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct Snapshot {
+    shadows: Vec<Shadow>,
     quads: Vec<Quad>,
     underlines: Vec<Underline>,
     mono: Vec<MonochromeSprite>,
@@ -219,9 +370,10 @@ impl Snapshot {
     }
 
     /// Takes the ink of `batches` into the buffers of `self`. False for
-    /// paths, shadows and external surfaces, which keep the complete paint
+    /// paths and external surfaces, which keep the complete paint
     /// path, and for scenes too large to compare.
     pub(super) fn fill(&mut self, scene: &Scene, batches: &[PrimitiveBatch]) -> bool {
+        self.shadows.clear();
         self.quads.clear();
         self.underlines.clear();
         self.mono.clear();
@@ -229,6 +381,9 @@ impl Snapshot {
         self.images.clear();
         for batch in batches {
             match batch {
+                PrimitiveBatch::Shadows(r) => {
+                    self.shadows.extend_from_slice(&scene.shadows[r.clone()])
+                }
                 PrimitiveBatch::Quads(r) => self.quads.extend_from_slice(&scene.quads[r.clone()]),
                 PrimitiveBatch::Underlines(r) => self
                     .underlines
@@ -245,7 +400,8 @@ impl Snapshot {
                 _ => return false,
             }
         }
-        self.quads.len()
+        self.shadows.len()
+            + self.quads.len()
             + self.underlines.len()
             + self.mono.len()
             + self.subpixel.len()
@@ -254,7 +410,8 @@ impl Snapshot {
     }
 
     pub(super) fn matches(&self, other: &Self, fresh: &FreshTiles) -> bool {
-        self.quads == other.quads
+        self.shadows == other.shadows
+            && self.quads == other.quads
             && self.underlines == other.underlines
             && self.mono == other.mono
             && self.subpixel == other.subpixel
@@ -273,6 +430,14 @@ impl Snapshot {
         fresh: &FreshTiles,
     ) -> Option<Repair> {
         let mut damage: Option<RECT> = None;
+        diff(
+            &self.shadows,
+            &previous.shadows,
+            width,
+            height,
+            fresh,
+            &mut damage,
+        );
         diff(
             &self.quads,
             &previous.quads,
@@ -322,6 +487,310 @@ impl Snapshot {
                 Some(Repair::Region(r))
             }
             _ => None,
+        }
+    }
+
+    /// What a frame must draw when the last frame's pixels inside `clip`,
+    /// where a list scrolled by `by` whole device pixels, are copied there
+    /// moved by `by`. Each primitive is matched with the last frame's, as it
+    /// was or moved by `by`; whatever the copy cannot show is drawn. `None`
+    /// when nothing of `clip` would be copied.
+    pub(super) fn scrolled(
+        &self,
+        previous: &Self,
+        clip: RECT,
+        by: (i32, i32),
+        width: u32,
+        height: u32,
+        fresh: &FreshTiles,
+    ) -> Option<Scrolled> {
+        let copied = RECT {
+            left: clip.left.max(clip.left + by.0),
+            top: clip.top.max(clip.top + by.1),
+            right: clip.right.min(clip.right + by.0),
+            bottom: clip.bottom.min(clip.bottom + by.1),
+        };
+        if copied.left >= copied.right || copied.top >= copied.bottom {
+            return None;
+        }
+        let mut pass = ScrollPass {
+            clip,
+            copied,
+            by,
+            width,
+            height,
+            fresh,
+            damage: Vec::new(),
+            fixed: Vec::new(),
+            lowest_moved: DrawOrder::MAX,
+            moved: 0,
+        };
+        pass.match_kind(&self.shadows, &previous.shadows);
+        pass.match_kind(&self.quads, &previous.quads);
+        pass.match_kind(&self.underlines, &previous.underlines);
+        pass.match_kind(&self.mono, &previous.mono);
+        pass.match_kind(&self.subpixel, &previous.subpixel);
+        pass.match_kind(&self.images, &previous.images);
+        // A fixed draw under the copied pixels must show the same one move
+        // away: one color, without its edges or corners in `clip`, below all
+        // that moved. Anything else there is drawn again.
+        let fixed = std::mem::take(&mut pass.fixed);
+        for (order, ink, covers) in fixed {
+            if !(covers && order < pass.lowest_moved) {
+                pass.include_copied(ink);
+                pass.include_copied(offset(ink, by));
+            }
+        }
+        for piece in subtract_rect(clip, copied) {
+            pass.include(piece);
+        }
+        Some(Scrolled {
+            copied,
+            damage: pass.damage,
+            moved: pass.moved,
+        })
+    }
+}
+
+/// The plan for a frame that copies scrolled pixels (`Snapshot::scrolled`).
+pub(super) struct Scrolled {
+    /// Where the copied pixels land: the clip moved by the scroll, within it.
+    pub copied: RECT,
+    /// What must be drawn, in no particular order and possibly overlapping.
+    pub damage: Vec<RECT>,
+    /// The primitives the copy shows moved.
+    pub moved: usize,
+}
+
+struct ScrollPass<'a> {
+    clip: RECT,
+    copied: RECT,
+    by: (i32, i32),
+    width: u32,
+    height: u32,
+    fresh: &'a FreshTiles,
+    damage: Vec<RECT>,
+    /// Draws that stayed in place over the copied pixels: their order,
+    /// where, and whether they cover `clip` with one color.
+    fixed: Vec<(DrawOrder, RECT, bool)>,
+    lowest_moved: DrawOrder,
+    moved: usize,
+}
+
+fn offset(rect: RECT, by: (i32, i32)) -> RECT {
+    RECT {
+        left: rect.left + by.0,
+        top: rect.top + by.1,
+        right: rect.right + by.0,
+        bottom: rect.bottom + by.1,
+    }
+}
+
+fn within(inner: RECT, outer: RECT) -> bool {
+    inner.left >= outer.left
+        && inner.top >= outer.top
+        && inner.right <= outer.right
+        && inner.bottom <= outer.bottom
+}
+
+/// The bytes of a primitive. The scene's primitives are `repr(C)` without
+/// padding: they are uploaded to the GPU as these bytes.
+fn bytes<T: Copy>(item: &T) -> &[u8] {
+    // SAFETY: `T` is one of the scene's `repr(C)` primitive types, which have
+    // no padding bytes, so every byte of the value is initialized.
+    unsafe { std::slice::from_raw_parts((item as *const T).cast::<u8>(), size_of::<T>()) }
+}
+
+fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut hash = 0u64;
+    for chunk in bytes.chunks(8) {
+        let mut word = [0u8; 8];
+        word[..chunk.len()].copy_from_slice(chunk);
+        hash = (hash.rotate_left(5) ^ u64::from_le_bytes(word)).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+    hash
+}
+
+impl ScrollPass<'_> {
+    fn include(&mut self, rect: RECT) {
+        let rect = RECT {
+            left: rect.left.max(0),
+            top: rect.top.max(0),
+            right: rect.right.min(self.width as i32),
+            bottom: rect.bottom.min(self.height as i32),
+        };
+        if rect.left < rect.right && rect.top < rect.bottom {
+            self.damage.push(rect);
+        }
+    }
+
+    /// Includes the parts of `rect` the copy does not replace.
+    fn include_uncopied(&mut self, rect: RECT) {
+        for piece in subtract_rect(rect, self.copied) {
+            self.include(piece);
+        }
+    }
+
+    /// Includes the part of `rect` the copy covers.
+    fn include_copied(&mut self, rect: RECT) {
+        let c = self.copied;
+        self.include(RECT {
+            left: rect.left.max(c.left),
+            top: rect.top.max(c.top),
+            right: rect.right.min(c.right),
+            bottom: rect.bottom.min(c.bottom),
+        });
+    }
+
+    fn rect<T: Ink>(&self, item: &T) -> Option<RECT> {
+        ink_rect(item.ink(), self.width, self.height)
+    }
+
+    /// Whether a fill with `corner` radii and a `border` shows its one
+    /// color over every pixel of the clip: the clip stays a pixel clear of
+    /// its edges, its border and the squares around its corners.
+    fn uniform_over_clip<T: Ink>(&self, item: &T, corner: f32, border: f32) -> bool {
+        let ink = item.ink();
+        let edge = border.ceil() as i32 + 1;
+        let inner = RECT {
+            left: ink.left().0.ceil() as i32 + edge,
+            top: ink.top().0.ceil() as i32 + edge,
+            right: ink.right().0.floor() as i32 - edge,
+            bottom: ink.bottom().0.floor() as i32 - edge,
+        };
+        let b = item.bounds();
+        let reach = (corner + border).ceil() as i32 + 1;
+        let (left, top) = (b.left().0.floor() as i32, b.top().0.floor() as i32);
+        let (right, bottom) = (b.right().0.ceil() as i32, b.bottom().0.ceil() as i32);
+        let square = |x: i32, y: i32| RECT {
+            left: x,
+            top: y,
+            right: x + reach,
+            bottom: y + reach,
+        };
+        within(self.clip, inner)
+            && [
+                square(left, top),
+                square(right - reach, top),
+                square(left, bottom - reach),
+                square(right - reach, bottom - reach),
+            ]
+            .iter()
+            .all(|corner| !overlaps(corner, &self.clip))
+    }
+
+    fn match_kind<T: Ink>(&mut self, now: &[T], old: &[T]) {
+        let by = point(ScaledPixels(self.by.0 as f32), ScaledPixels(self.by.1 as f32));
+        let copied = Bounds::from_corners(
+            point(
+                ScaledPixels(self.copied.left as f32),
+                ScaledPixels(self.copied.top as f32),
+            ),
+            point(
+                ScaledPixels(self.copied.right as f32),
+                ScaledPixels(self.copied.bottom as f32),
+            ),
+        );
+        // A primitive moved into the copy compares with one now by their
+        // masks within the copy only: there both show the same pixels,
+        // whether the mask moved along, holds the whole clip or is cut by
+        // its edge. Elsewhere its pixels are drawn (`scrolled`).
+        let in_copy = |item: &T| {
+            let mask = item.mask().intersect(&copied);
+            (mask.size.width.0 > 0. && mask.size.height.0 > 0.).then(|| item.with_mask(mask))
+        };
+        // How an old primitive can appear now: in place (0) or moved (1).
+        let form = |item: &T, kind: u8| match kind {
+            0 => Some(*item),
+            _ => item.shifted(by, true).and_then(|moved| in_copy(&moved)),
+        };
+        let mut heads = std::collections::HashMap::<u64, u32>::with_capacity(old.len() * 2);
+        let mut entries: Vec<(u32, u8, u32)> = Vec::with_capacity(old.len() * 2);
+        for (index, item) in old.iter().enumerate() {
+            for kind in [0, 1] {
+                if let Some(seen) = form(item, kind) {
+                    let key = hash_bytes(bytes(&seen));
+                    let next = heads.insert(key, entries.len() as u32).unwrap_or(u32::MAX);
+                    entries.push((index as u32, kind, next));
+                }
+            }
+        }
+        let mut used = vec![false; old.len()];
+        let check = !self.fresh.is_empty();
+        for item in now {
+            let found = if check && is_fresh(item, self.fresh) {
+                None
+            } else {
+                let mut found = None;
+                for (kind, own) in [(0u8, Some(*item)), (1, in_copy(item))] {
+                    let Some(own) = own else {
+                        continue;
+                    };
+                    let own = bytes(&own);
+                    let mut at = heads.get(&hash_bytes(own)).copied().unwrap_or(u32::MAX);
+                    while at != u32::MAX && found.is_none() {
+                        let (index, entry, next) = entries[at as usize];
+                        if entry == kind
+                            && !used[index as usize]
+                            && form(&old[index as usize], kind)
+                                .is_some_and(|seen| bytes(&seen) == own)
+                        {
+                            found = Some((index as usize, kind));
+                        }
+                        at = next;
+                    }
+                    if found.is_some() {
+                        break;
+                    }
+                }
+                found
+            };
+            let Some(rect) = self.rect(item) else {
+                if let Some((index, _)) = found {
+                    used[index] = true;
+                }
+                continue;
+            };
+            match found {
+                Some((index, 0)) => {
+                    used[index] = true;
+                    // Over the copied pixels, or copied itself: one in the
+                    // strip that comes into view has its old pixels copied
+                    // next to it.
+                    if overlaps(&rect, &self.copied)
+                        || overlaps(&offset(rect, self.by), &self.copied)
+                    {
+                        let covers = item
+                            .plain_fill()
+                            .is_some_and(|(corner, border)| self.uniform_over_clip(item, corner, border));
+                        self.fixed.push((item.order(), rect, covers));
+                    }
+                }
+                Some((index, _)) => {
+                    used[index] = true;
+                    self.moved += 1;
+                    self.lowest_moved = self.lowest_moved.min(item.order());
+                    // The copy brings it only from inside the clip to inside
+                    // the clip; any part elsewhere is drawn in both places.
+                    for piece in subtract_rect(rect, self.clip) {
+                        self.include(piece);
+                    }
+                    if let Some(old_rect) = self.rect(&old[index]) {
+                        self.include_uncopied(old_rect);
+                    }
+                }
+                None => self.include(rect),
+            }
+        }
+        for (index, item) in old.iter().enumerate() {
+            if !used[index]
+                && let Some(rect) = self.rect(item)
+            {
+                // Gone or changed: where it was, but for what the copy
+                // replaces, and where the copy puts it.
+                self.include_uncopied(rect);
+                self.include_copied(offset(rect, self.by));
+            }
         }
     }
 }
@@ -383,6 +852,158 @@ mod tests {
             quads,
             ..Default::default()
         }
+    }
+
+    fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    /// Rows of a list in the clip (0, 20)–(200, 120), scrolled to `offset`,
+    /// over a rounded card; each row its own color.
+    fn list(offset: f32, card: Quad) -> Snapshot {
+        let mask = Bounds::new(
+            point(ScaledPixels(0.), ScaledPixels(20.)),
+            size(ScaledPixels(200.), ScaledPixels(100.)),
+        );
+        let mut rows = vec![card];
+        for index in 0..12 {
+            let y = 20. + offset + index as f32 * 20.;
+            rows.push(Quad {
+                order: 2,
+                bounds: Bounds::new(
+                    point(ScaledPixels(0.), ScaledPixels(y)),
+                    size(ScaledPixels(200.), ScaledPixels(20.)),
+                ),
+                content_mask: ContentMask { bounds: mask },
+                background: hsla(index as f32 / 12., 0.5, 0.5, 1.).into(),
+                ..Default::default()
+            });
+        }
+        quads(rows)
+    }
+
+    fn card(corner: f32) -> Quad {
+        Quad {
+            order: 1,
+            bounds: Bounds::new(
+                point(ScaledPixels(-20.), ScaledPixels(0.)),
+                size(ScaledPixels(240.), ScaledPixels(140.)),
+            ),
+            content_mask: ContentMask {
+                bounds: Bounds::new(
+                    point(ScaledPixels(-100.), ScaledPixels(-100.)),
+                    size(ScaledPixels(400.), ScaledPixels(400.)),
+                ),
+            },
+            background: hsla(0., 0., 1., 0.04).into(),
+            corner_radii: Corners::all(ScaledPixels(corner)),
+            ..Default::default()
+        }
+    }
+
+    fn drawn(plan: &Scrolled) -> Vec<RECT> {
+        let mut damage = plan.damage.clone();
+        damage.sort_by_key(|r| (r.top, r.left));
+        damage.dedup_by(|a, b| a == b);
+        damage
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_scrolled_list_draws_only_the_rows_that_came_into_view() {
+        let none = FreshTiles::default();
+        let clip = rect(0, 20, 200, 120);
+        let before = list(0., card(8.));
+        let after = list(-10., card(8.));
+        let plan = after
+            .scrolled(&before, clip, (0, -10), 300, 200, &none)
+            .expect("copied pixels");
+        assert_eq!(plan.copied, rect(0, 20, 200, 110));
+        // The card's corners lie outside the clip: one color under the rows.
+        assert_eq!(drawn(&plan), vec![rect(0, 110, 200, 120)]);
+        assert!(plan.moved > 0);
+        // Its corner reaching into the clip would show at a moved place.
+        let near = card(30.);
+        let plan = list(-10., near)
+            .scrolled(&list(0., near), clip, (0, -10), 300, 200, &none)
+            .expect("copied pixels");
+        assert!(drawn(&plan).len() > 1);
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_fixed_draw_in_the_strip_coming_into_view_is_drawn_where_its_copy_lands() {
+        let none = FreshTiles::default();
+        let clip = rect(0, 20, 200, 120);
+        // A divider fixed at the bottom of the list, in the strip the move
+        // brings into view: the copy carries its old pixels to 105..110.
+        let mut divider = card(0.);
+        divider.order = 3;
+        divider.bounds = Bounds::new(
+            point(ScaledPixels(0.), ScaledPixels(115.)),
+            size(ScaledPixels(200.), ScaledPixels(5.)),
+        );
+        let mut before = list(0., card(8.));
+        before.quads.push(divider);
+        let mut after = list(-10., card(8.));
+        after.quads.push(divider);
+        let damage = drawn(
+            &after
+                .scrolled(&before, clip, (0, -10), 300, 200, &none)
+                .expect("copied pixels"),
+        );
+        assert!(damage.contains(&rect(0, 105, 200, 110)), "{damage:?}");
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_gradient_does_not_move_with_its_bounds() {
+        let by = point(ScaledPixels(0.), ScaledPixels(10.));
+        let mut quad = card(0.);
+        assert!(quad.shifted(by, true).is_some());
+        // Dithered by screen position.
+        quad.background = linear_gradient(
+            90.,
+            linear_color_stop(gpui::black(), 0.),
+            linear_color_stop(gpui::white(), 1.),
+        );
+        assert!(quad.shifted(by, true).is_none());
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_changed_row_draws_where_it_is_and_where_the_copy_puts_its_old_pixels() {
+        let none = FreshTiles::default();
+        let clip = rect(0, 20, 200, 120);
+        let before = list(0., card(8.));
+        let mut after = list(-10., card(8.));
+        // The row at 50..70 now (40..60 + 10 before the move) changes color.
+        after.quads[3].background = hsla(0.9, 1., 0.5, 1.).into();
+        let plan = after
+            .scrolled(&before, clip, (0, -10), 300, 200, &none)
+            .expect("copied pixels");
+        let damage = drawn(&plan);
+        assert!(damage.contains(&rect(0, 50, 200, 70)), "{damage:?}");
+        assert!(damage.contains(&rect(0, 110, 200, 120)), "{damage:?}");
+        // A fixed strip over the rows is drawn at both places.
+        let mut strip = card(0.);
+        strip.order = 3;
+        strip.bounds = Bounds::new(
+            point(ScaledPixels(190.), ScaledPixels(20.)),
+            size(ScaledPixels(10.), ScaledPixels(30.)),
+        );
+        let mut before = list(0., card(8.));
+        before.quads.push(strip);
+        let mut after = list(-10., card(8.));
+        after.quads.push(strip);
+        let damage = drawn(
+            &after
+                .scrolled(&before, clip, (0, -10), 300, 200, &none)
+                .expect("copied pixels"),
+        );
+        assert!(damage.contains(&rect(190, 20, 200, 50)), "{damage:?}");
+        assert!(damage.contains(&rect(190, 20, 200, 40)), "{damage:?}");
     }
 
     #[::core::prelude::v1::test]
@@ -494,12 +1115,52 @@ mod tests {
             local.quads.len()
         };
         assert_eq!((reach(31), reach(32)), (1, 0));
-        assert!(!local_scene(
+        // Shadows are culled by where their blur reaches; paths are not.
+        assert!(local_scene(
             &mut Scene::default(),
             &scene,
             &[PrimitiveBatch::Shadows(0..0)],
             &[rect]
         ));
+        assert!(!local_scene(
+            &mut Scene::default(),
+            &scene,
+            &[PrimitiveBatch::Paths(0..0)],
+            &[rect]
+        ));
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_shadow_reaches_three_blur_radii_around_its_bounds() {
+        let shadow = Shadow {
+            order: 1,
+            blur_radius: ScaledPixels(4.),
+            bounds: Bounds::new(
+                point(ScaledPixels(50.), ScaledPixels(50.)),
+                size(ScaledPixels(20.), ScaledPixels(10.)),
+            ),
+            corner_radii: Corners::default(),
+            content_mask: ContentMask {
+                bounds: Bounds::new(
+                    point(ScaledPixels(0.), ScaledPixels(0.)),
+                    size(ScaledPixels(200.), ScaledPixels(200.)),
+                ),
+            },
+            color: gpui::black(),
+            element_bounds: Bounds::default(),
+            element_corner_radii: Corners::default(),
+            inset: 0,
+            pad: 0,
+        };
+        assert_eq!(
+            ink_rect(shadow.ink(), 200, 200),
+            Some(RECT {
+                left: 38,
+                top: 38,
+                right: 82,
+                bottom: 72,
+            })
+        );
     }
 
     #[::core::prelude::v1::test]
