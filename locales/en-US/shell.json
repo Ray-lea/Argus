@@ -69,6 +69,8 @@
   },
   "search": {
     "processes": "Search name, PID, path or service; separate several with commas",
+    "history": "Search history",
+    "clearHistory": "Clear search history",
     "clear": "Clear search"
   },
   "viewMode": {

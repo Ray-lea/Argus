@@ -69,6 +69,8 @@
   },
   "search": {
     "processes": "Nach Name, PID, Pfad oder Dienst suchen; mehrere mit Komma trennen",
+    "history": "Suchverlauf",
+    "clearHistory": "Suchverlauf löschen",
     "clear": "Suche löschen"
   },
   "viewMode": {

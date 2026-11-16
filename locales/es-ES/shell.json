@@ -69,6 +69,8 @@
   },
   "search": {
     "processes": "Buscar nombre, PID, ruta o servicio; separa varios con comas",
+    "history": "Historial de búsqueda",
+    "clearHistory": "Borrar el historial de búsqueda",
     "clear": "Borrar búsqueda"
   },
   "viewMode": {

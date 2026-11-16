@@ -165,6 +165,8 @@ pub(in crate::frontend) struct UiState {
     pub release_hover: RefCell<Option<SharedString>>,
     /// The narrowest search box: placeholder, text size and width (`Desktop::search_fit`).
     pub search_fit: RefCell<Option<(String, Pixels, Pixels)>>,
+    /// Where the search box was drawn, for its history list below it.
+    pub search_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
     /// How compact the toolbar is (`Desktop::fit_toolbar`).
     pub toolbar_fit: RefCell<ToolbarFit>,
     /// What the page navigation's selection mark was last placed for.

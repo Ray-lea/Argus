@@ -69,6 +69,8 @@
   },
   "search": {
     "processes": "搜索名称、PID、路径或服务，可逗号分隔多个",
+    "history": "搜索历史",
+    "clearHistory": "清除搜索历史",
     "clear": "清除搜索"
   },
   "viewMode": {
