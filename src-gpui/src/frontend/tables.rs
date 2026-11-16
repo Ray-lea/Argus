@@ -1324,7 +1324,7 @@ impl TableDelegate for NativeTable {
                                 }),
                         )
                     })
-                    .child(total),
+                    .child(raised_brackets(total, theme::font(15.))),
             );
         }
         let owner = self.owner.clone();
@@ -1619,6 +1619,35 @@ impl WidthSource {
             built: Instant::now(),
         }
     }
+}
+/// How far the brackets in a process header's figures are raised, in em.
+/// The display font has no case-sensitive forms: its brackets reach below
+/// the baseline as they do around lowercase text, and hang under the
+/// figures and the Chinese text between them. Raised, they centre on both.
+const BRACKET_RAISE: f32 = 0.08;
+/// `text` set in `size` with its brackets raised (`BRACKET_RAISE`).
+fn raised_brackets(text: String, size: Pixels) -> AnyElement {
+    if !text.contains(['(', ')']) {
+        return text.into_any_element();
+    }
+    let mut row = div().flex();
+    let mut start = 0;
+    for (at, bracket) in text.match_indices(['(', ')']) {
+        if start < at {
+            row = row.child(text[start..at].to_owned());
+        }
+        row = row.child(
+            div()
+                .relative()
+                .top(-size * BRACKET_RAISE)
+                .child(bracket.to_owned()),
+        );
+        start = at + bracket.len();
+    }
+    if start < text.len() {
+        row = row.child(text[start..].to_owned());
+    }
+    row.into_any_element()
 }
 /// The note and pin of the row marked `key`.
 fn row_mark(marks: &Value, key: &str) -> (Option<String>, bool) {
