@@ -209,6 +209,7 @@
     "unknown": "Couldn't read the replacement status",
     "state": {
       "disabled": "Using Windows Task Manager",
+      "revoked": "Replacement removed",
       "enabled": "Replaced by Argus",
       "recoveryNeeded": "Needs restoring",
       "conflict": "Configured by something else"

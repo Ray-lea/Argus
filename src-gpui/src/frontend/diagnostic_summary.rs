@@ -163,7 +163,7 @@ fn summary(data: &HashMap<String, Value>, snapshot: &Value, view: &ViewState) ->
     row(
         "settings.taskManager.title",
         match data.get("taskmgr").and_then(|v| v["state"].as_str()) {
-            Some(state @ ("enabled" | "disabled" | "conflict" | "recoveryNeeded")) => {
+            Some(state @ ("enabled" | "disabled" | "revoked" | "conflict" | "recoveryNeeded")) => {
                 label(&format!("settings.taskManager.state.{state}"))
             }
             _ => unknown(),

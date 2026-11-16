@@ -209,6 +209,7 @@
     "unknown": "置き換えの状態を読み取れませんでした",
     "state": {
       "disabled": "Windows タスク マネージャーを使用中",
+      "revoked": "置き換えが解除されました",
       "enabled": "Argus に置き換え済み",
       "recoveryNeeded": "復元が必要",
       "conflict": "他のプログラムが設定済み"

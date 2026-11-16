@@ -209,6 +209,7 @@
     "unknown": "No se pudo leer el estado de reemplazo",
     "state": {
       "disabled": "Se utiliza el Administrador de tareas de Windows",
+      "revoked": "Sustitución revocada",
       "enabled": "Reemplazado por Argus",
       "recoveryNeeded": "Necesita restauración",
       "conflict": "Configurado por otro programa"

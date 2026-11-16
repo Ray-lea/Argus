@@ -487,12 +487,8 @@ pub fn status() -> Result<Status> {
         Err(error) => return Err(error),
     };
     if let Some(journal) = journal {
-        if live.debugger.as_ref() == Some(&journal.replacement) && !live.filtered {
-            status.state = if journal.phase == Phase::Active {
-                "enabled"
-            } else {
-                "recoveryNeeded"
-            };
+        status.state = journal_state(&journal, &live);
+        if matches!(status.state, "enabled" | "recoveryNeeded") {
             status.detail = if status.state == "enabled" {
                 status.older = older_interface(&machine.dir, &journal.image);
                 match &status.older {
@@ -504,9 +500,12 @@ pub fn status() -> Result<Status> {
             };
             return Ok(status);
         }
-        if live != journal.before {
+        if status.state == "conflict" {
             status.conflict(tr!("taskManager.status.modified"), &ours);
             return Ok(status);
+        }
+        if status.state == "revoked" {
+            status.detail = tr!("taskManager.status.revoked");
         }
     } else if live.debugger.as_ref() == Some(&ours) {
         status.state = "recoveryNeeded";
@@ -688,9 +687,26 @@ pub(crate) fn follow_update(dir: &Path) -> Result<bool> {
 /// Whether the replacement is on and whole: a finished enable whose value
 /// taskmgr.exe's entry still holds, unfiltered. `status` calls it enabled.
 fn whole(journal: &Journal, live: &Observation) -> bool {
-    journal.phase == Phase::Active
-        && !live.filtered
-        && live.debugger.as_ref() == Some(&journal.replacement)
+    journal_state(journal, live) == "enabled"
+}
+
+/// Compare the durable record with the current entry without changing either.
+/// An active record whose entry returned to its original value preserves the
+/// evidence of an external restore until an explicit maintenance action.
+fn journal_state(journal: &Journal, live: &Observation) -> &'static str {
+    if !live.filtered && live.debugger.as_ref() == Some(&journal.replacement) {
+        if journal.phase == Phase::Active {
+            "enabled"
+        } else {
+            "recoveryNeeded"
+        }
+    } else if *live != journal.before {
+        "conflict"
+    } else if journal.phase == Phase::Active {
+        "revoked"
+    } else {
+        "disabled"
+    }
 }
 
 /// The order of `follow_update`: the new interface copy first, under a name of
@@ -1509,6 +1525,54 @@ mod tests {
         };
         assert!(held_by_other(&foreign, &ours) && held_by_other(&filtered, &ours));
         assert!(!held_by_other(&argus, &ours) && !held_by_other(&clean, &ours));
+    }
+
+    #[test]
+    fn external_restore_is_distinct_from_an_explicit_restore() {
+        let (mut record, mut disk, mut journal) = enabled();
+        assert_eq!(journal_state(&journal, &record.live), "enabled");
+
+        // A security product or another tool removes the entry after enable.
+        record.live = journal.before.clone();
+        let saved = serde_json::to_value(&record.saved).unwrap();
+        let files = disk.clone();
+        assert_eq!(journal_state(&journal, &record.live), "revoked");
+        assert!(!follow(&mut record, &mut disk, &mut journal, b"ui 2", NEW).unwrap());
+        assert_eq!(record.live, journal.before);
+        assert_eq!(serde_json::to_value(&record.saved).unwrap(), saved);
+        assert_eq!(disk, files);
+
+        // Explicit restoration acknowledges the already restored entry.
+        state::restore(&mut record, &mut journal).unwrap();
+        assert_eq!(journal.phase, Phase::Restored);
+        assert_eq!(journal_state(&journal, &record.live), "disabled");
+    }
+
+    #[test]
+    fn missing_registration_preserves_interruption_and_conflict_states() {
+        let clean = Observation::default();
+        for phase in [Phase::Prepared, Phase::Restoring, Phase::Restored] {
+            let journal = journal(phase);
+            assert_eq!(journal_state(&journal, &clean), "disabled");
+            let live = Observation {
+                debugger: Some(journal.replacement.clone()),
+                filtered: false,
+            };
+            assert_eq!(journal_state(&journal, &live), "recoveryNeeded");
+        }
+        let journal = journal(Phase::Active);
+        for live in [
+            Observation {
+                debugger: Some(Value::string("other.exe")),
+                filtered: false,
+            },
+            Observation {
+                debugger: None,
+                filtered: true,
+            },
+        ] {
+            assert_eq!(journal_state(&journal, &live), "conflict");
+        }
     }
 
     /// The record and taskmgr.exe's entry in memory.

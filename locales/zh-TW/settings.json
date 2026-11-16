@@ -187,6 +187,7 @@
     "unknown": "無法讀取取代狀態",
     "state": {
       "disabled": "使用 Windows 工作管理員",
+      "revoked": "取代已被撤銷",
       "enabled": "已取代為 Argus",
       "recoveryNeeded": "需要還原",
       "conflict": "已有其他設定"

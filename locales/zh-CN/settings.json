@@ -209,6 +209,7 @@
     "unknown": "无法读取替换状态",
     "state": {
       "disabled": "使用 Windows 任务管理器",
+      "revoked": "替换已被撤销",
       "enabled": "已替换为 Argus",
       "recoveryNeeded": "需要恢复",
       "conflict": "已有其他配置"

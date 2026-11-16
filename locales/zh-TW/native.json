@@ -121,6 +121,7 @@
     "recoveryFile": "Argus 工作管理員緊急還原\r\n\r\n先執行本目錄的 argus-taskmgr-recover.exe，並允許系統管理員授權。它不依賴 Argus 介面或背景服務。\r\n如果程式也已損毀：Win+R 輸入 regedit，以系統管理員身分開啟，定位 HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe。核對 Debugger 確實指向本目錄的 argus-taskmgr-launcher.exe --task-manager，且 taskmgr-recovery.json 中 before.debugger 為 null，再只刪除 Debugger 值。不要刪除整個 taskmgr.exe 機碼，不要刪除其他工具的設定。\r\n還原程式僅刪除與 Argus 啟動命令完全一致的 Debugger 值，並保留其他設定。目錄權限變更或還原記錄遺失時仍可還原。\r\n",
     "status": {
       "native": "目前使用 Windows 工作管理員。",
+      "revoked": "先前啟用的取代已被撤銷，目前使用 Windows 工作管理員。請核對安全軟體的偵測記錄，確認後可重新啟用。",
       "needsService": "先安裝特殊權限服務，再啟用工作管理員取代。",
       "conflict": "已有其他取代或路徑篩選設定，Argus 不會覆寫。",
       "enabled": "工作管理員入口已交由 Argus；啟動失敗時嘗試開啟原生工作管理員。",

@@ -209,6 +209,7 @@
     "unknown": "Impossible de lire l’état de remplacement",
     "state": {
       "disabled": "Gestionnaire des tâches Windows utilisé",
+      "revoked": "Remplacement annulé",
       "enabled": "Remplacé par Argus",
       "recoveryNeeded": "Besoin de restauration",
       "conflict": "Configuré par un autre programme"

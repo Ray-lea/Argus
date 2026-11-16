@@ -209,6 +209,7 @@
     "unknown": "Der Ersetzungsstatus konnte nicht gelesen werden",
     "state": {
       "disabled": "Windows-Task-Manager wird verwendet",
+      "revoked": "Ersetzung aufgehoben",
       "enabled": "Ersetzt durch Argus",
       "recoveryNeeded": "Muss wiederhergestellt werden",
       "conflict": "Von einem anderen Programm eingerichtet"
