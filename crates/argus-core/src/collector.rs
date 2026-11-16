@@ -37,6 +37,7 @@ pub struct Collector {
     processes: ProcessTracker,
     sessions: SessionTracker,
     hardware: HardwareTracker,
+    /// Per-process GPU usage, absent without an adapter the performance page lists.
     gpu_processes: Option<GpuProcessTracker>,
     network: Option<NetworkTracker>,
     /// `GPU 0 - 3D` labels by adapter LUID and engine, shared by every process.
@@ -62,7 +63,7 @@ impl Collector {
         });
         let sessions = startup_phase("collector.sessions", SessionTracker::new);
         let hardware = startup_phase("collector.hardware", HardwareTracker::new);
-        // How each adapter groups its memory splits the processes' GPU memory.
+        // Processes are measured on the adapters the performance page lists.
         let gpu_processes = startup_phase("collector.gpu-pdh", || {
             GpuProcessTracker::new(hardware.gpu_memory_layouts())
         });

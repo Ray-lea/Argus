@@ -10,7 +10,7 @@ fn main() {
     println!("adapters: {adapters:x?}");
     let t0 = Instant::now();
     let Some(mut tracker) = GpuProcessTracker::new(adapters) else {
-        println!("no GPU counters on this machine");
+        println!("no GPU, or no GPU counters on this machine");
         return;
     };
     println!("setup {:.1} ms", t0.elapsed().as_secs_f64() * 1e3);

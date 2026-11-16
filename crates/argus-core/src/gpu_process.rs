@@ -64,8 +64,9 @@ type MemoryReadings = HashMap<(u32, u64, u32), Option<u64>>;
 
 pub struct GpuProcessTracker {
     query: Query,
-    /// How the adapters the performance page lists group their memory, by
-    /// LUID; the counters of other adapters keep their discrete meaning.
+    /// The adapters the performance page lists, by LUID. The counters also
+    /// cover adapters it leaves out, such as the Microsoft Basic Render Driver
+    /// that renders on the CPU.
     adapters: HashMap<u64, GpuMemoryLayout>,
     engines: Option<PDH_HCOUNTER>,
     /// `Local Usage`, `Non Local Usage` and, with a unified adapter, `Dedicated Usage`.
@@ -81,9 +82,13 @@ pub struct GpuProcessTracker {
 unsafe impl Send for GpuProcessTracker {}
 
 impl GpuProcessTracker {
-    /// None when the machine publishes no GPU counters (no WDDM 2.x adapter).
-    /// `adapters` tells how the listed adapters group their memory.
+    /// Measures the processes' use of `adapters`. None without an adapter
+    /// (a machine without a GPU has only the software renderer) or when the
+    /// machine publishes no GPU counters (no WDDM 2.x adapter).
     pub fn new(adapters: HashMap<u64, GpuMemoryLayout>) -> Option<Self> {
+        if adapters.is_empty() {
+            return None;
+        }
         let query = Query::open()?;
         let engines = query.add(w!(r"\GPU Engine(*)\Utilization Percentage"));
         // Local/Non Local Usage report resident budget usage. Dedicated/Shared Usage
@@ -129,7 +134,9 @@ impl GpuProcessTracker {
                 let Some(util) = utilization(value) else {
                     return;
                 };
-                let Some(i) = parse(instance) else { return };
+                let Some(i) = listed(instance, adapters) else {
+                    return;
+                };
                 let entry = out.entry(i.pid).or_default();
                 let Some(node) = i.node else { return };
                 let name = match names.get(i.engine) {
@@ -172,7 +179,7 @@ impl GpuProcessTracker {
             values.clear();
             if let Some(c) = counter {
                 *read = pdh::each_value(c, buf, |instance, value| {
-                    record_memory(values, instance, value);
+                    record_memory(values, adapters, instance, value);
                 });
             }
         }
@@ -196,10 +203,7 @@ impl GpuProcessTracker {
                 }
             };
             let (dedicated, shared) = split_memory(
-                adapters
-                    .get(&luid)
-                    .copied()
-                    .unwrap_or(GpuMemoryLayout::Discrete),
+                adapters[&luid],
                 reading(local, read[0]),
                 reading(non_local, read[1]),
                 committed.get(&key).copied().flatten(),
@@ -249,8 +253,13 @@ fn split_memory(
     }
 }
 
-fn record_memory(values: &mut MemoryReadings, instance: &str, value: Option<f64>) {
-    let Some(instance) = parse(instance).filter(|i| i.node.is_none()) else {
+fn record_memory(
+    values: &mut MemoryReadings,
+    adapters: &HashMap<u64, GpuMemoryLayout>,
+    instance: &str,
+    value: Option<f64>,
+) {
+    let Some(instance) = listed(instance, adapters).filter(|i| i.node.is_none()) else {
         return;
     };
     let value = value
@@ -266,6 +275,12 @@ fn record_memory(values: &mut MemoryReadings, instance: &str, value: Option<f64>
             }
         })
         .or_insert(value);
+}
+
+/// A counter instance on one of `adapters`; the counters also cover software
+/// and compute-only adapters that the performance page leaves out.
+fn listed<'a>(instance: &'a str, adapters: &HashMap<u64, GpuMemoryLayout>) -> Option<Instance<'a>> {
+    parse(instance).filter(|i| adapters.contains_key(&i.luid))
 }
 
 struct Instance<'a> {
@@ -310,31 +325,69 @@ fn parse(instance: &str) -> Option<Instance<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GpuMemoryLayout, parse, record_memory, split_memory, utilization};
+    use super::{GpuMemoryLayout, listed, parse, record_memory, split_memory, utilization};
     use std::collections::HashMap;
+
+    fn adapters() -> HashMap<u64, GpuMemoryLayout> {
+        HashMap::from([(0x10A2B, GpuMemoryLayout::Discrete)])
+    }
 
     #[test]
     fn memory_deduplicates_physical_instances_and_keeps_zero_and_missing_distinct() {
         let mut memory = HashMap::new();
+        let adapters = adapters();
         let instance = "pid_42_luid_0x00000000_0x00010A2B_phys_0";
-        record_memory(&mut memory, instance, Some(128.));
-        record_memory(&mut memory, &format!("{instance}#1"), Some(128.));
+        record_memory(&mut memory, &adapters, instance, Some(128.));
+        record_memory(&mut memory, &adapters, &format!("{instance}#1"), Some(128.));
         assert_eq!(memory.len(), 1);
         assert_eq!(memory[&(42, 0x10A2B, 0)], Some(128));
         record_memory(
             &mut memory,
+            &adapters,
             "pid_42_luid_0x00000000_0x00010A2B_phys_1",
             Some(0.),
         );
-        record_memory(&mut memory, "pid_7_luid_0x00000000_0x00010A2B_phys_0", None);
         record_memory(
             &mut memory,
+            &adapters,
+            "pid_7_luid_0x00000000_0x00010A2B_phys_0",
+            None,
+        );
+        record_memory(
+            &mut memory,
+            &adapters,
             "pid_8_luid_0x00000000_0x00010A2B_phys_0",
             Some(f64::INFINITY),
         );
         assert_eq!(memory[&(42, 0x10A2B, 1)], Some(0));
         assert_eq!(memory[&(7, 0x10A2B, 0)], None);
         assert_eq!(memory[&(8, 0x10A2B, 0)], None);
+    }
+
+    #[test]
+    fn adapters_the_performance_page_leaves_out_contribute_no_usage() {
+        // The Microsoft Basic Render Driver (WARP) is all a machine without a
+        // GPU has, and its CPU rendering is published as 3D engine time.
+        let adapters = adapters();
+        let warp_engine = "pid_42_luid_0x00000000_0x000196FB_phys_0_eng_3_engtype_3D";
+        assert!(parse(warp_engine).is_some());
+        assert!(listed(warp_engine, &adapters).is_none());
+        assert!(listed(warp_engine, &HashMap::new()).is_none());
+        assert!(
+            listed(
+                "pid_42_luid_0x00000000_0x00010A2B_phys_0_eng_0_engtype_3D",
+                &adapters
+            )
+            .is_some()
+        );
+        let mut memory = HashMap::new();
+        record_memory(
+            &mut memory,
+            &adapters,
+            "pid_42_luid_0x00000000_0x000196FB_phys_0",
+            Some(384. * 1048576.),
+        );
+        assert!(memory.is_empty());
     }
 
     #[test]
