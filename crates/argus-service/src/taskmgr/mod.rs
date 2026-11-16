@@ -331,7 +331,9 @@ fn explain(error: String, cause: Option<Cause>) -> String {
 
 /// A failed enable or restore. The maintenance helper hands it to the window
 /// in `ERROR_FILE`; the window shows `message`, and only the fixed step,
-/// cause and classifications reach the log (`log`).
+/// cause and classifications reach the log (`log`). Functions return it boxed:
+/// it is too large to be the error of a `Result`. The file is the same either
+/// way, as serde writes a box as its contents.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Failure {
@@ -864,8 +866,8 @@ fn enable(
     caller: u32,
     created: u64,
     assets: Assets,
-) -> std::result::Result<(), Failure> {
-    let check = |message| Failure::new(Step::Check, message);
+) -> std::result::Result<(), Box<Failure>> {
+    let check = |message| Box::new(Failure::new(Step::Check, message));
     if cfg!(debug_assertions) {
         return Err(check(tr!("taskManager.devBuild")));
     }
@@ -914,11 +916,11 @@ fn enable(
     result
 }
 
-fn prepare(error: String) -> Failure {
-    Failure::new(
+fn prepare(error: String) -> Box<Failure> {
+    Box::new(Failure::new(
         Step::Prepare,
         tr!("taskManager.prepareFailed", error = error),
-    )
+    ))
 }
 
 /// The rest of an enable once the self-test passed: the interface copy, its
@@ -929,7 +931,7 @@ fn finish_enable(
     owner: &str,
     caller: u32,
     created: u64,
-) -> std::result::Result<(), Failure> {
+) -> std::result::Result<(), Box<Failure>> {
     (|| {
         // Source code and embedded helper bytes are from the explicitly elevated
         // GUI executable, not adjacent user-writable sidecar files.
@@ -939,7 +941,7 @@ fn finish_enable(
         registry::atomic_file(&machine.dir, RECOVERY_TEXT, recovery_text().as_bytes())
     })()
     .map_err(prepare)?;
-    let interface = |message| Failure::new(Step::Interface, message);
+    let interface = |message| Box::new(Failure::new(Step::Interface, message));
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
         &["--probe-ui".into(), image.into(), owner.into()],
@@ -966,8 +968,8 @@ pub fn open_native() -> Result<()> {
     launch::native()
 }
 
-pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
-    let check = |message| Failure::new(Step::Check, message);
+pub fn manage(action: &str) -> std::result::Result<Status, Box<Failure>> {
+    let check = |message| Box::new(Failure::new(Step::Check, message));
     match action {
         "restore" => {
             if let Ok(Some(crate::Reply::Done)) =
@@ -989,10 +991,9 @@ pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
         "enable" => {
             let current = status().map_err(check)?;
             if !current.can_enable {
-                return Err(Failure {
-                    state: Some(current.state),
-                    ..check(tr!("taskManager.notAllowed"))
-                });
+                let mut failure = check(tr!("taskManager.notAllowed"));
+                failure.state = Some(current.state);
+                return Err(failure);
             }
             elevate(
                 &std::env::current_exe().map_err(|e| check(e.to_string()))?,
@@ -1036,8 +1037,8 @@ fn read_failure(path: &Path, since: SystemTime) -> Option<Failure> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
-fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
-    let helper = |message| Failure::new(Step::Helper, message);
+fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Box<Failure>> {
+    let helper = |message| Box::new(Failure::new(Step::Helper, message));
     let started = SystemTime::now();
     let file = wide(&exe.to_string_lossy());
     let params = wide(
@@ -1076,7 +1077,7 @@ fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
     if code == 0 {
         Ok(())
     } else {
-        Err(Failure::exited(code, helper_error(started)))
+        Err(Box::new(Failure::exited(code, helper_error(started))))
     }
 }
 
@@ -1102,7 +1103,7 @@ fn code(result: Result<()>) -> i32 {
 
 /// Exit code of a maintenance helper: its error goes back to the window that
 /// started it; a message box only when it cannot be left there.
-fn report(result: std::result::Result<(), Failure>) -> i32 {
+fn report(result: std::result::Result<(), Box<Failure>>) -> i32 {
     let Err(failure) = result else { return 0 };
     let written = serde_json::to_vec(&failure)
         .map_err(|e| e.to_string())
@@ -1175,7 +1176,7 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
             clear_error();
             Some(report((|| {
-                let check = |message| Failure::new(Step::Check, message);
+                let check = |message| Box::new(Failure::new(Step::Check, message));
                 let pid = pid
                     .parse()
                     .map_err(|_| check(tr!("taskManager.invalidCaller")))?;
@@ -1188,9 +1189,9 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
         }
         [mode, action, _owner] if mode == MANAGE && action == "restore" => {
             clear_error();
-            Some(report(
-                restore().map_err(|message| Failure::new(Step::Restore, message)),
-            ))
+            Some(report(restore().map_err(|message| {
+                Box::new(Failure::new(Step::Restore, message))
+            })))
         }
         [mode] if mode == "--argus-taskmgr-uninstall" => Some(code(uninstall_guard())),
         _ if args.first().is_some_and(|s| s == MANAGE) => Some(87),
