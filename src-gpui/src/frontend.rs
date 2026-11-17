@@ -744,6 +744,12 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
         .with_assets(assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            // GPUI Base takes the layout direction from the system's preferred
+            // language: on an Arabic or Hebrew system the components laid out
+            // with logical sides (table rows, menus) would mirror while the rest
+            // stays left to right. Argus follows its own language setting, and
+            // all of its languages read left to right.
+            gpui_kit::base::LayoutDirection::Ltr.set_global(cx);
             theme::install_surface(cx);
             let manifest = argus_app::config::manifest();
             let minimum = size(
