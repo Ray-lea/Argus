@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Angezeigte Werte",
-    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. GPU-Werte stammen von der GPU mit dem meisten dedizierten Speicher, die aktive Zeit vom am stärksten ausgelasteten Datenträger und die Datenträgertemperatur vom heißesten Datenträger.",
+    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. Bei mehreren GPUs, Datenträgern oder Netzwerkadaptern lassen sie sich für jedes Gerät einzeln auswählen. Ohne ausgewähltes Gerät stammen GPU-Werte von der GPU mit dem meisten dedizierten Speicher, Datenträger- und Netzwerkdatenraten sind Summen, und aktive Zeit und Temperatur zeigen den höchsten Wert aller Datenträger.",
     "group": {
       "cpu": "CPU",
       "memory": "Speicher",
@@ -40,7 +40,17 @@
       "disk": "Laufwerk",
       "network": "Netzwerk",
       "other": "Sonstiges"
-    }
+    },
+    "all": {
+      "disk": "Alle Datenträger",
+      "diskDetail": "Summe, Aktivität/Temp. max.",
+      "network": "Alle Netzwerkadapter",
+      "networkDetail": "Datenrate summiert"
+    },
+    "gpuMemory": "{memory} dediziert",
+    "gpuMain": "{memory} · Standard-GPU",
+    "diskNumber": "Datenträger {index}",
+    "absent": "Nicht verbunden"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "Betriebszeit"
     },
     "read": "L",
-    "write": "S"
+    "write": "S",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "Desktopanzeige",

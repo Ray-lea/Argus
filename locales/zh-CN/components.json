@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "显示的读数",
-    "desc": "按下列顺序显示所选读数。显卡读数取专用显存最大的显卡，磁盘活动时间取最忙的磁盘，磁盘温度取最热的磁盘。",
+    "desc": "按下列顺序显示所选读数。有多块显卡、磁盘或多个网卡时，可为每个设备单独选择；未指定设备时，显卡读数取专用显存最大的显卡，磁盘读写速度与网络收发速率为合计，磁盘活动时间与温度取最高的一块。",
     "group": {
       "cpu": "CPU",
       "memory": "内存",
@@ -40,7 +40,17 @@
       "disk": "磁盘",
       "network": "网络",
       "other": "其他"
-    }
+    },
+    "all": {
+      "disk": "全部磁盘",
+      "diskDetail": "速度为合计，活动时间与温度取最高",
+      "network": "全部网卡",
+      "networkDetail": "速率为合计"
+    },
+    "gpuMemory": "专用显存 {memory}",
+    "gpuMain": "{memory} · 默认显卡",
+    "diskNumber": "磁盘 {index}",
+    "absent": "未连接"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "正常运行时间"
     },
     "read": "读",
-    "write": "写"
+    "write": "写",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "桌面监控",

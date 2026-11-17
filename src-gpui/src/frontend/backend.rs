@@ -414,6 +414,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.accept_snapshot_prepared(snapshot, None, None, window, cx);
+        // Fixture samples feed the monitors as live ones do.
+        self.refresh_monitors(cx);
     }
 
     /// List data arrives through its own command/row notifications. A sample

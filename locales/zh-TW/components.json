@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "顯示的讀數",
-    "desc": "依下列順序顯示所選讀數。顯示卡讀數取自專用 GPU 記憶體最大的顯示卡，磁碟使用時間取自最忙碌的磁碟，磁碟溫度取自溫度最高的磁碟。",
+    "desc": "依下列順序顯示所選讀數。有多張顯示卡、多個磁碟或多張網路介面卡時，可為每個裝置分別選擇；未指定裝置時，顯示卡讀數取自專用 GPU 記憶體最大的顯示卡，磁碟讀寫速度與網路收發速率為合計，磁碟使用時間與溫度取最高者。",
     "group": {
       "cpu": "CPU",
       "memory": "記憶體",
@@ -40,7 +40,17 @@
       "disk": "磁碟",
       "network": "網路",
       "other": "其他"
-    }
+    },
+    "all": {
+      "disk": "所有磁碟",
+      "diskDetail": "合計速度、最高使用時間與溫度",
+      "network": "所有網路介面卡",
+      "networkDetail": "合計速率"
+    },
+    "gpuMemory": "專用記憶體 {memory}",
+    "gpuMain": "{memory} · 預設顯示卡",
+    "diskNumber": "磁碟 {index}",
+    "absent": "未連線"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "運作時間"
     },
     "read": "讀",
-    "write": "寫"
+    "write": "寫",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "桌面監控",

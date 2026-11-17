@@ -2,9 +2,11 @@
 //! desktop monitor, a small window of live readings drawn here (its window
 //! as the system sees it is `shell::desk`), and the taskbar monitor, whose
 //! readings the shell draws on the taskbar (`shell::taskbar`). Each shows
-//! the metrics its settings name, in their order.
+//! the readings its settings name, in their order: a metric of the
+//! default device, or of one GPU, disk or network adapter of several.
+use super::pages::performance::rail;
 use super::*;
-use crate::settings::{DesktopMonitor, Metric, TaskbarMonitor};
+use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor};
 use crate::shell::{TaskbarCell, TaskbarGroup};
 use windows::Win32::Foundation::HWND;
 
@@ -42,6 +44,226 @@ pub(in crate::frontend) fn metric_key(metric: Metric) -> &'static str {
     }
 }
 
+/// The kind of device a metric reads when it reads one of several, as the
+/// performance page names it (`rail::stable_key`).
+pub(in crate::frontend) fn device_kind(metric: Metric) -> Option<&'static str> {
+    match metric {
+        Metric::Gpu
+        | Metric::GpuTemperature
+        | Metric::GpuMemory
+        | Metric::GpuClock
+        | Metric::GpuPower
+        | Metric::GpuFan => Some("gpu"),
+        Metric::Disk | Metric::DiskActive | Metric::DiskTemperature => Some("disk"),
+        Metric::Network => Some("network"),
+        _ => None,
+    }
+}
+
+/// The metrics that show two rates rather than one value.
+fn paired(metric: Metric) -> bool {
+    matches!(metric, Metric::Disk | Metric::Network)
+}
+
+/// A device the monitors can follow, as the sample lists it.
+#[derive(Clone, Debug)]
+pub(in crate::frontend) struct Device<'a> {
+    /// What its readings are saved with: what it reports of itself, which
+    /// outlasts restarts and replugging (`rail::stable_key`).
+    pub key: String,
+    /// Its name in the components page: its drive letters, its
+    /// connection's name, its GPU's name.
+    pub title: String,
+    /// What tells it apart further: model and size, adapter, memory.
+    pub detail: String,
+    /// Its name before its readings on the desktop monitor.
+    pub name: String,
+    /// Before its readings on the taskbar: `C:`, `GPU2`, `WLAN`.
+    pub short: String,
+    pub sample: &'a Value,
+}
+
+/// A disk's drive letters, or its number when it has none.
+fn disk_title(disk: &Value) -> String {
+    let volumes = values(&disk["info"]["volumes"])
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    if volumes.is_empty() {
+        tr!(
+            "components.metrics.diskNumber",
+            index = disk["info"]["index"].as_u64().unwrap_or(0)
+        )
+    } else {
+        volumes.join(" ")
+    }
+}
+
+/// A GPU's name without its maker's marks, where a model number stays:
+/// "RTX 4060 Laptop GPU", "UHD Graphics 770", "Radeon Graphics".
+fn gpu_name(name: &str) -> String {
+    let mut name = name
+        .replace("(R)", "")
+        .replace("(TM)", "")
+        .replace("(tm)", "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for maker in ["NVIDIA ", "GeForce ", "AMD ", "Radeon ", "Intel "] {
+        if let Some(rest) = name.strip_prefix(maker)
+            && rest.chars().any(|c| c.is_ascii_digit())
+        {
+            name = rest.to_owned();
+        }
+    }
+    name
+}
+
+/// At most `count` characters of `text`, an ellipsis standing for the rest.
+fn clipped(text: &str, count: usize) -> String {
+    if text.chars().count() <= count {
+        text.to_owned()
+    } else {
+        text.chars()
+            .take(count.saturating_sub(1))
+            .chain(Some('…'))
+            .collect()
+    }
+}
+
+/// The devices of `kind` in the sample, in its order.
+pub(in crate::frontend) fn devices<'a>(snapshot: &'a Value, kind: &str) -> Vec<Device<'a>> {
+    let list = values(
+        &snapshot["hardware"][match kind {
+            "gpu" => "gpus",
+            "disk" => "disks",
+            _ => "nics",
+        }],
+    );
+    let keys = rail::distinct(
+        list.iter()
+            .map(|sample| rail::stable_key(kind, &sample["info"]))
+            .collect(),
+    );
+    let many = list.len() > 1;
+    list.iter()
+        .zip(keys)
+        .enumerate()
+        .map(|(index, (sample, key))| {
+            let info = &sample["info"];
+            match kind {
+                "gpu" => Device {
+                    key,
+                    title: text(info, "name").to_owned(),
+                    detail: tr!(
+                        "components.metrics.gpuMemory",
+                        memory = theme::bytes(number(info, "dedicatedTotal"), false)
+                    ),
+                    name: gpu_name(text(info, "name")),
+                    short: if many {
+                        format!("GPU{}", index + 1)
+                    } else {
+                        "GPU".into()
+                    },
+                    sample,
+                },
+                "disk" => {
+                    let title = disk_title(sample);
+                    let size = number(info, "size");
+                    Device {
+                        key,
+                        detail: [
+                            text(info, "model").trim().to_owned(),
+                            if size > 0. {
+                                theme::bytes(size, false)
+                            } else {
+                                String::new()
+                            },
+                        ]
+                        .into_iter()
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                        name: title.clone(),
+                        short: values(&info["volumes"])
+                            .first()
+                            .and_then(Value::as_str)
+                            .map_or_else(
+                                || format!("#{}", info["index"].as_u64().unwrap_or(0)),
+                                str::to_owned,
+                            ),
+                        title,
+                        sample,
+                    }
+                }
+                _ => Device {
+                    key,
+                    title: text(info, "name").to_owned(),
+                    detail: text(info, "description").to_owned(),
+                    name: text(info, "name").to_owned(),
+                    short: clipped(text(info, "name"), 6),
+                    sample,
+                },
+            }
+        })
+        .collect()
+}
+
+/// The name a device's key gives it while it is away: a disk's model, a
+/// connection's name, a GPU's name.
+pub(in crate::frontend) fn absent_name(key: &str) -> String {
+    let key = key.rsplit_once('#').map_or(key, |(key, _)| key);
+    let Some((kind, rest)) = key.split_once(':') else {
+        return key.to_owned();
+    };
+    let parts = rest.split('|').collect::<Vec<_>>();
+    let name = match kind {
+        "disk" | "nic" => parts.get(1),
+        _ => parts.first(),
+    };
+    name.filter(|name| !name.is_empty())
+        .map_or_else(|| key.to_owned(), |name| (*name).to_owned())
+}
+
+/// Where a metric's row sits on the components page: by device kind.
+fn section(metric: Metric) -> usize {
+    match metric {
+        Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => 0,
+        Metric::Memory | Metric::MemoryUsed => 1,
+        Metric::Battery | Metric::Uptime => 5,
+        metric => match device_kind(metric) {
+            Some("gpu") => 2,
+            Some("disk") => 3,
+            _ => 4,
+        },
+    }
+}
+
+/// `readings` in the order the monitors show them: by device kind as the
+/// components page offers them; within a kind the default device's first,
+/// then each device's in the sample's order, those of a device that is away
+/// last; each device's metrics in the order offered.
+pub(in crate::frontend) fn arrange(snapshot: &Value, mut readings: Vec<Reading>) -> Vec<Reading> {
+    let lists = ["gpu", "disk", "network"].map(|kind| (kind, devices(snapshot, kind)));
+    let rank = |reading: &Reading| match (&reading.device, device_kind(reading.metric)) {
+        (Some(key), Some(kind)) => lists
+            .iter()
+            .find(|(listed, _)| *listed == kind)
+            .and_then(|(_, list)| list.iter().position(|device| device.key == *key))
+            .map_or(usize::MAX, |position| position + 1),
+        _ => 0,
+    };
+    let order = |metric: Metric| Metric::ALL.iter().position(|offered| *offered == metric);
+    readings.sort_by_key(|reading| {
+        (
+            section(reading.metric),
+            rank(reading),
+            order(reading.metric),
+        )
+    });
+    readings
+}
+
 /// One value of a reading.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::frontend) struct Part {
@@ -53,10 +275,16 @@ pub(in crate::frontend) struct Part {
     pub widest: String,
 }
 
-/// A metric's reading.
+/// A reading as the monitors show it.
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::frontend) struct Gauge {
-    pub metric: Metric,
+    pub reading: Reading,
+    /// Its name on the desktop monitor: the metric's, or the device's with
+    /// the metric's.
+    pub name: String,
+    /// Before a single value on the taskbar, and before the marks of a
+    /// device's rates there.
+    pub short: String,
     /// One value, or the two rates of a pair (received and sent; read and
     /// written).
     pub parts: Vec<Part>,
@@ -68,9 +296,9 @@ pub(in crate::frontend) struct Gauge {
     pub high: bool,
 }
 
-/// The graphics card the GPU readings follow: the one with the most
-/// dedicated memory, the discrete card beside a processor's graphics, so
-/// that the readings keep to one card.
+/// The graphics card the GPU readings without a device follow: the one
+/// with the most dedicated memory, the discrete card beside a processor's
+/// graphics, so that the readings keep to one card.
 fn main_gpu(hardware: &Value) -> Option<&Value> {
     values(&hardware["gpus"])
         .iter()
@@ -85,33 +313,49 @@ fn main_gpu(hardware: &Value) -> Option<&Value> {
         })
 }
 
-/// The readings of `metrics` in `snapshot`; rates in bits when `bits`.
-pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bool) -> Vec<Gauge> {
+/// The key of the GPU readings without a device follow, among `gpus`.
+pub(in crate::frontend) fn main_gpu_key(snapshot: &Value, gpus: &[Device]) -> Option<String> {
+    let main = main_gpu(&snapshot["hardware"])?;
+    gpus.iter()
+        .find(|gpu| std::ptr::eq(gpu.sample, main))
+        .map(|gpu| gpu.key.clone())
+}
+
+/// What a reading shows, before its names.
+struct Shown {
+    parts: Vec<Part>,
+    fraction: Option<f64>,
+    bar: bool,
+    high: bool,
+}
+
+/// The readings `readings` name in `snapshot`; rates in bits when `bits`.
+pub(in crate::frontend) fn gauges(
+    snapshot: &Value,
+    readings: &[Reading],
+    bits: bool,
+) -> Vec<Gauge> {
     let system = &snapshot["system"];
     let hardware = &snapshot["hardware"];
     let missing = label("format.missing");
     let finite = |value: Option<f64>| value.filter(|value| value.is_finite());
     // One value; with a bar when the reading has a scale.
-    let single = |metric: Metric,
-                  text: Option<String>,
-                  widest: String,
-                  fraction: Option<f64>,
-                  bar: bool,
-                  high: bool| Gauge {
-        metric,
-        parts: vec![Part {
-            mark: String::new(),
-            text: text.unwrap_or_else(|| missing.clone()),
-            widest,
-        }],
-        fraction: fraction.map(|fraction| fraction.clamp(0., 1.)),
-        bar,
-        high,
-    };
-    let percent = |metric: Metric, value: Option<f64>| {
+    let single =
+        |text: Option<String>, widest: String, fraction: Option<f64>, bar: bool, high: bool| {
+            Shown {
+                parts: vec![Part {
+                    mark: String::new(),
+                    text: text.unwrap_or_else(|| missing.clone()),
+                    widest,
+                }],
+                fraction: fraction.map(|fraction| fraction.clamp(0., 1.)),
+                bar,
+                high,
+            }
+        };
+    let percent = |value: Option<f64>| {
         let value = finite(value);
         single(
-            metric,
             value.map(|v| format!("{}%", v.round())),
             "100%".into(),
             value.map(|v| v / 100.),
@@ -119,10 +363,9 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             value.is_some_and(|v| v.round() >= HIGH),
         )
     };
-    let celsius = |metric: Metric, value: Option<f64>, high: f64| {
+    let celsius = |value: Option<f64>, high: f64| {
         let value = finite(value).filter(|value| *value > 0.);
         single(
-            metric,
             value.map(|v| crate::regional::number!("{v:.0} °C")),
             crate::regional::number!("{:.0} °C", 100.),
             value.map(|v| v / 100.),
@@ -130,10 +373,9 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             value.is_some_and(|v| v.round() >= high),
         )
     };
-    let gigahertz = |metric: Metric, mhz: Option<f64>| {
+    let gigahertz = |mhz: Option<f64>| {
         let mhz = finite(mhz).filter(|mhz| *mhz > 0.);
         single(
-            metric,
             mhz.map(|mhz| crate::regional::number!("{:.2} GHz", mhz / 1000.)),
             crate::regional::number!("{:.2} GHz", 8.88),
             None,
@@ -141,10 +383,9 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             false,
         )
     };
-    let watts = |metric: Metric, value: Option<f64>| {
+    let watts = |value: Option<f64>| {
         let value = finite(value).filter(|value| *value >= 0.);
         single(
-            metric,
             value.map(|v| format!("{} W", charts::watts(v))),
             format!("{} W", charts::watts(888.)),
             None,
@@ -166,8 +407,7 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             crate::regional::number!("{:.1} MB/s", 999.9)
         }
     };
-    let pair = |metric: Metric, marks: [String; 2], rates: [Option<f64>; 2], network: bool| Gauge {
-        metric,
+    let pair = |marks: [String; 2], rates: [Option<f64>; 2], network: bool| Shown {
         parts: marks
             .into_iter()
             .zip(rates)
@@ -181,170 +421,225 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
         bar: false,
         high: false,
     };
-    let sum = |devices: &Value, key: &str| -> Option<f64> {
-        let devices = values(devices);
-        if devices.is_empty() {
+    // A rate of every device listed; unknown with none, or one unknown.
+    let sum = |list: &[&Value], key: &str| -> Option<f64> {
+        if list.is_empty() {
             return None;
         }
-        devices
-            .iter()
+        list.iter()
             .try_fold(0., |sum, device| Some(sum + device[key].as_f64()?))
     };
-    let gpu = main_gpu(hardware);
-    let disks = values(&hardware["disks"]);
-    let busiest = disks
+    let gpus = devices(snapshot, "gpu");
+    let disks = devices(snapshot, "disk");
+    let nics = devices(snapshot, "network");
+    let all_disks = values(&hardware["disks"]).iter().collect::<Vec<_>>();
+    let all_nics = values(&hardware["nics"]).iter().collect::<Vec<_>>();
+    readings
         .iter()
-        .filter_map(|disk| disk["active"].as_f64())
-        .reduce(f64::max);
-    let hottest = disks
-        .iter()
-        .filter(|disk| disk["temperature"].as_f64().is_some_and(|t| t > 0.))
-        .max_by(|a, b| number(a, "temperature").total_cmp(&number(b, "temperature")));
-    let battery = values(&hardware["batteries"]).first();
-    metrics
-        .iter()
-        .map(|metric| match metric {
-            Metric::Cpu => percent(*metric, system["cpu"].as_f64()),
-            Metric::CpuTemperature => celsius(*metric, model::cpu_temperature(hardware), HIGH),
-            Metric::CpuClock => gigahertz(*metric, hardware["cpuMhz"].as_f64()),
-            Metric::CpuPower => watts(
-                *metric,
-                hardware["power"]["package"]
-                    .as_f64()
-                    .or_else(|| hardware["power"]["cores"].as_f64()),
-            ),
-            Metric::Memory => percent(
-                *metric,
-                system["memUsed"].as_f64().and_then(|used| {
+        .map(|reading| {
+            let metric = reading.metric;
+            let key = metric_key(metric);
+            // The device named, if the metric reads one: found in the
+            // sample, or away.
+            let device =
+                reading
+                    .device
+                    .as_deref()
+                    .zip(device_kind(metric))
+                    .map(|(wanted, kind)| {
+                        let list = match kind {
+                            "gpu" => &gpus,
+                            "disk" => &disks,
+                            _ => &nics,
+                        };
+                        (wanted, list.iter().find(|device| device.key == wanted))
+                    });
+            let (name, short) = match &device {
+                // A pair of rates goes by its marks alone.
+                None if paired(metric) => (
+                    label(&format!("components.metric.{key}.name")),
+                    String::new(),
+                ),
+                None => (
+                    label(&format!("components.metric.{key}.name")),
+                    label(&format!("components.metric.{key}.short")),
+                ),
+                Some((wanted, found)) => {
+                    let device_name = found.map_or_else(|| absent_name(wanted), |d| d.name.clone());
+                    let name = if paired(metric) {
+                        device_name
+                    } else {
+                        tr!(
+                            "components.metric.onDevice",
+                            device = device_name,
+                            metric = label(&format!("components.metric.{key}.option"))
+                        )
+                    };
+                    let short = found.map(|d| d.short.clone()).unwrap_or_default();
+                    let short = if short.is_empty() && !paired(metric) {
+                        label(&format!("components.metric.{key}.short"))
+                    } else {
+                        short
+                    };
+                    (name, short)
+                }
+            };
+            let gpu = match &device {
+                None => main_gpu(hardware),
+                Some((_, found)) => found.map(|device| device.sample),
+            };
+            let (disk_list, nic_list): (Vec<&Value>, Vec<&Value>) = match &device {
+                None => (all_disks.clone(), all_nics.clone()),
+                Some((_, found)) => {
+                    let one = found
+                        .map(|device| device.sample)
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    (one.clone(), one)
+                }
+            };
+            let hottest = disk_list
+                .iter()
+                .filter(|disk| disk["temperature"].as_f64().is_some_and(|t| t > 0.))
+                .max_by(|a, b| number(a, "temperature").total_cmp(&number(b, "temperature")));
+            let shown = match metric {
+                Metric::Cpu => percent(system["cpu"].as_f64()),
+                Metric::CpuTemperature => celsius(model::cpu_temperature(hardware), HIGH),
+                Metric::CpuClock => gigahertz(hardware["cpuMhz"].as_f64()),
+                Metric::CpuPower => watts(
+                    hardware["power"]["package"]
+                        .as_f64()
+                        .or_else(|| hardware["power"]["cores"].as_f64()),
+                ),
+                Metric::Memory => percent(system["memUsed"].as_f64().and_then(|used| {
                     let total = number(system, "memTotal");
                     (total > 0.).then(|| used / total * 100.)
-                }),
-            ),
-            Metric::MemoryUsed => {
-                let total = number(system, "memTotal");
-                let used = finite(system["memUsed"].as_f64()).filter(|_| total > 0.);
-                single(
-                    *metric,
-                    used.map(gigabytes),
-                    // Used memory never shows more digits than the total.
-                    gigabytes(total.max(1073741824. * 8.88)),
-                    used.map(|used| used / total),
-                    true,
-                    used.is_some_and(|used| (used / total * 100.).round() >= HIGH),
-                )
-            }
-            Metric::Gpu => percent(*metric, gpu.and_then(|gpu| gpu["util"].as_f64())),
-            Metric::GpuTemperature => celsius(
-                *metric,
-                gpu.and_then(|gpu| gpu["temperature"].as_f64()),
-                HIGH,
-            ),
-            Metric::GpuMemory => percent(
-                *metric,
-                gpu.and_then(|gpu| {
+                })),
+                Metric::MemoryUsed => {
+                    let total = number(system, "memTotal");
+                    let used = finite(system["memUsed"].as_f64()).filter(|_| total > 0.);
+                    single(
+                        used.map(gigabytes),
+                        // Used memory never shows more digits than the total.
+                        gigabytes(total.max(1073741824. * 8.88)),
+                        used.map(|used| used / total),
+                        true,
+                        used.is_some_and(|used| (used / total * 100.).round() >= HIGH),
+                    )
+                }
+                Metric::Gpu => percent(gpu.and_then(|gpu| gpu["util"].as_f64())),
+                Metric::GpuTemperature => {
+                    celsius(gpu.and_then(|gpu| gpu["temperature"].as_f64()), HIGH)
+                }
+                Metric::GpuMemory => percent(gpu.and_then(|gpu| {
                     let total = number(&gpu["info"], "dedicatedTotal");
                     (total > 0.).then(|| number(gpu, "dedicatedUsed") / total * 100.)
-                }),
-            ),
-            Metric::GpuClock => gigahertz(*metric, gpu.and_then(|gpu| gpu["clockMhz"].as_f64())),
-            Metric::GpuPower => match gpu {
-                // The board's power where the driver measures it, as the
-                // performance page shows it; otherwise the share of its budget.
-                Some(gpu) if gpu["boardPower"].is_null() && gpu["power"].as_f64().is_some() => {
-                    let share = finite(gpu["power"].as_f64()).filter(|share| *share > 0.);
+                })),
+                Metric::GpuClock => gigahertz(gpu.and_then(|gpu| gpu["clockMhz"].as_f64())),
+                Metric::GpuPower => match gpu {
+                    // The board's power where the driver measures it, as the
+                    // performance page shows it; otherwise the share of its
+                    // budget.
+                    Some(gpu) if gpu["boardPower"].is_null() && gpu["power"].as_f64().is_some() => {
+                        let share = finite(gpu["power"].as_f64()).filter(|share| *share > 0.);
+                        single(
+                            share.map(|share| crate::regional::number!("{share:.0}% TDP")),
+                            crate::regional::number!("{:.0}% TDP", 100.),
+                            None,
+                            false,
+                            false,
+                        )
+                    }
+                    gpu => watts(gpu.and_then(|gpu| gpu["boardPower"].as_f64())),
+                },
+                Metric::GpuFan => {
+                    let rpm = gpu
+                        .and_then(|gpu| gpu["fanRpm"].as_u64())
+                        .filter(|rpm| *rpm > 0);
                     single(
-                        *metric,
-                        share.map(|share| crate::regional::number!("{share:.0}% TDP")),
-                        crate::regional::number!("{:.0}% TDP", 100.),
+                        rpm.map(|rpm| format!("{rpm} RPM")),
+                        "8888 RPM".into(),
                         None,
                         false,
                         false,
                     )
                 }
-                gpu => watts(*metric, gpu.and_then(|gpu| gpu["boardPower"].as_f64())),
-            },
-            Metric::GpuFan => {
-                let rpm = gpu
-                    .and_then(|gpu| gpu["fanRpm"].as_u64())
-                    .filter(|rpm| *rpm > 0);
-                single(
-                    *metric,
-                    rpm.map(|rpm| format!("{rpm} RPM")),
-                    "8888 RPM".into(),
+                Metric::Disk => pair(
+                    [
+                        label("components.metric.read"),
+                        label("components.metric.write"),
+                    ],
+                    [sum(&disk_list, "read"), sum(&disk_list, "write")],
+                    false,
+                ),
+                // The busiest disk's.
+                Metric::DiskActive => percent(
+                    disk_list
+                        .iter()
+                        .filter_map(|disk| disk["active"].as_f64())
+                        .reduce(f64::max),
+                ),
+                // The hottest disk's, amber from the warning temperature it
+                // reports, or from 70 °C.
+                Metric::DiskTemperature => celsius(
+                    hottest.and_then(|disk| disk["temperature"].as_f64()),
+                    hottest
+                        .and_then(|disk| disk["temperatureWarning"].as_f64())
+                        .filter(|warning| *warning > 0.)
+                        .unwrap_or(70.),
+                ),
+                Metric::Network => pair(
+                    ["↓".into(), "↑".into()],
+                    [sum(&nic_list, "rx"), sum(&nic_list, "tx")],
+                    true,
+                ),
+                // Low is what needs attention: amber at 20 % and below, on
+                // battery power.
+                Metric::Battery => {
+                    let battery = values(&hardware["batteries"]).first();
+                    let charge = battery.and_then(|battery| finite(battery["percent"].as_f64()));
+                    let plugged = battery.is_some_and(|battery| boolean(battery, "pluggedIn"));
+                    single(
+                        charge.map(|v| format!("{}%", v.round())),
+                        "100%".into(),
+                        charge.map(|v| v / 100.),
+                        true,
+                        charge.is_some_and(|v| v.round() <= 20. && !plugged),
+                    )
+                }
+                Metric::Uptime => single(
+                    system["uptimeMs"]
+                        .as_f64()
+                        .filter(|ms| *ms > 0.)
+                        .map(|ms| super::layout::status_uptime(ms / 1000.)),
+                    super::layout::status_uptime(88. * 86400. + 88. * 3600.),
                     None,
                     false,
                     false,
-                )
+                ),
+            };
+            Gauge {
+                reading: reading.clone(),
+                name,
+                short,
+                parts: shown.parts,
+                fraction: shown.fraction,
+                bar: shown.bar,
+                high: shown.high,
             }
-            Metric::Disk => pair(
-                *metric,
-                [
-                    label("components.metric.read"),
-                    label("components.metric.write"),
-                ],
-                [
-                    sum(&hardware["disks"], "read"),
-                    sum(&hardware["disks"], "write"),
-                ],
-                false,
-            ),
-            Metric::DiskActive => percent(*metric, busiest),
-            // A disk turns amber from the warning temperature it reports,
-            // or from 70 °C.
-            Metric::DiskTemperature => celsius(
-                *metric,
-                hottest.and_then(|disk| disk["temperature"].as_f64()),
-                hottest
-                    .and_then(|disk| disk["temperatureWarning"].as_f64())
-                    .filter(|warning| *warning > 0.)
-                    .unwrap_or(70.),
-            ),
-            Metric::Network => pair(
-                *metric,
-                ["↓".into(), "↑".into()],
-                [sum(&hardware["nics"], "rx"), sum(&hardware["nics"], "tx")],
-                true,
-            ),
-            // Low is what needs attention: amber at 20 % and below, on
-            // battery power.
-            Metric::Battery => {
-                let charge = battery.and_then(|battery| finite(battery["percent"].as_f64()));
-                let plugged = battery.is_some_and(|battery| boolean(battery, "pluggedIn"));
-                single(
-                    *metric,
-                    charge.map(|v| format!("{}%", v.round())),
-                    "100%".into(),
-                    charge.map(|v| v / 100.),
-                    true,
-                    charge.is_some_and(|v| v.round() <= 20. && !plugged),
-                )
-            }
-            Metric::Uptime => single(
-                *metric,
-                system["uptimeMs"]
-                    .as_f64()
-                    .filter(|ms| *ms > 0.)
-                    .map(|ms| super::layout::status_uptime(ms / 1000.)),
-                super::layout::status_uptime(88. * 86400. + 88. * 3600.),
-                None,
-                false,
-                false,
-            ),
         })
         .collect()
 }
 
-/// The taskbar's cells for `gauges`: a single value under the metric's
-/// short name, a pair of rates under their marks.
+/// The taskbar's cells for `gauges`: a single value under its short name,
+/// a pair of rates under their marks, after the short name of the device
+/// they are of.
 fn taskbar_groups(gauges: &[Gauge]) -> Vec<TaskbarGroup> {
     gauges
         .iter()
         .map(|gauge| match gauge.parts.as_slice() {
             [part] => vec![TaskbarCell {
-                label: label(&format!(
-                    "components.metric.{}.short",
-                    metric_key(gauge.metric)
-                )),
+                label: gauge.short.clone(),
                 value: part.text.clone(),
                 widest: part.widest.clone(),
                 high: gauge.high,
@@ -352,7 +647,7 @@ fn taskbar_groups(gauges: &[Gauge]) -> Vec<TaskbarGroup> {
             parts => parts
                 .iter()
                 .map(|part| TaskbarCell {
-                    label: part.mark.clone(),
+                    label: format!("{}{}", gauge.short, part.mark),
                     value: part.text.clone(),
                     widest: part.widest.clone(),
                     high: false,
@@ -394,7 +689,7 @@ pub(in crate::frontend) struct Monitors {
     /// Metrics chosen on the components page while a settings change was on
     /// its way: per monitor's settings key, its command and the latest
     /// choice, sent once that change has come back.
-    queued: Vec<(&'static str, &'static str, Vec<&'static str>)>,
+    queued: Vec<(&'static str, &'static str, Vec<String>)>,
 }
 
 pub(in crate::frontend) struct DeskMonitor {
@@ -511,16 +806,13 @@ impl DeskMonitor {
             .min_w_0()
             .truncate()
             .text_color(p.muted)
-            .child(label(&format!(
-                "components.metric.{}.name",
-                metric_key(gauge.metric)
-            )));
+            .child(gauge.name.clone());
         match gauge.parts.as_slice() {
             [part] => {
                 let color = if gauge.high {
                     p.heat
                 } else {
-                    metric_color(gauge.metric, p)
+                    metric_color(gauge.reading.metric, p)
                 };
                 div()
                     .flex()
@@ -735,7 +1027,7 @@ impl Desktop {
         &mut self,
         key: &'static str,
         command: &'static str,
-        metrics: Vec<&'static str>,
+        metrics: Vec<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -850,7 +1142,7 @@ impl Desktop {
                 "placed": view.placed.is_some(),
                 "position": [x, y],
                 "rows": view.gauges.iter().map(|gauge| json!({
-                    "metric": metric_key(gauge.metric),
+                    "metric": gauge.reading.text(),
                     "values": gauge.parts.iter().map(|part| part.text.clone()).collect::<Vec<_>>(),
                     "high": gauge.high,
                 })).collect::<Vec<_>>(),
@@ -865,9 +1157,12 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{Gauge, gauges, main_gpu, taskbar_groups};
+    use super::{
+        Device, Gauge, absent_name, arrange, devices, gauges, gpu_name, main_gpu, main_gpu_key,
+        taskbar_groups,
+    };
     use crate::frontend::theme::label;
-    use crate::settings::Metric;
+    use crate::settings::{Metric, Reading};
     use serde_json::json;
 
     fn snapshot() -> serde_json::Value {
@@ -892,15 +1187,24 @@ mod tests {
         })
     }
 
+    /// Readings of the default devices.
+    fn plain(metrics: &[Metric]) -> Vec<Reading> {
+        metrics.iter().copied().map(Reading::from).collect()
+    }
+
     fn texts(gauge: &Gauge) -> Vec<String> {
         gauge.parts.iter().map(|part| part.text.clone()).collect()
     }
 
     #[test]
     fn readings_follow_the_sample_and_turn_high_from_80() {
-        let all = gauges(&snapshot(), &Metric::ALL, false);
+        let all = gauges(&snapshot(), &plain(&Metric::ALL), false);
         assert_eq!(all.len(), Metric::ALL.len());
-        let by = |metric| all.iter().find(|gauge| gauge.metric == metric).unwrap();
+        let by = |metric| {
+            all.iter()
+                .find(|gauge| gauge.reading.metric == metric)
+                .unwrap()
+        };
         assert_eq!(texts(by(Metric::Cpu)), ["84%"]);
         assert!(by(Metric::Cpu).high);
         assert_eq!(by(Metric::Memory).fraction, Some(0.25));
@@ -914,7 +1218,7 @@ mod tests {
         assert_eq!(texts(by(Metric::Disk))[1], "1 KB/s");
         assert_eq!(texts(by(Metric::Network)), ["2 KB/s", "0 KB/s"]);
         assert_eq!(
-            texts(&gauges(&snapshot(), &[Metric::Network], true)[0])[1],
+            texts(&gauges(&snapshot(), &plain(&[Metric::Network]), true)[0])[1],
             "0 Kbps"
         );
         // Clock, power and fan show without a bar; the CPU's cores stand in
@@ -948,16 +1252,18 @@ mod tests {
         assert_eq!(texts(by(Metric::Battery)), ["18%"]);
         assert!(by(Metric::Battery).high);
         let plugged = json!({"hardware": {"batteries": [{"percent": 18.0, "pluggedIn": true}]}});
-        assert!(!gauges(&plugged, &[Metric::Battery], false)[0].high);
+        assert!(!gauges(&plugged, &plain(&[Metric::Battery]), false)[0].high);
         // Without a measured board power, the share of the power budget.
         let budget =
             json!({"hardware": {"gpus": [{"info": {"dedicatedTotal": 1}, "power": 40.0}]}});
-        assert!(texts(&gauges(&budget, &[Metric::GpuPower], false)[0])[0].ends_with("% TDP"));
+        assert!(
+            texts(&gauges(&budget, &plain(&[Metric::GpuPower]), false)[0])[0].ends_with("% TDP")
+        );
     }
 
     #[test]
     fn readings_without_data_stay_unknown() {
-        let empty = gauges(&serde_json::Value::Null, &Metric::ALL, false);
+        let empty = gauges(&serde_json::Value::Null, &plain(&Metric::ALL), false);
         assert!(
             empty
                 .iter()
@@ -974,7 +1280,11 @@ mod tests {
 
     #[test]
     fn the_taskbar_shows_single_values_by_name_and_rates_by_mark() {
-        let groups = taskbar_groups(&gauges(&snapshot(), &[Metric::Cpu, Metric::Network], false));
+        let groups = taskbar_groups(&gauges(
+            &snapshot(),
+            &plain(&[Metric::Cpu, Metric::Network]),
+            false,
+        ));
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].len(), 1);
         assert!(groups[0][0].high);
@@ -985,6 +1295,160 @@ mod tests {
                 .map(|cell| cell.label.as_str())
                 .collect::<Vec<_>>(),
             ["↓", "↑"]
+        );
+    }
+
+    fn several() -> serde_json::Value {
+        json!({
+            "hardware": {
+                "gpus": [
+                    {"info": {"name": "NVIDIA GeForce RTX 4060 Laptop GPU", "dedicatedTotal": 8589934592u64}, "util": 40.0},
+                    {"info": {"name": "Intel(R) UHD Graphics", "dedicatedTotal": 134217728u64}, "util": 7.0}
+                ],
+                "disks": [
+                    {"info": {"index": 0, "bus": "nvme", "model": "Samsung SSD 990 PRO 2TB", "size": 2000000000000u64, "volumes": ["C:"]},
+                     "read": 1048576.0, "write": 0.0, "active": 20.0, "temperature": 45.0},
+                    {"info": {"index": 1, "bus": "sata", "model": "WDC WD40", "size": 4000000000000u64, "volumes": []},
+                     "read": 0.0, "write": 2097152.0, "active": 60.0, "temperature": 35.0}
+                ],
+                "nics": [
+                    {"info": {"name": "WLAN", "description": "Intel Wi-Fi 6E AX211"}, "rx": 4096.0, "tx": 1024.0},
+                    {"info": {"name": "vEthernet (WSL)", "description": "Hyper-V Virtual Ethernet Adapter"}, "rx": 2048.0, "tx": 0.0}
+                ]
+            }
+        })
+    }
+
+    fn of(metric: Metric, device: &Device) -> Reading {
+        Reading {
+            metric,
+            device: Some(device.key.clone()),
+        }
+    }
+
+    #[test]
+    fn devices_are_told_apart_by_letters_names_and_models() {
+        let snapshot = several();
+        let disks = devices(&snapshot, "disk");
+        assert_eq!(
+            (disks[0].title.as_str(), disks[0].short.as_str()),
+            ("C:", "C:")
+        );
+        assert!(disks[0].detail.starts_with("Samsung SSD 990 PRO 2TB · "));
+        // A disk without letters goes by its number.
+        assert_eq!(disks[1].short, "#1");
+        let gpus = devices(&snapshot, "gpu");
+        assert_eq!(gpus[0].name, "RTX 4060 Laptop GPU");
+        assert_eq!(gpus[1].name, "Intel UHD Graphics");
+        assert_eq!(
+            (gpus[0].short.as_str(), gpus[1].short.as_str()),
+            ("GPU1", "GPU2")
+        );
+        assert_eq!(
+            main_gpu_key(&snapshot, &gpus).as_deref(),
+            Some(gpus[0].key.as_str())
+        );
+        let nics = devices(&snapshot, "network");
+        assert_eq!(nics[1].short, "vEthe…");
+        assert_eq!(gpu_name("AMD Radeon(TM) Graphics"), "AMD Radeon Graphics");
+        assert_eq!(gpu_name("AMD Radeon RX 7900 XTX"), "RX 7900 XTX");
+        // A device away is named after its key.
+        assert_eq!(absent_name("disk:usb|Portable SSD|1000#1"), "Portable SSD");
+        assert_eq!(absent_name("nic:Intel Wi-Fi|WLAN"), "WLAN");
+        assert_eq!(
+            absent_name("gpu:NVIDIA GeForce RTX 4060"),
+            "NVIDIA GeForce RTX 4060"
+        );
+    }
+
+    #[test]
+    fn a_device_s_readings_keep_to_it() {
+        let snapshot = several();
+        let (disks, gpus, nics) = (
+            devices(&snapshot, "disk"),
+            devices(&snapshot, "gpu"),
+            devices(&snapshot, "network"),
+        );
+        let shown = gauges(
+            &snapshot,
+            &[
+                of(Metric::DiskTemperature, &disks[1]),
+                of(Metric::Disk, &disks[0]),
+                of(Metric::Gpu, &gpus[1]),
+                of(Metric::Network, &nics[1]),
+                Reading::from(Metric::DiskActive),
+                Reading::from(Metric::Gpu),
+                Reading {
+                    metric: Metric::DiskActive,
+                    device: Some("disk:usb|Gone|1".into()),
+                },
+            ],
+            false,
+        );
+        assert_eq!(
+            texts(&shown[0]),
+            [crate::regional::number!("{:.0} °C", 35.)]
+        );
+        assert_eq!(shown[0].short, "#1");
+        // A device's rates: its own, under marks that name it.
+        assert_eq!(shown[1].name, "C:");
+        assert!(texts(&shown[1])[0].ends_with("MB/s"));
+        assert_eq!(texts(&shown[1])[1], "0 KB/s");
+        assert_eq!(shown[1].parts[0].mark, label("components.metric.read"));
+        let cells = taskbar_groups(&shown);
+        assert_eq!(
+            cells[1][0].label,
+            format!("C:{}", label("components.metric.read"))
+        );
+        assert_eq!(cells[3][1].label, "vEthe…↑");
+        // Rates of every device keep their marks alone.
+        assert_eq!(
+            taskbar_groups(&gauges(&snapshot, &[Reading::from(Metric::Network)], false))[0][0]
+                .label,
+            "↓"
+        );
+        assert_eq!(
+            (texts(&shown[2]), shown[2].short.as_str()),
+            (vec!["7%".to_owned()], "GPU2")
+        );
+        assert_eq!(texts(&shown[3]), ["2 KB/s", "0 KB/s"]);
+        // Without a device: the busiest disk, the main GPU.
+        assert_eq!(texts(&shown[4]), ["60%"]);
+        assert_eq!(texts(&shown[5]), ["40%"]);
+        // A device away shows nothing known.
+        assert_eq!(texts(&shown[6]), [label("format.missing")]);
+        assert!(!shown[6].bar || shown[6].fraction.is_none());
+    }
+
+    #[test]
+    fn readings_go_by_kind_then_device_then_metric() {
+        let snapshot = several();
+        let disks = devices(&snapshot, "disk");
+        let gone = Reading {
+            metric: Metric::Disk,
+            device: Some("disk:usb|Gone|1".into()),
+        };
+        let arranged = arrange(
+            &snapshot,
+            vec![
+                of(Metric::Disk, &disks[1]),
+                Reading::from(Metric::Network),
+                gone.clone(),
+                of(Metric::DiskActive, &disks[0]),
+                Reading::from(Metric::Cpu),
+                Reading::from(Metric::Disk),
+            ],
+        );
+        assert_eq!(
+            arranged,
+            [
+                Reading::from(Metric::Cpu),
+                Reading::from(Metric::Disk),
+                of(Metric::DiskActive, &disks[0]),
+                of(Metric::Disk, &disks[1]),
+                gone,
+                Reading::from(Metric::Network),
+            ]
         );
     }
 }

@@ -3,7 +3,7 @@ mod about;
 mod components;
 mod details;
 mod history;
-mod performance;
+pub(in crate::frontend) mod performance;
 mod process_watch;
 mod settings;
 mod vitals;

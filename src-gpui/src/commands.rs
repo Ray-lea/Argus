@@ -21,7 +21,7 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, Language, MONITOR_OPACITIES, Metric, SettingsStore, SettingsView,
+    BACKGROUND_INTERVALS, Language, MONITOR_OPACITIES, Reading, SettingsStore, SettingsView,
     TaskbarPlace, Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
@@ -565,8 +565,8 @@ pub fn set_tray(
     Ok(settings_view(&app))
 }
 
-/// A monitor's metrics as asked for: each once, in the order given.
-fn distinct(metrics: Vec<Metric>) -> Vec<Metric> {
+/// A monitor's readings as asked for: each once, in the order given.
+fn distinct(metrics: Vec<Reading>) -> Vec<Reading> {
     let mut kept = Vec::with_capacity(metrics.len());
     for metric in metrics {
         if !kept.contains(&metric) {
@@ -583,7 +583,7 @@ fn distinct(metrics: Vec<Metric>) -> Vec<Metric> {
 pub fn set_desktop_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
-    metrics: Option<Vec<Metric>>,
+    metrics: Option<Vec<Reading>>,
     topmost: Option<bool>,
     locked: Option<bool>,
     click_through: Option<bool>,
@@ -627,7 +627,7 @@ pub fn set_desktop_monitor(
 pub fn set_taskbar_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
-    metrics: Option<Vec<Metric>>,
+    metrics: Option<Vec<Reading>>,
     place: Option<TaskbarPlace>,
 ) -> Result<SettingsView, String> {
     let saved = app

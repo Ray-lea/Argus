@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Lecturas mostradas",
-    "desc": "Las lecturas elegidas se muestran en el orden siguiente. Las lecturas de GPU corresponden a la GPU con más memoria dedicada; el tiempo de actividad, al disco más ocupado, y la temperatura de disco, al disco más caliente.",
+    "desc": "Las lecturas elegidas se muestran en el orden siguiente. Con varias GPU, discos o adaptadores de red, se pueden elegir para cada dispositivo. Si no se elige ningún dispositivo, las lecturas de GPU corresponden a la GPU con más memoria dedicada; las velocidades de disco y de red son totales, y la actividad y la temperatura de disco muestran el valor más alto de todos los discos.",
     "group": {
       "cpu": "CPU",
       "memory": "Memoria",
@@ -40,7 +40,17 @@
       "disk": "Disco",
       "network": "Red",
       "other": "Otros"
-    }
+    },
+    "all": {
+      "disk": "Todos los discos",
+      "diskDetail": "Suma, actividad/temp. máximas",
+      "network": "Todos los adaptadores de red",
+      "networkDetail": "Velocidad total"
+    },
+    "gpuMemory": "{memory} dedicados",
+    "gpuMain": "{memory} · principal",
+    "diskNumber": "Disco {index}",
+    "absent": "No conectado"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "Tiempo activo"
     },
     "read": "L",
-    "write": "E"
+    "write": "E",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "Monitor de escritorio",

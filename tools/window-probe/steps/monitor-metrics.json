@@ -1,15 +1,15 @@
 {
   "window": [1100, 900],
   "steps": [
-    {"note":"the desktop monitor's metric options on the components page"},
+    {"note":"the desktop monitor's readings on the components page"},
     {"control":{"page":"components"},"wait":700},
     {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
     {"control":{"wheel":{"x":550,"y":500,"lines":-8}},"wait":700,"capture":"metrics-before"},
     {"note":"three clicks in quick succession: each counts, nothing else on the page moves"},
     {"record":{"name":"clicks","ms":2000},"wait":700},
-    {"control":{"clickAnchor":"desktopMetrics-cpuTemperature"},"wait":60},
-    {"control":{"clickAnchor":"desktopMetrics-gpuMemory"},"wait":60},
-    {"control":{"clickAnchor":"desktopMetrics-gpu"},"wait":1500},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"},"wait":60},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-gpuMemory"},"wait":60},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-gpu"},"wait":1500},
     {"capture":"metrics-after"},
     {"inspect":"layout","label":"chosen","expect":{
       "monitors.desktop.rows.0.metric":"cpu",
@@ -20,6 +20,25 @@
       "monitors.desktop.rows.5.metric":"network"
     }},
     {"sheet":{"name":"clicks-sheet","from":"clicks","region":[150,380,800,180],"columns":4,"scale":1,"limit":8}},
+    {"note":"a second GPU: each GPU, disk and adapter gets a row of its own"},
+    {"control":{"sample":{"set":{"/hardware/gpus":[
+      {"info":{"id":"7001","name":"NVIDIA GeForce RTX 4060 Laptop GPU","dedicatedTotal":8589934592,"sharedTotal":0,"engines":[]},"util":14.3,"utilSource":"windows","engines":[],"dedicatedUsed":3221225472,"sharedUsed":0,"temperature":52,"clockMhz":1972,"boardPower":26},
+      {"info":{"id":"7002","name":"Intel(R) UHD Graphics","dedicatedTotal":134217728,"sharedTotal":0,"engines":[]},"util":6.2,"utilSource":"windows","engines":[],"dedicatedUsed":0,"sharedUsed":0}
+    ]}}},"wait":900},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-12}},"wait":700},
+    {"control":{"clickAnchor":"desktopMetrics-disk-0-diskTemperature"},"wait":300},
+    {"control":{"clickAnchor":"desktopMetrics-network-0-network"},"wait":300},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-1-gpu"},"wait":1500},
+    {"capture":"metrics-devices"},
+    {"inspect":"layout","label":"devices","expect":{
+      "monitors.desktop.rows.3.metric":"gpuMemory",
+      "monitors.desktop.rows.4.metric":"gpu@gpu:Intel(R) UHD Graphics",
+      "monitors.desktop.rows.5.metric":"disk",
+      "monitors.desktop.rows.6.metric":"diskTemperature@disk:nvme|Samsung SSD 990 PRO 2TB|2000000000000",
+      "monitors.desktop.rows.7.metric":"network",
+      "monitors.desktop.rows.8.metric":"network@nic:Intel(R) Wi-Fi 6E AX211 160MHz|WLAN"
+    }},
+    {"captureWindow":{"name":"desktop-devices","class":"Zed::Window","title":"桌面监控"}},
     {"control":{"theme":"light"},"wait":900,"capture":"metrics-light"}
   ]
 }

@@ -3,9 +3,11 @@
 //! arrives, the island. Each available component has a section of its
 //! settings; a planned one is listed with what it will be.
 use super::*;
-use crate::frontend::monitors::metric_key;
+use crate::frontend::monitors::{
+    absent_name, arrange, device_kind, devices, main_gpu_key, metric_key,
+};
 use crate::frontend::widgets::Tone;
-use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, TaskbarMonitor};
+use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor};
 
 /// A component of the page: its key (`components.*` texts), its icon and
 /// whether it is available yet. Settings of a component that ships go in a
@@ -39,7 +41,25 @@ pub(in crate::frontend) const COMPONENTS: [Component; 4] = [
     },
 ];
 
-/// The metrics on offer, a row of options per device, in the order of
+/// The width of the device names beside the options.
+const NAME_COLUMN: f32 = 240.;
+
+/// A row of options: a device, the default one of its kind, or the CPU, the
+/// memory and the rest.
+struct OptionRow {
+    /// Its place in the card's element ids and test anchors.
+    id: String,
+    title: String,
+    detail: String,
+    /// The device its readings name; none for the default.
+    device: Option<String>,
+    /// The device's own key, when the row holds the readings without one
+    /// (the main GPU): readings that name it are checked here too.
+    alias: Option<String>,
+    metrics: Vec<Metric>,
+}
+
+/// The metrics on offer, a section of rows per kind of device, in the order of
 /// `Metric::ALL`.
 const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
     (
@@ -259,28 +279,170 @@ impl Desktop {
         ]
     }
 
-    /// A monitor's metrics, checked in a grid under its card's description,
-    /// a row of options per device; a click adds or removes one, and they
-    /// keep the order offered.
+    /// The rows of options for one kind of reading, from the sample: one row
+    /// for the CPU, the memory and the rest; for GPUs, disks and network
+    /// adapters one row for the only device, or with several a row for the
+    /// default (all of them, or the main GPU) and one for each, and a row
+    /// for each device chosen before that is away now.
+    fn option_rows(&self, section: usize, chosen: &[Reading]) -> Vec<OptionRow> {
+        let (group, metrics) = METRIC_GROUPS[section];
+        let snapshot = &self.snapshot;
+        let hardware = &snapshot["hardware"];
+        let group_title = label(&format!("components.metrics.group.{group}"));
+        let row = |id: String, title: String, detail: String, device: Option<String>| OptionRow {
+            id,
+            title,
+            detail,
+            device,
+            alias: None,
+            metrics: metrics.to_vec(),
+        };
+        let Some(kind) = metrics.first().and_then(|metric| device_kind(*metric)) else {
+            let detail = match group {
+                "cpu" => text(&hardware["cpu"], "name").trim().to_owned(),
+                "memory" => {
+                    let total = number(&snapshot["system"], "memTotal");
+                    if total > 0. {
+                        theme::bytes(total, false)
+                    } else {
+                        String::new()
+                    }
+                }
+                _ => String::new(),
+            };
+            let mut only = row(group.into(), group_title, detail, None);
+            // The battery is offered where there is one, or once chosen.
+            if group == "other"
+                && values(&hardware["batteries"]).is_empty()
+                && !chosen
+                    .iter()
+                    .any(|reading| reading.metric == Metric::Battery)
+            {
+                only.metrics.retain(|metric| *metric != Metric::Battery);
+            }
+            return vec![only];
+        };
+        let devices = devices(snapshot, kind);
+        let mut rows = match devices.as_slice() {
+            [] => vec![row(group.into(), group_title, String::new(), None)],
+            [only] => {
+                let detail = if kind == "gpu" {
+                    only.title.clone()
+                } else {
+                    [only.title.as_str(), only.detail.as_str()]
+                        .into_iter()
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                };
+                vec![row(group.into(), group_title, detail, None)]
+            }
+            many if kind == "gpu" => {
+                // The main GPU's row holds the readings without a device,
+                // which follow it; the others name theirs.
+                let main = main_gpu_key(snapshot, many);
+                let mut rows = Vec::new();
+                for (index, device) in many.iter().enumerate() {
+                    let is_main = main.as_deref() == Some(device.key.as_str());
+                    let detail = if is_main {
+                        tr!("components.metrics.gpuMain", memory = device.detail.clone())
+                    } else {
+                        device.detail.clone()
+                    };
+                    let mut gpu = row(
+                        format!("gpu-{index}"),
+                        device.title.clone(),
+                        detail,
+                        (!is_main).then(|| device.key.clone()),
+                    );
+                    if is_main {
+                        gpu.alias = Some(device.key.clone());
+                        rows.insert(0, gpu);
+                    } else {
+                        rows.push(gpu);
+                    }
+                }
+                rows
+            }
+            many => std::iter::once(row(
+                group.into(),
+                label(&format!("components.metrics.all.{group}")),
+                label(&format!("components.metrics.all.{group}Detail")),
+                None,
+            ))
+            .chain(many.iter().enumerate().map(|(index, device)| {
+                row(
+                    format!("{group}-{index}"),
+                    device.title.clone(),
+                    device.detail.clone(),
+                    Some(device.key.clone()),
+                )
+            }))
+            .collect(),
+        };
+        // Devices chosen before and away now, so that they can be unchosen.
+        let mut away: Vec<&str> = Vec::new();
+        for reading in chosen {
+            if let Some(key) = reading.device.as_deref()
+                && device_kind(reading.metric) == Some(kind)
+                && !devices.iter().any(|device| device.key == key)
+                && !away.contains(&key)
+            {
+                away.push(key);
+            }
+        }
+        for (index, key) in away.into_iter().enumerate() {
+            rows.push(row(
+                format!("{group}-away-{index}"),
+                absent_name(key),
+                label("components.metrics.absent"),
+                Some(key.to_owned()),
+            ));
+        }
+        rows
+    }
+
+    /// A monitor's readings, checked in a table under its card's
+    /// description: a row per device (or for the CPU, the memory and the
+    /// rest), its name and what tells it apart on the left, its options in
+    /// fixed columns on the right, kinds of device apart. A click adds or
+    /// removes one; checking changes only its box.
     fn metric_card(
         &self,
         id: &str,
         settings_key: &'static str,
         command: &'static str,
-        chosen: &[Metric],
+        chosen: &[Reading],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let option = |metric: &Metric| {
-            let on = chosen.contains(metric);
-            let next = Metric::ALL
+        let chosen_list = chosen.to_vec();
+        let option = |row: &OptionRow, metric: Metric| {
+            let reading = Reading {
+                metric,
+                device: row.device.clone(),
+            };
+            let alias = row.alias.clone().map(|device| Reading {
+                metric,
+                device: Some(device),
+            });
+            let on = chosen.contains(&reading)
+                || alias.as_ref().is_some_and(|alias| chosen.contains(alias));
+            let mut next = chosen_list
                 .iter()
-                .filter(|other| chosen.contains(other) != (*other == metric))
-                .map(|other| metric_key(*other))
+                .filter(|other| **other != reading && Some(*other) != alias.as_ref())
+                .cloned()
                 .collect::<Vec<_>>();
-            let key = metric_key(*metric);
+            if !on {
+                next.push(reading);
+            }
+            let next = arrange(&self.snapshot, next)
+                .iter()
+                .map(Reading::text)
+                .collect::<Vec<_>>();
+            let key = metric_key(metric);
             let name = label(&format!("components.metric.{key}.option"));
-            let anchor = SharedString::from(format!("{id}-{key}"));
+            let anchor = SharedString::from(format!("{id}-{}-{key}", row.id));
             let anchors = self.ui.anchors.clone();
             Button::new(anchor.clone())
                 .relative()
@@ -308,7 +470,7 @@ impl Desktop {
                 .text_color(p.ink)
                 .role(Role::CheckBox)
                 .aria_toggled(if on { Toggled::True } else { Toggled::False })
-                .accessibility_label(name.clone())
+                .accessibility_label(format!("{} {name}", row.title))
                 .hover(move |style| style.bg(p.hover))
                 .active(move |style| style.bg(p.press))
                 .child(self.check_box(on, false))
@@ -319,49 +481,79 @@ impl Desktop {
                 }))
                 .into_any_element()
         };
-        // A fixed grid: checking an option changes only its box, never the
-        // place or size of the others or of the card.
-        let rows = METRIC_GROUPS.iter().map(|(group, metrics)| {
+        let row_element = |row: &OptionRow| {
+            let full = if row.detail.is_empty() {
+                row.title.clone()
+            } else {
+                format!("{}\n{}", row.title, row.detail)
+            };
             div()
                 .flex()
                 .items_start()
+                .gap(px(12.))
                 .child(
                     div()
-                        .w(px(64.))
-                        .h(px(32.))
+                        .id(SharedString::from(format!("{id}-{}-name", row.id)))
+                        .w(px(NAME_COLUMN))
                         .flex_shrink_0()
+                        .min_h(px(32.))
                         .flex()
-                        .items_center()
-                        .text_size(theme::font(13.))
-                        .text_color(p.muted)
+                        .flex_col()
+                        .justify_center()
                         .child(
                             div()
-                                .min_w_0()
                                 .truncate()
-                                .child(label(&format!("components.metrics.group.{group}"))),
-                        ),
+                                .text_size(theme::font(13.))
+                                .text_color(p.ink)
+                                .child(row.title.clone()),
+                        )
+                        .when(!row.detail.is_empty(), |cell| {
+                            cell.child(
+                                div()
+                                    .truncate()
+                                    .text_size(theme::font(12.))
+                                    .text_color(p.muted)
+                                    .child(row.detail.clone()),
+                            )
+                        })
+                        .tooltip(move |window, cx| widgets::tooltip(full.clone(), window, cx)),
                 )
                 .child(
                     div()
                         .flex_1()
                         .min_w_0()
                         .grid()
-                        .grid_cols(4)
+                        .grid_cols(3)
                         .gap_x(px(4.))
                         .gap_y(px(2.))
-                        .children(metrics.iter().map(option)),
+                        .children(row.metrics.iter().map(|metric| option(row, *metric))),
                 )
+                .into_any_element()
+        };
+        let sections = (0..METRIC_GROUPS.len()).map(|section| {
+            let rows = self.option_rows(section, chosen);
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .when(section > 0, |group| {
+                    group
+                        .pt(px(8.))
+                        .mt(px(8.))
+                        .border_t_1()
+                        .border_color(p.stroke)
+                })
+                .children(rows.iter().map(row_element))
         });
         let desc = div()
             .child(label("components.metrics.desc"))
             .child(
                 div()
-                    .mt(px(8.))
+                    .mt(px(10.))
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
                     .text_color(p.ink)
-                    .children(rows),
+                    .children(sections),
             )
             .into_any_element();
         self.setting(

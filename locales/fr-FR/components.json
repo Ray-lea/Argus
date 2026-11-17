@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Mesures affichées",
-    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous. Les mesures GPU proviennent du GPU doté du plus de mémoire dédiée, le temps d’activité, du disque le plus sollicité, et la température disque, du disque le plus chaud.",
+    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous. Avec plusieurs GPU, disques ou adaptateurs réseau, elles peuvent être choisies pour chaque périphérique. Sans périphérique choisi, les mesures GPU proviennent du GPU doté du plus de mémoire dédiée, les débits disque et réseau sont des totaux, et le temps d’activité et la température disque indiquent la valeur la plus élevée parmi les disques.",
     "group": {
       "cpu": "CPU",
       "memory": "Mémoire",
@@ -40,7 +40,17 @@
       "disk": "Disque",
       "network": "Réseau",
       "other": "Autres"
-    }
+    },
+    "all": {
+      "disk": "Tous les disques",
+      "diskDetail": "Débit total, activité/temp. max.",
+      "network": "Tous les adaptateurs réseau",
+      "networkDetail": "Débit total"
+    },
+    "gpuMemory": "{memory} dédiés",
+    "gpuMain": "{memory} · GPU par défaut",
+    "diskNumber": "Disque {index}",
+    "absent": "Non connecté"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "Durée de marche"
     },
     "read": "L",
-    "write": "É"
+    "write": "É",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "Moniteur de bureau",

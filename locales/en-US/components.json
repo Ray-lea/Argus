@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Readings shown",
-    "desc": "Chosen readings appear in the order below. GPU readings come from the GPU with the most dedicated memory, disk active time from the busiest disk, and disk temperature from the hottest disk.",
+    "desc": "Chosen readings appear in the order below. With more than one GPU, disk or network adapter, readings can be chosen for each device. When no device is chosen, GPU readings come from the GPU with the most dedicated memory, disk speeds and network rates are totals, and disk active time and temperature show the highest value of all disks.",
     "group": {
       "cpu": "CPU",
       "memory": "Memory",
@@ -40,7 +40,17 @@
       "disk": "Disk",
       "network": "Network",
       "other": "Other"
-    }
+    },
+    "all": {
+      "disk": "All disks",
+      "diskDetail": "Total speed, max activity & temp",
+      "network": "All network adapters",
+      "networkDetail": "Total rate"
+    },
+    "gpuMemory": "{memory} dedicated",
+    "gpuMain": "{memory} · Default GPU",
+    "diskNumber": "Disk {index}",
+    "absent": "Not connected"
   },
   "metric": {
     "cpu": {
@@ -132,7 +142,8 @@
       "option": "Up time"
     },
     "read": "R",
-    "write": "W"
+    "write": "W",
+    "onDevice": "{device} {metric}"
   },
   "desktop": {
     "title": "Desktop monitor",

@@ -212,20 +212,110 @@ impl Metric {
     ];
 }
 
-/// A list of metrics as saved: names this version does not know (from a
+impl Metric {
+    /// The metric reads one device of several when given one: a GPU, a
+    /// disk or a network adapter.
+    pub fn per_device(self) -> bool {
+        matches!(
+            self,
+            Metric::Gpu
+                | Metric::GpuTemperature
+                | Metric::GpuMemory
+                | Metric::GpuClock
+                | Metric::GpuPower
+                | Metric::GpuFan
+                | Metric::Disk
+                | Metric::DiskActive
+                | Metric::DiskTemperature
+                | Metric::Network
+        )
+    }
+
+    /// Its saved name, `cpuTemperature` say.
+    pub fn name(self) -> String {
+        match serde_json::to_value(self) {
+            Ok(serde_json::Value::String(name)) => name,
+            _ => String::new(),
+        }
+    }
+}
+
+/// A reading a monitor shows: a metric, of one device or of the default
+/// one. Without a device, GPU readings follow the GPU with the most
+/// dedicated memory, disk and network rates add up every disk and adapter,
+/// and a disk's active time and temperature are the busiest and the hottest
+/// disk's. Saved as the metric's name, followed by `@` and the device's key
+/// when it has one: `diskTemperature@disk:nvme|Samsung SSD 990 PRO 2TB|2000398934016`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Reading {
+    pub metric: Metric,
+    /// The device's key, as the interface makes it from what the device
+    /// reports (its model, its name), so that it outlasts restarts.
+    pub device: Option<String>,
+}
+
+impl From<Metric> for Reading {
+    fn from(metric: Metric) -> Self {
+        Self {
+            metric,
+            device: None,
+        }
+    }
+}
+
+impl Reading {
+    /// A reading as saved; none for a metric this version does not know. A
+    /// device on a metric that reads none is left out.
+    pub fn parse(text: &str) -> Option<Self> {
+        let (name, device) = match text.split_once('@') {
+            Some((name, device)) => (name, Some(device)),
+            None => (text, None),
+        };
+        let metric: Metric = serde_json::from_value(serde_json::Value::String(name.into())).ok()?;
+        Some(Self {
+            metric,
+            device: device
+                .filter(|device| !device.is_empty() && metric.per_device())
+                .map(str::to_owned),
+        })
+    }
+
+    pub fn text(&self) -> String {
+        match &self.device {
+            Some(device) => format!("{}@{device}", self.metric.name()),
+            None => self.metric.name(),
+        }
+    }
+}
+
+impl Serialize for Reading {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.text())
+    }
+}
+
+impl<'de> Deserialize<'de> for Reading {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        Reading::parse(&text)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown reading {text}")))
+    }
+}
+
+/// A list of readings as saved: ones this version does not know (from a
 /// newer Argus, or a hand edit) and repeats are left out, keeping the rest.
-fn lenient_metrics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Metric>, D::Error> {
-    let mut metrics = Vec::new();
+fn lenient_metrics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Reading>, D::Error> {
+    let mut readings = Vec::new();
     if let serde_json::Value::Array(names) = serde_json::Value::deserialize(d)? {
         for name in names {
-            if let Ok(metric) = serde_json::from_value::<Metric>(name)
-                && !metrics.contains(&metric)
+            if let Some(reading) = name.as_str().and_then(Reading::parse)
+                && !readings.contains(&reading)
             {
-                metrics.push(metric);
+                readings.push(reading);
             }
         }
     }
-    Ok(metrics)
+    Ok(readings)
 }
 
 /// The window opacities the desktop monitor offers, percent.
@@ -239,7 +329,7 @@ pub struct DesktopMonitor {
     pub enabled: bool,
     /// What it shows, in this order.
     #[serde(deserialize_with = "lenient_metrics")]
-    pub metrics: Vec<Metric>,
+    pub metrics: Vec<Reading>,
     /// It stays above other windows.
     pub topmost: bool,
     /// It cannot be dragged.
@@ -258,13 +348,15 @@ impl Default for DesktopMonitor {
     fn default() -> Self {
         Self {
             enabled: false,
-            metrics: vec![
+            metrics: [
                 Metric::Cpu,
                 Metric::Memory,
                 Metric::Gpu,
                 Metric::Disk,
                 Metric::Network,
-            ],
+            ]
+            .map(Reading::from)
+            .to_vec(),
             topmost: true,
             locked: false,
             click_through: false,
@@ -313,7 +405,7 @@ pub struct TaskbarMonitor {
     pub enabled: bool,
     /// What it shows, in this order.
     #[serde(deserialize_with = "lenient_metrics")]
-    pub metrics: Vec<Metric>,
+    pub metrics: Vec<Reading>,
     pub place: TaskbarPlace,
 }
 
@@ -321,7 +413,9 @@ impl Default for TaskbarMonitor {
     fn default() -> Self {
         Self {
             enabled: false,
-            metrics: vec![Metric::Cpu, Metric::Memory, Metric::Network],
+            metrics: [Metric::Cpu, Metric::Memory, Metric::Network]
+                .map(Reading::from)
+                .to_vec(),
             place: TaskbarPlace::default(),
         }
     }
@@ -724,7 +818,7 @@ mod tests {
         assert!(newer.desktop_monitor.enabled);
         assert_eq!(
             newer.desktop_monitor.metrics,
-            [Metric::Network, Metric::Cpu]
+            [Metric::Network, Metric::Cpu].map(Reading::from)
         );
         assert_eq!(newer.desktop_monitor.position, Some([-1200, 40]));
         assert!(newer.desktop_monitor.topmost);
@@ -750,7 +844,7 @@ mod tests {
         let saved = Settings {
             desktop_monitor: DesktopMonitor {
                 enabled: true,
-                metrics: Metric::ALL.to_vec(),
+                metrics: Metric::ALL.map(Reading::from).to_vec(),
                 topmost: false,
                 locked: true,
                 click_through: true,
@@ -759,7 +853,13 @@ mod tests {
             },
             taskbar_monitor: TaskbarMonitor {
                 enabled: true,
-                metrics: vec![Metric::GpuTemperature, Metric::Disk],
+                metrics: vec![
+                    Reading::from(Metric::GpuTemperature),
+                    Reading::parse(
+                        "diskTemperature@disk:nvme|Samsung SSD 990 PRO 2TB|2000398934016#1",
+                    )
+                    .unwrap(),
+                ],
                 place: TaskbarPlace::Start,
             },
             ..Settings::default()
@@ -767,6 +867,39 @@ mod tests {
         let read: Settings = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
         assert_eq!(read.desktop_monitor, saved.desktop_monitor);
         assert_eq!(read.taskbar_monitor, saved.taskbar_monitor);
+    }
+
+    #[test]
+    fn readings_name_a_device_only_where_a_metric_reads_one() {
+        let keyed = Reading::parse("network@nic:Intel(R) Wi-Fi 6E AX211|WLAN").unwrap();
+        assert_eq!(keyed.metric, Metric::Network);
+        assert_eq!(
+            keyed.device.as_deref(),
+            Some("nic:Intel(R) Wi-Fi 6E AX211|WLAN")
+        );
+        assert_eq!(keyed.text(), "network@nic:Intel(R) Wi-Fi 6E AX211|WLAN");
+        // A key may hold the separator itself: only the first one counts.
+        assert_eq!(
+            Reading::parse("gpu@gpu:A@B").unwrap().device.as_deref(),
+            Some("gpu:A@B")
+        );
+        // The CPU and the rest read no device; an empty one is none.
+        assert_eq!(Reading::parse("cpu@x"), Some(Reading::from(Metric::Cpu)));
+        assert_eq!(Reading::parse("disk@"), Some(Reading::from(Metric::Disk)));
+        assert_eq!(Reading::parse("fps@x"), None);
+        // Saved lists keep a device's readings apart from the default's.
+        let saved: Settings = serde_json::from_str(
+            r#"{"taskbarMonitor": {"metrics": ["disk", "disk@disk:sata|WD|4", "disk", "cpu@gpu:x", 7]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            saved.taskbar_monitor.metrics,
+            [
+                Reading::from(Metric::Disk),
+                Reading::parse("disk@disk:sata|WD|4").unwrap(),
+                Reading::from(Metric::Cpu),
+            ]
+        );
     }
 
     #[test]

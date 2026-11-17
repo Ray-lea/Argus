@@ -237,7 +237,7 @@ fn field<'a>(info: &'a Value, name: &str) -> &'a str {
 /// What a hidden device is remembered by. Not its place in the list, its
 /// drive number or its adapter LUID: those change when it is plugged in
 /// again, when another device comes before it or when Windows restarts.
-pub(super) fn stable_key(kind: &str, info: &Value) -> String {
+pub(in crate::frontend) fn stable_key(kind: &str, info: &Value) -> String {
     match kind {
         "disk" => format!(
             "disk:{}|{}|{}",
@@ -255,7 +255,7 @@ pub(super) fn stable_key(kind: &str, info: &Value) -> String {
 
 /// Devices alike in everything `stable_key` reads (two drives of one model)
 /// are told apart by their order: "…", "…#1", "…#2".
-pub(super) fn distinct(keys: Vec<String>) -> Vec<String> {
+pub(in crate::frontend) fn distinct(keys: Vec<String>) -> Vec<String> {
     let mut seen: HashMap<String, usize> = HashMap::new();
     keys.into_iter()
         .map(|key| {
