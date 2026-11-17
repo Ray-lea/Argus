@@ -490,6 +490,18 @@ impl Desktop {
         }
         self.load_history(window, cx);
     }
+    fn history_selected_point<'a>(&self, records: &'a [Value]) -> Option<&'a Value> {
+        let at = self.history_cursor?;
+        selected_point(
+            records,
+            at,
+            self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at),
+            self.data
+                .get("historySelection")
+                .and_then(|saved| saved["frame"].as_i64()),
+            self.data.get("historyWindow").unwrap_or(&Value::Null),
+        )
+    }
     /// Keyboard on the history page: arrows step between points (Shift and Page keys by a
     /// tenth), Home and End jump to either end, Escape returns to the newest data. Steps
     /// stay among the points on screen and never move the window.
@@ -517,15 +529,21 @@ impl Desktop {
         ) {
             return false;
         }
-        let ts = self
+        let records = self
             .data
             .get("historySeries")
             .map(values)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let ts = records
             .iter()
             .filter_map(|p| p["ts"].as_f64())
             .collect::<Vec<_>>();
-        let Some(at) = stepped(&ts, self.history_cursor, key, shift) else {
+        // A retained frame or peak starts from the bucket shown in the readout.
+        let origin = self
+            .history_selected_point(records)
+            .and_then(|point| point["ts"].as_i64())
+            .or(self.history_cursor);
+        let Some(at) = stepped(&ts, origin, key, shift) else {
             return true;
         };
         self.history_cursor = Some(at);
@@ -597,16 +615,7 @@ impl Desktop {
         .collect::<Vec<_>>();
         let shown_at =
             |at: f64| point_at(&ts, &joined, step, at).and_then(|index| records.get(index));
-        let picked = self.history_cursor.and_then(|at| {
-            let selection = self.data.get("historySelection");
-            selected_point(
-                &records,
-                at,
-                self.data.get("historyPeakAt").and_then(Value::as_i64) == Some(at),
-                selection.and_then(|saved| saved["frame"].as_i64()),
-                self.data.get("historyWindow").unwrap_or(&Value::Null),
-            )
-        });
+        let picked = self.history_selected_point(&records);
         let read_ts = self.history_hover.or(self.history_cursor);
         let readout = match (self.history_hover, self.history_cursor) {
             (Some(at), _) => shown_at(at as f64),
