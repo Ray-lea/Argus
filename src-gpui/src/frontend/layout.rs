@@ -806,8 +806,8 @@ impl Desktop {
         }
         let compact = level == 1;
         let row = div().flex().items_center().gap_2().flex_shrink_0();
-        // The services and connections filters are in their status columns'
-        // headers (`NativeTable::header_filter`).
+        // The services and connections filters are in their columns' headers
+        // (`NativeTable::header_filter`).
         let row = match self.page.as_str() {
             "processes" => {
                 // Icons only: the names are in the tooltips.
@@ -940,16 +940,18 @@ impl Desktop {
         );
         self.open_anchored(items, MORE, Side::Below, window, cx);
     }
-    /// The list's filter, under its button in the status column's header.
+    /// A list column's filter, under its button in the column's header.
     pub(in crate::frontend) fn open_column_filter(
         &mut self,
+        column: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let items = self.filter_menu();
-        if !items.is_empty() {
-            self.open_anchored(items, tables::COLUMN_FILTER, Side::Under, window, cx);
-        }
+        let Some(filter) = tables::column_filter(&self.page, column) else {
+            return;
+        };
+        let items = self.filter_menu(filter);
+        self.open_anchored(items, &filter.anchor(), Side::Under, window, cx);
     }
     /// Opens `items` from the control recorded as `anchor`: under its left
     /// edge, or by its right edge (above or below it), turning toward the

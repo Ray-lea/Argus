@@ -140,7 +140,8 @@ fn fields(page: &str, sources: columns::Sources, _available: f32) -> Vec<Field> 
                 "protocol",
                 "connections.column.protocol",
                 Protocol,
-                Fixed(84.),
+                // Its header also holds the protocol filter's button.
+                Fixed(104.),
             ),
             (
                 "localAddress",
@@ -1354,7 +1355,7 @@ impl TableDelegate for NativeTable {
                                     }
                                     this.preference("clearSearch", Value::Null, window, cx);
                                     let page = this.page.clone();
-                                    this.set_filter(&page, "all", cx);
+                                    this.clear_filters(&page, cx);
                                 });
                             });
                         }),
@@ -2360,24 +2361,28 @@ impl Desktop {
             )
             .into_any_element()
     }
-    /// Narrows a list to `choice` and keeps it for the next start, under the
-    /// interface's preference (`services.filter`, `connections.filter`).
+    /// Narrows a list by the column filter kept under `preference` and keeps
+    /// the choice for the next start; an unknown choice is "all".
     pub(in crate::frontend) fn set_filter(
         &mut self,
-        page: &str,
+        preference: &str,
         choice: &str,
         cx: &mut Context<Self>,
     ) {
-        let Some((key, choices)) = filter_choices(page) else {
+        let Some(filter) = all_filters().find(|filter| filter.preference == preference) else {
             return;
         };
-        let choice = if choices.contains(&choice) {
-            choice
-        } else {
-            "all"
-        };
-        self.filters.insert(page.into(), choice.into());
-        self.prefs.set(key, choice);
+        let choice = if filter.offers(choice) { choice } else { "all" };
+        self.filters.insert(filter.preference, choice.into());
+        self.prefs.set(filter.preference, choice);
+        self.rebuild_rows(false, cx);
+    }
+    /// Sets every column filter of `page`'s list back to "all".
+    pub(in crate::frontend) fn clear_filters(&mut self, page: &str, cx: &mut Context<Self>) {
+        for filter in column_filters(page) {
+            self.filters.insert(filter.preference, "all".into());
+            self.prefs.set(filter.preference, "all");
+        }
         self.rebuild_rows(false, cx);
     }
     pub(in crate::frontend) fn marks(&self) -> Value {
@@ -2780,33 +2785,83 @@ pub(super) fn sort_preference(page: &str, key: &str, descending: bool) -> Option
         json!({"id":column,"desc":descending}),
     ))
 }
-/// A list's filter choices and the preference that keeps the choice, named as
-/// under `services.filter` and `connections.filter`.
-/// The column whose header carries the list's filter (`filter_choices`).
-pub(super) fn filter_column(page: &str) -> Option<&'static str> {
-    filter_choices(page).map(|_| "state")
+/// A filter in a list column's header, as a spreadsheet's column filter: the
+/// column, the interface's preference that keeps the choice, and each choice
+/// with its label. A list's filters narrow it together.
+pub(super) struct ColumnFilter {
+    pub column: &'static str,
+    pub preference: &'static str,
+    /// The first choice, "all", leaves the list whole.
+    pub choices: &'static [(&'static str, &'static str)],
 }
-/// The column filter's button, and the key its menu hangs from.
-const FILTER_BUTTON: f32 = 22.;
-pub(super) const COLUMN_FILTER: &str = "column-filter";
-pub(super) fn filter_choices(page: &str) -> Option<(&'static str, &'static [&'static str])> {
-    match page {
-        "services" => Some(("services.filter", &["all", "running", "stopped"])),
-        "network" => Some((
-            "connections.filter",
-            &["all", "listen", "established", "udp"],
-        )),
-        _ => None,
+impl ColumnFilter {
+    pub(super) fn offers(&self, choice: &str) -> bool {
+        self.choices.iter().any(|(offered, _)| *offered == choice)
+    }
+    /// The key its header button's menu hangs from.
+    pub(super) fn anchor(&self) -> String {
+        format!("{COLUMN_FILTER}.{}", self.column)
     }
 }
-/// The saved filters of the lists that have one; an unknown value is "all".
-pub(super) fn saved_filters(prefs: &prefs::Prefs) -> HashMap<String, String> {
-    ["services", "network"]
-        .into_iter()
-        .filter_map(|page| {
-            let (key, choices) = filter_choices(page)?;
-            let saved = prefs.get::<String>(key, "all".into());
-            (saved != "all" && choices.contains(&saved.as_str())).then(|| (page.to_owned(), saved))
+const SERVICE_FILTERS: &[ColumnFilter] = &[ColumnFilter {
+    column: "state",
+    preference: "services.filter",
+    choices: &[
+        ("all", "services.filter.all"),
+        ("running", "services.filter.running"),
+        ("stopped", "services.filter.stopped"),
+    ],
+}];
+/// Protocols as the table names them: "tcp6" is TCP over IPv6.
+const CONNECTION_FILTERS: &[ColumnFilter] = &[
+    ColumnFilter {
+        column: "protocol",
+        preference: "connections.protocolFilter",
+        choices: &[
+            ("all", "connections.filter.all.label"),
+            ("tcp", "connections.protocolFilter.tcp"),
+            ("tcp6", "connections.protocolFilter.tcp6"),
+            ("udp", "connections.protocolFilter.udp"),
+            ("udp6", "connections.protocolFilter.udp6"),
+        ],
+    },
+    ColumnFilter {
+        column: "state",
+        preference: "connections.filter",
+        choices: &[
+            ("all", "connections.filter.all.label"),
+            ("listen", "connections.filter.listen.label"),
+            ("established", "connections.filter.established.label"),
+        ],
+    },
+];
+/// The column filters of `page`'s list.
+pub(super) fn column_filters(page: &str) -> &'static [ColumnFilter] {
+    match page {
+        "services" => SERVICE_FILTERS,
+        "network" => CONNECTION_FILTERS,
+        _ => &[],
+    }
+}
+/// The filter in the header of `page`'s column `column`, if it has one.
+pub(super) fn column_filter(page: &str, column: &str) -> Option<&'static ColumnFilter> {
+    column_filters(page)
+        .iter()
+        .find(|filter| filter.column == column)
+}
+fn all_filters() -> impl Iterator<Item = &'static ColumnFilter> {
+    SERVICE_FILTERS.iter().chain(CONNECTION_FILTERS)
+}
+/// The column filter's button, and the key its menus hang from.
+const FILTER_BUTTON: f32 = 22.;
+pub(super) const COLUMN_FILTER: &str = "column-filter";
+/// The saved choices of the column filters, by preference; an unknown value
+/// is "all".
+pub(super) fn saved_filters(prefs: &prefs::Prefs) -> HashMap<&'static str, String> {
+    all_filters()
+        .filter_map(|filter| {
+            let saved = prefs.get::<String>(filter.preference, "all".into());
+            (saved != "all" && filter.offers(&saved)).then_some((filter.preference, saved))
         })
         .collect()
 }
@@ -2890,13 +2945,23 @@ mod tests {
             std::env::temp_dir().join(format!("argus-native-filters-{}.json", std::process::id()));
         std::fs::write(
             &file,
-            br#"{"values":{"services.filter":"stopped","connections.filter":"bogus"}}"#,
+            // "udp" was a status choice before the protocol column had its own filter.
+            br#"{"values":{"services.filter":"stopped","connections.filter":"udp","connections.protocolFilter":"tcp6"}}"#,
         )
         .unwrap();
         let prefs = prefs::Prefs::load(file.clone());
         std::fs::remove_file(&file).unwrap();
         let filters = saved_filters(&prefs);
-        assert_eq!(filters.get("services").map(String::as_str), Some("stopped"));
-        assert!(!filters.contains_key("network"));
+        assert_eq!(
+            filters.get("services.filter").map(String::as_str),
+            Some("stopped")
+        );
+        assert_eq!(
+            filters
+                .get("connections.protocolFilter")
+                .map(String::as_str),
+            Some("tcp6")
+        );
+        assert!(!filters.contains_key("connections.filter"));
     }
 }

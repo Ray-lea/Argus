@@ -208,7 +208,7 @@ impl Desktop {
                                 listen,
                                 label("connections.filter.established.label"),
                                 est,
-                                label("connections.filter.udp.label"),
+                                label("connections.protocolFilter.udp"),
                                 udp
                             ),
                             label("connections.note"),
@@ -253,27 +253,21 @@ impl Desktop {
             _ => div().into_any_element(),
         }
     }
-    /// The filter of the page's list (services, connections) as its status
-    /// column's header menu offers it: each choice, checked when it is the
-    /// one in force.
-    pub(in crate::frontend) fn filter_menu(&self) -> Vec<MenuItem> {
-        let choices: &[&str] = tables::filter_choices(&self.page).map_or(&[], |(_, c)| c);
-        let network = self.page == "network";
-        let namespace = if network { "connections" } else { &self.page };
+    /// A column filter of the page's list as its header menu offers it: each
+    /// choice, checked when it is the one in force.
+    pub(in crate::frontend) fn filter_menu(&self, filter: &tables::ColumnFilter) -> Vec<MenuItem> {
         let selected = self
             .filters
-            .get(&self.page)
+            .get(filter.preference)
             .map(String::as_str)
             .unwrap_or("all");
-        choices
+        filter
+            .choices
             .iter()
-            .map(|&choice| {
+            .map(|&(choice, text)| {
                 MenuItem::new(
-                    label(&format!(
-                        "{namespace}.filter.{choice}{}",
-                        if network { ".label" } else { "" }
-                    )),
-                    Action::Preference(format!("filter.{}", self.page), json!(choice)),
+                    label(text),
+                    Action::Preference(format!("filter.{}", filter.preference), json!(choice)),
                 )
                 .checked(selected == choice)
             })

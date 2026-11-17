@@ -8,10 +8,13 @@
     },
     "established": {
       "label": "Established"
-    },
-    "udp": {
-      "label": "UDP"
     }
+  },
+  "protocolFilter": {
+    "tcp": "TCP",
+    "tcp6": "TCPv6",
+    "udp": "UDP",
+    "udp6": "UDPv6"
   },
   "state": {
     "listen": "Listening",

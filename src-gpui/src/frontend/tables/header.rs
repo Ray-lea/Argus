@@ -354,22 +354,25 @@ impl NativeTable {
         }
     }
     /// A process header, which can be dragged to another place.
-    /// The list's filter in its status column's header, as a spreadsheet's
-    /// column filter (services, connections): a button at the header's end
-    /// drops the choices down; while one narrows the list it shows a funnel
-    /// in the accent.
+    /// A column's filter in its header, as a spreadsheet's column filter
+    /// (services: status; connections: protocol and status): a button at the
+    /// header's end drops the choices down; while one narrows the list it
+    /// shows a funnel in the accent.
     pub(super) fn header_filter(
         &self,
         index: usize,
         cx: &mut Context<TableState<Self>>,
     ) -> Option<AnyElement> {
         let field = self.fields.get(index)?;
-        if filter_column(&self.page) != Some(field.key) {
-            return None;
-        }
+        let filter = column_filter(&self.page, field.key)?;
+        let column = field.key;
         let owner = self.owner.upgrade()?;
         let app = owner.read(cx);
-        let active = app.filters.get(&self.page).is_some_and(|f| f != "all");
+        let active = app
+            .filters
+            .get(filter.preference)
+            .is_some_and(|f| f != "all");
+        let anchor: SharedString = filter.anchor().into();
         let anchors = app.ui.anchors.clone();
         let p = Palette::current(cx);
         let tip: SharedString = tr!("common.filterColumn", column = field.label.clone()).into();
@@ -397,7 +400,7 @@ impl NativeTable {
             .child(
                 canvas(
                     move |bounds, _, _| {
-                        anchors.borrow_mut().insert(COLUMN_FILTER.into(), bounds);
+                        anchors.borrow_mut().insert(anchor.clone(), bounds);
                     },
                     |_, _, _, _| {},
                 )
@@ -409,7 +412,8 @@ impl NativeTable {
             .on_click(move |_, window, cx| {
                 let owner = owner.clone();
                 window.defer(cx, move |window, cx| {
-                    let _ = owner.update(cx, |this, cx| this.open_column_filter(window, cx));
+                    let _ =
+                        owner.update(cx, |this, cx| this.open_column_filter(column, window, cx));
                 });
             });
         Some(

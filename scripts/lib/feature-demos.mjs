@@ -75,7 +75,8 @@ export const KEYS = [
   "format:monthDay",
   "format:monthNames",
   "connections:search",
-  ...["all", "listen", "established", "udp"].map((k) => `connections:filter.${k}.label`),
+  ...["all", "listen", "established"].map((k) => `connections:filter.${k}.label`),
+  "connections:protocolFilter.udp",
   ...["process", "localPort", "remoteAddress", "remotePort"].map((k) => `connections:column.${k}`),
   "connections:state.listen",
   "connections:state.established",
@@ -994,7 +995,7 @@ function rules(c, m) {
 function ports(c, m) {
   const { t, tr, w } = c;
   const p = [chrome(c, 4)];
-  let filters = segments(c, 0, 38, ["all", "listen", "established", "udp"].map((k) => tr(`connections:filter.${k}.label`)), { right: 428 });
+  let filters = segments(c, 0, 38, [...["all", "listen", "established"].map((k) => tr(`connections:filter.${k}.label`)), tr("connections:protocolFilter.udp")], { right: 428 });
   if (filters.w > 230) filters = segments(c, 0, 38, filters.items.map((it) => it.label), { right: 428, size: 10 });
   p.push(filters.frame, segLabels(c, filters, 38), segChecked(c, filters, 0, 38));
   const sw = filters.x - 10 - 12;

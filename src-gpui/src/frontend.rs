@@ -390,7 +390,8 @@ struct Desktop {
     /// memory was given back since (`memory.releaseHidden`).
     hidden_since: Option<(Instant, bool)>,
     last_select: Option<(String, Instant)>,
-    filters: HashMap<String, String>,
+    /// The lists' column filters in force, by preference (`tables::ColumnFilter`).
+    filters: HashMap<&'static str, String>,
     forms: HashMap<String, Entity<InputState>>,
     first_frame: bool,
     /// When the first snapshot was drawn; the other lists are read soon after.

@@ -54,7 +54,8 @@ pub(super) struct ListSpec {
     /// The first column's key: it sorts by title (connections: by owner).
     pub first: &'static str,
     pub query: String,
-    pub filter: String,
+    /// The column filters that narrow the list, as (column, choice).
+    pub filters: Vec<(&'static str, String)>,
     pub sort: String,
     pub descending: bool,
     /// The page's row marks (notes and pins), by mark key.
@@ -91,7 +92,6 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
     let page = spec.page.as_str();
     let network = page == "network";
     let query = spec.query.trim().to_lowercase();
-    let filter = spec.filter.as_str();
     let marks = &spec.marks;
     // Listening sockets by owner and port: a connection on such a port is local.
     let listening: HashSet<(Option<u64>, Option<u64>)> = if network {
@@ -122,15 +122,17 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
                         && owner(raw).is_none_or(|p| !rules.hides(&p.name, p.windows))
                 })
         })
-        .filter(|raw| match page {
-            "services" => filter == "all" || text(raw, "state") == filter,
-            "network" => {
-                filter == "all"
-                    || (filter == "listen" && text(raw, "state") == "listen")
-                    || (filter == "established" && text(raw, "state") == "established")
-                    || (filter == "udp" && text(raw, "protocol") == "udp")
-            }
-            _ => true,
+        .filter(|raw| {
+            spec.filters.iter().all(|(column, choice)| match *column {
+                // "tcp6" is TCP over IPv6, "tcp" over IPv4.
+                "protocol" => {
+                    let (protocol, ipv6) = choice
+                        .strip_suffix('6')
+                        .map_or((choice.as_str(), false), |protocol| (protocol, true));
+                    text(raw, "protocol") == protocol && boolean(raw, "ipv6") == ipv6
+                }
+                column => text(raw, column) == choice,
+            })
         })
         .filter_map(|raw| {
             // Keys, titles and marks come from the source entry; only the rows
@@ -340,11 +342,13 @@ impl Desktop {
             } else {
                 self.queries.get(page).cloned().unwrap_or_default()
             },
-            filter: self
-                .filters
-                .get(page)
-                .cloned()
-                .unwrap_or_else(|| "all".into()),
+            filters: super::tables::column_filters(page)
+                .iter()
+                .filter_map(|filter| {
+                    let choice = self.filters.get(filter.preference)?;
+                    (choice != "all").then(|| (filter.column, choice.clone()))
+                })
+                .collect(),
             sort: if page == self.page {
                 self.sort.clone()
             } else {
@@ -546,7 +550,7 @@ mod tests {
             page: "network".into(),
             first: "name",
             query: query.into(),
-            filter: "all".into(),
+            filters: Vec::new(),
             sort: sort.into(),
             descending,
             marks,
@@ -681,5 +685,34 @@ mod tests {
         // Notes are searched too.
         let rows = list_rows(&spec("localPort", false, "vpn", marks), &source, &owners);
         assert_eq!(ports(&rows), vec![(50000, Some(443))]);
+    }
+    #[test]
+    fn protocol_and_state_filters_narrow_together() {
+        let mut source = connections();
+        source.push(json!({"protocol":"tcp","ipv6":true,"localAddress":"::","localPort":8080,"remoteAddress":null,"remotePort":null,"state":"listen","pid":10}));
+        source.push(json!({"protocol":"udp","ipv6":true,"localAddress":"::","localPort":5353,"remoteAddress":null,"remotePort":null,"state":null,"pid":10}));
+        let owners = owners(&processes(), &source);
+        let shown = |filters: &[(&'static str, &str)]| {
+            let mut spec = spec("localPort", false, "", json!({}));
+            spec.filters = filters.iter().map(|(c, v)| (*c, (*v).to_owned())).collect();
+            list_rows(&spec, &source, &owners)
+                .iter()
+                .map(|row| {
+                    (
+                        row.raw["localPort"].as_u64().unwrap(),
+                        row.raw["ipv6"] == true,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shown(&[("protocol", "udp")]), [(80, false)]);
+        assert_eq!(shown(&[("protocol", "udp6")]), [(5353, true)]);
+        assert_eq!(shown(&[("protocol", "tcp6")]), [(8080, true)]);
+        assert_eq!(shown(&[("protocol", "tcp")]).len(), 3);
+        assert_eq!(
+            shown(&[("protocol", "tcp"), ("state", "listen")]),
+            [(8080, false)]
+        );
+        assert!(shown(&[("protocol", "udp"), ("state", "listen")]).is_empty());
     }
 }
