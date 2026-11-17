@@ -19,7 +19,8 @@
     "peak": "Pic {value} %",
     "total": "de {value} GB",
     "charging": "Chargement {value}",
-    "discharging": "Décharge {value}"
+    "discharging": "Décharge {value}",
+    "average": "Moyenne {value}%"
   },
   "exited": "{name} (PID {pid}) s’est arrêté.",
   "copied": {
@@ -87,5 +88,8 @@
     "latestRuns": "Derniers lancements",
     "waiting": "En attente d’un autre lancement",
     "unconfirmed": "Identité non confirmée pour {count} instances du même nom ; nouvel essai chaque minute."
-  }
+  },
+  "instanceUnavailable": "L’instance enregistrée de {name} (PID {pid}) est terminée ou son identité ne peut pas être confirmée.",
+  "showCpuPeak": "Voir la mesure du pic CPU",
+  "cpuSummary": "CPU : moyenne {average}%, pic {peak}% ; mesure du pic : {time}. Les valeurs des processus sont des moyennes par mesure et ne prouvent pas la cause d’un bref pic."
 }

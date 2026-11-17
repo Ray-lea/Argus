@@ -15,7 +15,8 @@
     "peak": "最大 {value}%",
     "total": "{value} GB 中",
     "charging": "充電中 {value}",
-    "discharging": "放電中 {value}"
+    "discharging": "放電中 {value}",
+    "average": "平均 {value}%"
   },
   "exited": "{name}（PID {pid}） は終了しました。",
   "copied": {
@@ -83,5 +84,8 @@
     "latestRuns": "最新の起動",
     "waiting": "次の起動を待機中",
     "unconfirmed": "同名の {count} インスタンスの識別を確認できませんでした。1 分ごとに再試行します。"
-  }
+  },
+  "instanceUnavailable": "記録された {name}（PID {pid}）のインスタンスは終了したか、同一性を確認できません。",
+  "showCpuPeak": "CPU ピークのフレームを表示",
+  "cpuSummary": "CPU 平均 {average}%、最大 {peak}%。ピークのフレーム：{time}。プロセスの値はフレーム内の平均であり、短いピークの原因を証明するものではありません。"
 }

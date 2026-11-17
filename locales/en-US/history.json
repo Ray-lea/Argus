@@ -17,7 +17,8 @@
     "peak": "Peak {value}%",
     "total": "of {value} GB",
     "charging": "Charging {value}",
-    "discharging": "Discharging {value}"
+    "discharging": "Discharging {value}",
+    "average": "Average {value}%"
   },
   "exited": "{name} (PID {pid}) has exited.",
   "copied": {
@@ -85,5 +86,8 @@
     "latestRuns": "Latest launches",
     "waiting": "Waiting for another launch",
     "unconfirmed": "Could not confirm {count} same-named instances; retrying once per minute."
-  }
+  },
+  "instanceUnavailable": "The recorded instance of {name} (PID {pid}) has exited or its identity cannot be confirmed.",
+  "showCpuPeak": "Show CPU peak frame",
+  "cpuSummary": "CPU average {average}%, peak {peak}%; peak frame: {time}. Process readings are frame averages and do not establish the cause of a brief peak."
 }

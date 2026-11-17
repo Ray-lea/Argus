@@ -17,7 +17,8 @@
     "peak": "Spitzenwert {value} %",
     "total": "von {value} GB",
     "charging": "Laden {value}",
-    "discharging": "Entladen {value}"
+    "discharging": "Entladen {value}",
+    "average": "Mittel {value}%"
   },
   "exited": "{name} (PID {pid}) wurde beendet.",
   "copied": {
@@ -85,5 +86,8 @@
     "latestRuns": "Neueste Starts",
     "waiting": "Warten auf einen weiteren Start",
     "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute."
-  }
+  },
+  "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden.",
+  "showCpuPeak": "CPU-Spitzenframe zeigen",
+  "cpuSummary": "CPU-Mittel {average}%, Spitze {peak}%; Spitzenframe: {time}. Prozesswerte sind Frame-Mittelwerte und belegen nicht die Ursache einer kurzen Spitze."
 }

@@ -548,7 +548,19 @@ impl Desktop {
                 );
                 return;
             }
+            "historyPeak" => {
+                self.data.remove("historySelection");
+                if let Some(at) = value.as_i64() {
+                    self.history_hover = None;
+                    self.history_cursor = Some(at);
+                    self.data.insert("historyPeakAt".into(), json!(at));
+                    self.load_history(window, cx);
+                    cx.notify();
+                }
+                return;
+            }
             "historyLatest" => {
+                self.data.remove("historyPeakAt");
                 self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);
@@ -577,6 +589,13 @@ impl Desktop {
                         p["pid"] == value["pid"]
                             && (value["createTime"].is_null()
                                 || p["createTime"] == value["createTime"])
+                            && (value["historyFrame"].is_null()
+                                || history::recorded_target(
+                                    &value,
+                                    value["historyFrame"].as_i64(),
+                                    std::slice::from_ref(*p),
+                                )
+                                .is_some())
                     })
                     .cloned();
                 if let Some(process) = found {

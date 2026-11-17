@@ -1,0 +1,162 @@
+{
+  "window": [
+    1200,
+    800
+  ],
+  "steps": [
+    {
+      "control": {
+        "page": "history",
+        "pointerOutside": true
+      },
+      "wait": 800,
+      "inspect": "layout",
+      "label": "history",
+      "expect": {
+        "page": "history"
+      },
+      "capture": "history"
+    },
+    {
+      "control": {
+        "mouse": {
+          "type": "down",
+          "button": "right",
+          "x": 283,
+          "y": 666
+        }
+      },
+      "wait": 300,
+      "inspect": "menu",
+      "label": "renamed",
+      "expect": {
+        "state.open": true,
+        "state.disabled.0": true
+      }
+    },
+    {
+      "control": {
+        "keys": [
+          "escape"
+        ]
+      },
+      "wait": 300
+    },
+    {
+      "control": {
+        "mouse": {
+          "type": "down",
+          "button": "right",
+          "x": 283,
+          "y": 635
+        }
+      },
+      "wait": 300,
+      "inspect": "menu",
+      "label": "legacy-reused",
+      "expect": {
+        "state.open": true,
+        "state.disabled.0": true
+      }
+    },
+    {
+      "control": {
+        "keys": [
+          "home",
+          "enter"
+        ]
+      },
+      "wait": 300
+    },
+    {
+      "inspect": "layout",
+      "label": "still-history",
+      "expect": {
+        "page": "history"
+      },
+      "capture": "blocked"
+    },
+    {
+      "control": {
+        "keys": [
+          "escape"
+        ]
+      },
+      "wait": 300
+    },
+    {
+      "control": {
+        "mouse": {
+          "type": "down",
+          "button": "right",
+          "x": 283,
+          "y": 691
+        }
+      },
+      "wait": 300,
+      "inspect": "menu",
+      "label": "confirmed",
+      "expect": {
+        "state.open": true,
+        "state.disabled.0": false
+      }
+    },
+    {
+      "control": {
+        "keys": [
+          "home",
+          "enter"
+        ]
+      },
+      "wait": 500,
+      "inspect": "layout",
+      "label": "same-instance",
+      "expect": {
+        "page": "processes"
+      },
+      "capture": "confirmed"
+    },
+    {
+      "control": {
+        "page": "history"
+      },
+      "wait": 500
+    },
+    {
+      "control": {
+        "preference": {
+          "revealProcess": {
+            "pid": 44103,
+            "name": "confirmed-worker.exe",
+            "createTime": 1792731860999,
+            "historyFrame": 1792731860000
+          }
+        }
+      },
+      "wait": 300,
+      "inspect": "layout",
+      "label": "recheck-replaced",
+      "expect": {
+        "page": "history"
+      }
+    },
+    {
+      "control": {
+        "preference": {
+          "revealProcess": {
+            "pid": 44104,
+            "name": "gone.exe",
+            "createTime": 1792731859000,
+            "historyFrame": 1792731860000
+          }
+        }
+      },
+      "wait": 300,
+      "inspect": "layout",
+      "label": "recheck-exited",
+      "expect": {
+        "page": "history"
+      }
+    }
+  ]
+}

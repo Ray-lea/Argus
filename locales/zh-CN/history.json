@@ -11,7 +11,8 @@
     "peak": "最高 {value}%",
     "total": "共 {value} GB",
     "charging": "充电 {value}",
-    "discharging": "放电 {value}"
+    "discharging": "放电 {value}",
+    "average": "平均 {value}%"
   },
   "exited": "{name}（PID {pid}）已经退出。",
   "copied": {
@@ -79,5 +80,8 @@
     "latestRuns": "最新实例",
     "waiting": "等待后续运行",
     "unconfirmed": "有 {count} 个同名实例无法确认身份；每分钟重试一次。"
-  }
+  },
+  "instanceUnavailable": "进程 {name}（PID {pid}）的记录实例已结束，或无法确认其身份。",
+  "showCpuPeak": "查看 CPU 峰值帧",
+  "cpuSummary": "区间 CPU 平均 {average}%，峰值 {peak}%；峰值记录帧：{time}。帧内进程读数为平均值，不能据此确定瞬时峰值的原因。"
 }
