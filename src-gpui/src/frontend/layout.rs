@@ -652,7 +652,7 @@ impl Desktop {
                                 this.open_search_history(None, window, cx);
                             }),
                         )
-                        .child(icon("ChevronDownIcon", p.muted).w(px(12.)).h(px(12.)))
+                        .child(icon("ChevronDown", p.muted).w(px(12.)).h(px(12.)))
                         .when(self.options.test, |d| {
                             let anchors = self.ui.anchors.clone();
                             d.child(
