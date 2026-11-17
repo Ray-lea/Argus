@@ -218,9 +218,6 @@ impl NativeWindow {
         Ok(unsafe { IsIconic(self.hwnd()?).as_bool() })
     }
 
-    pub fn is_focused(&self) -> Result<bool> {
-        Ok(unsafe { GetForegroundWindow() == self.hwnd()? })
-    }
     pub fn set_title(&self, title: &str) -> Result<()> {
         let text: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
         unsafe {

@@ -15,7 +15,7 @@ use crate::{
 use argus_core::tr;
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, AtomicU8, Ordering},
+    atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering},
 };
 use std::time::Instant;
 pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup, Tone as TaskbarTone};
@@ -389,7 +389,7 @@ pub fn toggle_main(app: &Host) {
     if let Some(window) = app.get_window("main") {
         if window.is_visible().unwrap_or(false)
             && !window.is_minimized().unwrap_or(false)
-            && window.is_focused().unwrap_or(false)
+            && was_active(&window)
             && !crate::window_motion::is_leaving()
         {
             hide_main(&window);
@@ -398,6 +398,88 @@ pub fn toggle_main(app: &Host) {
         }
     }
 }
+/// The last window to take the foreground that is not the taskbar's: the
+/// application the user was in before clicking the taskbar.
+static ACTIVE_APP: AtomicIsize = AtomicIsize::new(0);
+
+/// Whether the main window is the active one, or was until the click that
+/// asks for it: a click on the tray icon or the taskbar monitor makes the
+/// taskbar the foreground window first.
+fn was_active(window: &NativeWindow) -> bool {
+    let Ok(main) = window.hwnd() else {
+        return false;
+    };
+    let foreground = unsafe { GetForegroundWindow() };
+    active_before(
+        main.0 as isize,
+        foreground.0 as isize,
+        is_taskbar(foreground),
+        ACTIVE_APP.load(Ordering::Relaxed),
+    )
+}
+
+/// Whether `main` was active: it is the foreground window, or the taskbar
+/// is and `main` was the last other window before it.
+fn active_before(main: isize, foreground: isize, taskbar: bool, last_app: isize) -> bool {
+    foreground == main || (taskbar && last_app == main)
+}
+
+/// Whether `window` belongs to a taskbar: one of the shell's taskbars or
+/// its hidden icons flyout (its class differs between Windows versions).
+fn is_taskbar(window: HWND) -> bool {
+    let root = unsafe { GetAncestor(window, GA_ROOT) };
+    let root = if root.is_invalid() { window } else { root };
+    let mut class = [0u16; 64];
+    let length = unsafe { GetClassNameW(root, &mut class) } as usize;
+    matches!(
+        String::from_utf16_lossy(&class[..length]).as_str(),
+        "Shell_TrayWnd"
+            | "Shell_SecondaryTrayWnd"
+            | "TopLevelWindowForOverflowXamlIsland"
+            | "NotifyIconOverflowWindow"
+    )
+}
+
+/// Follows the foreground window for `was_active`, from now on.
+fn watch_active_app() {
+    use windows::Win32::UI::Accessibility::SetWinEventHook;
+    static WATCHING: AtomicBool = AtomicBool::new(false);
+    if WATCHING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let foreground = unsafe { GetForegroundWindow() };
+    if !is_taskbar(foreground) {
+        ACTIVE_APP.store(foreground.0 as isize, Ordering::Relaxed);
+    }
+    unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            None,
+            Some(active_app_changed),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+    }
+}
+
+unsafe extern "system" fn active_app_changed(
+    _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
+    _event: u32,
+    window: HWND,
+    _object: i32,
+    _child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    if !window.is_invalid() && !is_taskbar(window) {
+        let root = unsafe { GetAncestor(window, GA_ROOT) };
+        let root = if root.is_invalid() { window } else { root };
+        ACTIVE_APP.store(root.0 as isize, Ordering::Relaxed);
+    }
+}
+
 pub fn window_state(hwnd: HWND) -> WindowState {
     unsafe {
         if !IsWindowVisible(hwnd).as_bool() {
@@ -465,6 +547,7 @@ pub fn follow_visibility(window: &NativeWindow) {
         return;
     };
     let _ = HOST.set(window.app_handle().clone());
+    watch_active_app();
     unsafe {
         let _ = SetWindowSubclass(hwnd, Some(procedure), 0x415247, 0);
     }
@@ -993,6 +1076,24 @@ mod tray_tests {
         };
         assert_eq!(restarted.data().guidItem, icon.data().guidItem);
         assert_ne!(restarted.data().hWnd, icon.data().hWnd);
+    }
+}
+
+#[cfg(test)]
+mod toggle_tests {
+    use super::active_before;
+
+    #[test]
+    fn a_click_on_the_taskbar_hides_the_window_that_was_active_before_it() {
+        let (main, other, taskbar) = (1, 2, 3);
+        // Active: hidden by a hotkey, or a click that left it active.
+        assert!(active_before(main, main, false, main));
+        // The click made the taskbar the foreground window; Argus was the
+        // application in use before it.
+        assert!(active_before(main, taskbar, true, main));
+        // Another application was: Argus comes forward instead.
+        assert!(!active_before(main, taskbar, true, other));
+        assert!(!active_before(main, other, false, main));
     }
 }
 
