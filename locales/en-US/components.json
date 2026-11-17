@@ -174,7 +174,7 @@
   },
   "taskbar": {
     "title": "Taskbar monitor",
-    "desc": "Shows the chosen readings on the taskbar of the main display. Clicking and right-clicking work as they do on the tray icon. While it is shown, Argus samples at the “Refresh rate”.",
+    "desc": "Shows the chosen readings on the taskbar of the main display. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown. While it is shown, Argus samples at the “Refresh rate”.",
     "place": {
       "title": "Position",
       "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
@@ -189,7 +189,7 @@
       "capsules": "Capsules",
       "figures": "Large figures"
     },
-    "menu": {
+    "panel": {
       "settings": "Component settings…",
       "hide": "Turn off taskbar monitor"
     }

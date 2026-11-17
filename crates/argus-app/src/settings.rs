@@ -409,7 +409,7 @@ pub enum TaskbarStyle {
     /// A tile per reading: its name and value over its recent curve.
     Curves,
     /// A rounded capsule per reading, marked with a dot in its device's
-    /// colour, in two rows.
+    /// colour, in one row.
     Capsules,
     /// A small name in its device's colour over a large figure.
     Figures,

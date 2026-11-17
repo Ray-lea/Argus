@@ -174,7 +174,7 @@
   },
   "taskbar": {
     "title": "Moniteur de barre des tâches",
-    "desc": "Affiche les mesures choisies dans la barre des tâches de l’écran principal. Le clic et le clic droit agissent comme sur l’icône de la zone de notification. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "desc": "Affiche les mesures choisies dans la barre des tâches de l’écran principal. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
     "place": {
       "title": "Position",
       "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
@@ -189,7 +189,7 @@
       "capsules": "Pastilles",
       "figures": "Grands chiffres"
     },
-    "menu": {
+    "panel": {
       "settings": "Paramètres des composants…",
       "hide": "Désactiver le moniteur de barre des tâches"
     }

@@ -272,7 +272,9 @@ impl Desktop {
                 "argus-restored" => self.restored(&event.value, window, cx),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
-                "argus-tray-panel" => self.tray_panel(&event.value, window, cx),
+                "argus-tray-panel" => {
+                    self.tray_flyout(super::tray::Kind::Panel, &event.value, window, cx)
+                }
                 "argus-tray-card" => self.tray_card(&event.value, window, cx),
                 // Another window took the foreground from a panel that did not
                 // take it (one opened from the hidden icons flyout).

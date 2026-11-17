@@ -27,7 +27,7 @@ impl Desktop {
                 Some("card") => {
                     self.tray_card(&json!({"open": true, "anchor": anchor}), window, cx)
                 }
-                Some("panel") => self.tray_panel(&anchor, window, cx),
+                Some("panel") => self.tray_flyout(super::tray::Kind::Panel, &anchor, window, cx),
                 Some("warm") => self.warm_tray(window, cx),
                 _ => {
                     self.tray_card(&json!({"open": false}), window, cx);
@@ -63,13 +63,21 @@ impl Desktop {
         {
             self.desktop_monitor_event(&json!({ "menu": item }), window, cx);
         }
-        // An item of the taskbar monitor's menu, as if chosen, by its key
-        // ("style:curves", "reading:gpu@<device>", "settings", "hide").
-        if let Some(item) = control["taskbarMonitorMenu"].as_str() {
-            assert!(
+        // The taskbar monitor's panel, opened over the monitor on its
+        // stand-in but never activated ("open"), closed ("close"), or one of
+        // its controls as if used, by its key ("style:curves",
+        // "reading:gpu@<device>", "settings", "hide").
+        match control["taskbarPanel"].as_str() {
+            Some("open") => {
+                let anchor = crate::shell::taskbar_monitor_anchor().expect("taskbar monitor shown");
+                self.tray_flyout(super::tray::Kind::Monitor, &json!(anchor), window, cx);
+            }
+            Some("close") => self.close_tray_panel(cx),
+            Some(item) => assert!(
                 self.choose_taskbar_item(item, window, cx),
-                "no taskbar monitor menu item {item}"
-            );
+                "no taskbar panel control {item}"
+            ),
+            None => {}
         }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")

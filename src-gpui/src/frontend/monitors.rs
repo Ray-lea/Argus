@@ -4,11 +4,11 @@
 //! readings the shell draws on the taskbar (`shell::taskbar`). Each shows
 //! the readings its settings name, in their order: a metric of the
 //! default device, or of one GPU, disk or network adapter of several.
-use super::pages::components::TaskbarChoice;
+use super::pages::components::{TASKBAR_STYLES, TaskbarChoice};
 use super::pages::performance::rail;
 use super::*;
 use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle};
-use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarMenuEntry, TaskbarTone};
+use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarTone};
 use windows::Win32::Foundation::HWND;
 
 /// From this percent or temperature (°C) a reading turns amber, as on the
@@ -892,7 +892,7 @@ fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<T
 }
 
 /// The colour of a metric's bar: its device's.
-fn metric_color(metric: Metric, p: Palette) -> Hsla {
+pub(in crate::frontend) fn metric_color(metric: Metric, p: Palette) -> Hsla {
     match metric {
         Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => p.cpu,
         Metric::Memory | Metric::MemoryUsed => p.memory,
@@ -916,6 +916,40 @@ pub(in crate::frontend) struct Open {
     view: Entity<DeskMonitor>,
 }
 
+/// What the taskbar monitor's panel shows (`tray::Kind::Monitor`).
+#[derive(Clone, Default)]
+pub(in crate::frontend) struct TaskbarPanel {
+    /// The chosen style, as saved.
+    pub style: String,
+    /// The monitor's look in each style (`TASKBAR_STYLES`), where it could
+    /// be drawn.
+    pub previews: Vec<Option<Arc<RenderImage>>>,
+    /// The taskbar's colour, under the previews.
+    pub ground: Hsla,
+    /// The display scale the previews were drawn at.
+    pub scale: f32,
+    pub kinds: Vec<super::pages::components::PanelKind>,
+}
+
+impl PartialEq for TaskbarPanel {
+    fn eq(&self, other: &Self) -> bool {
+        self.style == other.style
+            && self.ground == other.ground
+            && self.scale == other.scale
+            && self.kinds == other.kinds
+            && self.previews.len() == other.previews.len()
+            && self
+                .previews
+                .iter()
+                .zip(&other.previews)
+                .all(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                    (None, None) => true,
+                    _ => false,
+                })
+    }
+}
+
 /// The monitors the desktop keeps.
 #[derive(Default)]
 pub(in crate::frontend) struct Monitors {
@@ -924,9 +958,9 @@ pub(in crate::frontend) struct Monitors {
     /// its way: per monitor's settings key, its command and the latest
     /// choice, sent once that change has come back.
     queued: Vec<(&'static str, &'static str, Vec<String>)>,
-    /// What the items of the taskbar monitor's menu last shown do, by id
-    /// less one.
-    taskbar_menu: Vec<(String, TaskbarChoice)>,
+    /// The taskbar monitor's look in each style, for its panel, and what
+    /// they were drawn for (`preview_key`).
+    previews: Option<(u64, Vec<Option<Arc<RenderImage>>>)>,
 }
 
 pub(in crate::frontend) struct DeskMonitor {
@@ -1192,6 +1226,8 @@ impl Desktop {
             (false, None) => {}
         }
         self.refresh_taskbar_monitor();
+        // The taskbar monitor's panel follows its settings.
+        self.refresh_tray(cx);
     }
 
     fn open_desk_monitor(
@@ -1370,49 +1406,98 @@ impl Desktop {
         self.request("set_desktop_monitor", change, Some("settings"), window, cx);
     }
 
-    /// A right click on the taskbar monitor (`menu`): its menu shows there;
-    /// or an item of that menu was chosen (`chosen`, its id).
+    /// A right click on the taskbar monitor: its panel opens over it, or
+    /// closes when open (`panel`, where the shell would put it).
     pub(in crate::frontend) fn taskbar_monitor_event(
         &mut self,
         event: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event["menu"].as_bool() == Some(true) {
-            let (entries, choices) = self.taskbar_menu();
-            self.monitors.taskbar_menu = choices;
-            crate::shell::show_taskbar_menu(entries);
-        } else if let Some(choice) = event["chosen"].as_u64().and_then(|id| {
-            self.monitors
-                .taskbar_menu
-                .get((id as usize).checked_sub(1)?)
-        }) {
-            let choice = choice.1.clone();
-            self.taskbar_choice(choice, window, cx);
+        if let Some(anchor) = event.get("panel") {
+            self.tray_flyout(super::tray::Kind::Monitor, anchor, window, cx);
         }
     }
 
-    /// An item of the taskbar monitor's menu, as if chosen, by its key
-    /// (`taskbarMonitorMenu` of the tests); false when there is none.
+    /// What the taskbar monitor's panel shows. The previews are drawn again
+    /// only when what they show changed: the first two readings, the
+    /// taskbar's colours and the display's scale, not their values.
+    pub(in crate::frontend) fn taskbar_panel(&mut self, scale: f32) -> TaskbarPanel {
+        let monitor: TaskbarMonitor = self.monitor_settings("taskbarMonitor");
+        let light = crate::shell::taskbar_light();
+        let mut shown = monitor.metrics.iter().take(2).cloned().collect::<Vec<_>>();
+        if shown.is_empty() {
+            shown = vec![Reading::parse("cpu"), Reading::parse("memory")]
+                .into_iter()
+                .flatten()
+                .collect();
+        }
+        let key = super::charts::hash_of((
+            shown.iter().map(Reading::text).collect::<Vec<_>>(),
+            light,
+            scale.to_bits(),
+        ));
+        if self
+            .monitors
+            .previews
+            .as_ref()
+            .is_none_or(|(drawn, _)| *drawn != key)
+        {
+            let groups = taskbar_groups(
+                &gauges(&self.snapshot, &shown, self.bits()),
+                Some(&self.timeline),
+            );
+            let previews = TASKBAR_STYLES
+                .iter()
+                .map(|style| {
+                    let style = TaskbarStyle::from(style.to_string());
+                    let (width, height, pixels) =
+                        crate::shell::taskbar_preview(&groups, style, light, scale)?;
+                    let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
+                    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+                })
+                .collect();
+            self.monitors.previews = Some((key, previews));
+        }
+        let [red, green, blue, _] = crate::shell::taskbar_color(light).to_le_bytes();
+        TaskbarPanel {
+            style: String::from(monitor.style),
+            previews: self
+                .monitors
+                .previews
+                .as_ref()
+                .map(|(_, previews)| previews.clone())
+                .unwrap_or_default(),
+            ground: Rgba {
+                r: f32::from(red) / 255.,
+                g: f32::from(green) / 255.,
+                b: f32::from(blue) / 255.,
+                a: 1.,
+            }
+            .into(),
+            scale,
+            kinds: self.taskbar_panel_kinds(),
+        }
+    }
+
+    /// A control of the taskbar monitor's panel, as if used, by the key the
+    /// tests name it by (`taskbarPanel`); false when there is none.
     pub(in crate::frontend) fn choose_taskbar_item(
         &mut self,
         key: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some((_, choice)) = self
-            .taskbar_menu()
-            .1
-            .into_iter()
-            .find(|(item, _)| item == key)
-        else {
+        let Some(choice) = self.taskbar_panel_choice(key) else {
             return false;
         };
         self.taskbar_choice(choice, window, cx);
         true
     }
 
-    fn taskbar_choice(
+    /// A control of the taskbar monitor's panel was used. A style shows at
+    /// once in the panel, before the settings come back.
+    pub(in crate::frontend) fn taskbar_choice(
         &mut self,
         choice: TaskbarChoice,
         window: &mut Window,
@@ -1420,13 +1505,23 @@ impl Desktop {
     ) {
         let command = "set_taskbar_monitor";
         match choice {
-            TaskbarChoice::Style(style) => self.request(
-                command,
-                json!({ "style": style }),
-                Some("settings"),
-                window,
-                cx,
-            ),
+            TaskbarChoice::Style(style) => {
+                if let Some(monitor) = self
+                    .data
+                    .get_mut("settings")
+                    .and_then(|settings| settings.get_mut("taskbarMonitor"))
+                {
+                    monitor["style"] = json!(style);
+                }
+                self.request(
+                    command,
+                    json!({ "style": style }),
+                    Some("settings"),
+                    window,
+                    cx,
+                );
+                self.refresh_tray(cx);
+            }
             TaskbarChoice::Readings(next) => {
                 self.choose_metrics("taskbarMonitor", command, next, window, cx)
             }
@@ -1463,26 +1558,17 @@ impl Desktop {
         json!({
             "desktop": desk,
             "taskbar": crate::shell::taskbar_monitor_rect(),
-            "taskbarMenu": menu_test_state(&self.taskbar_menu().0),
+            "taskbarStyle": self.data["settings"]["taskbarMonitor"]["style"],
+            "taskbarPanel": self.taskbar_panel_kinds().iter().map(|kind| json!({
+                "kind": kind.key,
+                "devices": kind.devices.iter().map(|device| json!({
+                    "tab": device.tab,
+                    "chosen": device.chosen,
+                    "options": device.options.iter().map(|option| json!({"key": option.key, "on": option.on})).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
         })
     }
-}
-
-/// The taskbar monitor's menu as the tests read it: each entry's text,
-/// whether it is checked, and a submenu's entries; a separator as "-".
-fn menu_test_state(entries: &[TaskbarMenuEntry]) -> Value {
-    entries
-        .iter()
-        .map(|entry| match entry {
-            TaskbarMenuEntry::Item { text, checked, .. } => {
-                json!({ "text": text, "checked": checked })
-            }
-            TaskbarMenuEntry::Submenu { text, entries } => {
-                json!({ "text": text, "entries": menu_test_state(entries) })
-            }
-            TaskbarMenuEntry::Separator => json!("-"),
-        })
-        .collect()
 }
 
 #[cfg(test)]

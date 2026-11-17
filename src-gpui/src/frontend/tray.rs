@@ -1,5 +1,6 @@
 //! The tray's flyouts: the card that shows while the pointer rests on the
-//! tray icon, and the quick panel a right click opens. Both use one window,
+//! tray icon, the quick panel a right click opens, and the taskbar monitor's
+//! panel a right click on the monitor opens (`monitor`). All use one window,
 //! made ahead of time (when the pointer first reaches the tray icon, when
 //! the main window goes to the tray, or when Argus starts there) and kept
 //! hidden between uses: making a window costs far more than showing one
@@ -12,6 +13,10 @@
 //! fitted to its content beside the icon (`shell::Anchor`) if that changed,
 //! and then faded in by its window's opacity; it fades out the same way and
 //! is hidden. Without window motion it appears and goes at once.
+mod monitor;
+
+use super::monitors::TaskbarPanel;
+use super::pages::components::TaskbarChoice;
 use super::*;
 use crate::shell::Anchor;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,6 +58,8 @@ unsafe extern "system" fn flyout_procedure(
 pub(in crate::frontend) enum Kind {
     Card,
     Panel,
+    /// The taskbar monitor's panel.
+    Monitor,
 }
 
 impl Kind {
@@ -60,6 +67,7 @@ impl Kind {
         match self {
             Kind::Card => 252.,
             Kind::Panel => 360.,
+            Kind::Monitor => 380.,
         }
     }
     /// The height before the content was first laid out.
@@ -67,6 +75,7 @@ impl Kind {
         match self {
             Kind::Card => 170.,
             Kind::Panel => 480.,
+            Kind::Monitor => 560.,
         }
     }
     fn index(self) -> usize {
@@ -135,6 +144,8 @@ enum Ask {
     Quit,
     Device(String),
     Reveal(Value, Value),
+    /// A control of the taskbar monitor's panel.
+    Taskbar(TaskbarChoice),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -159,10 +170,10 @@ pub(in crate::frontend) struct Open {
 #[derive(Default)]
 pub(in crate::frontend) struct Flyouts {
     open: Option<Open>,
-    /// When the panel last went by itself (another window took the
-    /// foreground). A right click on the tray icon does that on its way
-    /// down, so the click that follows closes rather than reopens.
-    panel_left: Option<Instant>,
+    /// Which panel last went by itself (another window took the
+    /// foreground), and when. A right click on the tray icon does that on
+    /// its way down, so the click that follows closes rather than reopens.
+    panel_left: Option<(Kind, Instant)>,
     /// The window is to be made once the interface is idle.
     warming: bool,
 }
@@ -172,6 +183,10 @@ pub(in crate::frontend) struct Flyout {
     kind: Kind,
     anchor: Anchor,
     readings: Readings,
+    /// What the taskbar monitor's panel shows, and the device each of its
+    /// kinds shows the options of.
+    monitor: TaskbarPanel,
+    tabs: HashMap<&'static str, usize>,
     desktop: WeakEntity<Desktop>,
     desktop_window: AnyWindowHandle,
     host: Host,
@@ -181,7 +196,7 @@ pub(in crate::frontend) struct Flyout {
     /// Take the foreground when shown (not in tests: they must not touch
     /// the desktop's focus).
     activate: bool,
-    /// Shown without taking activation: the card, and a panel opened from
+    /// Shown without taking activation: the card, and a quick panel opened from
     /// the hidden icons flyout, which closes when it is no longer active.
     passive: bool,
     /// The content's height as last laid out, logical pixels.
@@ -190,7 +205,7 @@ pub(in crate::frontend) struct Flyout {
     placed: f32,
     /// Each kind's height as last laid out: a flyout opens at it, so it
     /// usually needs no second placement.
-    heights: [Option<f32>; 2],
+    heights: [Option<f32>; 3],
     /// Laid out off screen once after the window was made, so the first
     /// panel finds its text shaped, its glyphs drawn and its height known.
     priming: bool,
@@ -267,9 +282,9 @@ impl Flyout {
         unsafe {
             let _ = SetWindowSubclass(hwnd, Some(flyout_procedure), 0x464C59, 0);
         }
-        // The panel goes when another window takes the foreground.
+        // A panel goes when another window takes the foreground.
         let activation = cx.observe_window_activation(window, |this: &mut Self, window, cx| {
-            if this.kind == Kind::Panel
+            if this.kind != Kind::Card
                 && this.activate
                 && !this.passive
                 && !window.is_window_active()
@@ -288,6 +303,8 @@ impl Flyout {
                 overflow: None,
             },
             readings: Readings::default(),
+            monitor: TaskbarPanel::default(),
+            tabs: HashMap::new(),
             desktop,
             desktop_window,
             host,
@@ -298,7 +315,7 @@ impl Flyout {
             passive: true,
             measured: Rc::new(Cell::new(0.)),
             placed: 0.,
-            heights: [None; 2],
+            heights: [None; 3],
             priming: false,
             focus: cx.focus_handle(),
             _activation: activation,
@@ -428,7 +445,7 @@ impl Flyout {
                 set_alpha(self.hwnd, None);
                 self.phase = Phase::Shown;
             }
-            if self.activate && self.kind == Kind::Panel {
+            if self.activate && self.kind != Kind::Card {
                 if self.passive {
                     // Opened from the hidden icons flyout: that stays active
                     // (it closes otherwise), and a window taking the foreground
@@ -538,8 +555,46 @@ impl Flyout {
         cx.notify();
     }
 
-    /// Carries out `ask` through the desktop, in its own window.
+    /// What the taskbar monitor's panel shows; previews it no longer shows
+    /// leave the window's atlas.
+    fn set_monitor(&mut self, panel: TaskbarPanel, window: &mut Window, cx: &mut Context<Self>) {
+        if panel == self.monitor {
+            return;
+        }
+        let old = std::mem::replace(&mut self.monitor, panel);
+        for image in old.previews.into_iter().flatten() {
+            let kept = self
+                .monitor
+                .previews
+                .iter()
+                .flatten()
+                .any(|new| Arc::ptr_eq(new, &image));
+            if !kept {
+                let _ = window.drop_image(image);
+            }
+        }
+        cx.notify();
+    }
+
+    /// Carries out `ask` through the desktop, in its own window. The
+    /// taskbar monitor's panel stays open while its style and readings
+    /// change.
     fn ask(&mut self, ask: Ask, window: &mut Window, cx: &mut Context<Self>) {
+        if let Ask::Taskbar(choice) = ask {
+            let closes = matches!(choice, TaskbarChoice::Settings | TaskbarChoice::Hide);
+            let desktop = self.desktop.clone();
+            let handle = self.desktop_window;
+            cx.defer(move |cx| {
+                let _ = handle.update(cx, |_, window, cx| {
+                    let _ = desktop
+                        .update(cx, |desktop, cx| desktop.taskbar_choice(choice, window, cx));
+                });
+            });
+            if closes {
+                self.close(window, cx);
+            }
+            return;
+        }
         let host = self.host.clone();
         let shows = !matches!(ask, Ask::Pause | Ask::Quit);
         if shows {
@@ -567,7 +622,7 @@ impl Flyout {
                         window,
                         cx,
                     ),
-                    Ask::Open | Ask::Update | Ask::Quit => {}
+                    Ask::Open | Ask::Update | Ask::Quit | Ask::Taskbar(_) => {}
                 });
             });
         });
@@ -1038,11 +1093,17 @@ impl Render for Flyout {
         let content = match self.kind {
             Kind::Card => self.card(p),
             Kind::Panel => self.panel(p, cx),
+            Kind::Monitor => self.monitor_panel(p, cx),
+        };
+        let name = if self.kind == Kind::Monitor {
+            label("components.taskbar.title")
+        } else {
+            label("components.panel.label")
         };
         div()
             .id("tray-flyout")
             .role(Role::Dialog)
-            .aria_label(label("components.panel.label"))
+            .aria_label(name)
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
@@ -1094,6 +1155,7 @@ impl Desktop {
         json!({
             "visible":unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(flyout.hwnd).as_bool() },
             "panel":flyout.showing(Some(Kind::Panel)),
+            "monitor":flyout.showing(Some(Kind::Monitor)),
             "card":flyout.showing(Some(Kind::Card)),
             "animated":flyout.fade,
             "samplingShown":sampling_shown,
@@ -1222,12 +1284,13 @@ impl Desktop {
         }
     }
 
-    /// Whether the tray uses a flyout at all: the hover card, or the panel
-    /// on a right click.
+    /// Whether a flyout is used at all: the tray's hover card, the quick
+    /// panel on a right click, or the taskbar monitor's panel.
     fn tray_flyouts_used(&self) -> bool {
         let settings = &self.data["settings"];
         settings["trayCard"].as_bool().unwrap_or(true)
             || settings["trayMenu"].as_str() != Some("menu")
+            || settings["taskbarMonitor"]["enabled"].as_bool() == Some(true)
     }
 
     /// Makes the flyout window, hidden, unless it exists: a flyout then only
@@ -1335,8 +1398,12 @@ impl Desktop {
             return;
         };
         let readings = self.tray_readings();
+        let panel = (kind == Kind::Monitor).then(|| self.taskbar_panel(anchor.scale));
         let _ = window.update(cx, |_, window, cx| {
             flyout.update(cx, |flyout, cx| {
+                if let Some(panel) = panel {
+                    flyout.set_monitor(panel, window, cx);
+                }
                 flyout.show(kind, anchor, readings, requested, window, cx)
             })
         });
@@ -1363,28 +1430,27 @@ impl Desktop {
     /// went by itself remembers when.
     fn tray_closed(&mut self, kind: Kind, was_shown: bool) {
         crate::shell::set_flyout_open(false);
-        if kind == Kind::Panel && was_shown {
-            self.tray.panel_left = Some(Instant::now());
+        if kind != Kind::Card && was_shown {
+            self.tray.panel_left = Some((kind, Instant::now()));
         }
     }
 
-    /// The tray asks for the quick panel: it opens, or closes when open.
-    pub(in crate::frontend) fn tray_panel(
+    /// The tray asks for the quick panel, or the taskbar monitor for its
+    /// panel (`kind`): it opens, or closes when open.
+    pub(in crate::frontend) fn tray_flyout(
         &mut self,
+        kind: Kind,
         anchor: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let (panel, leaving) = self.tray.open.as_ref().map_or((false, false), |open| {
+        let (shown, leaving) = self.tray.open.as_ref().map_or((false, false), |open| {
             let flyout = open.flyout.read(cx);
-            (
-                flyout.showing(Some(Kind::Panel)),
-                flyout.leaving(Kind::Panel),
-            )
+            (flyout.showing(Some(kind)), flyout.leaving(kind))
         });
-        if panel {
+        if shown {
             self.tray.panel_left = None;
-            self.close_tray(Some(Kind::Panel), cx);
+            self.close_tray(Some(kind), cx);
             return;
         }
         // Going away because this click took the foreground from it.
@@ -1395,19 +1461,20 @@ impl Desktop {
             .tray
             .panel_left
             .take()
-            .is_some_and(|left| left.elapsed() < REOPEN)
+            .is_some_and(|(left, at)| left == kind && at.elapsed() < REOPEN)
         {
             return;
         }
         let Ok(anchor) = serde_json::from_value::<Anchor>(anchor.clone()) else {
             return;
         };
-        self.open_tray(Kind::Panel, anchor, window, cx);
+        self.open_tray(kind, anchor, window, cx);
     }
 
-    /// Closes the quick panel if it is open.
+    /// Closes the quick panel or the taskbar monitor's, whichever is open.
     pub(in crate::frontend) fn close_tray_panel(&mut self, cx: &mut Context<Self>) {
         self.close_tray(Some(Kind::Panel), cx);
+        self.close_tray(Some(Kind::Monitor), cx);
     }
 
     /// The pointer rests on the tray icon, or left it.
@@ -1441,7 +1508,16 @@ impl Desktop {
         let Some(open) = self.tray.open.clone() else {
             return;
         };
-        if !open.flyout.read(cx).showing(None) {
+        let flyout = open.flyout.read(cx);
+        if !flyout.showing(None) {
+            return;
+        }
+        if flyout.kind == Kind::Monitor {
+            let panel = self.taskbar_panel(flyout.anchor.scale);
+            let _ = open.window.update(cx, |_, window, cx| {
+                open.flyout
+                    .update(cx, |flyout, cx| flyout.set_monitor(panel, window, cx))
+            });
             return;
         }
         let readings = self.tray_readings();

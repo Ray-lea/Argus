@@ -174,7 +174,7 @@
   },
   "taskbar": {
     "title": "Monitor en la barra de tareas",
-    "desc": "Muestra las lecturas elegidas en la barra de tareas de la pantalla principal. El clic y el clic derecho funcionan igual que en el icono de la bandeja. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "desc": "Muestra las lecturas elegidas en la barra de tareas de la pantalla principal. Un clic muestra u oculta la ventana; un clic derecho abre un panel para cambiar el estilo y las lecturas mostradas. Mientras está visible, utiliza la «Frecuencia de actualización».",
     "place": {
       "title": "Posición",
       "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados. En otros casos, el monitor aparece junto a la bandeja.",
@@ -189,7 +189,7 @@
       "capsules": "Cápsulas",
       "figures": "Cifras grandes"
     },
-    "menu": {
+    "panel": {
       "settings": "Configuración de componentes…",
       "hide": "Desactivar el monitor en la barra de tareas"
     }

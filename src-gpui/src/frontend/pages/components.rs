@@ -4,11 +4,10 @@
 //! settings; a planned one is listed with what it will be.
 use super::*;
 use crate::frontend::monitors::{
-    absent_name, arrange, device_kind, devices, main_gpu_key, metric_key,
+    absent_name, arrange, device_kind, devices, main_gpu_key, metric_color, metric_key,
 };
 use crate::frontend::widgets::Tone;
 use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor};
-use crate::shell::TaskbarMenuEntry;
 
 /// A component of the page: its key (`components.*` texts), its icon and
 /// whether it is available yet. Settings of a component that ships go in a
@@ -96,9 +95,10 @@ const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
 const CONTENT: f32 = 780.;
 
 /// The taskbar monitor's styles, as saved, in the order offered.
-const TASKBAR_STYLES: [&str; 4] = ["labels", "curves", "capsules", "figures"];
+pub(in crate::frontend) const TASKBAR_STYLES: [&str; 4] =
+    ["labels", "curves", "capsules", "figures"];
 
-/// What an item of the taskbar monitor's menu does.
+/// What a control of the taskbar monitor's panel does.
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::frontend) enum TaskbarChoice {
     Style(&'static str),
@@ -107,6 +107,40 @@ pub(in crate::frontend) enum TaskbarChoice {
     /// The components page in the window.
     Settings,
     Hide,
+}
+
+/// A kind of reading in the taskbar monitor's panel: the CPU, the memory,
+/// the GPUs, the disks, the network adapters or the rest.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) struct PanelKind {
+    pub key: &'static str,
+    pub title: String,
+    /// What tells its only device apart, for its tip.
+    pub tip: String,
+    pub tone: Hsla,
+    /// One with no tab, or a tab per device of several.
+    pub devices: Vec<PanelDevice>,
+}
+
+/// A device's options, or all of a kind's when it has no tabs.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) struct PanelDevice {
+    pub tab: String,
+    pub tip: String,
+    /// Some of its readings are chosen: its tab carries a dot.
+    pub chosen: bool,
+    pub options: Vec<PanelOption>,
+}
+
+/// A reading to check: its key (`Reading::text`), its name and tip,
+/// whether it shows, and the readings with it added or taken away.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) struct PanelOption {
+    pub key: String,
+    pub text: String,
+    pub tip: String,
+    pub on: bool,
+    pub readings: Vec<String>,
 }
 
 impl Desktop {
@@ -450,137 +484,107 @@ impl Desktop {
         (reading, on, next)
     }
 
-    /// The taskbar monitor's menu, and what each of its items does by id
-    /// (the first item's is 1), with the key the tests choose it by: the
-    /// styles; the readings as on the components page, a submenu per kind
-    /// of device and, with several devices, per device (a kind with a
-    /// single option is an item of its own); the components page; closing
-    /// the monitor.
-    pub(in crate::frontend) fn taskbar_menu(
-        &self,
-    ) -> (Vec<TaskbarMenuEntry>, Vec<(String, TaskbarChoice)>) {
+    /// The readings the taskbar monitor's panel offers, as the components
+    /// page offers them: per kind, one set of options, or with several
+    /// devices of a kind a tab per device (the GPUs, the disks); network
+    /// adapters, with one reading each, are options of their own.
+    pub(in crate::frontend) fn taskbar_panel_kinds(&self) -> Vec<PanelKind> {
         let monitor: TaskbarMonitor =
             serde_json::from_value(self.data["settings"]["taskbarMonitor"].clone())
                 .unwrap_or_default();
         let chosen = &monitor.metrics;
-        let mut choices = Vec::new();
-        let mut item =
-            |key: String, choice: TaskbarChoice, text: String, checked: bool, radio: bool| {
-                choices.push((key, choice));
-                TaskbarMenuEntry::Item {
-                    id: choices.len(),
-                    text,
-                    checked,
-                    radio,
-                }
-            };
-        let style = String::from(monitor.style);
-        let styles = TASKBAR_STYLES
-            .iter()
-            .map(|value| {
-                item(
-                    format!("style:{value}"),
-                    TaskbarChoice::Style(value),
-                    label(&format!("components.taskbar.style.{value}")),
-                    style == *value,
-                    true,
-                )
-            })
-            .collect();
-        let mut entries = vec![
-            TaskbarMenuEntry::Submenu {
-                text: label("components.taskbar.style.title"),
-                entries: styles,
-            },
-            TaskbarMenuEntry::Separator,
-        ];
-        for (section, (group, _)) in METRIC_GROUPS.iter().enumerate() {
+        let option = |row: &OptionRow, metric: Metric, text: String, tip: String| {
+            let (reading, on, readings) = self.toggled(chosen, row, metric);
+            PanelOption {
+                key: reading.text(),
+                text,
+                tip,
+                on,
+                readings,
+            }
+        };
+        let metric_name =
+            |metric: Metric| label(&format!("components.metric.{}.option", metric_key(metric)));
+        let mut kinds = Vec::new();
+        for (section, (group, metrics)) in METRIC_GROUPS.iter().enumerate() {
             let rows = self.option_rows(section, chosen);
-            let mut option = |row: &OptionRow, metric: Metric, text: String| {
-                let (reading, on, next) = self.toggled(chosen, row, metric);
-                item(
-                    format!("reading:{}", reading.text()),
-                    TaskbarChoice::Readings(next),
-                    text,
-                    on,
-                    false,
-                )
-            };
-            let metric_name =
-                |metric: Metric| label(&format!("components.metric.{}.option", metric_key(metric)));
-            // A device's name, and what tells it apart after a tab, on the
-            // menu's right; the default row of all devices goes by its name.
-            let name = |row: &OptionRow| {
-                if row.detail.is_empty() || (row.device.is_none() && row.alias.is_none()) {
-                    row.title.clone()
-                } else {
-                    format!("{}\t{}", row.title, row.detail)
-                }
-            };
-            let group_entries: Vec<TaskbarMenuEntry> = match rows.as_slice() {
-                [row] => row
-                    .metrics
-                    .iter()
-                    .map(|metric| option(row, *metric, metric_name(*metric)))
-                    .collect(),
-                rows if rows.iter().all(|row| row.metrics.len() == 1) => rows
-                    .iter()
-                    .map(|row| option(row, row.metrics[0], name(row)))
-                    .collect(),
+            let devices = match rows.as_slice() {
+                [] => continue,
+                [row] => vec![PanelDevice {
+                    tab: String::new(),
+                    tip: String::new(),
+                    chosen: false,
+                    options: row
+                        .metrics
+                        .iter()
+                        .map(|metric| option(row, *metric, metric_name(*metric), String::new()))
+                        .collect(),
+                }],
+                rows if rows.iter().all(|row| row.metrics.len() == 1) => vec![PanelDevice {
+                    tab: String::new(),
+                    tip: String::new(),
+                    chosen: false,
+                    options: rows
+                        .iter()
+                        .map(|row| {
+                            option(row, row.metrics[0], row.title.clone(), row.detail.clone())
+                        })
+                        .collect(),
+                }],
                 rows => rows
                     .iter()
-                    .map(|row| TaskbarMenuEntry::Submenu {
-                        text: name(row),
-                        entries: row
+                    .map(|row| {
+                        let options = row
                             .metrics
                             .iter()
-                            .map(|metric| option(row, *metric, metric_name(*metric)))
-                            .collect(),
+                            .map(|metric| option(row, *metric, metric_name(*metric), String::new()))
+                            .collect::<Vec<_>>();
+                        PanelDevice {
+                            tab: row.title.clone(),
+                            tip: row.detail.clone(),
+                            chosen: options.iter().any(|option| option.on),
+                            options,
+                        }
                     })
                     .collect(),
             };
-            let title = label(&format!("components.metrics.group.{group}"));
-            match <[TaskbarMenuEntry; 1]>::try_from(group_entries) {
-                // A kind with one option: the item goes by the kind's name.
-                Ok(
-                    [
-                        TaskbarMenuEntry::Item {
-                            id, checked, radio, ..
-                        },
-                    ],
-                ) => entries.push(TaskbarMenuEntry::Item {
-                    id,
-                    text: title,
-                    checked,
-                    radio,
-                }),
-                Ok([entry]) => entries.push(TaskbarMenuEntry::Submenu {
-                    text: title,
-                    entries: vec![entry],
-                }),
-                Err(group_entries) if group_entries.is_empty() => {}
-                Err(group_entries) => entries.push(TaskbarMenuEntry::Submenu {
-                    text: title,
-                    entries: group_entries,
-                }),
-            }
+            kinds.push(PanelKind {
+                key: group,
+                title: label(&format!("components.metrics.group.{group}")),
+                tip: match rows.as_slice() {
+                    [row] => row.detail.clone(),
+                    _ => String::new(),
+                },
+                tone: metric_color(metrics[0], self.palette),
+                devices,
+            });
         }
-        entries.push(TaskbarMenuEntry::Separator);
-        entries.push(item(
-            "settings".into(),
-            TaskbarChoice::Settings,
-            label("components.taskbar.menu.settings"),
-            false,
-            false,
-        ));
-        entries.push(item(
-            "hide".into(),
-            TaskbarChoice::Hide,
-            label("components.taskbar.menu.hide"),
-            false,
-            false,
-        ));
-        (entries, choices)
+        kinds
+    }
+
+    /// What the control the tests name by `key` does: "style:curves",
+    /// "reading:<reading>" (as saved), "settings" or "hide".
+    pub(in crate::frontend) fn taskbar_panel_choice(&self, key: &str) -> Option<TaskbarChoice> {
+        if let Some(style) = key.strip_prefix("style:") {
+            return TASKBAR_STYLES
+                .iter()
+                .find(|value| **value == style)
+                .map(|value| TaskbarChoice::Style(value));
+        }
+        if let Some(reading) = key.strip_prefix("reading:") {
+            return self
+                .taskbar_panel_kinds()
+                .into_iter()
+                .flat_map(|kind| kind.devices)
+                .flat_map(|device| device.options)
+                .find(|option| option.key == reading)
+                .map(|option| TaskbarChoice::Readings(option.readings));
+        }
+        match key {
+            "settings" => Some(TaskbarChoice::Settings),
+            "hide" => Some(TaskbarChoice::Hide),
+            _ => None,
+        }
     }
 
     /// A monitor's readings, checked in a table under its card's

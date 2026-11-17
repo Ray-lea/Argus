@@ -18,7 +18,6 @@ use std::sync::{
     atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering},
 };
 use std::time::Instant;
-pub(crate) use taskbar::MenuEntry as TaskbarMenuEntry;
 pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup, Tone as TaskbarTone};
 pub(crate) use tray_anchor::Anchor;
 use windows::{
@@ -304,7 +303,7 @@ fn text_coverage(text: &str, size: u32, rect: tray_icon::Rect, font: f32) -> Opt
 
 /// Whether the taskbar is light (`SystemUsesLightTheme`; dark when unset,
 /// as on Windows 10 by default).
-fn taskbar_light() -> bool {
+pub(crate) fn taskbar_light() -> bool {
     use windows::Win32::System::Registry::*;
     let mut light = 0u32;
     let mut bytes = 4;
@@ -755,11 +754,54 @@ pub fn set_taskbar_readings(groups: Vec<TaskbarGroup>) {
         monitor.readings(groups);
     }
 }
-/// Shows `entries` as the taskbar monitor's menu, where it was right-clicked.
-pub fn show_taskbar_menu(entries: Vec<TaskbarMenuEntry>) {
-    if let Some(monitor) = TASKBAR.lock().unwrap().as_ref() {
-        monitor.menu(entries);
+/// Where the taskbar monitor's panel opens: over the monitor, as a tray
+/// flyout over the tray icon; none while the monitor does not show.
+pub fn taskbar_monitor_anchor() -> Option<Anchor> {
+    let [left, top, right, bottom] = taskbar::shown_rect()?;
+    Some(anchor_around(RECT {
+        left,
+        top,
+        right,
+        bottom,
+    }))
+}
+/// A taskbar's colour, as `0x00bbggrr`: the test stand-in's, and the
+/// ground of the monitor's previews.
+pub fn taskbar_color(light: bool) -> u32 {
+    if light { 0x00f3_f3f3 } else { 0x0020_2020 }
+}
+/// The taskbar monitor's look in `style` with `groups`, as it would show
+/// on the taskbar at `scale` (light or dark, `light`): an opaque image on
+/// the taskbar's colour, straight BGRA, its width and height in pixels.
+pub fn taskbar_preview(
+    groups: &[TaskbarGroup],
+    style: crate::settings::TaskbarStyle,
+    light: bool,
+    scale: f32,
+) -> Option<(u32, u32, Vec<u8>)> {
+    use std::cell::RefCell;
+    thread_local! {
+        static PAINTER: RefCell<Option<taskbar_draw::Painter>> = const { RefCell::new(None) };
     }
+    let font = taskbar_draw::font_size(scale);
+    PAINTER.with_borrow_mut(|painter| {
+        if painter.as_ref().is_none_or(|painter| painter.font != font) {
+            *painter = taskbar_draw::Painter::new(font);
+        }
+        let painter = painter.as_ref()?;
+        let height = (40. * scale).round() as i32;
+        let layout = taskbar_draw::lay_out(groups, height, scale, style, painter, None);
+        let mut pixels = painter.paint(&layout, light, false, scale)?;
+        let [red, green, blue, _] = taskbar_color(light).to_le_bytes();
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            let clear = 1. - f32::from(pixel[3]) / 255.;
+            for (channel, ground) in pixel.iter_mut().zip([blue, green, red]) {
+                *channel = (f32::from(*channel) + f32::from(ground) * clear).round() as u8;
+            }
+            pixel[3] = 255;
+        }
+        Some((layout.width as u32, layout.height as u32, pixels))
+    })
 }
 /// The taskbar monitor's window on screen, physical pixels (left, top,
 /// right, bottom), while it shows.
@@ -1273,11 +1315,11 @@ fn anchor_around(icon: RECT) -> Anchor {
 }
 
 /// What a pointer on the taskbar monitor asks for: a click shows or hides
-/// the window, as on the tray icon; a right click asks the interface for the
-/// monitor's menu (`argus-taskbar-monitor`), and the item chosen in it goes
-/// back to the interface. A test instance's monitor sits on a stand-in
-/// taskbar and never shows the window or the menu.
-fn taskbar_action(app: &Host, action: taskbar::Action, value: isize) {
+/// the window, as on the tray icon; a right click opens or closes the
+/// monitor's panel over it (`argus-taskbar-monitor`). A test instance's
+/// monitor sits on a stand-in taskbar and never shows the window or the
+/// panel this way.
+fn taskbar_action(app: &Host, action: taskbar::Action) {
     let test = std::env::args().any(|arg| arg == "--test");
     let close_card = || {
         let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
@@ -1291,16 +1333,14 @@ fn taskbar_action(app: &Host, action: taskbar::Action, value: isize) {
         }
         taskbar::Action::Context => {
             close_card();
-            if !test {
-                let _ = app.emit("argus-taskbar-monitor", serde_json::json!({ "menu": true }));
+            if !test && let Some(anchor) = taskbar_monitor_anchor() {
+                let _ = app.emit(
+                    "argus-taskbar-monitor",
+                    serde_json::json!({ "panel": anchor }),
+                );
             }
         }
-        taskbar::Action::Chosen => {
-            let _ = app.emit(
-                "argus-taskbar-monitor",
-                serde_json::json!({ "chosen": value }),
-            );
-        }
+        taskbar::Action::Warm => warm_flyouts(true),
     }
 }
 
@@ -1502,7 +1542,7 @@ unsafe extern "system" fn procedure(
         }
         if message == taskbar::MESSAGE {
             if let Some(action) = taskbar::Action::from(w.0) {
-                taskbar_action(app, action, l.0);
+                taskbar_action(app, action);
             }
             return LRESULT(0);
         }
