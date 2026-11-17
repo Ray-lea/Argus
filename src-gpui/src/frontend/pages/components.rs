@@ -8,6 +8,7 @@ use crate::frontend::monitors::{
 };
 use crate::frontend::widgets::Tone;
 use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor};
+use crate::shell::TaskbarMenuEntry;
 
 /// A component of the page: its key (`components.*` texts), its icon and
 /// whether it is available yet. Settings of a component that ships go in a
@@ -93,6 +94,20 @@ const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
 
 /// The column of cards, as wide as the settings' cards.
 const CONTENT: f32 = 780.;
+
+/// The taskbar monitor's styles, as saved, in the order offered.
+const TASKBAR_STYLES: [&str; 4] = ["labels", "curves", "capsules", "figures"];
+
+/// What an item of the taskbar monitor's menu does.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) enum TaskbarChoice {
+    Style(&'static str),
+    /// The readings with one added or taken away, as saved.
+    Readings(Vec<String>),
+    /// The components page in the window.
+    Settings,
+    Hide,
+}
 
 impl Desktop {
     pub(in crate::frontend) fn components_view(
@@ -402,6 +417,172 @@ impl Desktop {
         rows
     }
 
+    /// `metric` of `row`: its reading, whether it is among `chosen`, and
+    /// the readings with it added or taken away, as saved.
+    fn toggled(
+        &self,
+        chosen: &[Reading],
+        row: &OptionRow,
+        metric: Metric,
+    ) -> (Reading, bool, Vec<String>) {
+        let reading = Reading {
+            metric,
+            device: row.device.clone(),
+        };
+        let alias = row.alias.clone().map(|device| Reading {
+            metric,
+            device: Some(device),
+        });
+        let on =
+            chosen.contains(&reading) || alias.as_ref().is_some_and(|alias| chosen.contains(alias));
+        let mut next = chosen
+            .iter()
+            .filter(|other| **other != reading && Some(*other) != alias.as_ref())
+            .cloned()
+            .collect::<Vec<_>>();
+        if !on {
+            next.push(reading.clone());
+        }
+        let next = arrange(&self.snapshot, next)
+            .iter()
+            .map(Reading::text)
+            .collect::<Vec<_>>();
+        (reading, on, next)
+    }
+
+    /// The taskbar monitor's menu, and what each of its items does by id
+    /// (the first item's is 1), with the key the tests choose it by: the
+    /// styles; the readings as on the components page, a submenu per kind
+    /// of device and, with several devices, per device (a kind with a
+    /// single option is an item of its own); the components page; closing
+    /// the monitor.
+    pub(in crate::frontend) fn taskbar_menu(
+        &self,
+    ) -> (Vec<TaskbarMenuEntry>, Vec<(String, TaskbarChoice)>) {
+        let monitor: TaskbarMonitor =
+            serde_json::from_value(self.data["settings"]["taskbarMonitor"].clone())
+                .unwrap_or_default();
+        let chosen = &monitor.metrics;
+        let mut choices = Vec::new();
+        let mut item =
+            |key: String, choice: TaskbarChoice, text: String, checked: bool, radio: bool| {
+                choices.push((key, choice));
+                TaskbarMenuEntry::Item {
+                    id: choices.len(),
+                    text,
+                    checked,
+                    radio,
+                }
+            };
+        let style = String::from(monitor.style);
+        let styles = TASKBAR_STYLES
+            .iter()
+            .map(|value| {
+                item(
+                    format!("style:{value}"),
+                    TaskbarChoice::Style(value),
+                    label(&format!("components.taskbar.style.{value}")),
+                    style == *value,
+                    true,
+                )
+            })
+            .collect();
+        let mut entries = vec![
+            TaskbarMenuEntry::Submenu {
+                text: label("components.taskbar.style.title"),
+                entries: styles,
+            },
+            TaskbarMenuEntry::Separator,
+        ];
+        for (section, (group, _)) in METRIC_GROUPS.iter().enumerate() {
+            let rows = self.option_rows(section, chosen);
+            let mut option = |row: &OptionRow, metric: Metric, text: String| {
+                let (reading, on, next) = self.toggled(chosen, row, metric);
+                item(
+                    format!("reading:{}", reading.text()),
+                    TaskbarChoice::Readings(next),
+                    text,
+                    on,
+                    false,
+                )
+            };
+            let metric_name =
+                |metric: Metric| label(&format!("components.metric.{}.option", metric_key(metric)));
+            // A device's name, and what tells it apart after a tab, on the
+            // menu's right; the default row of all devices goes by its name.
+            let name = |row: &OptionRow| {
+                if row.detail.is_empty() || (row.device.is_none() && row.alias.is_none()) {
+                    row.title.clone()
+                } else {
+                    format!("{}\t{}", row.title, row.detail)
+                }
+            };
+            let group_entries: Vec<TaskbarMenuEntry> = match rows.as_slice() {
+                [row] => row
+                    .metrics
+                    .iter()
+                    .map(|metric| option(row, *metric, metric_name(*metric)))
+                    .collect(),
+                rows if rows.iter().all(|row| row.metrics.len() == 1) => rows
+                    .iter()
+                    .map(|row| option(row, row.metrics[0], name(row)))
+                    .collect(),
+                rows => rows
+                    .iter()
+                    .map(|row| TaskbarMenuEntry::Submenu {
+                        text: name(row),
+                        entries: row
+                            .metrics
+                            .iter()
+                            .map(|metric| option(row, *metric, metric_name(*metric)))
+                            .collect(),
+                    })
+                    .collect(),
+            };
+            let title = label(&format!("components.metrics.group.{group}"));
+            match <[TaskbarMenuEntry; 1]>::try_from(group_entries) {
+                // A kind with one option: the item goes by the kind's name.
+                Ok(
+                    [
+                        TaskbarMenuEntry::Item {
+                            id, checked, radio, ..
+                        },
+                    ],
+                ) => entries.push(TaskbarMenuEntry::Item {
+                    id,
+                    text: title,
+                    checked,
+                    radio,
+                }),
+                Ok([entry]) => entries.push(TaskbarMenuEntry::Submenu {
+                    text: title,
+                    entries: vec![entry],
+                }),
+                Err(group_entries) if group_entries.is_empty() => {}
+                Err(group_entries) => entries.push(TaskbarMenuEntry::Submenu {
+                    text: title,
+                    entries: group_entries,
+                }),
+            }
+        }
+        entries.push(TaskbarMenuEntry::Separator);
+        entries.push(item(
+            "settings".into(),
+            TaskbarChoice::Settings,
+            label("components.taskbar.menu.settings"),
+            false,
+            false,
+        ));
+        entries.push(item(
+            "hide".into(),
+            TaskbarChoice::Hide,
+            label("components.taskbar.menu.hide"),
+            false,
+            false,
+        ));
+        (entries, choices)
+    }
+
     /// A monitor's readings, checked in a table under its card's
     /// description: a row per device (or for the CPU, the memory and the
     /// rest), its name and what tells it apart on the left, its options in
@@ -416,30 +597,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let chosen_list = chosen.to_vec();
         let option = |row: &OptionRow, metric: Metric| {
-            let reading = Reading {
-                metric,
-                device: row.device.clone(),
-            };
-            let alias = row.alias.clone().map(|device| Reading {
-                metric,
-                device: Some(device),
-            });
-            let on = chosen.contains(&reading)
-                || alias.as_ref().is_some_and(|alias| chosen.contains(alias));
-            let mut next = chosen_list
-                .iter()
-                .filter(|other| **other != reading && Some(*other) != alias.as_ref())
-                .cloned()
-                .collect::<Vec<_>>();
-            if !on {
-                next.push(reading);
-            }
-            let next = arrange(&self.snapshot, next)
-                .iter()
-                .map(Reading::text)
-                .collect::<Vec<_>>();
+            let (_, on, next) = self.toggled(chosen, row, metric);
             let key = metric_key(metric);
             let name = label(&format!("components.metric.{key}.option"));
             let anchor = SharedString::from(format!("{id}-{}-{key}", row.id));
@@ -689,7 +848,7 @@ impl Desktop {
         let style = text(&settings["taskbarMonitor"], "style");
         let style = self.segments(
             "setting-taskbarStyle",
-            ["labels", "curves", "capsules", "figures"]
+            TASKBAR_STYLES
                 .iter()
                 .map(|value| {
                     (

@@ -188,6 +188,10 @@
       "curves": "曲线",
       "capsules": "胶囊",
       "figures": "大数字"
+    },
+    "menu": {
+      "settings": "组件设置…",
+      "hide": "关闭任务栏监控"
     }
   },
   "planned": {

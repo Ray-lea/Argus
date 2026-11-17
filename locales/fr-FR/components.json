@@ -188,6 +188,10 @@
       "curves": "Courbes",
       "capsules": "Pastilles",
       "figures": "Grands chiffres"
+    },
+    "menu": {
+      "settings": "Paramètres des composants…",
+      "hide": "Désactiver le moniteur de barre des tâches"
     }
   },
   "planned": {

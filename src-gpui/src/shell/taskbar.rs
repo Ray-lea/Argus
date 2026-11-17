@@ -10,7 +10,9 @@
 //! answering holds up only this thread. The window is made with
 //! `WS_EX_NOPARENTNOTIFY`, so that making and closing it sends nothing to the
 //! shell, and what a click asks for is posted to the main window, whose
-//! thread acts on it as on a click on the tray icon.
+//! thread acts on it: a click shows or hides Argus, as on the tray icon; a
+//! right click asks the interface for the monitor's menu, which this thread
+//! then shows (its message loop runs here, not on the interface's thread).
 //!
 //! Windows 11 draws the taskbar's buttons in content of its own; the monitor
 //! lies over its free space beside the tray, or at its start, past the
@@ -31,11 +33,9 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Controls::{WM_MOUSEHOVER, WM_MOUSELEAVE};
+use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    TME_HOVER, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
-};
+use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
@@ -46,6 +46,8 @@ pub(crate) const MESSAGE: u32 = WM_APP + 83;
 const CHANGED: u32 = WM_APP + 1;
 /// The monitor goes.
 const CLOSE: u32 = WM_APP + 2;
+/// The menu the interface made for a right click is ready (`Monitor::menu`).
+const MENU: u32 = WM_APP + 3;
 /// How often the taskbar's geometry and the shell's window are checked.
 const CHECK: Duration = Duration::from_millis(500);
 const TIMER: usize = 1;
@@ -56,13 +58,10 @@ const TIMER: usize = 1;
 pub(crate) enum Action {
     /// A click: show or hide the window.
     Toggle = 1,
-    /// A right click: the quick panel or the menu.
+    /// A right click: the monitor's menu.
     Context = 2,
-    /// The pointer rests on the monitor / left it.
-    CardOpen = 3,
-    CardClose = 4,
-    /// The pointer reached the monitor: a flyout may follow.
-    Warm = 5,
+    /// An item of the menu was chosen, its id in `lParam`.
+    Chosen = 3,
 }
 
 impl Action {
@@ -70,16 +69,32 @@ impl Action {
         Some(match value {
             1 => Action::Toggle,
             2 => Action::Context,
-            3 => Action::CardOpen,
-            4 => Action::CardClose,
-            5 => Action::Warm,
+            3 => Action::Chosen,
             _ => return None,
         })
     }
 }
 
+/// An entry of the monitor's menu.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum MenuEntry {
+    /// An item to choose, with its id (above 0); `radio` marks a checked
+    /// one of a set with a dot instead of a tick.
+    Item {
+        id: usize,
+        text: String,
+        checked: bool,
+        radio: bool,
+    },
+    Submenu {
+        text: String,
+        entries: Vec<MenuEntry>,
+    },
+    Separator,
+}
+
 /// The monitor's window on screen, physical pixels (left, top, right,
-/// bottom); none while it is not shown. Flyouts open beside it.
+/// bottom); none while it is not shown.
 static SHOWN: Mutex<Option<[i32; 4]>> = Mutex::new(None);
 /// The monitor shows readings, so sampling keeps the shown window's pace.
 static LIVE: AtomicBool = AtomicBool::new(false);
@@ -97,6 +112,8 @@ struct State {
     place: TaskbarPlace,
     style: TaskbarStyle,
     groups: Vec<Group>,
+    /// The menu to show for the last right click, until shown.
+    menu: Option<Vec<MenuEntry>>,
     closed: bool,
 }
 
@@ -136,6 +153,7 @@ impl Monitor {
                 place,
                 style,
                 groups: Vec::new(),
+                menu: None,
                 closed: false,
             }),
             control: AtomicIsize::new(0),
@@ -178,6 +196,13 @@ impl Monitor {
         self.shared.post(CHANGED);
     }
 
+    /// Shows `entries` as the menu for the last right click, where it was;
+    /// the chosen item's id is posted to the main window (`Action::Chosen`).
+    pub fn menu(&self, entries: Vec<MenuEntry>) {
+        self.shared.state.lock().unwrap().menu = Some(entries);
+        self.shared.post(MENU);
+    }
+
     /// Takes the monitor off the taskbar, waiting at most `wait` for it.
     pub fn close(&self, wait: Duration) {
         self.update(|state| state.closed = true);
@@ -218,6 +243,10 @@ struct Worker {
     light: bool,
     hover: bool,
     tracking: bool,
+    /// Where the last right click was, screen pixels: the menu opens there.
+    clicked: POINT,
+    /// The hidden window that owns the menu while it shows, made once.
+    menu_owner: Option<HWND>,
     squeeze: Option<Squeeze>,
     /// How wide the capsules' values have been lately.
     reserve: Reserve,
@@ -254,6 +283,10 @@ fn register(class: PCWSTR, procedure: WNDPROC, background: Option<HBRUSH>) {
 }
 
 const CONTROL_CLASS: PCWSTR = w!("ArgusTaskbarMonitorControl");
+/// The hidden window that owns the menu: a menu closes on a click
+/// elsewhere only while its owner is the foreground window, which the
+/// control window (`WS_EX_NOACTIVATE`) never is.
+const MENU_OWNER_CLASS: PCWSTR = w!("ArgusTaskbarMonitorMenu");
 const WINDOW_CLASS: PCWSTR = w!("ArgusTaskbarMonitor");
 /// The test stand-in's classes: its tray goes by the shell's class name,
 /// local to this process, so that finding it takes the same path.
@@ -309,6 +342,8 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
             light: super::taskbar_light(),
             hover: false,
             tracking: false,
+            clicked: POINT::default(),
+            menu_owner: None,
             squeeze: None,
             reserve: Reserve::default(),
             sought: None,
@@ -329,6 +364,11 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
     let worker = WORKER.with(|worker| worker.borrow_mut().take());
     if let Some(mut worker) = worker {
         worker.detach();
+        if let Some(owner) = worker.menu_owner.take() {
+            unsafe {
+                let _ = DestroyWindow(owner);
+            }
+        }
         if let Some(stand_in) = worker.stand_in.take() {
             unsafe {
                 let _ = DestroyWindow(stand_in);
@@ -356,6 +396,14 @@ unsafe extern "system" fn control_procedure(
             unsafe { PostQuitMessage(0) };
             LRESULT(0)
         }
+        MENU => {
+            // Shown outside the worker: the menu's own message loop runs
+            // until it closes, and the monitor's messages go on meanwhile.
+            if let Some(Some(menu)) = with_worker(|worker| worker.take_menu()) {
+                menu.show();
+            }
+            LRESULT(0)
+        }
         WM_SETTINGCHANGE | WM_DISPLAYCHANGE => {
             with_worker(|worker| {
                 worker.light = super::taskbar_light();
@@ -377,6 +425,118 @@ unsafe extern "system" fn control_procedure(
     }
 }
 
+unsafe extern "system" fn menu_owner_procedure(
+    hwnd: HWND,
+    message: u32,
+    w: WPARAM,
+    l: LPARAM,
+) -> LRESULT {
+    unsafe { DefWindowProcW(hwnd, message, w, l) }
+}
+
+/// A menu to show for a right click on the monitor.
+struct Menu {
+    entries: Vec<MenuEntry>,
+    /// Where the click was, screen pixels.
+    at: POINT,
+    owner: HWND,
+    main: HWND,
+}
+
+impl Menu {
+    /// Shows the menu at the click, above it when the click was on the
+    /// lower half of its display (a taskbar at the bottom), and posts the
+    /// chosen item's id to the main window.
+    fn show(self) {
+        unsafe {
+            let Ok(menu) = CreatePopupMenu() else {
+                return;
+            };
+            fill(menu, &self.entries);
+            let display = MonitorFromPoint(self.at, MONITOR_DEFAULTTONEAREST);
+            let mut info = MONITORINFO {
+                cbSize: size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let lower = GetMonitorInfoW(display, &mut info).as_bool()
+                && self.at.y > (info.rcMonitor.top + info.rcMonitor.bottom) / 2;
+            let mut flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
+            if lower {
+                flags |= TPM_BOTTOMALIGN;
+            }
+            let _ = SetForegroundWindow(self.owner);
+            let chosen =
+                TrackPopupMenu(menu, flags, self.at.x, self.at.y, None, self.owner, None).0;
+            // A message after the menu: without it, the menu shown for the
+            // next right click would close as soon as it opens.
+            let _ = PostMessageW(Some(self.owner), WM_NULL, WPARAM(0), LPARAM(0));
+            let _ = DestroyMenu(menu);
+            if chosen > 0 {
+                let _ = PostMessageW(
+                    Some(self.main),
+                    MESSAGE,
+                    WPARAM(Action::Chosen as usize),
+                    LPARAM(chosen as isize),
+                );
+            }
+        }
+    }
+}
+
+/// Adds `entries` to `menu`; submenus go with it when it is destroyed.
+fn fill(menu: HMENU, entries: &[MenuEntry]) {
+    for entry in entries {
+        unsafe {
+            match entry {
+                MenuEntry::Item {
+                    id,
+                    text,
+                    checked,
+                    radio,
+                } => {
+                    let text = wide(text);
+                    let check = if *checked { MF_CHECKED } else { MF_UNCHECKED };
+                    let _ = AppendMenuW(menu, MF_STRING | check, *id, PCWSTR(text.as_ptr()));
+                    if *checked && *radio {
+                        let _ = CheckMenuRadioItem(
+                            menu,
+                            *id as u32,
+                            *id as u32,
+                            *id as u32,
+                            MF_BYCOMMAND.0,
+                        );
+                    }
+                }
+                MenuEntry::Submenu { text, entries } => {
+                    let Ok(submenu) = CreatePopupMenu() else {
+                        continue;
+                    };
+                    fill(submenu, entries);
+                    let text = wide(text);
+                    let _ = AppendMenuW(
+                        menu,
+                        MF_STRING | MF_POPUP,
+                        submenu.0 as usize,
+                        PCWSTR(text.as_ptr()),
+                    );
+                }
+                MenuEntry::Separator => {
+                    let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                }
+            }
+        }
+    }
+}
+
+/// A menu item's text as Windows takes it: `&` stands for itself, not for
+/// an access key.
+fn wide(text: &str) -> Vec<u16> {
+    text.replace('&', "&&")
+        .encode_utf16()
+        .chain(Some(0))
+        .collect()
+}
+
 unsafe extern "system" fn window_procedure(
     hwnd: HWND,
     message: u32,
@@ -391,10 +551,6 @@ unsafe extern "system" fn window_procedure(
             with_worker(|worker| worker.pointer_moved(hwnd));
             LRESULT(0)
         }
-        WM_MOUSEHOVER => {
-            with_worker(|worker| worker.ask(Action::CardOpen));
-            LRESULT(0)
-        }
         WM_MOUSELEAVE => {
             with_worker(|worker| worker.pointer_left());
             LRESULT(0)
@@ -404,7 +560,10 @@ unsafe extern "system" fn window_procedure(
             LRESULT(0)
         }
         WM_RBUTTONUP => {
-            with_worker(|worker| worker.ask(Action::Context));
+            with_worker(|worker| {
+                let _ = unsafe { GetCursorPos(&mut worker.clicked) };
+                worker.ask(Action::Context);
+            });
             LRESULT(0)
         }
         // Handled here: passed on, they would reach the taskbar and open
@@ -749,36 +908,69 @@ impl Worker {
         }
     }
 
+    /// The pointer moved over the monitor: it lights up until the pointer
+    /// leaves.
     fn pointer_moved(&mut self, window: HWND) {
         if self.tracking {
             return;
         }
-        let mut hover_time = 400u32;
         unsafe {
-            let _ = SystemParametersInfoW(
-                SPI_GETMOUSEHOVERTIME,
-                0,
-                Some((&raw mut hover_time).cast()),
-                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-            );
             let mut track = TRACKMOUSEEVENT {
                 cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
-                dwFlags: TME_HOVER | TME_LEAVE,
+                dwFlags: TME_LEAVE,
                 hwndTrack: window,
-                dwHoverTime: hover_time,
+                dwHoverTime: 0,
             };
             self.tracking = TrackMouseEvent(&mut track).is_ok();
         }
         self.hover = true;
         self.redraw();
-        self.ask(Action::Warm);
     }
 
     fn pointer_left(&mut self) {
         self.tracking = false;
         self.hover = false;
         self.redraw();
-        self.ask(Action::CardClose);
+    }
+
+    /// The menu the interface made for the last right click, to show where
+    /// it was; none for a test instance, which never shows one.
+    fn take_menu(&mut self) -> Option<Menu> {
+        let entries = self.shared.state.lock().unwrap().menu.take()?;
+        if self.test || entries.is_empty() {
+            return None;
+        }
+        let owner = match self.menu_owner {
+            Some(owner) => owner,
+            None => {
+                register(MENU_OWNER_CLASS, Some(menu_owner_procedure), None);
+                let owner = unsafe {
+                    CreateWindowExW(
+                        WS_EX_TOOLWINDOW,
+                        MENU_OWNER_CLASS,
+                        w!("Argus"),
+                        WS_POPUP,
+                        0,
+                        0,
+                        0,
+                        0,
+                        None,
+                        None,
+                        Some(instance()),
+                        None,
+                    )
+                }
+                .ok()?;
+                self.menu_owner = Some(owner);
+                owner
+            }
+        };
+        Some(Menu {
+            entries,
+            at: self.clicked,
+            owner,
+            main: self.main,
+        })
     }
 
     /// Passes what the pointer asks for to the main window's thread.

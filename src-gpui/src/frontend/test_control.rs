@@ -63,6 +63,14 @@ impl Desktop {
         {
             self.desktop_monitor_event(&json!({ "menu": item }), window, cx);
         }
+        // An item of the taskbar monitor's menu, as if chosen, by its key
+        // ("style:curves", "reading:gpu@<device>", "settings", "hide").
+        if let Some(item) = control["taskbarMonitorMenu"].as_str() {
+            assert!(
+                self.choose_taskbar_item(item, window, cx),
+                "no taskbar monitor menu item {item}"
+            );
+        }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")
         {

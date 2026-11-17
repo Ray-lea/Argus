@@ -1,6 +1,6 @@
 //! Page composition keeps domain queries separate from native widgets.
 mod about;
-mod components;
+pub(in crate::frontend) mod components;
 mod details;
 mod history;
 pub(in crate::frontend) mod performance;

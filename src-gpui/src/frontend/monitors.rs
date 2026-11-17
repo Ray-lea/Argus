@@ -4,10 +4,11 @@
 //! readings the shell draws on the taskbar (`shell::taskbar`). Each shows
 //! the readings its settings name, in their order: a metric of the
 //! default device, or of one GPU, disk or network adapter of several.
+use super::pages::components::TaskbarChoice;
 use super::pages::performance::rail;
 use super::*;
 use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle};
-use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarTone};
+use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarMenuEntry, TaskbarTone};
 use windows::Win32::Foundation::HWND;
 
 /// From this percent or temperature (°C) a reading turns amber, as on the
@@ -923,6 +924,9 @@ pub(in crate::frontend) struct Monitors {
     /// its way: per monitor's settings key, its command and the latest
     /// choice, sent once that change has come back.
     queued: Vec<(&'static str, &'static str, Vec<String>)>,
+    /// What the items of the taskbar monitor's menu last shown do, by id
+    /// less one.
+    taskbar_menu: Vec<(String, TaskbarChoice)>,
 }
 
 pub(in crate::frontend) struct DeskMonitor {
@@ -1366,6 +1370,80 @@ impl Desktop {
         self.request("set_desktop_monitor", change, Some("settings"), window, cx);
     }
 
+    /// A right click on the taskbar monitor (`menu`): its menu shows there;
+    /// or an item of that menu was chosen (`chosen`, its id).
+    pub(in crate::frontend) fn taskbar_monitor_event(
+        &mut self,
+        event: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event["menu"].as_bool() == Some(true) {
+            let (entries, choices) = self.taskbar_menu();
+            self.monitors.taskbar_menu = choices;
+            crate::shell::show_taskbar_menu(entries);
+        } else if let Some(choice) = event["chosen"].as_u64().and_then(|id| {
+            self.monitors
+                .taskbar_menu
+                .get((id as usize).checked_sub(1)?)
+        }) {
+            let choice = choice.1.clone();
+            self.taskbar_choice(choice, window, cx);
+        }
+    }
+
+    /// An item of the taskbar monitor's menu, as if chosen, by its key
+    /// (`taskbarMonitorMenu` of the tests); false when there is none.
+    pub(in crate::frontend) fn choose_taskbar_item(
+        &mut self,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some((_, choice)) = self
+            .taskbar_menu()
+            .1
+            .into_iter()
+            .find(|(item, _)| item == key)
+        else {
+            return false;
+        };
+        self.taskbar_choice(choice, window, cx);
+        true
+    }
+
+    fn taskbar_choice(
+        &mut self,
+        choice: TaskbarChoice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let command = "set_taskbar_monitor";
+        match choice {
+            TaskbarChoice::Style(style) => self.request(
+                command,
+                json!({ "style": style }),
+                Some("settings"),
+                window,
+                cx,
+            ),
+            TaskbarChoice::Readings(next) => {
+                self.choose_metrics("taskbarMonitor", command, next, window, cx)
+            }
+            TaskbarChoice::Settings => {
+                self.act(Action::Page("components".into()), window, cx);
+                crate::shell::show_main(&self.host);
+            }
+            TaskbarChoice::Hide => self.request(
+                command,
+                json!({ "enabled": false }),
+                Some("settings"),
+                window,
+                cx,
+            ),
+        }
+    }
+
     /// What the tests read of the monitors (`inspectLayout.monitors`).
     pub(in crate::frontend) fn monitors_test_state(&self, cx: &App) -> Value {
         let desk = self.monitors.desk.as_ref().map(|open| {
@@ -1385,8 +1463,26 @@ impl Desktop {
         json!({
             "desktop": desk,
             "taskbar": crate::shell::taskbar_monitor_rect(),
+            "taskbarMenu": menu_test_state(&self.taskbar_menu().0),
         })
     }
+}
+
+/// The taskbar monitor's menu as the tests read it: each entry's text,
+/// whether it is checked, and a submenu's entries; a separator as "-".
+fn menu_test_state(entries: &[TaskbarMenuEntry]) -> Value {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            TaskbarMenuEntry::Item { text, checked, .. } => {
+                json!({ "text": text, "checked": checked })
+            }
+            TaskbarMenuEntry::Submenu { text, entries } => {
+                json!({ "text": text, "entries": menu_test_state(entries) })
+            }
+            TaskbarMenuEntry::Separator => json!("-"),
+        })
+        .collect()
 }
 
 #[cfg(test)]

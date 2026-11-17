@@ -188,6 +188,10 @@
       "curves": "曲線",
       "capsules": "膠囊",
       "figures": "大數字"
+    },
+    "menu": {
+      "settings": "元件設定…",
+      "hide": "關閉工作列監控"
     }
   },
   "planned": {

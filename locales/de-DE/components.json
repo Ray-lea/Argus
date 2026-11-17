@@ -188,6 +188,10 @@
       "curves": "Kurven",
       "capsules": "Kapseln",
       "figures": "Große Zahlen"
+    },
+    "menu": {
+      "settings": "Komponenteneinstellungen…",
+      "hide": "Taskleistenanzeige ausschalten"
     }
   },
   "planned": {

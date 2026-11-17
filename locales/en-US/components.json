@@ -188,6 +188,10 @@
       "curves": "Curves",
       "capsules": "Capsules",
       "figures": "Large figures"
+    },
+    "menu": {
+      "settings": "Component settings…",
+      "hide": "Turn off taskbar monitor"
     }
   },
   "planned": {

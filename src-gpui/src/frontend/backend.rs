@@ -278,6 +278,7 @@ impl Desktop {
                 // take it (one opened from the hidden icons flyout).
                 "argus-tray-dismiss" => self.close_tray_panel(cx),
                 "argus-desktop-monitor" => self.desktop_monitor_event(&event.value, window, cx),
+                "argus-taskbar-monitor" => self.taskbar_monitor_event(&event.value, window, cx),
                 "argus-tray-warm" => {
                     self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
                 }

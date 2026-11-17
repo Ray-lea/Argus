@@ -188,6 +188,10 @@
       "curves": "Curvas",
       "capsules": "Cápsulas",
       "figures": "Cifras grandes"
+    },
+    "menu": {
+      "settings": "Configuración de componentes…",
+      "hide": "Desactivar el monitor en la barra de tareas"
     }
   },
   "planned": {

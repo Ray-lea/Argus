@@ -188,6 +188,10 @@
       "curves": "曲線",
       "capsules": "カプセル",
       "figures": "大きな数字"
+    },
+    "menu": {
+      "settings": "コンポーネントの設定…",
+      "hide": "タスク バー モニターをオフにする"
     }
   },
   "planned": {

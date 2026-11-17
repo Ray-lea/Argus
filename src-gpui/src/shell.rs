@@ -18,6 +18,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering},
 };
 use std::time::Instant;
+pub(crate) use taskbar::MenuEntry as TaskbarMenuEntry;
 pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup, Tone as TaskbarTone};
 pub(crate) use tray_anchor::Anchor;
 use windows::{
@@ -754,6 +755,12 @@ pub fn set_taskbar_readings(groups: Vec<TaskbarGroup>) {
         monitor.readings(groups);
     }
 }
+/// Shows `entries` as the taskbar monitor's menu, where it was right-clicked.
+pub fn show_taskbar_menu(entries: Vec<TaskbarMenuEntry>) {
+    if let Some(monitor) = TASKBAR.lock().unwrap().as_ref() {
+        monitor.menu(entries);
+    }
+}
 /// The taskbar monitor's window on screen, physical pixels (left, top,
 /// right, bottom), while it shows.
 pub fn taskbar_monitor_rect() -> Option<[i32; 4]> {
@@ -1237,12 +1244,12 @@ fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
         right: point.x + 1,
         bottom: point.y + 1,
     });
-    anchor_around(icon, true)
+    anchor_around(icon)
 }
 
-/// A flyout's anchor beside `icon` and its display; with `overflow`, the
-/// hidden icons flyout when the icon is in it.
-fn anchor_around(icon: RECT, overflow: bool) -> Anchor {
+/// A flyout's anchor beside `icon` and its display, and the hidden icons
+/// flyout when the icon is in it.
+fn anchor_around(icon: RECT) -> Anchor {
     use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     let monitor = unsafe { MonitorFromRect(&icon, MONITOR_DEFAULTTONEAREST) };
     let mut info = MONITORINFO {
@@ -1258,37 +1265,23 @@ fn anchor_around(icon: RECT, overflow: bool) -> Anchor {
         work: corners(info.rcWork),
         monitor: corners(info.rcMonitor),
         scale: dpi_x.max(96) as f32 / 96.,
-        overflow: overflow
-            .then(|| overflow_at(&icon))
-            .flatten()
-            .map(|(window, rect)| tray_anchor::Overflow {
-                rect: corners(rect),
-                window: window.0 as isize,
-            }),
+        overflow: overflow_at(&icon).map(|(window, rect)| tray_anchor::Overflow {
+            rect: corners(rect),
+            window: window.0 as isize,
+        }),
     }
 }
 
-/// What a pointer on the taskbar monitor asks for: what the same on the tray
-/// icon would, with flyouts beside the monitor. A test instance's monitor
-/// sits on a stand-in taskbar and never shows the window.
-fn taskbar_action(app: &Host, hwnd: HWND, action: taskbar::Action) {
-    let anchor = || {
-        taskbar::shown_rect().map(|[left, top, right, bottom]| {
-            anchor_around(
-                RECT {
-                    left,
-                    top,
-                    right,
-                    bottom,
-                },
-                false,
-            )
-        })
-    };
+/// What a pointer on the taskbar monitor asks for: a click shows or hides
+/// the window, as on the tray icon; a right click asks the interface for the
+/// monitor's menu (`argus-taskbar-monitor`), and the item chosen in it goes
+/// back to the interface. A test instance's monitor sits on a stand-in
+/// taskbar and never shows the window or the menu.
+fn taskbar_action(app: &Host, action: taskbar::Action, value: isize) {
+    let test = std::env::args().any(|arg| arg == "--test");
     let close_card = || {
         let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
     };
-    let test = std::env::args().any(|arg| arg == "--test");
     match action {
         taskbar::Action::Toggle => {
             close_card();
@@ -1298,27 +1291,16 @@ fn taskbar_action(app: &Host, hwnd: HWND, action: taskbar::Action) {
         }
         taskbar::Action::Context => {
             close_card();
-            if test {
-                return;
-            }
-            if app.state::<SettingsStore>().get().tray_menu == TrayMenu::Menu {
-                tray_menu(app, hwnd);
-            } else if let Some(anchor) = anchor() {
-                let _ = app.emit("argus-tray-panel", anchor);
+            if !test {
+                let _ = app.emit("argus-taskbar-monitor", serde_json::json!({ "menu": true }));
             }
         }
-        taskbar::Action::CardOpen => {
-            if app.state::<SettingsStore>().get().tray_card
-                && let Some(anchor) = anchor()
-            {
-                let _ = app.emit(
-                    "argus-tray-card",
-                    serde_json::json!({ "open": true, "anchor": anchor }),
-                );
-            }
+        taskbar::Action::Chosen => {
+            let _ = app.emit(
+                "argus-taskbar-monitor",
+                serde_json::json!({ "chosen": value }),
+            );
         }
-        taskbar::Action::CardClose => close_card(),
-        taskbar::Action::Warm => warm_flyouts(true),
     }
 }
 
@@ -1520,7 +1502,7 @@ unsafe extern "system" fn procedure(
         }
         if message == taskbar::MESSAGE {
             if let Some(action) = taskbar::Action::from(w.0) {
-                taskbar_action(app, hwnd, action);
+                taskbar_action(app, action, l.0);
             }
             return LRESULT(0);
         }
