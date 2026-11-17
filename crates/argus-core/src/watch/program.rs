@@ -237,7 +237,13 @@ impl ProgramWatch {
         if let Some(previous) = self.last_ts
             && snapshot.timestamp.saturating_sub(previous) > SAMPLE_MS * 2
         {
-            let keys: Vec<_> = self.handles.keys().copied().collect();
+            // New launches start at their first sample; an earlier gap belongs to older runs.
+            let keys: Vec<_> = self
+                .handles
+                .keys()
+                .filter(|key| key.1 <= previous)
+                .copied()
+                .collect();
             // Terminal records may already have this snapshot's timestamp; keep sequence time monotonic.
             let gap_ts = self.store.entries.back().map_or(previous + SAMPLE_MS, |e| {
                 e.point.ts.max(previous + SAMPLE_MS)
@@ -508,6 +514,69 @@ mod tests {
     }
 
     struct Helper(Child);
+
+    #[test]
+    fn a_new_launch_does_not_inherit_a_gap_before_its_creation() {
+        let dir = std::env::temp_dir().join(format!(
+            "argus-program-watch-birth-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let exe = std::env::current_exe().unwrap();
+        let name = exe.file_name().unwrap().to_str().unwrap().to_owned();
+        let first = Helper::spawn(&exe);
+        let first_key = first.key();
+        let mut watch = ProgramWatch::start(&dir, first_key.0, first_key.1, name.clone()).unwrap();
+        let snapshot = |keys: &[Key]| Snapshot {
+            seq: 1,
+            timestamp: super::super::now_ms(),
+            system: Default::default(),
+            hardware: Default::default(),
+            sessions: Vec::new(),
+            process_network: false,
+            processes: keys
+                .iter()
+                .map(|&(pid, created)| crate::ProcessRow {
+                    pid,
+                    create_time: created,
+                    name: name.clone().into(),
+                    ..Default::default()
+                })
+                .collect(),
+        };
+        watch.record(&snapshot(&[first_key])).unwrap();
+        std::thread::sleep(Duration::from_millis((SAMPLE_MS * 2 + 1000) as u64));
+        let later = Helper::spawn(&exe);
+        let later_key = later.key();
+        watch.record(&snapshot(&[first_key, later_key])).unwrap();
+        let before_birth = watch
+            .store
+            .entries
+            .iter()
+            .filter(|entry| (entry.pid, entry.created) == later_key && entry.point.ts < later_key.1)
+            .map(|entry| (entry.point.ts, entry.point.state))
+            .collect::<Vec<_>>();
+        let existing_gap = watch.store.entries.iter().any(|entry| {
+            (entry.pid, entry.created) == first_key && entry.point.state == WatchState::Gap
+        });
+        drop(watch);
+        drop(later);
+        drop(first);
+        std::fs::remove_file(dir.join(store::FILE_NAME)).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+        assert!(
+            before_birth.is_empty(),
+            "records before creation: {before_birth:?}"
+        );
+        assert!(
+            existing_gap,
+            "the existing run must retain the sampling gap"
+        );
+    }
+
     impl Helper {
         fn spawn(path: &Path) -> Self {
             Self(
