@@ -101,7 +101,8 @@ impl Desktop {
             return;
         }
         if pending.command == "history_moment"
-            && pending.args["cursor"] != json!(self.history_cursor)
+            && (pending.args["cursor"] != json!(self.history_cursor)
+                || self.data.get("historyMomentAt") != Some(&pending.args["ts"]))
         {
             self.data.remove("historyMomentAt");
             self.load_history(window, cx);
@@ -140,7 +141,7 @@ impl Desktop {
                 if pending.command == "history_series" {
                     self.data.insert(
                         "historyWindow".into(),
-                        json!({"from":pending.args["from"],"to":pending.args["to"]}),
+                        json!({"from":pending.args["from"],"to":pending.args["to"],"buckets":pending.args["buckets"]}),
                     );
                 }
                 if let Some(key) = pending.cache {
