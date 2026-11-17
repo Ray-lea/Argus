@@ -234,6 +234,8 @@ struct Desktop {
     /// The dim behind dialogs and its layer (over the chart layer).
     scrim: Rc<dialogs::ScrimState>,
     scrim_view: Option<Entity<dialogs::Scrim>>,
+    /// Its part behind the caption buttons, in the title row.
+    caption_scrim: Option<Entity<dialogs::Scrim>>,
     active_charts: Rc<RefCell<HashSet<String>>>,
     chart_placements: charts::Placements,
     /// How far the entering page is drawn from its place (the chart layer follows).
@@ -444,6 +446,7 @@ impl Desktop {
             chart_layer: None,
             scrim: Rc::new(dialogs::ScrimState::default()),
             scrim_view: None,
+            caption_scrim: None,
             active_charts: Rc::new(RefCell::new(HashSet::new())),
             chart_placements: Rc::new(RefCell::new(HashMap::new())),
             page_shift: Rc::new(Cell::new(Point::default())),
@@ -828,7 +831,10 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let owner = view.downgrade();
                 let hundred = cx.new(|_| hundred::HundredLayer::new(owner, place, shift));
                 let state = view.read(cx).scrim.clone();
-                let scrim = cx.new(|_| dialogs::Scrim { state });
+                let scrim = cx.new(|_| dialogs::Scrim {
+                    state,
+                    captions: false,
+                });
                 view.update(cx, |desktop, _| desktop.scrim_view = Some(scrim.clone()));
                 cx.new(|_| DesktopRoot {
                     desktop: view,

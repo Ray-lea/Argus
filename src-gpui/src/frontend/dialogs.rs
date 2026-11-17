@@ -742,7 +742,10 @@ impl Desktop {
     }
 
     fn notify_scrim(&self, cx: &mut Context<Self>) {
-        if let Some(scrim) = &self.scrim_view {
+        for scrim in [&self.scrim_view, &self.caption_scrim]
+            .into_iter()
+            .flatten()
+        {
             scrim.update(cx, |_, cx| cx.notify());
         }
     }
@@ -2205,6 +2208,10 @@ pub(super) struct ScrimState {
 /// (accelerating) with the last.
 pub(super) struct Scrim {
     pub state: Rc<ScrimState>,
+    /// The part behind the caption buttons, drawn by the title row under
+    /// them: the buttons stay bright on the dimmed bar, as the interface's
+    /// transparent `.caption` buttons over `.scrim`. The layer leaves them out.
+    pub captions: bool,
 }
 
 impl Render for Scrim {
@@ -2227,18 +2234,37 @@ impl Render for Scrim {
             (Some(shown), None) => progress(shown) >= 1.,
             (None, None) => true,
         };
+        let color = theme::token("scrim", Palette::current(cx).dark).opacity(level);
+        if self.captions {
+            // A cached view of its own inside the title row: its fade draws
+            // only it, while the desktop around it replays.
+            if !settled {
+                window.request_isolated_animation_frame();
+            }
+            return div()
+                .size_full()
+                .when(level > 0., |d| d.bg(color))
+                .into_any_element();
+        }
         if !settled {
             window.request_animation_frame();
         }
-        let color = theme::token("scrim", Palette::current(cx).dark).opacity(level);
-        // The caption buttons stay above the dim, as the interface's (`.caption`
-        // over `.scrim`): the toolbar row stops short of them.
+        // The caption buttons stay above the dim: the toolbar row stops short
+        // of them, and the title row dims the room behind them itself.
         let toolbar = theme::dimension("toolbarHeight");
-        let captions = gpui_kit::component::TITLE_BAR_HEIGHT * 3.;
         let dim = || div().absolute().bg(color);
-        div().absolute().inset_0().when(level > 0., |d| {
-            d.child(dim().top_0().left_0().right(captions).h(toolbar))
-                .child(dim().top(toolbar).left_0().right_0().bottom_0())
-        })
+        div()
+            .absolute()
+            .inset_0()
+            .when(level > 0., |d| {
+                d.child(dim().top_0().left_0().right(captions_width()).h(toolbar))
+                    .child(dim().top(toolbar).left_0().right_0().bottom_0())
+            })
+            .into_any_element()
     }
+}
+
+/// The width of the three caption buttons at the end of the title row.
+pub(super) fn captions_width() -> Pixels {
+    gpui_kit::component::TITLE_BAR_HEIGHT * 3.
 }

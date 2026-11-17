@@ -509,6 +509,16 @@ impl Desktop {
         let p = self.palette;
         let owner = cx.entity().downgrade();
         let height = theme::dimension("toolbarHeight");
+        let state = self.scrim.clone();
+        let caption_scrim = self
+            .caption_scrim
+            .get_or_insert_with(|| {
+                cx.new(|_| dialogs::Scrim {
+                    state,
+                    captions: true,
+                })
+            })
+            .clone();
         let start = div()
             .flex()
             .items_center()
@@ -533,13 +543,28 @@ impl Desktop {
             .flex_shrink_0()
             .flex()
             .flex_col()
+            .bg(p.background)
+            // Over the row's background and under the caption buttons: the
+            // part of the dialogs' dim that their layer leaves out.
+            .child(
+                caption_scrim.cached(
+                    StyleRefinement::default()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .w(dialogs::captions_width())
+                        .h(height),
+                ),
+            )
             .child(
                 TitleBar::new()
                     .h(height)
                     .flex_shrink_0()
                     // The row below has the interface's own 12 px inset.
                     .pl_0()
-                    .bg(p.background)
+                    // The row paints the background, under the dim behind
+                    // the caption buttons.
+                    .bg(gpui_kit::gpui::transparent_black())
                     .border_0()
                     .child(
                         div()
