@@ -217,8 +217,8 @@
       "title": "Nombre total d’octets transférés par d’autres I/O au cours de la durée de vie du processus."
     },
     "ioPriority": {
-      "label": "Priorité d’E/S",
-      "title": "Indication de priorité des requêtes disque et autres E/S du processus."
+      "label": "Priorité d’I/O",
+      "title": "Indication de priorité des requêtes disque et autres I/O du processus."
     },
     "netReceived": {
       "label": "Réception réseau",
@@ -303,7 +303,7 @@
       "other": "Terminer les {count} processus"
     },
     "setPriority": "Définir la priorité",
-    "ioPriority": "Priorité d’E/S",
+    "ioPriority": "Priorité d’I/O",
     "memoryPriority": "Priorité mémoire",
     "suspend": "Suspendre le processus",
     "resume": "Reprendre le processus",

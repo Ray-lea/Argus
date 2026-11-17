@@ -215,8 +215,8 @@
       "title": "Gesamtzahl der von anderen I/O während der Prozesslebensdauer übertragenen Bytes."
     },
     "ioPriority": {
-      "label": "E/A-Priorität",
-      "title": "Prioritätshinweis für Datenträger- und andere E/A-Anforderungen des Prozesses."
+      "label": "I/O-Priorität",
+      "title": "Prioritätshinweis für Datenträger- und andere I/O-Anforderungen des Prozesses."
     },
     "netReceived": {
       "label": "Netzwerkempfang",
@@ -299,7 +299,7 @@
       "other": "Alle {count} Prozesse beenden"
     },
     "setPriority": "Priorität festlegen",
-    "ioPriority": "E/A-Priorität",
+    "ioPriority": "I/O-Priorität",
     "memoryPriority": "Speicherpriorität",
     "suspend": "Prozess anhalten",
     "resume": "Prozess fortsetzen",
