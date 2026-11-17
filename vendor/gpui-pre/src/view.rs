@@ -278,6 +278,9 @@ pub struct ViewElement<V: View> {
     /// Argus patch: a cached view, to draw it again in place while the views
     /// around it replay (`splice_holes`).
     weak_view: Option<AnyWeakView>,
+    /// Argus patch: a cached view that renders whenever the view around it
+    /// does (`Self::following`).
+    following: bool,
     #[cfg(feature = "profiler")]
     view_type_name: &'static str,
     #[cfg(debug_assertions)]
@@ -301,6 +304,7 @@ impl<V: View> ViewElement<V> {
             entity_id,
             cached_style: None,
             weak_view: None,
+            following: false,
             #[cfg(feature = "profiler")]
             view_type_name,
             view: Some(view),
@@ -327,6 +331,18 @@ impl<V: View> ViewElement<V> {
     /// it, so that it can be drawn again in place while that one replays.
     fn splicing(mut self, view: AnyWeakView) -> Self {
         self.weak_view = Some(view);
+        self
+    }
+
+    /// Argus patch: this cached view renders whenever the view that holds
+    /// its element renders, as a view that is not cached does. It shows
+    /// state of the view around it, which changes without this one being
+    /// notified: it cannot be told current from stale there. It is cached
+    /// for the frames that draw it without the view around it, which
+    /// replays while this one is drawn again in place
+    /// (`Window::request_isolated_animation_frame`).
+    pub fn following(mut self) -> Self {
+        self.following = true;
         self
     }
 }
@@ -528,6 +544,7 @@ impl<V: View> Element for ViewElement<V> {
                 entity_id,
                 self.view_type_name,
                 self.weak_view.as_ref(),
+                self.following,
                 global_id,
                 bounds,
                 element,
@@ -645,6 +662,10 @@ fn prepaint_view(
     entity_id: EntityId,
     _name: &'static str,
     weak_view: Option<&AnyWeakView>,
+    // Whether the view's element was built by the view around it, which
+    // rendered, and asks the view to render with it
+    // (`ViewElement::following`).
+    following: bool,
     global_id: Option<&GlobalElementId>,
     bounds: Bounds<Pixels>,
     element: &mut Option<AnyElement>,
@@ -672,7 +693,8 @@ fn prepaint_view(
                 // Opacity is compared by bits so that a NaN opacity still matches itself
                 // and the view keeps using its cache.
                 let current = element_state.filter(|element_state| {
-                    element_state.cache_key.bounds == bounds
+                    !following
+                        && element_state.cache_key.bounds == bounds
                         && element_state.cache_key.content_mask == content_mask
                         && element_state.cache_key.text_style == text_style
                         && element_state.cache_key.opacity.to_bits() == opacity.to_bits()
@@ -955,6 +977,9 @@ fn splice_prepaint(
                     hole.entity_id,
                     hole.name,
                     Some(&hole.weak_view),
+                    // Drawn without the view around it: dirty, it renders,
+                    // or replays around a view inside it in its turn.
+                    false,
                     Some(&hole.global_id),
                     hole.bounds,
                     &mut None,

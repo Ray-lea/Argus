@@ -1,5 +1,6 @@
 //! Native virtual tables share one column model and preserve process-instance identity.
 use super::*;
+mod body;
 mod cell_text;
 mod cells;
 mod groups;
@@ -422,6 +423,15 @@ pub(super) struct NativeTable {
     /// parts, read from the list's scroll handle once this render lays out rows.
     tips: tips::Tips,
     list: Option<ScrollHandle>,
+    /// The list's handle as the rows are scrolled to with (`body`).
+    vertical: Option<UniformListScrollHandle>,
+    /// The view that draws the rows Argus draws (`body::TableBody`).
+    body: Option<Entity<body::TableBody>>,
+    /// Whether Argus draws this frame's rows (`body`), settled by the frame
+    /// before the table renders; the component's table then has none.
+    own_rows: bool,
+    /// The row the table selected last, which the keys go on from (`body`).
+    selected_row: Option<usize>,
     near: Option<usize>,
     near_due: bool,
     /// Why disk readings are missing, as of a sample.
@@ -479,6 +489,16 @@ impl WidthGlide {
 pub(super) struct TableFrame {
     state: Entity<TableState<NativeTable>>,
 }
+impl TableFrame {
+    /// What a key that moves the selected row does (`NativeTable::step`).
+    fn step<A: 'static>(&self, step: body::Step) -> impl Fn(&A, &mut Window, &mut App) + 'static {
+        let state = self.state.clone();
+        move |_, _, cx| {
+            cx.stop_propagation();
+            state.update(cx, |state, cx| NativeTable::step(state, step, cx));
+        }
+    }
+}
 impl Render for TableFrame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Columns on their way to a new width take a step each frame. Not
@@ -487,6 +507,16 @@ impl Render for TableFrame {
         // window again as the pointer moves and once more when it ends, which
         // takes the glides up again.
         let now = Instant::now();
+        // Who draws this frame's rows (`body`), settled before the table
+        // counts them. A new theme draws the table without configuring its
+        // columns: the cells' styles follow it here, before anything of this
+        // frame shows a cell (the held headings below among them).
+        let own_rows = self.state.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            delegate.cell_values.prepare(cx);
+            delegate.own_rows = delegate.draws_rows(now, window);
+            delegate.own_rows && !delegate.rows.is_empty()
+        });
         let gliding = self.state.update(cx, |state, cx| {
             if cx.has_active_drag() {
                 return false;
@@ -502,10 +532,11 @@ impl Render for TableFrame {
             window.request_animation_frame();
         }
         // The process list's held headings and its groups beside the scrollbar
-        // (`groups`): planned before the table renders, from where it is scrolled.
+        // (`groups`): planned before the table renders, from where it is
+        // scrolled. The rows Argus draws come with their own (`body`).
         let groups = self.state.update(cx, |state, cx| {
             let delegate = state.delegate_mut();
-            if delegate.page != "processes" {
+            if own_rows || delegate.page != "processes" {
                 return None;
             }
             delegate.plan_groups(window, cx);
@@ -519,12 +550,25 @@ impl Render for TableFrame {
         let dark = cx.theme().mode == ThemeMode::Dark;
         let processes = state.delegate().page == "processes";
         let columns = state.horizontal_scroll_handle.as_ref().clone();
+        use gpui_kit::base::actions::{
+            SelectDown, SelectFirst, SelectLast, SelectPageDown, SelectUp,
+        };
+        let bottom = if processes { scrollbar::SIZE } else { 0. };
         div()
             .relative()
             .size_full()
             // The process table keeps a rail for sideways scrolling below its
             // rows, even when the columns fit (`.hscroll`).
             .when(processes, |d| d.pb(px(scrollbar::SIZE)))
+            // The keys that move the selection among rows the component's
+            // table does not have, taken before it sees them (`body`).
+            .when(own_rows, |d| {
+                d.capture_action::<SelectUp>(self.step(body::Step::Up))
+                    .capture_action::<SelectDown>(self.step(body::Step::Down))
+                    .capture_action::<SelectFirst>(self.step(body::Step::First))
+                    .capture_action::<SelectLast>(self.step(body::Step::Last))
+                    .capture_action::<SelectPageDown>(self.step(body::Step::PageDown))
+            })
             .child(scrollbar::wheel_glide(&rows, &columns, table))
             .child(
                 DataTable::new(&self.state)
@@ -540,9 +584,23 @@ impl Render for TableFrame {
                     // The interface's scrollbars are drawn below.
                     .scrollbar_visible(false, false),
             )
+            // The component's table takes the wheel all over itself for its
+            // rows, which keeps it from an ancestor's scrolling; with the
+            // rows Argus draws it has none to do that for.
+            .when(own_rows, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .bottom(px(bottom))
+                        .child(gpui_kit::base::ScrollableMask::new(Axis::Vertical, &rows)),
+                )
+            })
             .children(groups)
             // The process page draws the list's bar itself (`Desktop::table_scrollbar`).
-            .when(!processes, |d| {
+            .when(!processes && !own_rows, |d| {
                 d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
             })
             .when(processes, |d| {
@@ -642,6 +700,10 @@ impl NativeTable {
             owner,
             tips,
             list: None,
+            vertical: None,
+            body: None,
+            own_rows: false,
+            selected_row: None,
             near: None,
             near_due: false,
             disk_hint: RefCell::new(None),
@@ -670,7 +732,7 @@ impl NativeTable {
             auto_widths: Default::default(),
             measured: Arc::new(vec![]),
             fitted: HashMap::new(),
-            cell_values: HashMap::new(),
+            cell_values: Default::default(),
             horizontal: None,
             echo: None,
         }
@@ -700,9 +762,7 @@ impl NativeTable {
             .is_some_and(|measured| !Arc::ptr_eq(&self.measured, measured));
         let totals_changed = self.totals != totals;
         let locale = argus_core::i18n::locale();
-        if rows_changed || bits != self.bits || self.locale != locale {
-            self.cell_values.clear();
-        }
+        self.cell_values.configure(&rows, page, bits, cx);
         if rows_changed || self.page != page {
             self.group_view.groups = Rc::new(if page == "processes" {
                 groups::groups(&rows)
@@ -1100,8 +1160,10 @@ impl TableDelegate for NativeTable {
     fn columns_count(&self, _cx: &App) -> usize {
         self.columns.len()
     }
+    /// None while Argus draws the rows: the component then shows the body
+    /// in their place (`render_empty`).
     fn rows_count(&self, _cx: &App) -> usize {
-        self.rows.len()
+        if self.own_rows { 0 } else { self.rows.len() }
     }
     fn column(&self, index: usize, _cx: &App) -> Column {
         self.columns[index].clone()
@@ -1137,9 +1199,14 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
         // The rows render after the header, laid out where the list scrolled
-        // to this frame: the first one settles which reports its hints.
-        self.near_due = self.tips.begin(window);
-        self.near = None;
+        // to this frame: the first one settles which reports its hints. The
+        // rows Argus draws do this themselves, in frames of their own too
+        // (`body`).
+        let own_body = self.own_rows && !self.rows.is_empty();
+        if !own_body {
+            self.near_due = self.tips.begin(window);
+            self.near = None;
+        }
         // A search narrows the process list: an accent header with the card's
         // accent ring (`.workspace.filtered .thead`), rounded into the card's
         // corner, and the right one too while the details are closed.
@@ -1156,7 +1223,14 @@ impl TableDelegate for NativeTable {
         if self.header_drag.is_some() && !cx.has_active_drag() {
             self.settle_header_drag(!cx.reduce_motion(), now);
         }
-        if self.header_drag.is_some() || self.flips.active(now) || self.restored.is_some() {
+        // Columns that have just come to rest: the frame settles again who
+        // draws the rows, which it did a moment before (`body`).
+        let settled = !self.own_rows && self.draws_rows(now, window);
+        if self.header_drag.is_some()
+            || self.flips.active(now)
+            || self.restored.is_some()
+            || settled
+        {
             window.request_animation_frame();
         }
         let band = self.header_band.clone();
@@ -1236,6 +1310,13 @@ impl TableDelegate for NativeTable {
         _window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
+        // The rows Argus draws, where the component has none of its own.
+        if self.own_rows
+            && !self.rows.is_empty()
+            && let Some(body) = &self.body
+        {
+            return body::TableBody::element(body);
+        }
         let p = Palette::current(cx);
         let owner = self.owner.clone();
         let (message, clear) = self
@@ -1279,6 +1360,7 @@ impl TableDelegate for NativeTable {
                         }),
                 )
             })
+            .into_any_element()
     }
     fn render_th(
         &mut self,
@@ -2045,6 +2127,7 @@ impl Desktop {
                 // the frame asks for its own frames (`scrollbar::Scrollbar`).
                 list.isolate_glides();
                 horizontal.isolate_glides();
+                state.delegate_mut().vertical = Some(state.vertical_scroll_handle.clone());
                 state.delegate_mut().list = Some(list);
                 state.delegate_mut().horizontal = Some(horizontal);
                 state
@@ -2140,6 +2223,8 @@ impl Desktop {
                     _ => {}
                 },
             ));
+            let body = cx.new(|_| body::TableBody::new(table.downgrade()));
+            table.update(cx, |state, _| state.delegate_mut().body = Some(body));
             self.table = Some(table);
             let state = self.table.as_ref().expect("table created").clone();
             self.table_frame = Some(cx.new(|_| TableFrame { state }));

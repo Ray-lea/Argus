@@ -57,10 +57,6 @@ impl CellText {
         self.style.color = Some(color);
         self
     }
-    pub(super) fn font_size(mut self, size: Pixels) -> Self {
-        self.style.font_size = Some(size.into());
-        self
-    }
     pub(super) fn font_family(mut self, family: SharedString) -> Self {
         self.style.font_family = Some(family);
         self
@@ -76,6 +72,11 @@ impl CellText {
     pub(super) fn truncate(mut self) -> Self {
         self.truncate = true;
         self
+    }
+    /// The alignment the text would inherit from the cell's box, for a cell
+    /// that is drawn without one (`body`).
+    pub(super) fn align(&mut self, align: TextAlign) {
+        self.style.text_align = Some(align);
     }
     /// The cell's `title` over the whole cell (`whole`) or over its text.
     pub(super) fn hint(
@@ -147,8 +148,41 @@ impl Element for CellText {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        // The box relative to the cell's layout, which `layout_bounds` snapped.
+        let top = (f32::from(bounds.origin.y - window.element_offset().y) * window.scale_factor())
+            .round();
+        self.settle(bounds, top, window, cx)
+    }
+
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut Self::RequestLayoutState,
+        placed: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.draw(bounds, placed.as_ref(), window, cx);
+    }
+}
+
+impl CellText {
+    /// Places the text in a cell at `bounds` and reports the cell's hint:
+    /// what the element does as it prepaints, also for a row that draws its
+    /// cells itself (`body`). `top` is how far down the cell lies in the
+    /// layout it is part of, in device pixels: none for a cell laid out on
+    /// its own.
+    pub(super) fn settle(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        top: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Placed> {
         let placed = window.with_text_style(Some(self.style.clone()), |window| {
-            self.place(bounds, window, cx)
+            self.place(bounds, top, window, cx)
         });
         // Where `Tips::target` on the `div`, or on the `truncate()` wrapper,
         // would report the part.
@@ -165,13 +199,11 @@ impl Element for CellText {
         placed
     }
 
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
+    /// Paints the cell at `bounds` with the text where `settle` placed it.
+    pub(super) fn draw(
+        &self,
         bounds: Bounds<Pixels>,
-        _: &mut Self::RequestLayoutState,
-        placed: &mut Self::PrepaintState,
+        placed: Option<&Placed>,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -220,7 +252,13 @@ impl CellText {
     /// lengths authored in the style round half toward zero, a measured text
     /// box rounds up, and each box's edges round half toward zero where they
     /// land relative to the cell, which starts on a whole device pixel.
-    fn place(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) -> Option<Placed> {
+    fn place(
+        &self,
+        bounds: Bounds<Pixels>,
+        top: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Placed> {
         let text_style = window.text_style();
         let font_size = text_style.font_size.to_pixels(window.rem_size());
         let line_height = window.pixel_snap(
@@ -231,8 +269,6 @@ impl CellText {
         let runs = vec![text_style.to_run(self.text.len())];
         let scale = window.scale_factor();
         let device = |value: Pixels| f32::from(value) * scale;
-        // The box relative to the cell's layout, which `layout_bounds` snapped.
-        let start = (bounds.origin - window.element_offset()).map(|value| device(value).round());
         let width = device(bounds.size.width).round();
         let height = device(bounds.size.height).round();
         let padding = round_half_toward_zero(device(self.padding));
@@ -285,7 +321,7 @@ impl CellText {
             padding
         };
         // Centred across the row, then snapped where it lands.
-        let y = round_half_toward_zero(start.y + (height - text_height) / 2.) - start.y;
+        let y = round_half_toward_zero(top + (height - text_height) / 2.) - top;
         Some(Placed {
             line,
             line_height,
@@ -299,6 +335,6 @@ impl CellText {
 }
 
 /// `gpui`'s rounding of layout edges to device pixels.
-fn round_half_toward_zero(value: f32) -> f32 {
+pub(super) fn round_half_toward_zero(value: f32) -> f32 {
     (value.abs() - 0.5).ceil().copysign(value)
 }

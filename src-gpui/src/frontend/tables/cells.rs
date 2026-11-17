@@ -2,24 +2,315 @@
 //! detail, and the hints the row under the pointer reports.
 use super::*;
 
+/// A name's data-dependent marks, shared by every frame of the same row list.
+/// Page-specific visibility remains in `name_cell`; these facts have no theme
+/// or language dependencies and contain no process-image handles.
+pub(super) struct NameFacts {
+    /// Members in efficiency mode, including those hidden by a folded group.
+    pub efficiency_count: usize,
+    /// Every member is suspended. An empty list preserves `Iterator::all`.
+    pub all_suspended: bool,
+    /// The representative process dims the name independently of the group tag.
+    pub suspended: bool,
+    /// Kernel fallback icon eligibility; used only on the processes page.
+    pub kernel: bool,
+    /// A WebView host icon takes precedence over the executable's icon.
+    pub icon_id: Option<u32>,
+    /// Group membership, and its already formatted count badge.
+    pub members: usize,
+    pub member_count: SharedString,
+    /// Category count as JSON renders it, including missing/malformed values.
+    pub entry_count: SharedString,
+    /// Startup name dimming and the missing-target badge, respectively.
+    pub startup_disabled: bool,
+    pub startup_missing: bool,
+}
+
+impl NameFacts {
+    fn of(row: &Row) -> Self {
+        let mut efficiency_count = 0;
+        let mut all_suspended = true;
+        for member in &row.members {
+            efficiency_count += usize::from(boolean(member, "efficiency"));
+            all_suspended &= boolean(member, "suspended");
+        }
+        Self {
+            efficiency_count,
+            all_suspended,
+            suspended: boolean(&row.raw, "suspended"),
+            kernel: !boolean(&row.raw, "countersPending")
+                && row.raw["path"].is_null()
+                && row.members.len() <= 1,
+            icon_id: icon_id(&row.raw),
+            members: row.members.len(),
+            member_count: row.members.len().to_string().into(),
+            entry_count: row.raw["entryCount"].to_string().into(),
+            startup_disabled: !boolean(&row.raw, "enabled"),
+            startup_missing: !boolean(&row.raw, "exists") && !row.raw["path"].is_null(),
+        }
+    }
+}
+
+/// Everything that can change the cell palette or the font overrides.
+/// The first four fields match `Palette::current`'s dependency key.
+#[derive(PartialEq)]
+struct StyleKey {
+    mode: ThemeMode,
+    accent: Hsla,
+    foreground: Hsla,
+    background: Hsla,
+    font_size: Pixels,
+    small_font: Pixels,
+    font_family: SharedString,
+    mono_font: SharedString,
+    locale: argus_core::i18n::Locale,
+}
+
+impl StyleKey {
+    fn current(cx: &App) -> Self {
+        let theme = cx.theme();
+        Self {
+            mode: theme.mode,
+            accent: theme.colors.primary,
+            foreground: theme.colors.foreground,
+            background: theme.colors.background,
+            font_size: theme.font_size,
+            small_font: theme::font(12.),
+            font_family: theme.font_family.clone(),
+            mono_font: theme::mono_font(cx),
+            locale: argus_core::i18n::locale(),
+        }
+    }
+}
+
+struct CellStyle {
+    key: StyleKey,
+    palette: Palette,
+}
+
+/// Where a lazily requested hint belongs. The hint text and target ID are
+/// created only for the row under the pointer, never stored in the cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HintArea {
+    None,
+    Text,
+    Whole,
+    SectionMemory,
+}
+
+/// Compact display specification: no layout state or `TextStyleRefinement`.
+/// Unset colors/families retain the text style inherited from the cell's box.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct CellSpec {
+    pub text: SharedString,
+    color: Option<Hsla>,
+    background: Option<Hsla>,
+    font_family: Option<SharedString>,
+    font_size: Pixels,
+    truncate: bool,
+    end: bool,
+    hint_area: HintArea,
+}
+
+impl CellSpec {
+    fn of(row: &Row, field: &Field, bits: bool, processes: bool, style: &CellStyle) -> Self {
+        let p = &style.palette;
+        let mut spec = Self {
+            text: display_cell(row, field, bits).into(),
+            color: None,
+            background: None,
+            font_family: None,
+            font_size: style.key.font_size,
+            truncate: false,
+            end: field.end,
+            hint_area: HintArea::None,
+        };
+        if row.section.is_some() {
+            spec.color = Some(if row.expanded { p.faint } else { p.muted });
+            spec.font_size = style.key.small_font;
+            if processes && field.key == "mem" {
+                spec.hint_area = HintArea::SectionMemory;
+            }
+            return spec;
+        }
+        match field.kind {
+            CellKind::Name
+            | CellKind::Enabled
+            | CellKind::ServiceState
+            | CellKind::ConnectionState
+            | CellKind::Protocol => return spec,
+            CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
+                spec.font_family = Some(style.key.mono_font.clone());
+                spec.font_size = style.key.small_font;
+                spec.truncate = true;
+                spec.hint_area = HintArea::Text;
+                if matches!(field.kind, CellKind::MonoDim | CellKind::PortDim) {
+                    spec.color = Some(p.faint);
+                }
+            }
+            CellKind::Dim
+            | CellKind::ServicePid
+            | CellKind::StartupLocation
+            | CellKind::ProcessText
+            | CellKind::Pid
+            | CellKind::Identifier => {
+                spec.color = Some(p.faint);
+                spec.truncate = true;
+                spec.hint_area = HintArea::Text;
+            }
+            CellKind::StartType => {
+                spec.color = match text(&row.raw, "startType") {
+                    "manual" => Some(p.faint),
+                    "disabled" => Some(p.io),
+                    _ => None,
+                };
+            }
+            _ => {
+                spec.hint_area = HintArea::Whole;
+                // Reuse this reading for both the idle tone and the heat fill.
+                let reading = row.metric(field.key);
+                let dim = match field.kind {
+                    CellKind::Percent => reading.is_none_or(|v| v < 0.05),
+                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
+                    _ => false,
+                };
+                let delayed = row.native_pending(field.key)
+                    && row.members.iter().any(|member| boolean(member, "stale"));
+                if dim || delayed {
+                    spec.color = Some(p.faint);
+                }
+                if processes
+                    && matches!(
+                        field.kind,
+                        CellKind::Percent
+                            | CellKind::Memory
+                            | CellKind::Rate
+                            | CellKind::NetworkRate
+                    )
+                {
+                    spec.background =
+                        reading.map(|value| p.heat.opacity(theme::heat_alpha(field.key, value)));
+                }
+            }
+        }
+        spec
+    }
+
+    fn cell(&self) -> cell_text::CellText {
+        let mut cell =
+            cell_text::cell_text(self.text.clone(), self.font_size, px(CELL_PADDING)).end(self.end);
+        if let Some(color) = self.color {
+            cell = cell.color(color);
+        }
+        if let Some(background) = self.background {
+            cell = cell.background(background);
+        }
+        if let Some(family) = &self.font_family {
+            cell = cell.font_family(family.clone());
+        }
+        if self.truncate {
+            cell = cell.truncate();
+        }
+        cell
+    }
+}
+
+/// Display values shared by drawing and automatic widths. Row identity owns
+/// the name facts; units, page, locale and style also invalidate cell specs.
+#[derive(Default)]
+pub(super) struct CellValues {
+    source: std::sync::Weak<Vec<Row>>,
+    page: String,
+    bits: bool,
+    style: Option<CellStyle>,
+    values: HashMap<(usize, &'static str), CellSpec>,
+    names: HashMap<usize, NameFacts>,
+}
+
+impl CellValues {
+    pub(super) fn configure(&mut self, rows: &Arc<Vec<Row>>, page: &str, bits: bool, cx: &App) {
+        if !std::ptr::eq(self.source.as_ptr(), Arc::as_ptr(rows)) {
+            self.values.clear();
+            self.names.clear();
+            self.source = Arc::downgrade(rows);
+        }
+        if self.page != page || self.bits != bits {
+            self.values.clear();
+            self.page = page.into();
+            self.bits = bits;
+        }
+        self.prepare(cx);
+    }
+
+    /// Called before width measurement and once before either body renders.
+    pub(super) fn prepare(&mut self, cx: &App) {
+        let key = StyleKey::current(cx);
+        if self.style.as_ref().is_none_or(|style| style.key != key) {
+            self.values.clear();
+            self.style = Some(CellStyle {
+                key,
+                palette: Palette::current(cx),
+            });
+        }
+    }
+
+    fn style(&self) -> &CellStyle {
+        self.style
+            .as_ref()
+            .expect("cell styles prepared before rows")
+    }
+
+    pub(super) fn get(&mut self, index: usize, row: &Row, field: &Field) -> &CellSpec {
+        let style = self
+            .style
+            .as_ref()
+            .expect("cell styles prepared before rows");
+        self.values
+            .entry((index, field.key))
+            .or_insert_with(|| CellSpec::of(row, field, self.bits, self.page == "processes", style))
+    }
+
+    /// Initialize after the row list is installed, once even for large groups.
+    fn prepare_name(&mut self, index: usize, row: &Row) {
+        self.names
+            .entry(index)
+            .or_insert_with(|| NameFacts::of(row));
+    }
+}
+
+/// What a cell shows: one line of text, which a row that draws its own cells
+/// places and paints itself (`body`), or elements.
+// Text is what most cells are: boxed, every one of them would allocate on
+// every frame.
+#[allow(clippy::large_enum_variant)]
+pub(super) enum Content {
+    Text(cell_text::CellText),
+    Element(AnyElement),
+}
+
 impl NativeTable {
     pub(super) fn td_content(
         &mut self,
         row_index: usize,
         column: usize,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> AnyElement {
+        match self.cell(row_index, column, window, cx) {
+            Content::Text(text) => text.into_any_element(),
+            Content::Element(element) => element,
+        }
+    }
+
+    pub(super) fn cell(
+        &mut self,
+        row_index: usize,
+        column: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Content {
         let row = &self.rows[row_index];
         let field = &self.fields[column];
-        let p = Palette::current(cx);
-        let faint = p.faint;
-        let bits = self.bits;
-        let value = self
-            .cell_values
-            .entry((row_index, field.key))
-            .or_insert_with(|| display_cell(row, field, bits).into())
-            .clone();
         // A cell that shows one line of text is one element (`cell_text`).
         let marked = matches!(
             field.kind,
@@ -29,11 +320,14 @@ impl NativeTable {
                 | CellKind::Protocol
         );
         if column > 0 && (row.section.is_some() || !marked) {
-            return self.text_cell(row_index, row, field, value, cx);
+            let spec = self.cell_values.get(row_index, row, field);
+            let cell = spec.cell();
+            let hint_area = spec.hint_area;
+            return Content::Text(self.text_cell(row_index, row, field, cell, hint_area, cx));
         }
         let owner = self.owner.clone();
         let mut element = div()
-            .text_size(cx.theme().font_size)
+            .text_size(self.cell_values.style().key.font_size)
             .line_height(theme::line_height())
             .size_full()
             .px(px(CELL_PADDING))
@@ -43,8 +337,11 @@ impl NativeTable {
             .whitespace_nowrap()
             .when(field.end, |d| d.justify_end());
         if column == 0 {
-            return self.name_cell(row_index, element, cx).into_any_element();
+            return Content::Element(self.name_cell(row_index, element, cx).into_any_element());
         }
+        let value = self.cell_values.get(row_index, row, field).text.clone();
+        let p = &self.cell_values.style().palette;
+        let faint = p.faint;
         let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
         // The interface's `title` on this cell, for the row under the pointer.
         let hint = self
@@ -133,7 +430,7 @@ impl NativeTable {
             // Every other kind is text (`text_cell`).
             _ => element = element.child(value),
         }
-        element.into_any_element()
+        Content::Element(element.into_any_element())
     }
 }
 fn icon_id(raw: &Value) -> Option<u32> {
@@ -156,101 +453,32 @@ fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
         .child(text.into())
 }
 impl NativeTable {
-    /// A cell that shows one line of text, with its `title` for the row under
-    /// the pointer: the value at the cell's padding, its style by kind.
+    /// Add the current hint to an already styled cell, only under the pointer.
     fn text_cell(
         &self,
         row_index: usize,
         row: &Row,
         field: &Field,
-        value: SharedString,
+        cell: cell_text::CellText,
+        area: HintArea,
         cx: &App,
-    ) -> AnyElement {
-        let p = Palette::current(cx);
-        let processes = self.page == "processes";
-        let near = self.is_near(row_index);
-        let id = tips::id((&self.page, &row.key, field.key));
-        let cell =
-            cell_text::cell_text(value, cx.theme().font_size, px(CELL_PADDING)).end(field.end);
-        if row.section.is_some() {
-            // Folded headings show their totals a step brighter.
-            let color = if row.expanded { p.faint } else { p.muted };
-            let cell = cell.font_size(theme::font(12.)).color(color);
-            // A heading's memory adds up private working sets, not system usage.
-            let cell = if processes && field.key == "mem" && near {
-                cell.hint(&self.tips, id, label("processes.memoryScope.section"), true)
-            } else {
-                cell
-            };
-            return cell.into_any_element();
+    ) -> cell_text::CellText {
+        if !self.is_near(row_index) || area == HintArea::None {
+            return cell;
         }
-        // The interface's `title` on this cell, for the row under the pointer.
-        let hint = near.then(|| self.cell_hint(row, field, cx)).flatten();
-        // Over the text of values that may be cut short, else the whole cell.
-        let mut whole = false;
-        let cell = match field.kind {
-            CellKind::Mono | CellKind::MonoDim | CellKind::Port | CellKind::PortDim => {
-                let cell = cell
-                    .font_family(theme::mono_font(cx))
-                    .font_size(theme::font(12.))
-                    .truncate();
-                if matches!(field.kind, CellKind::MonoDim | CellKind::PortDim) {
-                    cell.color(p.faint)
-                } else {
-                    cell
-                }
-            }
-            // Cut short in a narrower column: long text, or a priority class
-            // name in a column set by hand.
-            CellKind::Dim
-            | CellKind::ServicePid
-            | CellKind::StartupLocation
-            | CellKind::ProcessText
-            | CellKind::Pid
-            | CellKind::Identifier => cell.color(p.faint).truncate(),
-            // Without a `title`.
-            CellKind::StartType => {
-                return match text(&row.raw, "startType") {
-                    "manual" => cell.color(p.faint),
-                    "disabled" => cell.color(p.io),
-                    _ => cell,
-                }
-                .into_any_element();
-            }
-            _ => {
-                whole = true;
-                // Idle readings stay quiet so real load stands out.
-                let reading = row.metric(field.key);
-                let dim = match field.kind {
-                    CellKind::Percent => reading.is_none_or(|v| v < 0.05),
-                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
-                    _ => false,
-                };
-                let delayed = row.native_pending(field.key)
-                    && row.members.iter().any(|member| boolean(member, "stale"));
-                if dim || delayed {
-                    cell.color(p.faint)
-                } else {
-                    cell
-                }
-            }
-        };
-        let heat = (processes
-            && matches!(
-                field.kind,
-                CellKind::Percent | CellKind::Memory | CellKind::Rate | CellKind::NetworkRate
-            ))
-        .then(|| row.metric(field.key))
-        .flatten();
-        let cell = match heat {
-            Some(value) => cell.background(p.heat.opacity(theme::heat_alpha(field.key, value))),
-            None => cell,
+        let hint = match area {
+            HintArea::SectionMemory => Some(label("processes.memoryScope.section")),
+            _ => self.cell_hint(row, field, cx),
         };
         match hint {
-            Some(hint) => cell.hint(&self.tips, id, hint, whole),
+            Some(hint) => cell.hint(
+                &self.tips,
+                tips::id((&self.page, &row.key, field.key)),
+                hint,
+                matches!(area, HintArea::Whole | HintArea::SectionMemory),
+            ),
             None => cell,
         }
-        .into_any_element()
     }
     /// Whether the row reports its hinted parts in this render (`tips`).
     pub(super) fn is_near(&self, row_index: usize) -> bool {
@@ -373,15 +601,23 @@ impl NativeTable {
         };
         (!hint.is_empty()).then_some(hint)
     }
+    /// Stable row facts for either element-based or directly drawn names.
+    pub(super) fn name_facts(&mut self, row_index: usize) -> &NameFacts {
+        self.cell_values
+            .prepare_name(row_index, &self.rows[row_index]);
+        &self.cell_values.names[&row_index]
+    }
     /// The first cell: fold control, icon, name and the marks that follow it.
     pub(super) fn name_cell(
-        &self,
+        &mut self,
         row_index: usize,
         element: Div,
         cx: &mut Context<TableState<Self>>,
     ) -> Div {
+        self.name_facts(row_index);
         let row = &self.rows[row_index];
-        let p = Palette::current(cx);
+        let facts = &self.cell_values.names[&row_index];
+        let p = &self.cell_values.style().palette;
         let owner = self.owner.clone();
         let near = self.is_near(row_index);
         let fold = |expanded: bool, key: String, owner: WeakEntity<Desktop>| {
@@ -419,7 +655,7 @@ impl NativeTable {
         let tone = self
             .group_view
             .tone(row_index)
-            .map_or(p.accent, |tone| tone.color(&p));
+            .map_or(p.accent, |tone| tone.color(p));
         if let Some(user) = row.user {
             let locked = self
                 .owner
@@ -512,7 +748,7 @@ impl NativeTable {
                         .line_height(px(18.))
                         .flex()
                         .justify_center()
-                        .child(row.raw["entryCount"].to_string()),
+                        .child(facts.entry_count.clone()),
                 )
                 .child(div().flex_1().min_w_0().h(px(1.)).ml_1().bg(
                     gpui_kit::gpui::linear_gradient(
@@ -535,12 +771,10 @@ impl NativeTable {
             };
         }
         if self.page != "services" {
-            let image =
-                icon_id(&row.raw).and_then(|id| self.owner.upgrade()?.read(cx).process_image(id));
-            let kernel = processes
-                && !boolean(&row.raw, "countersPending")
-                && row.raw["path"].is_null()
-                && row.members.len() <= 1;
+            let image = facts
+                .icon_id
+                .and_then(|id| self.owner.upgrade()?.read(cx).process_image(id));
+            let kernel = processes && facts.kernel;
             // An image is the flex item itself, where the box around the
             // fallback icon gives that icon its place.
             element = element.child(if let Some(image) = image {
@@ -554,16 +788,14 @@ impl NativeTable {
                     .into_any_element()
             });
         }
-        let group = processes && row.members.len() > 1;
-        let off = self.page == "startup" && !boolean(&row.raw, "enabled");
+        let group = processes && facts.members > 1;
+        let off = self.page == "startup" && facts.startup_disabled;
         let name = div()
             .min_w_0()
             .flex_shrink(1.)
             .truncate()
             .when(group, |d| d.font_weight(theme::LABEL_WEIGHT))
-            .when(processes && boolean(&row.raw, "suspended"), |d| {
-                d.text_color(p.muted)
-            })
+            .when(processes && facts.suspended, |d| d.text_color(p.muted))
             .when(off, |d| d.text_color(p.muted))
             .child(row.title.clone());
         // The marks after the name carry their own `title`s.
@@ -592,7 +824,7 @@ impl NativeTable {
                     .line_height(px(17.))
                     .flex()
                     .justify_center()
-                    .child(row.members.len().to_string()),
+                    .child(facts.member_count.clone()),
             );
         }
         if let Some(note) = &row.note {
@@ -616,7 +848,7 @@ impl NativeTable {
                         .flex_shrink_0(),
                 )
                 .child(div().min_w_0().truncate().child(note.clone()));
-            element = element.child(hint(badge, "note", Some(note.clone())));
+            element = element.child(hint(badge, "note", near.then(|| note.clone())));
         }
         // The image name gives way first in a narrow column, cut short with
         // an ellipsis before the name is; it does not fill the column, so the
@@ -632,11 +864,7 @@ impl NativeTable {
             );
         }
         if processes {
-            let efficient = row
-                .members
-                .iter()
-                .filter(|member| boolean(member, "efficiency"))
-                .count();
+            let efficient = facts.efficiency_count;
             if efficient > 0 {
                 let leaf = icon("LeafIcon", p.muted).size(px(12.)).flex_shrink_0();
                 element = if near {
@@ -653,21 +881,17 @@ impl NativeTable {
                     element.child(leaf)
                 };
             }
-            if row
-                .members
-                .iter()
-                .all(|member| boolean(member, "suspended"))
-            {
+            if facts.all_suspended {
                 element =
                     element.child(tag(label("processes.suspended"), p.stroke_strong, p.muted));
             }
         }
-        if self.page == "startup" && !boolean(&row.raw, "exists") && !row.raw["path"].is_null() {
+        if self.page == "startup" && facts.startup_missing {
             let missing = tag(label("startup.missing.label"), p.io.opacity(0.55), p.io);
             element = element.child(hint(
                 missing,
                 "missing",
-                Some(label("startup.missing.title")),
+                near.then(|| label("startup.missing.title")),
             ));
         }
         if row.pinned {
@@ -688,5 +912,206 @@ impl NativeTable {
             };
         }
         element
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CellKind, CellSpec, CellValues, Field, HintArea, NameFacts, Row, Track, display_cell,
+    };
+    use gpui_kit::component::{Theme, ThemeMode};
+    use gpui_kit::{px, rgb};
+    use gpui_test::TestAppContext;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    fn field(key: &'static str, kind: CellKind) -> Field {
+        Field {
+            key,
+            kind,
+            label: String::new(),
+            track: Track::Fixed(100.),
+            end: true,
+        }
+    }
+
+    #[test]
+    fn cached_cells_survive_frames_and_follow_rows_units_and_pages() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| {
+            cx.set_global(Theme::default());
+            let rows = Arc::new(vec![Row::process(
+                json!({"pid": 42, "createTime": 1, "netReceived": 2048, "netSent": 1024}),
+                0,
+            )]);
+            let field = field("net", CellKind::NetworkRate);
+            let mut cache = CellValues::default();
+            cache.configure(&rows, "processes", false, cx);
+            let original = cache.get(0, &rows[0], &field).clone();
+            cache.prepare_name(0, &rows[0]);
+            cache.configure(&rows.clone(), "processes", false, cx);
+            assert_eq!(cache.values.len(), 1);
+            assert_eq!(cache.names.len(), 1);
+            // A hit must not consult the supplied JSON, even for tone or heat.
+            let empty = Row::process(json!({}), 0);
+            assert_eq!(cache.get(0, &empty, &field), &original);
+
+            cache.configure(&rows, "processes", true, cx);
+            assert!(cache.values.is_empty());
+            assert_eq!(cache.names.len(), 1);
+            assert_eq!(
+                cache.get(0, &rows[0], &field).text,
+                display_cell(&rows[0], &field, true)
+            );
+
+            cache.configure(&rows, "network", true, cx);
+            assert!(cache.values.is_empty());
+            assert!(cache.get(0, &rows[0], &field).background.is_none());
+            assert!(original.background.is_some());
+
+            // A new allocation at the same row index/key replaces every fact.
+            let replacement = Arc::new(vec![empty]);
+            cache.configure(&replacement, "processes", false, cx);
+            assert!(cache.values.is_empty());
+            assert!(cache.names.is_empty());
+            assert_ne!(cache.get(0, &replacement[0], &field), &original);
+        });
+    }
+
+    #[test]
+    fn header_preparation_invalidates_styles_without_configuring_rows() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| {
+            cx.set_global(Theme::default());
+            let rows = Arc::new(vec![Row::process(json!({"pid": 42, "cpu": 15}), 0)]);
+            let field = field("cpu", CellKind::Percent);
+            let mut cache = CellValues::default();
+            cache.configure(&rows, "processes", false, cx);
+            cache.prepare_name(0, &rows[0]);
+            for change in 0..7 {
+                cache.get(0, &rows[0], &field);
+                cache.prepare(cx);
+                assert_eq!(cache.values.len(), 1);
+                match change {
+                    0 => Theme::global_mut(cx).colors.primary = rgb(0x765432).into(),
+                    1 => Theme::global_mut(cx).mode = ThemeMode::Dark,
+                    2 => Theme::global_mut(cx).font_size = px(20.),
+                    3 => Theme::global_mut(cx).font_family = "test-family".into(),
+                    4 => Theme::global_mut(cx).colors.foreground = rgb(0xabcdef).into(),
+                    // Simulate cached metadata from another font scale/locale
+                    // without changing process-wide locale or font settings.
+                    5 => cache.style.as_mut().unwrap().key.small_font = px(99.),
+                    _ => {
+                        let locale = cache.style.as_mut().unwrap();
+                        locale.key.locale = *argus_core::i18n::Locale::ALL
+                            .iter()
+                            .find(|locale| **locale != argus_core::i18n::locale())
+                            .unwrap();
+                    }
+                }
+                cache.prepare(cx);
+                assert!(cache.values.is_empty());
+                assert_eq!(cache.names.len(), 1);
+                assert_eq!(cache.style().key.font_size, Theme::global(cx).font_size);
+            }
+        });
+    }
+
+    #[test]
+    fn display_specs_keep_idle_pending_heading_and_text_styles() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| {
+            cx.set_global(Theme::default());
+            let mut cache = CellValues::default();
+            cache.prepare(cx);
+            let style = cache.style();
+            let cpu = field("cpu", CellKind::Percent);
+            for (reading, dim) in [(0.049, true), (0.05, false), (19., false)] {
+                for stale in [false, true] {
+                    let row = Row::process(json!({"cpu": reading, "stale": stale}), 0);
+                    let spec = CellSpec::of(&row, &cpu, false, true, style);
+                    assert_eq!(spec.color, (dim || stale).then_some(style.palette.faint));
+                    assert!(spec.background.is_some());
+                    assert!(spec.end && !spec.truncate);
+                    assert_eq!(spec.hint_area, HintArea::Whole);
+                    assert_eq!(spec.text, display_cell(&row, &cpu, false));
+                }
+            }
+            let mut heading = Row::process(json!({"privateWs": 4096}), 0);
+            heading.section = Some("apps".into());
+            let memory = field("mem", CellKind::Memory);
+            for expanded in [false, true] {
+                heading.expanded = expanded;
+                let spec = CellSpec::of(&heading, &memory, false, true, style);
+                assert_eq!(
+                    spec.color,
+                    Some(if expanded {
+                        style.palette.faint
+                    } else {
+                        style.palette.muted
+                    })
+                );
+                assert_eq!(spec.font_size, style.key.small_font);
+                assert!(spec.background.is_none());
+                assert_eq!(spec.hint_area, HintArea::SectionMemory);
+            }
+            let row = Row::item(
+                json!({"startType": "disabled", "localPort": 80}),
+                "item".into(),
+                String::new(),
+            );
+            let port = CellSpec::of(
+                &row,
+                &field("localPort", CellKind::PortDim),
+                false,
+                false,
+                style,
+            );
+            assert_eq!(port.font_family.as_ref(), Some(&style.key.mono_font));
+            assert!(port.truncate);
+            assert_eq!(port.color, Some(style.palette.faint));
+            assert_eq!(port.hint_area, HintArea::Text);
+            let start = CellSpec::of(
+                &row,
+                &field("startType", CellKind::StartType),
+                false,
+                false,
+                style,
+            );
+            assert_eq!(start.color, Some(style.palette.io));
+            assert_eq!(start.hint_area, HintArea::None);
+        });
+    }
+
+    #[test]
+    fn name_facts_preserve_representative_group_and_startup_distinctions() {
+        let mut row = Row::process(
+            json!({"icon": 7, "webView": {"hostIcon": 11}, "suspended": true}),
+            0,
+        );
+        row.members
+            .push(json!({"efficiency": true, "suspended": false}));
+        let facts = NameFacts::of(&row);
+        assert_eq!(facts.icon_id, Some(11));
+        assert_eq!(facts.efficiency_count, 1);
+        assert!(facts.suspended && !facts.all_suspended && !facts.kernel);
+        assert_eq!(facts.members, 2);
+        assert_eq!(facts.member_count, row.members.len().to_string());
+        row.members.pop();
+        row.raw["webView"] = json!(null);
+        assert_eq!(NameFacts::of(&row).icon_id, Some(7));
+        assert!(NameFacts::of(&row).kernel);
+        assert!(NameFacts::of(&row).all_suspended);
+        row.raw["countersPending"] = json!(true);
+        assert!(!NameFacts::of(&row).kernel);
+        let item = Row::item(
+            json!({"path": "missing.exe", "exists": false, "enabled": false, "entryCount": null}),
+            "item".into(),
+            String::new(),
+        );
+        let facts = NameFacts::of(&item);
+        assert!(facts.startup_disabled && facts.startup_missing && facts.all_suspended);
+        assert_eq!(facts.entry_count, item.raw["entryCount"].to_string());
     }
 }

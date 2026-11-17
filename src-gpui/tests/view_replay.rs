@@ -582,3 +582,133 @@ fn an_isolated_frame_draws_only_the_cached_view_around_the_animation() {
     let (page_renders, side_renders, ..) = renders(&counts);
     assert!(page_renders >= 2 && side_renders >= 2);
 }
+
+/// What each view of [`Following`] counts: renders.
+#[derive(Clone, Default)]
+struct FollowCounts {
+    frame: Rc<Cell<usize>>,
+    table: Rc<Cell<usize>>,
+    body: Rc<Cell<usize>>,
+}
+
+/// A cached view that shows its table's state, as the table's own body does.
+struct Body {
+    counts: FollowCounts,
+}
+impl Render for Body {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        bump(&self.counts.body);
+        div().size_full()
+    }
+}
+
+/// An uncached view around it, as the table is.
+struct Table {
+    counts: FollowCounts,
+    body: Entity<Body>,
+}
+impl Render for Table {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        bump(&self.counts.table);
+        div().size_full().child(
+            self.body
+                .clone()
+                .cached(StyleRefinement::default().size_full())
+                .following(),
+        )
+    }
+}
+
+/// The cached view around the table, as the table frame is.
+struct TableHolder {
+    counts: FollowCounts,
+    table: Entity<Table>,
+}
+impl Render for TableHolder {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        bump(&self.counts.frame);
+        div().size_full().child(self.table.clone())
+    }
+}
+
+struct Following {
+    frame: Entity<TableHolder>,
+    layer: Entity<Layer>,
+}
+impl Render for Following {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(
+                self.frame
+                    .clone()
+                    .cached(StyleRefinement::default().w(px(300.)).h(px(200.))),
+            )
+            .child(self.layer.clone())
+    }
+}
+
+#[test]
+fn a_following_view_renders_with_the_view_around_it_and_alone_when_isolated() {
+    let mut cx = TestAppContext::single();
+    let counts = FollowCounts::default();
+    let window = cx.add_window({
+        let counts = counts.clone();
+        move |_, cx| {
+            let body = cx.new(|_| Body {
+                counts: counts.clone(),
+            });
+            let table = cx.new(|_| Table {
+                counts: counts.clone(),
+                body,
+            });
+            let frame = cx.new(|_| TableHolder {
+                counts: counts.clone(),
+                table,
+            });
+            let layer = cx.new(|_| Layer);
+            Following { frame, layer }
+        }
+    });
+    cx.run_until_parked();
+    let (table, body, layer) = window
+        .update(&mut cx, |root, _, cx| {
+            let table = root.frame.read(cx).table.clone();
+            let body = table.read(cx).body.clone();
+            (table, body, root.layer.clone())
+        })
+        .unwrap();
+    let renders =
+        |counts: &FollowCounts| (counts.frame.get(), counts.table.get(), counts.body.get());
+    assert_eq!(renders(&counts), (1, 1, 1));
+
+    // The table changes without the body being told: the body renders with
+    // it, where a cached view would replay its last frame.
+    table.update(&mut cx, |_, cx| cx.notify());
+    cx.run_until_parked();
+    assert_eq!(
+        renders(&counts),
+        (2, 2, 2),
+        "the following view replayed while the view around it rendered"
+    );
+
+    // An animation of the body draws it alone, in place.
+    for round in 1..=2 {
+        window
+            .update(&mut cx, |_, window, _| {
+                window.request_isolated_view_redraw(body.entity_id())
+            })
+            .unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            renders(&counts),
+            (2, 2, 2 + round),
+            "an isolated frame of the following view drew the views around it"
+        );
+    }
+
+    // Frames that draw something else replay all three.
+    layer.update(&mut cx, |_, cx| cx.notify());
+    cx.run_until_parked();
+    assert_eq!(renders(&counts), (2, 2, 4));
+}

@@ -16,9 +16,7 @@ use std::ops::Range;
 use std::sync::Weak;
 use std::time::Duration;
 
-/// What each cell shows, kept between frames: a frame clones a value by
-/// its reference count rather than copying the text.
-pub(super) type CellValues = HashMap<(usize, &'static str), SharedString>;
+pub(super) use super::cells::CellValues;
 
 /// Widths grow in steps this wide: a slightly longer value does not move
 /// every column after it.
@@ -491,11 +489,7 @@ impl AutoWidths {
         if field.kind == CellKind::Name {
             return Some(self.name_width(Name::of(row), system, cx));
         }
-        let text = contents
-            .values
-            .entry((index, field.key))
-            .or_insert_with(|| display_cell(row, field, contents.bits).into())
-            .clone();
+        let text = contents.values.get(index, row, field).text.clone();
         Some(self.text_width(field, &text, system, cx))
     }
 
@@ -561,6 +555,7 @@ impl AutoWidths {
     /// Measures `field` over every row now: what it takes to show all of
     /// it (a column fitted to its contents with automatic widths off).
     pub fn fit(&mut self, field: &Field, mut contents: Contents<'_>, cx: &App) -> f32 {
+        contents.values.prepare(cx);
         self.epoch = self.epoch.wrapping_add(1);
         let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
         let (header, total) = self.header_width(field, &contents, &system, cx);
