@@ -408,6 +408,9 @@ pub enum TaskbarStyle {
     Labels,
     /// A tile per reading: its name and value over its recent curve.
     Curves,
+    /// A rounded capsule per reading, marked with a dot in its device's
+    /// colour, in two rows.
+    Capsules,
     /// A small name in its device's colour over a large figure.
     Figures,
 }
@@ -416,6 +419,7 @@ impl From<String> for TaskbarStyle {
     fn from(name: String) -> Self {
         match name.as_str() {
             "curves" => TaskbarStyle::Curves,
+            "capsules" => TaskbarStyle::Capsules,
             "figures" => TaskbarStyle::Figures,
             _ => TaskbarStyle::Labels,
         }
@@ -427,6 +431,7 @@ impl From<TaskbarStyle> for String {
         match style {
             TaskbarStyle::Labels => "labels",
             TaskbarStyle::Curves => "curves",
+            TaskbarStyle::Capsules => "capsules",
             TaskbarStyle::Figures => "figures",
         }
         .into()
@@ -866,6 +871,9 @@ mod tests {
         let styled: Settings =
             serde_json::from_str(r#"{"taskbarMonitor": {"style": "figures"}}"#).unwrap();
         assert_eq!(styled.taskbar_monitor.style, TaskbarStyle::Figures);
+        let capsules: Settings =
+            serde_json::from_str(r#"{"taskbarMonitor": {"style": "capsules"}}"#).unwrap();
+        assert_eq!(capsules.taskbar_monitor.style, TaskbarStyle::Capsules);
         let unknown: Settings =
             serde_json::from_str(r#"{"taskbarMonitor": {"style": "neon"}}"#).unwrap();
         assert_eq!(unknown.taskbar_monitor.style, TaskbarStyle::Labels);

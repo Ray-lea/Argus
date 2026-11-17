@@ -5,11 +5,14 @@
 //!   for two), each a name on the left and its value on the right;
 //! - curves: a tile per reading, its name and value over its recent curve in
 //!   its device's colour;
+//! - capsules: a rounded capsule per reading in one row, a dot in its
+//!   device's colour before its name and value;
 //! - figures: a small name in its device's colour over a large figure.
 //!
 //! Every value keeps the room of the widest it may get (`Cell::widest`), so
 //! that changing values neither move the readings nor resize the window.
-//! Curves and figures need two rows of text; a lower taskbar shows labels.
+//! Curves, capsules and figures need two rows of text; a lower taskbar
+//! shows labels.
 //!
 //! The text is set as the interface sets its own (`gpui-pre-windows`
 //! `direct_write.rs`): DirectWrite lays it out in the interface's face, with
@@ -22,7 +25,8 @@
 //! soft.
 use crate::settings::TaskbarStyle as Style;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::time::{Duration, Instant};
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::core::{BOOL, HSTRING, IUnknown, Interface, Ref, implement};
 
@@ -64,24 +68,36 @@ pub(crate) struct Group {
 /// Arranges the groups in columns of `rows` cells: a group's cells stay
 /// together, and single cells share a column in order.
 pub(crate) fn columns(groups: &[Group], rows: usize) -> Vec<Vec<&Cell>> {
-    let mut columns: Vec<Vec<&Cell>> = Vec::new();
+    stacks(groups, rows)
+        .into_iter()
+        .map(|column| column.into_iter().map(|(cell, _)| cell).collect())
+        .collect()
+}
+
+/// `columns`, each cell with the group it is of.
+fn stacks(groups: &[Group], rows: usize) -> Vec<Vec<(&Cell, &Group)>> {
+    let mut columns: Vec<Vec<(&Cell, &Group)>> = Vec::new();
     // The column a single cell opened, which the next single cell fills.
     let mut open: Option<usize> = None;
     for group in groups {
         if rows < 2 {
-            columns.extend(group.cells.iter().map(|cell| vec![cell]));
+            columns.extend(group.cells.iter().map(|cell| vec![(cell, group)]));
             continue;
         }
         match group.cells.as_slice() {
             [] => {}
             [cell] => match open.take() {
-                Some(index) => columns[index].push(cell),
+                Some(index) => columns[index].push((cell, group)),
                 None => {
                     open = Some(columns.len());
-                    columns.push(vec![cell]);
+                    columns.push(vec![(cell, group)]);
                 }
             },
-            cells => columns.extend(cells.chunks(rows).map(|chunk| chunk.iter().collect())),
+            cells => columns.extend(
+                cells
+                    .chunks(rows)
+                    .map(|chunk| chunk.iter().map(|cell| (cell, group)).collect()),
+            ),
         }
     }
     columns
@@ -137,6 +153,15 @@ pub(crate) struct Tile {
     pub paint: Paint,
 }
 
+/// A capsule behind a reading, and the dot that marks its device.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Pill {
+    pub rect: [i32; 4],
+    /// The dot's centre and radius, none for a rate (its arrow marks it).
+    pub dot: Option<([f32; 2], f32)>,
+    pub paint: Paint,
+}
+
 /// The monitor laid out at one size.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Layout {
@@ -144,6 +169,7 @@ pub(crate) struct Layout {
     pub height: i32,
     pub runs: Vec<Run>,
     pub tiles: Vec<Tile>,
+    pub pills: Vec<Pill>,
     /// The labels' text size, pixels.
     pub font: i32,
 }
@@ -213,18 +239,81 @@ fn figure(
     });
 }
 
+/// Lays out a value from `left`: its figure `size` pixels high, then its
+/// unit `unit` pixels high and quieter.
+#[allow(clippy::too_many_arguments)]
+fn figure_from(
+    runs: &mut Vec<Run>,
+    fonts: &impl Fonts,
+    value: &str,
+    left: i32,
+    baseline: i32,
+    size: i32,
+    unit: i32,
+    paint: Paint,
+) {
+    let (figure, rest) = split(value);
+    runs.push(Run {
+        text: figure.into(),
+        x: left,
+        baseline,
+        size,
+        value: true,
+        paint,
+        shade: Shade::Full,
+    });
+    if !rest.is_empty() {
+        runs.push(Run {
+            text: rest.into(),
+            x: left + fonts.width(figure, size, true),
+            baseline,
+            size: unit,
+            value: true,
+            paint,
+            shade: Shade::Unit,
+        });
+    }
+}
+
 fn value_paint(cell: &Cell) -> Paint {
     if cell.high { Paint::High } else { Paint::Ink }
 }
 
+/// How wide each capsule's values have been lately: a capsule keeps the
+/// room its value took within the last minute, widening at once for a wider
+/// value and narrowing a minute after it, rather than the room of the
+/// widest value it may ever take.
+#[derive(Default)]
+pub(crate) struct Reserve {
+    widths: HashMap<String, VecDeque<(Instant, i32)>>,
+}
+
+/// How long a value's width holds its room.
+const KEEP: Duration = Duration::from_secs(60);
+
+impl Reserve {
+    /// The room for the value `key` names, `width` wide `now`.
+    fn room(&mut self, key: String, width: i32, now: Instant) -> i32 {
+        let seen = self.widths.entry(key).or_default();
+        match seen.back_mut() {
+            Some(last) if last.1 == width => last.0 = now,
+            _ => seen.push_back((now, width)),
+        }
+        seen.retain(|(at, _)| now.saturating_duration_since(*at) <= KEEP);
+        seen.iter().map(|(_, width)| *width).max().unwrap_or(width)
+    }
+}
+
 /// Lays out `groups` in `style` in a window `height` pixels high at
-/// `scale`.
+/// `scale`; capsules keep their recent room in `reserve` when given one,
+/// at the time given with it, and the room of their widest values without.
 pub(crate) fn lay_out(
     groups: &[Group],
     height: i32,
     scale: f32,
     style: Style,
     fonts: &impl Fonts,
+    reserve: Option<(&mut Reserve, Instant)>,
 ) -> Layout {
     let px = |logical: f32| (logical * scale).round() as i32;
     let style = if height < px(36.) {
@@ -240,6 +329,7 @@ pub(crate) fn lay_out(
     layout.width = match style {
         Style::Labels => labels(&mut layout, groups, scale, fonts),
         Style::Curves => curves(&mut layout, groups, scale, fonts),
+        Style::Capsules => capsules(&mut layout, groups, scale, fonts, reserve),
         Style::Figures => figures(&mut layout, groups, scale, fonts),
     };
     layout
@@ -419,13 +509,124 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
     if layout.tiles.is_empty() { 0 } else { x + pad }
 }
 
-/// Figures: a small name in its device's colour over a large figure; a pair
-/// of rates in two rows. The layout's width.
+/// Capsules: a rounded capsule per reading, side by side: a dot in its
+/// device's colour, its name and its value right after it; a pair of rates
+/// share one, each right after its arrow in its device's colour. The
+/// layout's width.
+fn capsules(
+    layout: &mut Layout,
+    groups: &[Group],
+    scale: f32,
+    fonts: &impl Fonts,
+    mut reserve: Option<(&mut Reserve, Instant)>,
+) -> i32 {
+    let px = |logical: f32| (logical * scale).round() as i32;
+    let (name_size, value_size, unit) = (px(11.), px(12.), px(10.));
+    let tall = px(24.).min(layout.height - px(4.));
+    let y = (layout.height - tall) / 2;
+    let baseline = y + ((tall as f32 + fonts.cap(value_size)) / 2.).round() as i32;
+    let (pad, inside, dot, gap) = (px(8.), px(7.), px(6.), px(4.));
+    let mut room = |key: String, cell: &Cell| {
+        let width = figure_width(fonts, &cell.value, value_size, unit);
+        match reserve.as_mut() {
+            Some((reserve, now)) => reserve.room(key, width, *now),
+            None => width.max(figure_width(fonts, &cell.widest, value_size, unit)),
+        }
+    };
+    let mut x = pad;
+    for (index, group) in groups.iter().enumerate() {
+        if group.cells.is_empty() {
+            continue;
+        }
+        if !layout.pills.is_empty() {
+            x += gap;
+        }
+        let high = group.cells.iter().any(|cell| cell.high);
+        let start = x;
+        x += inside;
+        let dot_at = match group.cells.as_slice() {
+            [cell] => {
+                let centre = [x as f32 + dot as f32 / 2., y as f32 + tall as f32 / 2.];
+                x += dot + px(4.);
+                layout.runs.push(Run {
+                    text: cell.label.clone(),
+                    x,
+                    baseline,
+                    size: name_size,
+                    value: false,
+                    paint: Paint::Ink,
+                    shade: Shade::Name,
+                });
+                x += fonts.width(&cell.label, name_size, false) + px(4.);
+                // The value right after its name, as rates follow their
+                // arrows: room held for a wider one lies after it.
+                figure_from(
+                    &mut layout.runs,
+                    fonts,
+                    &cell.value,
+                    x,
+                    baseline,
+                    value_size,
+                    unit,
+                    value_paint(cell),
+                );
+                x += room(format!("{index}:0:{}", cell.label), cell);
+                Some((centre, dot as f32 / 2.))
+            }
+            cells => {
+                for (row, cell) in cells.iter().enumerate() {
+                    if row > 0 {
+                        x += px(7.);
+                    }
+                    layout.runs.push(Run {
+                        text: cell.label.clone(),
+                        x,
+                        baseline,
+                        size: name_size,
+                        value: true,
+                        paint: Paint::Tone(group.tone),
+                        shade: Shade::Full,
+                    });
+                    x += fonts.width(&cell.label, name_size, true) + px(3.);
+                    // The rate right after its arrow; room for a wider one
+                    // follows it, so the next arrow keeps its place.
+                    figure_from(
+                        &mut layout.runs,
+                        fonts,
+                        &cell.value,
+                        x,
+                        baseline,
+                        value_size,
+                        unit,
+                        value_paint(cell),
+                    );
+                    x += room(format!("{index}:{row}:{}", cell.label), cell);
+                }
+                None
+            }
+        };
+        x += inside;
+        layout.pills.push(Pill {
+            rect: [start, y, x, y + tall],
+            dot: dot_at,
+            paint: if high {
+                Paint::High
+            } else {
+                Paint::Tone(group.tone)
+            },
+        });
+    }
+    if layout.pills.is_empty() { 0 } else { x + pad }
+}
+
+/// Figures: a small name in its device's colour over a large figure, both
+/// from the column's left edge; a pair of rates in two rows. The layout's
+/// width.
 fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
-    let (name_size, large, unit, body) = (px(10.), px(16.), px(11.), px(12.));
+    let (name_size, large, unit, body) = (px(10.), px(16.), px(10.), px(11.));
     let middle = layout.height / 2;
-    let (pad, gap) = (px(8.), px(18.));
+    let (pad, gap) = (px(8.), px(8.));
     let mut x = pad;
     let mut any = false;
     for group in groups.iter().filter(|group| !group.cells.is_empty()) {
@@ -455,11 +656,13 @@ fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts
                     },
                     shade: Shade::Full,
                 });
-                figure(
+                // The figure starts under its name: room left over for a
+                // wider value lies after it, not between the columns' text.
+                figure_from(
                     &mut layout.runs,
                     fonts,
                     &cell.value,
-                    x + width,
+                    x,
                     middle + px(13.),
                     large,
                     unit,
@@ -485,7 +688,7 @@ fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts
                     })
                     .max()
                     .unwrap_or(0);
-                let width = marks + px(5.) + room;
+                let width = marks + px(4.) + room;
                 for (row, cell) in cells.iter().take(2).enumerate() {
                     let baseline = middle + [-px(4.), px(13.)][row];
                     layout.runs.push(Run {
@@ -537,6 +740,8 @@ struct Colors {
     unit: f32,
     hover: (Rgb, f32),
     tile: f32,
+    /// A capsule's fill.
+    pill: f32,
     /// A curve's fill and line.
     curve: (f32, f32),
     light: bool,
@@ -551,6 +756,7 @@ fn colors(light: bool) -> Colors {
             unit: 0.6,
             hover: (hex(0x000000), 0.05),
             tile: 0.045,
+            pill: 0.06,
             curve: (0.16, 0.8),
             light,
         }
@@ -562,6 +768,7 @@ fn colors(light: bool) -> Colors {
             unit: 0.6,
             hover: (hex(0xffffff), 0.08),
             tile: 0.06,
+            pill: 0.085,
             curve: (0.22, 0.9),
             light,
         }
@@ -898,6 +1105,27 @@ impl Painter {
                 colors.paint(tile.paint),
                 colors.curve,
             );
+        }
+        for pill in &layout.pills {
+            let [left, top, right, bottom] = pill.rect.map(|v| v as f32);
+            fill(
+                &mut pixels,
+                width,
+                [left, top, right, bottom],
+                (bottom - top) / 2.,
+                colors.ink,
+                colors.pill,
+            );
+            if let Some(([x, y], radius)) = pill.dot {
+                fill(
+                    &mut pixels,
+                    width,
+                    [x - radius, y - radius, x + radius, y + radius],
+                    radius,
+                    colors.paint(pill.paint),
+                    1.,
+                );
+            }
         }
         for run in &layout.runs {
             self.draw(
@@ -1266,7 +1494,7 @@ mod tests {
     #[test]
     fn labels_keep_the_width_of_their_widest_value_and_rows_centre() {
         let groups = vec![single("CPU", "1%"), single("MEM", "45%")];
-        let layout = lay_out(&groups, 48, 1., Style::Labels, &Even);
+        let layout = lay_out(&groups, 48, 1., Style::Labels, &Even, None);
         // Padding 8, name 30, gap 6, the widest value "100%" 40, padding 8.
         assert_eq!(layout.width, 8 + 30 + 6 + 40 + 8);
         assert_eq!(layout.font, 13);
@@ -1278,11 +1506,11 @@ mod tests {
         // The same readings with other values keep the size.
         let busier = vec![single("CPU", "100%"), single("MEM", "99%")];
         assert_eq!(
-            lay_out(&busier, 48, 1., Style::Labels, &Even).width,
+            lay_out(&busier, 48, 1., Style::Labels, &Even, None).width,
             layout.width
         );
         // A taskbar too low for two rows sets them side by side.
-        let low = lay_out(&groups, 30, 1., Style::Labels, &Even);
+        let low = lay_out(&groups, 30, 1., Style::Labels, &Even, None);
         assert_eq!(low.width, 8 + 76 + 14 + 76 + 8);
         assert!(low.runs.iter().all(|run| run.baseline == 6 + 13));
         // At 150 % everything grows with the scale.
@@ -1292,7 +1520,7 @@ mod tests {
     #[test]
     fn curves_set_each_reading_on_a_tile_over_its_curve() {
         let groups = vec![single("CPU", "1%"), rates("1 KB/s", "2 KB/s")];
-        let layout = lay_out(&groups, 48, 1., Style::Curves, &Even);
+        let layout = lay_out(&groups, 48, 1., Style::Curves, &Even, None);
         assert_eq!(layout.tiles.len(), 2);
         // Name 30 and the widest figure "100" with its unit "%", 40, inside
         // 8 px either side and 8 apart; tiles 38 px high in the middle.
@@ -1311,7 +1539,7 @@ mod tests {
         // tile's curve amber.
         let mut busier = vec![single("CPU", "100%"), rates("999.9 MB/s", "0 KB/s")];
         busier[0].cells[0].high = true;
-        let again = lay_out(&busier, 48, 1., Style::Curves, &Even);
+        let again = lay_out(&busier, 48, 1., Style::Curves, &Even, None);
         assert_eq!(
             again.tiles.iter().map(|tile| tile.rect).collect::<Vec<_>>(),
             layout
@@ -1325,7 +1553,7 @@ mod tests {
 
     #[test]
     fn figures_set_a_large_figure_under_a_name_in_its_colour() {
-        let layout = lay_out(&[single("CPU", "41%")], 48, 1., Style::Figures, &Even);
+        let layout = lay_out(&[single("CPU", "41%")], 48, 1., Style::Figures, &Even, None);
         let name = &layout.runs[0];
         assert_eq!((name.size, name.baseline), (10, 24 - 7));
         assert_eq!(name.paint, Paint::Tone(Tone::Cpu));
@@ -1334,10 +1562,68 @@ mod tests {
             (figure.text.as_str(), figure.size, figure.baseline),
             ("41", 16, 24 + 13)
         );
+        // The figure starts under its name.
+        assert_eq!(figure.x, name.x);
         assert_eq!(layout.width, 8 + 40 + 8);
         // A taskbar too low for two rows shows labels instead.
-        let low = lay_out(&[single("CPU", "41%")], 30, 1., Style::Figures, &Even);
+        let low = lay_out(&[single("CPU", "41%")], 30, 1., Style::Figures, &Even, None);
         assert!(low.runs.iter().all(|run| run.size == 13));
+    }
+
+    #[test]
+    fn capsules_line_up_in_one_row_and_keep_their_width() {
+        let groups = vec![single("CPU", "1%"), rates("1 KB/s", "2 KB/s")];
+        let layout = lay_out(&groups, 48, 1., Style::Capsules, &Even, None);
+        assert_eq!(layout.pills.len(), 2);
+        // 24 px high in the middle of 48. Inside 7, a dot of 6 and 4, the
+        // name 30 and 4, the widest "100%" 40, inside 7: 98.
+        assert_eq!(layout.pills[0].rect, [8, 12, 8 + 98, 36]);
+        assert_eq!(layout.pills[0].dot, Some(([18., 24.], 3.)));
+        assert_eq!(layout.pills[0].paint, Paint::Tone(Tone::Cpu));
+        let (name, value) = (&layout.runs[0], values(&layout.runs)[0]);
+        assert_eq!(value.x, name.x + 30 + 4);
+        // Rates share one: each arrow 10 and 3 before the widest
+        // "999.9 MB/s" 100, 7 between them.
+        assert_eq!(
+            layout.pills[1].rect,
+            [110, 12, 110 + 7 + 113 + 7 + 113 + 7, 36]
+        );
+        assert!(layout.pills[1].dot.is_none());
+        // Other values keep the capsules where they are.
+        let busier = vec![single("CPU", "100%"), rates("999.9 MB/s", "0 KB/s")];
+        assert_eq!(
+            lay_out(&busier, 48, 1., Style::Capsules, &Even, None).pills,
+            layout.pills
+        );
+    }
+
+    #[test]
+    fn capsules_keep_the_room_their_values_took_within_a_minute() {
+        use super::Reserve;
+        use std::time::{Duration, Instant};
+        let mut reserve = Reserve::default();
+        let start = Instant::now();
+        let mut width = |value: &str, seconds: u64| {
+            let layout = lay_out(
+                &[single("CPU", value)],
+                48,
+                1.,
+                Style::Capsules,
+                &Even,
+                Some((&mut reserve, start + Duration::from_secs(seconds))),
+            );
+            layout.pills[0].rect[2] - layout.pills[0].rect[0]
+        };
+        // Only as wide as the value: inside 7, dot 6 and 4, name 30 and 4,
+        // "1%" 20, inside 7.
+        let narrow = width("1%", 0);
+        assert_eq!(narrow, 78);
+        // A wider value widens it at once…
+        assert_eq!(width("100%", 5), narrow + 20);
+        // …and its room holds for a minute after it.
+        assert_eq!(width("1%", 30), narrow + 20);
+        assert_eq!(width("1%", 64), narrow + 20);
+        assert_eq!(width("1%", 66), narrow);
     }
 
     #[test]
@@ -1363,7 +1649,7 @@ mod tests {
             }],
             ..Group::default()
         }];
-        let layout = lay_out(&groups, 48, 1.25, Style::Labels, &painter);
+        let layout = lay_out(&groups, 48, 1.25, Style::Labels, &painter, None);
         let pixels = painter.paint(&layout, false, false, 1.25).unwrap();
         assert_eq!(pixels.len(), (layout.width * layout.height * 4) as usize);
         let at = |x: i32, y: i32| {
@@ -1454,8 +1740,13 @@ mod tests {
         ];
         let painter = Painter::new(13).unwrap();
         let mut strips = Vec::new();
-        for style in [Style::Labels, Style::Curves, Style::Figures] {
-            let layout = lay_out(&groups, 48, 1., style, &painter);
+        for style in [
+            Style::Labels,
+            Style::Curves,
+            Style::Capsules,
+            Style::Figures,
+        ] {
+            let layout = lay_out(&groups, 48, 1., style, &painter, None);
             for (light, background) in [(false, [28u8, 28, 30]), (true, [238, 238, 240])] {
                 let image = painter.paint(&layout, light, false, 1.).unwrap();
                 strips.push((layout.width, layout.height, image, background));

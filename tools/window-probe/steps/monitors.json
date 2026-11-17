@@ -16,6 +16,7 @@
     {"captureWindow":{"name":"taskbar-all-dark","class":"ArgusTestTaskbar"}},
     {"control":{"taskbarMonitor":{"place":"start"}},"wait":1200,"captureWindow":{"name":"taskbar-start-dark","class":"ArgusTestTaskbar"}},
     {"control":{"taskbarMonitor":{"style":"curves"}},"wait":2500,"captureWindow":{"name":"taskbar-curves-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"capsules"}},"wait":1500,"captureWindow":{"name":"taskbar-capsules-dark","class":"ArgusTestTaskbar"}},
     {"control":{"taskbarMonitor":{"style":"figures"}},"wait":1500,"captureWindow":{"name":"taskbar-figures-dark","class":"ArgusTestTaskbar"}},
     {"control":{"theme":"light"},"wait":1200},
     {"captureWindow":{"name":"desktop-all-light","class":"Zed::Window","title":"桌面监控"}},

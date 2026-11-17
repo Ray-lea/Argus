@@ -689,7 +689,7 @@ impl Desktop {
         let style = text(&settings["taskbarMonitor"], "style");
         let style = self.segments(
             "setting-taskbarStyle",
-            ["labels", "curves", "figures"]
+            ["labels", "curves", "capsules", "figures"]
                 .iter()
                 .map(|value| {
                     (

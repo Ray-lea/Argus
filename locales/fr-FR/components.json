@@ -183,9 +183,10 @@
     },
     "style": {
       "title": "Style",
-      "desc": "Étiquettes : noms et valeurs sur deux lignes. Courbes : une vignette par mesure, avec son nom et sa valeur au-dessus de sa courbe récente. Grands chiffres : un petit nom dans la couleur de l’appareil au-dessus d’un grand chiffre. Les courbes et les grands chiffres demandent la hauteur de deux lignes de texte ; sur une barre des tâches plus basse, ils s’affichent en étiquettes.",
+      "desc": "Étiquettes : noms et valeurs sur deux lignes. Courbes : une vignette par mesure, avec son nom et sa valeur au-dessus de sa courbe récente. Pastilles : une pastille arrondie par mesure sur une ligne, marquée d’un point de la couleur de l’appareil. Grands chiffres : un petit nom dans la couleur de l’appareil au-dessus d’un grand chiffre. Les courbes, les pastilles et les grands chiffres demandent la hauteur de deux lignes de texte ; sur une barre des tâches plus basse, ils s’affichent en étiquettes.",
       "labels": "Étiquettes",
       "curves": "Courbes",
+      "capsules": "Pastilles",
       "figures": "Grands chiffres"
     }
   },

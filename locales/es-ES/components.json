@@ -183,9 +183,10 @@
     },
     "style": {
       "title": "Estilo",
-      "desc": "Etiquetas: nombres y valores en dos filas. Curvas: una tarjeta por lectura, con su nombre y su valor sobre su curva reciente. Cifras grandes: un nombre pequeño en el color del dispositivo sobre una cifra grande. Las curvas y las cifras grandes necesitan espacio para dos filas de texto; en una barra de tareas más baja se muestran como etiquetas.",
+      "desc": "Etiquetas: nombres y valores en dos filas. Curvas: una tarjeta por lectura, con su nombre y su valor sobre su curva reciente. Cápsulas: una cápsula redondeada por lectura en una fila, marcada con un punto del color del dispositivo. Cifras grandes: un nombre pequeño en el color del dispositivo sobre una cifra grande. Las curvas, las cápsulas y las cifras grandes necesitan espacio para dos filas de texto; en una barra de tareas más baja se muestran como etiquetas.",
       "labels": "Etiquetas",
       "curves": "Curvas",
+      "capsules": "Cápsulas",
       "figures": "Cifras grandes"
     }
   },

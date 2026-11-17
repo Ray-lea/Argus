@@ -22,7 +22,7 @@
 //! A test instance never touches the shell: its monitor attaches to a
 //! stand-in taskbar of its own, shown at the bottom of the z-order without
 //! activation (`--test`).
-use super::taskbar_draw::{Group, Layout, Painter, lay_out};
+use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out};
 use crate::settings::{TaskbarPlace, TaskbarStyle};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
@@ -219,6 +219,8 @@ struct Worker {
     hover: bool,
     tracking: bool,
     squeeze: Option<Squeeze>,
+    /// How wide the capsules' values have been lately.
+    reserve: Reserve,
     /// When the shell's taskbar was last looked for while missing.
     sought: Option<Instant>,
     failed: bool,
@@ -308,6 +310,7 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
             hover: false,
             tracking: false,
             squeeze: None,
+            reserve: Reserve::default(),
             sought: None,
             failed: false,
         })
@@ -674,7 +677,14 @@ impl Worker {
         let Some(painter) = &self.painter else {
             return;
         };
-        let layout = lay_out(&state.groups, height, scale, state.style, painter);
+        let layout = lay_out(
+            &state.groups,
+            height,
+            scale,
+            state.style,
+            painter,
+            Some((&mut self.reserve, Instant::now())),
+        );
         if layout.width <= 0 {
             self.detach();
             return;

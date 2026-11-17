@@ -183,9 +183,10 @@
     },
     "style": {
       "title": "Style",
-      "desc": "Labels: names and values in two rows. Curves: a tile per reading, its name and value over its recent curve. Large figures: a small name in the device's color over a large figure. Curves and large figures need room for two rows of text; on a lower taskbar they show as labels.",
+      "desc": "Labels: names and values in two rows. Curves: a tile per reading, its name and value over its recent curve. Capsules: a rounded capsule per reading in one row, marked with a dot in the device's color. Large figures: a small name in the device's color over a large figure. Curves, capsules and large figures need room for two rows of text; on a lower taskbar they show as labels.",
       "labels": "Labels",
       "curves": "Curves",
+      "capsules": "Capsules",
       "figures": "Large figures"
     }
   },
