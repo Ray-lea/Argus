@@ -294,6 +294,19 @@ impl Element for Scrollbar {
                 "thumb":geometry.map(|g| [f32::from(g.thumb.left()), f32::from(g.thumb.top()), f32::from(g.thumb.size.width), f32::from(g.thumb.size.height)])})
             );
         }
+        // A bar drawn by another view than its scroller's follows a glide on
+        // its own: an isolated glide (`ScrollHandle::isolate_glides`) draws
+        // only the cached view around the scroller, and the view drawing the
+        // bar would replay. While the glide runs, the bar asks for that view's
+        // next frame. The glide steps in the scroller's prepaint, before this
+        // one (the bar comes after the list), so each frame shows its step.
+        if self
+            .view
+            .is_some_and(|scroller| scroller != window.current_view())
+            && self.handle.gliding()
+        {
+            window.request_isolated_animation_frame();
+        }
         let Some(geometry) = self.geometry() else {
             // Nothing to scroll: a held thumb or track lets go.
             *state.borrow_mut() = BarState::default();

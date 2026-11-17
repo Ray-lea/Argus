@@ -2039,6 +2039,12 @@ impl Desktop {
                     .col_movable(false);
                 let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
                 let horizontal = state.horizontal_scroll_handle.as_ref().clone();
+                // A wheel glide draws only the table frame (the nearest cached
+                // view around the rows) in each frame; the regions and the
+                // desktop around it replay. What reads the offsets outside
+                // the frame asks for its own frames (`scrollbar::Scrollbar`).
+                list.isolate_glides();
+                horizontal.isolate_glides();
                 state.delegate_mut().list = Some(list);
                 state.delegate_mut().horizontal = Some(horizontal);
                 state
