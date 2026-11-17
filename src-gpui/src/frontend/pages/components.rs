@@ -39,6 +39,38 @@ pub(in crate::frontend) const COMPONENTS: [Component; 4] = [
     },
 ];
 
+/// The metrics on offer, a row of options per device, in the order of
+/// `Metric::ALL`.
+const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
+    (
+        "cpu",
+        &[
+            Metric::Cpu,
+            Metric::CpuTemperature,
+            Metric::CpuClock,
+            Metric::CpuPower,
+        ],
+    ),
+    ("memory", &[Metric::Memory, Metric::MemoryUsed]),
+    (
+        "gpu",
+        &[
+            Metric::Gpu,
+            Metric::GpuTemperature,
+            Metric::GpuMemory,
+            Metric::GpuClock,
+            Metric::GpuPower,
+            Metric::GpuFan,
+        ],
+    ),
+    (
+        "disk",
+        &[Metric::Disk, Metric::DiskActive, Metric::DiskTemperature],
+    ),
+    ("network", &[Metric::Network]),
+    ("other", &[Metric::Battery, Metric::Uptime]),
+];
+
 /// The column of cards, as wide as the settings' cards.
 const CONTENT: f32 = 780.;
 
@@ -227,8 +259,9 @@ impl Desktop {
         ]
     }
 
-    /// A monitor's metrics, chosen as chips under its card's description;
-    /// a click adds or removes one, and they keep the order offered.
+    /// A monitor's metrics, checked in a grid under its card's description,
+    /// a row of options per device; a click adds or removes one, and they
+    /// keep the order offered.
     fn metric_card(
         &self,
         id: &str,
@@ -238,7 +271,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let options = Metric::ALL.iter().map(|metric| {
+        let option = |metric: &Metric| {
             let on = chosen.contains(metric);
             let next = Metric::ALL
                 .iter()
@@ -246,7 +279,7 @@ impl Desktop {
                 .map(|other| metric_key(*other))
                 .collect::<Vec<_>>();
             let key = metric_key(*metric);
-            let name = label(&format!("components.metric.{key}.name"));
+            let name = label(&format!("components.metric.{key}.option"));
             let anchor = SharedString::from(format!("{id}-{key}"));
             let anchors = self.ui.anchors.clone();
             Button::new(anchor.clone())
@@ -285,21 +318,50 @@ impl Desktop {
                     this.choose_metrics(settings_key, command, next.clone(), window, cx);
                 }))
                 .into_any_element()
-        });
+        };
         // A fixed grid: checking an option changes only its box, never the
         // place or size of the others or of the card.
+        let rows = METRIC_GROUPS.iter().map(|(group, metrics)| {
+            div()
+                .flex()
+                .items_start()
+                .child(
+                    div()
+                        .w(px(64.))
+                        .h(px(32.))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .text_size(theme::font(13.))
+                        .text_color(p.muted)
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .child(label(&format!("components.metrics.group.{group}"))),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .grid()
+                        .grid_cols(4)
+                        .gap_x(px(4.))
+                        .gap_y(px(2.))
+                        .children(metrics.iter().map(option)),
+                )
+        });
         let desc = div()
             .child(label("components.metrics.desc"))
             .child(
                 div()
                     .mt(px(8.))
-                    .ml(px(-8.))
-                    .grid()
-                    .grid_cols(4)
-                    .gap_x(px(4.))
-                    .gap_y(px(2.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
                     .text_color(p.ink)
-                    .children(options),
+                    .children(rows),
             )
             .into_any_element();
         self.setting(
@@ -482,7 +544,17 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::COMPONENTS;
+    use super::{COMPONENTS, METRIC_GROUPS};
+    use crate::settings::Metric;
+
+    #[test]
+    fn the_metric_rows_offer_every_metric_once_in_order() {
+        let offered = METRIC_GROUPS
+            .iter()
+            .flat_map(|(_, metrics)| metrics.iter().copied())
+            .collect::<Vec<_>>();
+        assert_eq!(offered, Metric::ALL);
+    }
 
     #[test]
     fn the_tray_and_the_monitors_are_available_and_the_island_is_planned() {

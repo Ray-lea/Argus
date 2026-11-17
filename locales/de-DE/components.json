@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "Angezeigte Werte",
-    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. GPU-Werte stammen von der GPU mit dem meisten dedizierten Speicher."
+    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. GPU-Werte stammen von der GPU mit dem meisten dedizierten Speicher, die aktive Zeit vom am stärksten ausgelasteten Datenträger und die Datenträgertemperatur vom heißesten Datenträger.",
+    "group": {
+      "cpu": "CPU",
+      "memory": "Speicher",
+      "gpu": "GPU",
+      "disk": "Laufwerk",
+      "network": "Netzwerk",
+      "other": "Sonstiges"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Auslastung"
     },
     "cpuTemperature": {
       "name": "CPU-Temperatur",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Temperatur"
+    },
+    "cpuClock": {
+      "name": "CPU-Takt",
+      "short": "CPU",
+      "option": "Takt"
+    },
+    "cpuPower": {
+      "name": "CPU-Leistung",
+      "short": "CPU",
+      "option": "Leistung"
     },
     "memory": {
       "name": "Arbeitsspeicher",
-      "short": "RAM"
+      "short": "RAM",
+      "option": "Prozent"
+    },
+    "memoryUsed": {
+      "name": "Speichernutzung",
+      "short": "RAM",
+      "option": "In Verwendung"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Auslastung"
     },
     "gpuTemperature": {
       "name": "GPU-Temperatur",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Temperatur"
     },
     "gpuMemory": {
       "name": "GPU-Speicher",
-      "short": "VRAM"
+      "short": "VRAM",
+      "option": "Speicher"
+    },
+    "gpuClock": {
+      "name": "GPU-Takt",
+      "short": "GPU",
+      "option": "Takt"
+    },
+    "gpuPower": {
+      "name": "GPU-Leistung",
+      "short": "GPU",
+      "option": "Leistung"
+    },
+    "gpuFan": {
+      "name": "GPU-Lüfter",
+      "short": "Lüfter",
+      "option": "Lüfter"
     },
     "disk": {
-      "name": "Datenträger"
+      "name": "Datenträger",
+      "option": "Lesen/Schreiben"
+    },
+    "diskActive": {
+      "name": "Datenträgeraktivität",
+      "short": "Disk",
+      "option": "Aktive Zeit"
+    },
+    "diskTemperature": {
+      "name": "Datenträgertemperatur",
+      "short": "Disk",
+      "option": "Temperatur"
     },
     "network": {
-      "name": "Netzwerk"
+      "name": "Netzwerk",
+      "option": "Datenrate"
+    },
+    "battery": {
+      "name": "Akku",
+      "short": "Akku",
+      "option": "Ladezustand"
+    },
+    "uptime": {
+      "name": "Betriebszeit",
+      "short": "Zeit",
+      "option": "Betriebszeit"
     },
     "read": "L",
     "write": "S"

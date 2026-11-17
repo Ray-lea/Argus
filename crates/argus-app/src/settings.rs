@@ -155,29 +155,60 @@ impl From<TrayMenu> for String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Metric {
+    /// CPU load, percent.
     Cpu,
     CpuTemperature,
+    /// The CPU's clock speed.
+    CpuClock,
+    /// The CPU package's power, or its cores' where there is no package figure.
+    CpuPower,
+    /// Memory in use, percent.
     Memory,
+    /// Memory in use, bytes.
+    MemoryUsed,
     Gpu,
     GpuTemperature,
+    /// Dedicated GPU memory in use, percent.
     GpuMemory,
+    GpuClock,
+    GpuPower,
+    GpuFan,
     /// Read and write rates of all disks.
     Disk,
+    /// The busiest disk's active time.
+    DiskActive,
+    /// The hottest disk's temperature.
+    DiskTemperature,
     /// Receive and send rates of all adapters.
     Network,
+    /// The battery's charge.
+    Battery,
+    /// Time since Windows started.
+    Uptime,
 }
 
 impl Metric {
-    /// Every metric, in the order the components page offers them.
-    pub const ALL: [Metric; 8] = [
+    /// Every metric, in the order the components page offers them and the
+    /// monitors show them: by device.
+    pub const ALL: [Metric; 18] = [
         Metric::Cpu,
         Metric::CpuTemperature,
+        Metric::CpuClock,
+        Metric::CpuPower,
         Metric::Memory,
+        Metric::MemoryUsed,
         Metric::Gpu,
         Metric::GpuTemperature,
         Metric::GpuMemory,
+        Metric::GpuClock,
+        Metric::GpuPower,
+        Metric::GpuFan,
         Metric::Disk,
+        Metric::DiskActive,
+        Metric::DiskTemperature,
         Metric::Network,
+        Metric::Battery,
+        Metric::Uptime,
     ];
 }
 

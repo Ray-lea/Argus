@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "表示する項目",
-    "desc": "選択した項目を下の順序で表示します。GPU の値は、専用 GPU メモリが最も多い GPU から取得します。"
+    "desc": "選択した項目を下の順序で表示します。GPU の値は専用 GPU メモリが最も多い GPU から、ディスクのアクティブな時間は最も負荷の高いディスクから、ディスク温度は最も温度の高いディスクから取得します。",
+    "group": {
+      "cpu": "CPU",
+      "memory": "メモリ",
+      "gpu": "GPU",
+      "disk": "ディスク",
+      "network": "ネットワーク",
+      "other": "その他"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "使用率"
     },
     "cpuTemperature": {
       "name": "CPU 温度",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "温度"
+    },
+    "cpuClock": {
+      "name": "CPU クロック",
+      "short": "CPU",
+      "option": "クロック"
+    },
+    "cpuPower": {
+      "name": "CPU 消費電力",
+      "short": "CPU",
+      "option": "消費電力"
     },
     "memory": {
       "name": "メモリ",
-      "short": "メモリ"
+      "short": "メモリ",
+      "option": "割合"
+    },
+    "memoryUsed": {
+      "name": "メモリ使用量",
+      "short": "メモリ",
+      "option": "使用量"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "使用率"
     },
     "gpuTemperature": {
       "name": "GPU 温度",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "温度"
     },
     "gpuMemory": {
       "name": "GPU メモリ",
-      "short": "VRAM"
+      "short": "VRAM",
+      "option": "メモリ"
+    },
+    "gpuClock": {
+      "name": "GPU クロック",
+      "short": "GPU",
+      "option": "クロック"
+    },
+    "gpuPower": {
+      "name": "GPU 消費電力",
+      "short": "GPU",
+      "option": "消費電力"
+    },
+    "gpuFan": {
+      "name": "GPU ファン",
+      "short": "ファン",
+      "option": "ファン"
     },
     "disk": {
-      "name": "ディスク"
+      "name": "ディスク",
+      "option": "読み書き速度"
+    },
+    "diskActive": {
+      "name": "ディスクのアクティブな時間",
+      "short": "ディスク",
+      "option": "アクティブな時間"
+    },
+    "diskTemperature": {
+      "name": "ディスク温度",
+      "short": "ディスク",
+      "option": "温度"
     },
     "network": {
-      "name": "ネットワーク"
+      "name": "ネットワーク",
+      "option": "送受信速度"
+    },
+    "battery": {
+      "name": "バッテリー",
+      "short": "電池",
+      "option": "充電レベル"
+    },
+    "uptime": {
+      "name": "稼働時間",
+      "short": "稼働",
+      "option": "稼働時間"
     },
     "read": "読",
     "write": "書"

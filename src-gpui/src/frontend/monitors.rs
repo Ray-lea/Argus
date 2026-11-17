@@ -23,12 +23,22 @@ pub(in crate::frontend) fn metric_key(metric: Metric) -> &'static str {
     match metric {
         Metric::Cpu => "cpu",
         Metric::CpuTemperature => "cpuTemperature",
+        Metric::CpuClock => "cpuClock",
+        Metric::CpuPower => "cpuPower",
         Metric::Memory => "memory",
+        Metric::MemoryUsed => "memoryUsed",
         Metric::Gpu => "gpu",
         Metric::GpuTemperature => "gpuTemperature",
         Metric::GpuMemory => "gpuMemory",
+        Metric::GpuClock => "gpuClock",
+        Metric::GpuPower => "gpuPower",
+        Metric::GpuFan => "gpuFan",
         Metric::Disk => "disk",
+        Metric::DiskActive => "diskActive",
+        Metric::DiskTemperature => "diskTemperature",
         Metric::Network => "network",
+        Metric::Battery => "battery",
+        Metric::Uptime => "uptime",
     }
 }
 
@@ -50,8 +60,11 @@ pub(in crate::frontend) struct Gauge {
     /// One value, or the two rates of a pair (received and sent; read and
     /// written).
     pub parts: Vec<Part>,
-    /// How far a bar fills, 0–1, for a reading with a scale.
+    /// How far its bar fills, 0–1; none while the reading is unknown.
     pub fraction: Option<f64>,
+    /// The reading has a scale, and a bar on the desktop monitor (shown
+    /// empty while it is unknown, so that the window keeps its height).
+    pub bar: bool,
     pub high: bool,
 }
 
@@ -77,35 +90,69 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
     let system = &snapshot["system"];
     let hardware = &snapshot["hardware"];
     let missing = label("format.missing");
+    let finite = |value: Option<f64>| value.filter(|value| value.is_finite());
+    // One value; with a bar when the reading has a scale.
+    let single = |metric: Metric,
+                  text: Option<String>,
+                  widest: String,
+                  fraction: Option<f64>,
+                  bar: bool,
+                  high: bool| Gauge {
+        metric,
+        parts: vec![Part {
+            mark: String::new(),
+            text: text.unwrap_or_else(|| missing.clone()),
+            widest,
+        }],
+        fraction: fraction.map(|fraction| fraction.clamp(0., 1.)),
+        bar,
+        high,
+    };
     let percent = |metric: Metric, value: Option<f64>| {
-        let value = value.filter(|value| value.is_finite());
-        Gauge {
+        let value = finite(value);
+        single(
             metric,
-            parts: vec![Part {
-                mark: String::new(),
-                text: value.map_or_else(|| missing.clone(), |v| format!("{}%", v.round())),
-                widest: "100%".into(),
-            }],
-            fraction: value.map(|v| (v / 100.).clamp(0., 1.)),
-            high: value.is_some_and(|v| v.round() >= HIGH),
-        }
+            value.map(|v| format!("{}%", v.round())),
+            "100%".into(),
+            value.map(|v| v / 100.),
+            true,
+            value.is_some_and(|v| v.round() >= HIGH),
+        )
     };
-    let celsius = |metric: Metric, value: Option<f64>| {
-        let value = value.filter(|value| value.is_finite() && *value > 0.);
-        Gauge {
+    let celsius = |metric: Metric, value: Option<f64>, high: f64| {
+        let value = finite(value).filter(|value| *value > 0.);
+        single(
             metric,
-            parts: vec![Part {
-                mark: String::new(),
-                text: value.map_or_else(
-                    || missing.clone(),
-                    |v| crate::regional::number!("{v:.0} °C"),
-                ),
-                widest: crate::regional::number!("{:.0} °C", 100.),
-            }],
-            fraction: value.map(|v| (v / 100.).clamp(0., 1.)),
-            high: value.is_some_and(|v| v.round() >= HIGH),
-        }
+            value.map(|v| crate::regional::number!("{v:.0} °C")),
+            crate::regional::number!("{:.0} °C", 100.),
+            value.map(|v| v / 100.),
+            true,
+            value.is_some_and(|v| v.round() >= high),
+        )
     };
+    let gigahertz = |metric: Metric, mhz: Option<f64>| {
+        let mhz = finite(mhz).filter(|mhz| *mhz > 0.);
+        single(
+            metric,
+            mhz.map(|mhz| crate::regional::number!("{:.2} GHz", mhz / 1000.)),
+            crate::regional::number!("{:.2} GHz", 8.88),
+            None,
+            false,
+            false,
+        )
+    };
+    let watts = |metric: Metric, value: Option<f64>| {
+        let value = finite(value).filter(|value| *value >= 0.);
+        single(
+            metric,
+            value.map(|v| format!("{} W", charts::watts(v))),
+            format!("{} W", charts::watts(888.)),
+            None,
+            false,
+            false,
+        )
+    };
+    let gigabytes = |bytes: f64| crate::regional::number!("{:.1} GB", bytes / 1073741824.);
     let rate = |value: Option<f64>, network: bool| match value {
         None => missing.clone(),
         Some(value) if value < 1. => if network && bits { "0 Kbps" } else { "0 KB/s" }.into(),
@@ -131,6 +178,7 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             })
             .collect(),
         fraction: None,
+        bar: false,
         high: false,
     };
     let sum = |devices: &Value, key: &str| -> Option<f64> {
@@ -143,11 +191,28 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
             .try_fold(0., |sum, device| Some(sum + device[key].as_f64()?))
     };
     let gpu = main_gpu(hardware);
+    let disks = values(&hardware["disks"]);
+    let busiest = disks
+        .iter()
+        .filter_map(|disk| disk["active"].as_f64())
+        .reduce(f64::max);
+    let hottest = disks
+        .iter()
+        .filter(|disk| disk["temperature"].as_f64().is_some_and(|t| t > 0.))
+        .max_by(|a, b| number(a, "temperature").total_cmp(&number(b, "temperature")));
+    let battery = values(&hardware["batteries"]).first();
     metrics
         .iter()
         .map(|metric| match metric {
             Metric::Cpu => percent(*metric, system["cpu"].as_f64()),
-            Metric::CpuTemperature => celsius(*metric, model::cpu_temperature(hardware)),
+            Metric::CpuTemperature => celsius(*metric, model::cpu_temperature(hardware), HIGH),
+            Metric::CpuClock => gigahertz(*metric, hardware["cpuMhz"].as_f64()),
+            Metric::CpuPower => watts(
+                *metric,
+                hardware["power"]["package"]
+                    .as_f64()
+                    .or_else(|| hardware["power"]["cores"].as_f64()),
+            ),
             Metric::Memory => percent(
                 *metric,
                 system["memUsed"].as_f64().and_then(|used| {
@@ -155,10 +220,25 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
                     (total > 0.).then(|| used / total * 100.)
                 }),
             ),
-            Metric::Gpu => percent(*metric, gpu.and_then(|gpu| gpu["util"].as_f64())),
-            Metric::GpuTemperature => {
-                celsius(*metric, gpu.and_then(|gpu| gpu["temperature"].as_f64()))
+            Metric::MemoryUsed => {
+                let total = number(system, "memTotal");
+                let used = finite(system["memUsed"].as_f64()).filter(|_| total > 0.);
+                single(
+                    *metric,
+                    used.map(gigabytes),
+                    // Used memory never shows more digits than the total.
+                    gigabytes(total.max(1073741824. * 8.88)),
+                    used.map(|used| used / total),
+                    true,
+                    used.is_some_and(|used| (used / total * 100.).round() >= HIGH),
+                )
             }
+            Metric::Gpu => percent(*metric, gpu.and_then(|gpu| gpu["util"].as_f64())),
+            Metric::GpuTemperature => celsius(
+                *metric,
+                gpu.and_then(|gpu| gpu["temperature"].as_f64()),
+                HIGH,
+            ),
             Metric::GpuMemory => percent(
                 *metric,
                 gpu.and_then(|gpu| {
@@ -166,6 +246,36 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
                     (total > 0.).then(|| number(gpu, "dedicatedUsed") / total * 100.)
                 }),
             ),
+            Metric::GpuClock => gigahertz(*metric, gpu.and_then(|gpu| gpu["clockMhz"].as_f64())),
+            Metric::GpuPower => match gpu {
+                // The board's power where the driver measures it, as the
+                // performance page shows it; otherwise the share of its budget.
+                Some(gpu) if gpu["boardPower"].is_null() && gpu["power"].as_f64().is_some() => {
+                    let share = finite(gpu["power"].as_f64()).filter(|share| *share > 0.);
+                    single(
+                        *metric,
+                        share.map(|share| crate::regional::number!("{share:.0}% TDP")),
+                        crate::regional::number!("{:.0}% TDP", 100.),
+                        None,
+                        false,
+                        false,
+                    )
+                }
+                gpu => watts(*metric, gpu.and_then(|gpu| gpu["boardPower"].as_f64())),
+            },
+            Metric::GpuFan => {
+                let rpm = gpu
+                    .and_then(|gpu| gpu["fanRpm"].as_u64())
+                    .filter(|rpm| *rpm > 0);
+                single(
+                    *metric,
+                    rpm.map(|rpm| format!("{rpm} RPM")),
+                    "8888 RPM".into(),
+                    None,
+                    false,
+                    false,
+                )
+            }
             Metric::Disk => pair(
                 *metric,
                 [
@@ -178,11 +288,47 @@ pub(in crate::frontend) fn gauges(snapshot: &Value, metrics: &[Metric], bits: bo
                 ],
                 false,
             ),
+            Metric::DiskActive => percent(*metric, busiest),
+            // A disk turns amber from the warning temperature it reports,
+            // or from 70 °C.
+            Metric::DiskTemperature => celsius(
+                *metric,
+                hottest.and_then(|disk| disk["temperature"].as_f64()),
+                hottest
+                    .and_then(|disk| disk["temperatureWarning"].as_f64())
+                    .filter(|warning| *warning > 0.)
+                    .unwrap_or(70.),
+            ),
             Metric::Network => pair(
                 *metric,
                 ["↓".into(), "↑".into()],
                 [sum(&hardware["nics"], "rx"), sum(&hardware["nics"], "tx")],
                 true,
+            ),
+            // Low is what needs attention: amber at 20 % and below, on
+            // battery power.
+            Metric::Battery => {
+                let charge = battery.and_then(|battery| finite(battery["percent"].as_f64()));
+                let plugged = battery.is_some_and(|battery| boolean(battery, "pluggedIn"));
+                single(
+                    *metric,
+                    charge.map(|v| format!("{}%", v.round())),
+                    "100%".into(),
+                    charge.map(|v| v / 100.),
+                    true,
+                    charge.is_some_and(|v| v.round() <= 20. && !plugged),
+                )
+            }
+            Metric::Uptime => single(
+                *metric,
+                system["uptimeMs"]
+                    .as_f64()
+                    .filter(|ms| *ms > 0.)
+                    .map(|ms| super::layout::status_uptime(ms / 1000.)),
+                super::layout::status_uptime(88. * 86400. + 88. * 3600.),
+                None,
+                false,
+                false,
             ),
         })
         .collect()
@@ -219,11 +365,18 @@ fn taskbar_groups(gauges: &[Gauge]) -> Vec<TaskbarGroup> {
 /// The colour of a metric's bar: its device's.
 fn metric_color(metric: Metric, p: Palette) -> Hsla {
     match metric {
-        Metric::Cpu | Metric::CpuTemperature => p.cpu,
-        Metric::Memory => p.memory,
-        Metric::Gpu | Metric::GpuTemperature | Metric::GpuMemory => p.gpu,
-        Metric::Disk => p.io,
+        Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => p.cpu,
+        Metric::Memory | Metric::MemoryUsed => p.memory,
+        Metric::Gpu
+        | Metric::GpuTemperature
+        | Metric::GpuMemory
+        | Metric::GpuClock
+        | Metric::GpuPower
+        | Metric::GpuFan => p.gpu,
+        Metric::Disk | Metric::DiskActive | Metric::DiskTemperature => p.io,
         Metric::Network => p.network,
+        Metric::Battery => p.battery,
+        Metric::Uptime => p.muted,
     }
 }
 
@@ -382,15 +535,17 @@ impl DeskMonitor {
                                 .child(part.text.clone()),
                         ),
                     )
-                    .child(
-                        div().h(px(4.)).rounded(px(2.)).bg(p.stroke_strong).child(
-                            div()
-                                .h_full()
-                                .w(relative(gauge.fraction.unwrap_or(0.) as f32))
-                                .rounded(px(2.))
-                                .bg(color),
-                        ),
-                    )
+                    .when(gauge.bar, |row| {
+                        row.child(
+                            div().h(px(4.)).rounded(px(2.)).bg(p.stroke_strong).child(
+                                div()
+                                    .h_full()
+                                    .w(relative(gauge.fraction.unwrap_or(0.) as f32))
+                                    .rounded(px(2.))
+                                    .bg(color),
+                            ),
+                        )
+                    })
                     .into_any_element()
             }
             parts => div()
@@ -711,20 +866,28 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{Gauge, gauges, main_gpu, taskbar_groups};
+    use crate::frontend::theme::label;
     use crate::settings::Metric;
     use serde_json::json;
 
     fn snapshot() -> serde_json::Value {
         json!({
-            "system": {"cpu": 83.6, "memUsed": 4294967296u64, "memTotal": 17179869184u64},
+            "system": {"cpu": 83.6, "memUsed": 4294967296u64, "memTotal": 17179869184u64, "uptimeMs": 90061000u64},
             "hardware": {
+                "cpuMhz": 3420,
+                "power": {"cores": 21.5},
                 "cpuSensors": {"packageCelsius": 61.2},
                 "gpus": [
-                    {"info": {"dedicatedTotal": 134217728u64}, "util": 90.0, "temperature": 50.0, "dedicatedUsed": 0},
-                    {"info": {"dedicatedTotal": 8589934592u64}, "util": 12.0, "temperature": 79.6, "dedicatedUsed": 2147483648u64}
+                    {"info": {"dedicatedTotal": 134217728u64}, "util": 90.0, "temperature": 50.0, "dedicatedUsed": 0, "power": 40.0},
+                    {"info": {"dedicatedTotal": 8589934592u64}, "util": 12.0, "temperature": 79.6, "dedicatedUsed": 2147483648u64,
+                     "clockMhz": 1850.0, "boardPower": 120.4, "fanRpm": 1500}
                 ],
-                "disks": [{"read": 2097152.0, "write": 0.0}, {"read": 1048576.0, "write": 512.0}],
-                "nics": [{"rx": 2048.0, "tx": 0.5}]
+                "disks": [
+                    {"read": 2097152.0, "write": 0.0, "active": 12.0, "temperature": 41.0},
+                    {"read": 1048576.0, "write": 512.0, "active": 63.4, "temperature": 58.0, "temperatureWarning": 55.0}
+                ],
+                "nics": [{"rx": 2048.0, "tx": 0.5}],
+                "batteries": [{"percent": 18.2, "pluggedIn": false}]
             }
         })
     }
@@ -754,6 +917,42 @@ mod tests {
             texts(&gauges(&snapshot(), &[Metric::Network], true)[0])[1],
             "0 Kbps"
         );
+        // Clock, power and fan show without a bar; the CPU's cores stand in
+        // for a package with no figure.
+        let no_bar = [
+            Metric::CpuClock,
+            Metric::CpuPower,
+            Metric::GpuClock,
+            Metric::GpuPower,
+            Metric::GpuFan,
+            Metric::Uptime,
+        ];
+        assert!(
+            no_bar
+                .iter()
+                .all(|metric| !by(*metric).bar && by(*metric).fraction.is_none())
+        );
+        assert!(texts(by(Metric::CpuClock))[0].ends_with(" GHz"));
+        assert!(texts(by(Metric::CpuPower))[0].ends_with(" W"));
+        assert!(texts(by(Metric::GpuPower))[0].ends_with(" W"));
+        assert_eq!(texts(by(Metric::GpuFan)), ["1500 RPM"]);
+        assert_ne!(texts(by(Metric::Uptime))[0], label("format.missing"));
+        // Memory in use as an amount, with its share as the bar.
+        assert!(texts(by(Metric::MemoryUsed))[0].ends_with(" GB"));
+        assert_eq!(by(Metric::MemoryUsed).fraction, Some(0.25));
+        // The busiest disk's active time; the hottest disk, amber from the
+        // warning it reports.
+        assert_eq!(texts(by(Metric::DiskActive)), ["63%"]);
+        assert!(by(Metric::DiskTemperature).high);
+        // A low battery on battery power is what turns amber.
+        assert_eq!(texts(by(Metric::Battery)), ["18%"]);
+        assert!(by(Metric::Battery).high);
+        let plugged = json!({"hardware": {"batteries": [{"percent": 18.0, "pluggedIn": true}]}});
+        assert!(!gauges(&plugged, &[Metric::Battery], false)[0].high);
+        // Without a measured board power, the share of the power budget.
+        let budget =
+            json!({"hardware": {"gpus": [{"info": {"dedicatedTotal": 1}, "power": 40.0}]}});
+        assert!(texts(&gauges(&budget, &[Metric::GpuPower], false)[0])[0].ends_with("% TDP"));
     }
 
     #[test]

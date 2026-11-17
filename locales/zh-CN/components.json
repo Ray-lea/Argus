@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "显示的读数",
-    "desc": "按下列顺序显示所选读数。显卡读数取专用显存最大的显卡。"
+    "desc": "按下列顺序显示所选读数。显卡读数取专用显存最大的显卡，磁盘活动时间取最忙的磁盘，磁盘温度取最热的磁盘。",
+    "group": {
+      "cpu": "CPU",
+      "memory": "内存",
+      "gpu": "GPU",
+      "disk": "磁盘",
+      "network": "网络",
+      "other": "其他"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "利用率"
     },
     "cpuTemperature": {
       "name": "CPU 温度",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "温度"
+    },
+    "cpuClock": {
+      "name": "CPU 频率",
+      "short": "CPU",
+      "option": "频率"
+    },
+    "cpuPower": {
+      "name": "CPU 功耗",
+      "short": "CPU",
+      "option": "功耗"
     },
     "memory": {
       "name": "内存",
-      "short": "内存"
+      "short": "内存",
+      "option": "占比"
+    },
+    "memoryUsed": {
+      "name": "内存用量",
+      "short": "内存",
+      "option": "用量"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "利用率"
     },
     "gpuTemperature": {
       "name": "GPU 温度",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "温度"
     },
     "gpuMemory": {
       "name": "显存",
-      "short": "显存"
+      "short": "显存",
+      "option": "显存"
+    },
+    "gpuClock": {
+      "name": "GPU 频率",
+      "short": "GPU",
+      "option": "频率"
+    },
+    "gpuPower": {
+      "name": "GPU 功耗",
+      "short": "GPU",
+      "option": "功耗"
+    },
+    "gpuFan": {
+      "name": "GPU 风扇",
+      "short": "风扇",
+      "option": "风扇"
     },
     "disk": {
-      "name": "磁盘"
+      "name": "磁盘",
+      "option": "读写速度"
+    },
+    "diskActive": {
+      "name": "磁盘活动时间",
+      "short": "磁盘",
+      "option": "活动时间"
+    },
+    "diskTemperature": {
+      "name": "磁盘温度",
+      "short": "磁盘",
+      "option": "温度"
     },
     "network": {
-      "name": "网络"
+      "name": "网络",
+      "option": "收发速率"
+    },
+    "battery": {
+      "name": "电池",
+      "short": "电池",
+      "option": "电量"
+    },
+    "uptime": {
+      "name": "正常运行时间",
+      "short": "运行",
+      "option": "正常运行时间"
     },
     "read": "读",
     "write": "写"

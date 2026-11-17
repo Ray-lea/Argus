@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "Readings shown",
-    "desc": "Chosen readings appear in the order below. GPU readings come from the GPU with the most dedicated memory."
+    "desc": "Chosen readings appear in the order below. GPU readings come from the GPU with the most dedicated memory, disk active time from the busiest disk, and disk temperature from the hottest disk.",
+    "group": {
+      "cpu": "CPU",
+      "memory": "Memory",
+      "gpu": "GPU",
+      "disk": "Disk",
+      "network": "Network",
+      "other": "Other"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Utilization"
     },
     "cpuTemperature": {
       "name": "CPU temperature",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Temperature"
+    },
+    "cpuClock": {
+      "name": "CPU clock",
+      "short": "CPU",
+      "option": "Clock"
+    },
+    "cpuPower": {
+      "name": "CPU power",
+      "short": "CPU",
+      "option": "Power"
     },
     "memory": {
       "name": "Memory",
-      "short": "RAM"
+      "short": "RAM",
+      "option": "Percentage"
+    },
+    "memoryUsed": {
+      "name": "Memory in use",
+      "short": "RAM",
+      "option": "In use"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Utilization"
     },
     "gpuTemperature": {
       "name": "GPU temperature",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Temperature"
     },
     "gpuMemory": {
       "name": "GPU memory",
-      "short": "VRAM"
+      "short": "VRAM",
+      "option": "Memory"
+    },
+    "gpuClock": {
+      "name": "GPU clock",
+      "short": "GPU",
+      "option": "Clock"
+    },
+    "gpuPower": {
+      "name": "GPU power",
+      "short": "GPU",
+      "option": "Power"
+    },
+    "gpuFan": {
+      "name": "GPU fan",
+      "short": "Fan",
+      "option": "Fan"
     },
     "disk": {
-      "name": "Disk"
+      "name": "Disk",
+      "option": "Read & write"
+    },
+    "diskActive": {
+      "name": "Disk active time",
+      "short": "Disk",
+      "option": "Active time"
+    },
+    "diskTemperature": {
+      "name": "Disk temperature",
+      "short": "Disk",
+      "option": "Temperature"
     },
     "network": {
-      "name": "Network"
+      "name": "Network",
+      "option": "Receive & send"
+    },
+    "battery": {
+      "name": "Battery",
+      "short": "Batt",
+      "option": "Charge level"
+    },
+    "uptime": {
+      "name": "Up time",
+      "short": "Up",
+      "option": "Up time"
     },
     "read": "R",
     "write": "W"

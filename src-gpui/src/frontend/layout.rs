@@ -1909,7 +1909,7 @@ fn anchor_probe(
 }
 
 /// Up time in the status bar, in words: days and hours, hours and minutes, or minutes and seconds.
-fn status_uptime(seconds: f64) -> String {
+pub(in crate::frontend) fn status_uptime(seconds: f64) -> String {
     let s = seconds as u64;
     let (days, hours, minutes) = (s / 86400, s % 86400 / 3600, s % 3600 / 60);
     if days > 0 {

@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "Отображаемые показатели",
-    "desc": "Выбранные показатели отображаются в порядке, указанном ниже. Показатели GPU относятся к GPU с наибольшим объёмом выделенной памяти."
+    "desc": "Выбранные показатели отображаются в порядке, указанном ниже. Показатели GPU относятся к GPU с наибольшим объёмом выделенной памяти, время активности — к самому загруженному диску, температура диска — к самому горячему диску.",
+    "group": {
+      "cpu": "CPU",
+      "memory": "Память",
+      "gpu": "GPU",
+      "disk": "Диск",
+      "network": "Сеть",
+      "other": "Другое"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Загрузка"
     },
     "cpuTemperature": {
       "name": "Температура CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Температура"
+    },
+    "cpuClock": {
+      "name": "Частота CPU",
+      "short": "CPU",
+      "option": "Частота"
+    },
+    "cpuPower": {
+      "name": "Мощность CPU",
+      "short": "CPU",
+      "option": "Мощность"
     },
     "memory": {
       "name": "Память",
-      "short": "ОЗУ"
+      "short": "ОЗУ",
+      "option": "В процентах"
+    },
+    "memoryUsed": {
+      "name": "Используемая память",
+      "short": "ОЗУ",
+      "option": "Используется"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Загрузка"
     },
     "gpuTemperature": {
       "name": "Температура GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Температура"
     },
     "gpuMemory": {
       "name": "Память GPU",
-      "short": "VRAM"
+      "short": "VRAM",
+      "option": "Память"
+    },
+    "gpuClock": {
+      "name": "Частота GPU",
+      "short": "GPU",
+      "option": "Частота"
+    },
+    "gpuPower": {
+      "name": "Мощность GPU",
+      "short": "GPU",
+      "option": "Мощность"
+    },
+    "gpuFan": {
+      "name": "Вентилятор GPU",
+      "short": "Вент.",
+      "option": "Вентилятор"
     },
     "disk": {
-      "name": "Диск"
+      "name": "Диск",
+      "option": "Чтение/запись"
+    },
+    "diskActive": {
+      "name": "Время активности диска",
+      "short": "Диск",
+      "option": "Активность"
+    },
+    "diskTemperature": {
+      "name": "Температура диска",
+      "short": "Диск",
+      "option": "Температура"
     },
     "network": {
-      "name": "Сеть"
+      "name": "Сеть",
+      "option": "Приём/передача"
+    },
+    "battery": {
+      "name": "Батарея",
+      "short": "Бат.",
+      "option": "Уровень заряда"
+    },
+    "uptime": {
+      "name": "Время работы",
+      "short": "Время",
+      "option": "Время работы"
     },
     "read": "Ч",
     "write": "З"

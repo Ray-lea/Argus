@@ -32,38 +32,104 @@
   },
   "metrics": {
     "title": "Lecturas mostradas",
-    "desc": "Las lecturas elegidas se muestran en el orden siguiente. Las lecturas de GPU corresponden a la GPU con más memoria dedicada."
+    "desc": "Las lecturas elegidas se muestran en el orden siguiente. Las lecturas de GPU corresponden a la GPU con más memoria dedicada; el tiempo de actividad, al disco más ocupado, y la temperatura de disco, al disco más caliente.",
+    "group": {
+      "cpu": "CPU",
+      "memory": "Memoria",
+      "gpu": "GPU",
+      "disk": "Disco",
+      "network": "Red",
+      "other": "Otros"
+    }
   },
   "metric": {
     "cpu": {
       "name": "CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Uso"
     },
     "cpuTemperature": {
       "name": "Temperatura de CPU",
-      "short": "CPU"
+      "short": "CPU",
+      "option": "Temperatura"
+    },
+    "cpuClock": {
+      "name": "Frecuencia de CPU",
+      "short": "CPU",
+      "option": "Frecuencia"
+    },
+    "cpuPower": {
+      "name": "Potencia de CPU",
+      "short": "CPU",
+      "option": "Potencia"
     },
     "memory": {
       "name": "Memoria",
-      "short": "RAM"
+      "short": "RAM",
+      "option": "Porcentaje"
+    },
+    "memoryUsed": {
+      "name": "Memoria en uso",
+      "short": "RAM",
+      "option": "En uso"
     },
     "gpu": {
       "name": "GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Uso"
     },
     "gpuTemperature": {
       "name": "Temperatura de GPU",
-      "short": "GPU"
+      "short": "GPU",
+      "option": "Temperatura"
     },
     "gpuMemory": {
       "name": "Memoria de GPU",
-      "short": "VRAM"
+      "short": "VRAM",
+      "option": "Memoria"
+    },
+    "gpuClock": {
+      "name": "Frecuencia de GPU",
+      "short": "GPU",
+      "option": "Frecuencia"
+    },
+    "gpuPower": {
+      "name": "Potencia de GPU",
+      "short": "GPU",
+      "option": "Potencia"
+    },
+    "gpuFan": {
+      "name": "Ventilador de GPU",
+      "short": "Vent.",
+      "option": "Ventilador"
     },
     "disk": {
-      "name": "Disco"
+      "name": "Disco",
+      "option": "Lectura/escritura"
+    },
+    "diskActive": {
+      "name": "Actividad del disco",
+      "short": "Disco",
+      "option": "Actividad"
+    },
+    "diskTemperature": {
+      "name": "Temperatura del disco",
+      "short": "Disco",
+      "option": "Temperatura"
     },
     "network": {
-      "name": "Red"
+      "name": "Red",
+      "option": "Recepción/envío"
+    },
+    "battery": {
+      "name": "Batería",
+      "short": "Bat.",
+      "option": "Nivel de carga"
+    },
+    "uptime": {
+      "name": "Tiempo activo",
+      "short": "Activo",
+      "option": "Tiempo activo"
     },
     "read": "L",
     "write": "E"
