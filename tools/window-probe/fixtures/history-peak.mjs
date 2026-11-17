@@ -16,6 +16,6 @@ const steps=[
  {control:{resolve:{command:'history_moment',cache:'historyMoment',args:{cursor:base+5000,ts:base+5000},ok:true,value:peakMoment}},wait:300,inspect:'layout',label:'stale-peak-rejected',expect:{'history.requestedFrame':base}},
  {control:{resolve:{command:'history_moment',cache:'historyMoment',args:{cursor:base+5000,ts:base},ok:true,value:f.historyMoment}},wait:300,inspect:'layout',label:'ordinary-frame',expect:{'history.frame':base},capture:'ordinary'},
  {control:{contentZoom:1.5,theme:'light'},probe:'size 900 700',wait:600,capture:'peak-small'},
- {control:{wheel:{x:700,y:450,lines:-16}},wait:500,capture:'peak-small-card'},
+ {control:{wheel:{x:350,y:250,lines:-16}},wait:500,capture:'peak-small-card'},
 ];
 writeFileSync('target/history-peak-steps.json',JSON.stringify({window:[1200,800],steps},null,2));
