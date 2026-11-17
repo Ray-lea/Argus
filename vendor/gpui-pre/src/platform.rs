@@ -1330,6 +1330,14 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_display_changed(&self, callback: Box<dyn FnMut()>);
     fn on_should_close(&self, callback: Box<dyn FnMut() -> bool>);
     fn on_hit_test_window_control(&self, callback: Box<dyn FnMut() -> Option<WindowControlArea>>);
+    /// Registers a native caption hit test. Backends with a query position
+    /// supply it in content pixels; others use the current pointer position.
+    fn on_hit_test_window_control_at(
+        &self,
+        mut callback: Box<dyn FnMut(Option<Point<Pixels>>) -> Option<WindowControlArea>>,
+    ) {
+        self.on_hit_test_window_control(Box::new(move || callback(None)));
+    }
     fn on_close(&self, callback: Box<dyn FnOnce()>);
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>);
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}

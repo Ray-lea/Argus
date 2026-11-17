@@ -4,6 +4,10 @@ extern crate gpui_test as gpui;
 #[path = "../../vendor/gpui-pre-windows/src/touch.rs"]
 mod touch;
 
+#[cfg(windows)]
+#[path = "touch_input/native_hit_test.rs"]
+mod native_hit_test;
+
 use gpui::{
     Context, DispatchPhase, GestureTuning, InteractiveElement, IntoElement, LongPressEvent,
     MouseButton, ParentElement, PlatformInput, Render, ScrollHandle, StatefulInteractiveElement,
@@ -15,6 +19,7 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 #[derive(Default)]
 struct Observed {
     clicks: Vec<usize>,
+    activations: Vec<usize>,
     menus: usize,
     long_presses: usize,
 }
@@ -28,6 +33,7 @@ struct Content {
 impl Render for Content {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let taps = self.observed.clone();
+        let activations = self.observed.clone();
         let menus = self.observed.clone();
         let held = self.observed.clone();
         let claim = self.claim_long_press;
@@ -43,6 +49,12 @@ impl Render for Content {
                     .h(px(1500.))
                     .on_mouse_down(MouseButton::Left, move |event, _, _| {
                         taps.borrow_mut().clicks.push(event.click_count);
+                    })
+                    .on_click(move |event, _, _| {
+                        activations
+                            .borrow_mut()
+                            .activations
+                            .push(event.click_count());
                     })
                     .on_mouse_down(MouseButton::Right, move |_, _, _| {
                         menus.borrow_mut().menus += 1;
@@ -108,6 +120,7 @@ fn taps_commit_on_release_and_accumulate_double_taps() {
     send(&mut cx, 2, TouchPhase::Started, 100.);
     send(&mut cx, 2, TouchPhase::Ended, 100.);
     assert_eq!(observed.borrow().clicks, [1, 2]);
+    assert_eq!(observed.borrow().activations, [1, 2]);
 }
 
 #[test]

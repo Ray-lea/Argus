@@ -10,7 +10,10 @@ use windows::{
         UI::{
             Controls::*,
             HiDpi::*,
-            Input::{Ime::*, KeyboardAndMouse::*, Pointer::*},
+            Input::{
+                GetCurrentInputMessageSource, IMDT_TOUCH, IMDT_UNAVAILABLE, INPUT_MESSAGE_SOURCE,
+                Ime::*, KeyboardAndMouse::*, Pointer::*,
+            },
             WindowsAndMessaging::*,
         },
     },
@@ -35,6 +38,28 @@ const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
 #[cfg(test)]
 mod paint_tests;
+
+fn is_touch_pointer(pointer: u32, message: u32, flags: u32) -> bool {
+    let mut kind = POINTER_INPUT_TYPE::default();
+    if unsafe { GetPointerType(pointer, &mut kind) }.is_ok() {
+        return kind == PT_TOUCH;
+    }
+    let mut source = INPUT_MESSAGE_SOURCE::default();
+    let _ = unsafe { GetCurrentInputMessageSource(&mut source) };
+    if source.deviceType != IMDT_UNAVAILABLE {
+        return source.deviceType == IMDT_TOUCH;
+    }
+    // A forwarded pointer message can lack both a local pointer ID and a
+    // device type. Only adopt an explicit primary contact performing a left press.
+    const PRIMARY_PRESS: u32 = POINTER_MESSAGE_FLAG_PRIMARY
+        | POINTER_MESSAGE_FLAG_INCONTACT
+        | POINTER_MESSAGE_FLAG_FIRSTBUTTON;
+    const OTHER_BUTTONS: u32 = POINTER_MESSAGE_FLAG_SECONDBUTTON
+        | POINTER_MESSAGE_FLAG_THIRDBUTTON
+        | POINTER_MESSAGE_FLAG_FOURTHBUTTON
+        | POINTER_MESSAGE_FLAG_FIFTHBUTTON;
+    message == WM_POINTERDOWN && flags & (PRIMARY_PRESS | OTHER_BUTTONS) == PRIMARY_PRESS
+}
 
 /// Takes the update region of a hidden window; false for a visible one, which
 /// is drawn as usual. `ValidateRect` succeeds on a hidden window and leaves
@@ -183,7 +208,7 @@ impl WindowsWindowInner {
             | WM_POINTERUP
             | WM_POINTERENTER
             | WM_POINTERLEAVE
-            | WM_POINTERCAPTURECHANGED => self.handle_touch_msg(handle, msg, wparam),
+            | WM_POINTERCAPTURECHANGED => self.handle_touch_msg(handle, msg, wparam, lparam),
             WM_CANCELMODE => {
                 self.cancel_touches();
                 None
@@ -647,32 +672,19 @@ impl WindowsWindowInner {
         handle: HWND,
         message: u32,
         wparam: WPARAM,
+        lparam: LPARAM,
     ) -> Option<isize> {
         let pointer = wparam.loword() as u32;
-        let tracked = self.state.touch.borrow().contains(pointer);
-        // Capture-change notifications carry no new POINTER_INFO. Keep the
-        // last position and unwind the gesture even if Windows sends no UP.
-        if message == WM_POINTERCAPTURECHANGED {
-            let event = self.state.touch.borrow_mut().cancel(pointer);
-            if let Some(event) = event {
-                self.dispatch_touch(event);
-                return Some(0);
-            }
-        }
-        let mut kind = POINTER_INPUT_TYPE::default();
-        if !tracked && (unsafe { GetPointerType(pointer, &mut kind) }.is_err() || kind != PT_TOUCH)
+        let flags = u32::from(wparam.hiword());
+        if !self.state.touch.borrow().contains(pointer)
+            && !is_touch_pointer(pointer, message, flags)
         {
             return None;
         }
         // Consume the entire touch sequence so DefWindowProc does not also
         // promote it to mouse input. Pen and touchpad retain their own paths.
-        if message == WM_POINTERENTER || message == WM_POINTERCAPTURECHANGED {
-            return Some(0);
-        }
-        let mut info = POINTER_INFO::default();
-        if message == WM_POINTERLEAVE
-            || unsafe { GetPointerInfo(pointer, &mut info) }.is_err()
-            || info.pointerFlags.contains(POINTER_FLAG_CANCELED)
+        if matches!(message, WM_POINTERLEAVE | WM_POINTERCAPTURECHANGED)
+            || flags & POINTER_MESSAGE_FLAG_CANCELED != 0
         {
             let event = self.state.touch.borrow_mut().cancel(pointer);
             if let Some(event) = event {
@@ -682,11 +694,24 @@ impl WindowsWindowInner {
         }
         let phase = match message {
             WM_POINTERDOWN => TouchPhase::Started,
+            WM_POINTERUPDATE => TouchPhase::Moved,
             WM_POINTERUP => TouchPhase::Ended,
-            _ => TouchPhase::Moved,
+            _ => return Some(0),
         };
-        let mut position = info.ptPixelLocation;
-        let event = if unsafe { ScreenToClient(handle, &mut position) }.as_bool() {
+        // Detailed pointer data can expire after another message is retrieved.
+        // The message itself still carries the contact's flags and screen point.
+        let mut info = POINTER_INFO::default();
+        let has_info = unsafe { GetPointerInfo(pointer, &mut info) }.is_ok();
+        let mut position = if has_info {
+            info.ptPixelLocation
+        } else {
+            POINT {
+                x: lparam.signed_loword().into(),
+                y: lparam.signed_hiword().into(),
+            }
+        };
+        let cancelled = has_info && info.pointerFlags.contains(POINTER_FLAG_CANCELED);
+        let event = if !cancelled && unsafe { ScreenToClient(handle, &mut position) }.as_bool() {
             self.state.touch.borrow_mut().update(
                 pointer,
                 phase,
@@ -1251,9 +1276,21 @@ impl WindowsWindowInner {
             return None;
         }
 
+        // A touch or remote click can arrive while the mouse cursor is elsewhere.
+        let mut cursor_point = POINT {
+            x: lparam.signed_loword().into(),
+            y: lparam.signed_hiword().into(),
+        };
+        if !unsafe { ScreenToClient(handle, &mut cursor_point) }.as_bool() {
+            return None;
+        }
         let callback = self.state.callbacks.hit_test_window_control.take();
         let drag_area = if let Some(mut callback) = callback {
-            let area = callback();
+            let area = callback(logical_point(
+                cursor_point.x as f32,
+                cursor_point.y as f32,
+                self.state.scale_factor.get(),
+            ));
             self.state
                 .callbacks
                 .hit_test_window_control
@@ -1283,12 +1320,6 @@ impl WindowsWindowInner {
         // We need to calculate the frame thickness ourselves and do the hit test manually.
         let frame_y = get_frame_thicknessx(dpi);
         let frame_x = get_frame_thicknessy(dpi);
-        let mut cursor_point = POINT {
-            x: lparam.signed_loword().into(),
-            y: lparam.signed_hiword().into(),
-        };
-
-        unsafe { ScreenToClient(handle, &mut cursor_point).ok().log_err() };
         if self.is_resizable
             && !self.state.is_maximized()
             && 0 <= cursor_point.y

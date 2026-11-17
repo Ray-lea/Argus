@@ -2653,13 +2653,14 @@ impl Window {
                     .unwrap_or(DispatchEventResult::default())
             })
         });
-        platform_window.on_hit_test_window_control({
+        platform_window.on_hit_test_window_control_at({
             let mut cx = cx.to_async();
-            Box::new(move || {
+            Box::new(move |position| {
                 handle
                     .update(&mut cx, |_, window, _cx| {
-                        // Non-client hit tests can precede the next mouse-move/frame.
-                        window.window_control_area_at(window.platform_window.mouse_position())
+                        let position =
+                            position.unwrap_or_else(|| window.platform_window.mouse_position());
+                        window.window_control_area_at(position)
                     })
                     .with_context(|| {
                         format!(
