@@ -7,8 +7,14 @@ use argus_core::gpu_process::GpuProcessTracker;
 
 fn main() {
     let t0 = Instant::now();
-    let Some(mut tracker) = GpuProcessTracker::new() else {
-        println!("no GPU counters on this machine");
+    let adapters = argus_core::hardware::gpu_adapters();
+    println!(
+        "enumerate {:.1} ms: {adapters:x?}",
+        t0.elapsed().as_secs_f64() * 1e3
+    );
+    let t0 = Instant::now();
+    let Some(mut tracker) = GpuProcessTracker::new(adapters) else {
+        println!("no GPU, or no GPU counters on this machine");
         return;
     };
     println!("setup {:.1} ms", t0.elapsed().as_secs_f64() * 1e3);

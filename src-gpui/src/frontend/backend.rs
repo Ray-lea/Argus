@@ -31,7 +31,14 @@ impl Desktop {
                     | "update_status"
                     | "set_theme"
                     | "set_language"
+                    | "set_hardware_acceleration"
             ) {
+                // Kept for the tests to read (`inspectLayout.skippedRequest`):
+                // what a control asked for, in place of doing it.
+                self.data.insert(
+                    "skippedRequest".into(),
+                    json!({"command": command, "args": args}),
+                );
                 return;
             }
         }
@@ -152,10 +159,7 @@ impl Desktop {
                     // shows them: rebuilt only when one of those changed.
                     self.refresh_connections(cx);
                 } else {
-                    self.rebuild_rows(
-                        self.pointer_in_table || self.modal.is_some() || self.popup.is_some(),
-                        cx,
-                    );
+                    self.rebuild_rows(self.holds_order(), cx);
                 }
             }
             Err(error) => {
@@ -263,6 +267,8 @@ impl Desktop {
                 let epoch = self.rows_epoch;
                 let locale = argus_core::i18n::locale();
                 let processes = self.page == "processes";
+                // The list the column widths measure, now and then.
+                let measure = self.width_source(Some(tables::WIDTH_ROWS_EVERY));
                 let options = (
                     self.view.clone(),
                     self.query.clone(),
@@ -281,9 +287,10 @@ impl Desktop {
                     let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
                     let serialize_us = start.elapsed().as_micros() as u64;
                     let start = Instant::now();
+                    let users = processes
+                        .then(|| model::UserGroups::grouping(values(&model["sessions"]), options.9))
+                        .flatten();
                     let rows = processes.then(|| {
-                        let users =
-                            model::UserGroups::grouping(values(&model["sessions"]), options.9);
                         model::process_rows(
                             values(&model["processes"]),
                             model::ProcessOptions {
@@ -298,33 +305,36 @@ impl Desktop {
                                 visibility: options.8.as_ref(),
                                 users: users.as_ref(),
                                 user_folds: &options.10,
+                                open: false,
                             },
                         )
                     });
+                    let open = measure.map(|source| source.build(&model));
                     (
                         model,
                         rows,
+                        open,
                         serialize_us,
                         start.elapsed().as_micros() as u64,
                     )
                 });
                 cx.spawn_in(window, async move |this, cx| {
-                    let (model, rows, serialize_us, group_us) = task.await;
+                    let (model, rows, open, serialize_us, group_us) = task.await;
                     let _ = this.update_in(cx, |this, window, cx| {
                         let started = Instant::now();
                         this.snapshot_pending = false;
                         this.work.serialize_us += serialize_us;
                         this.work.background_group_us += group_us;
-                        let rows =
+                        let (rows, open) =
                             if epoch == this.rows_epoch && locale == argus_core::i18n::locale() {
-                                rows
+                                (rows, open)
                             } else {
-                                None
+                                (None, None)
                             };
                         let full = this.snapshot.is_null()
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
-                        this.accept_snapshot_prepared(model, rows, window, cx);
+                        this.accept_snapshot_prepared(model, rows, open, window, cx);
                         this.refresh_tray(cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
@@ -360,7 +370,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.accept_snapshot_prepared(snapshot, None, window, cx);
+        self.accept_snapshot_prepared(snapshot, None, None, window, cx);
     }
 
     /// List data arrives through its own command/row notifications. A sample
@@ -412,6 +422,7 @@ impl Desktop {
         &mut self,
         snapshot: Value,
         rows: Option<Vec<Row>>,
+        open: Option<tables::WidthRows>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -470,11 +481,15 @@ impl Desktop {
                 .detach();
         }
         if self.page == "processes" {
-            self.rebuild_rows_prepared(
-                self.pointer_in_table || self.popup.is_some() || self.modal.is_some(),
-                rows,
-                cx,
-            );
+            // The list the column widths measure: built with the rows off
+            // the UI thread when it was due, else here with each sample that
+            // brought no rows (test samples, or rows dropped as stale).
+            match open {
+                Some(open) => self.keep_width_rows(open),
+                None if rows.is_none() => self.refresh_width_rows(Some(Duration::ZERO), cx),
+                None => {}
+            }
+            self.rebuild_rows_prepared(self.holds_order(), rows, cx);
         } else if self.page == "network" {
             // Connections take their owners' names and icons from the sample:
             // rebuilt off the UI thread, and only when those changed.
@@ -790,7 +805,8 @@ impl Desktop {
                         set.insert(key);
                     }
                 }
-                self.rebuild_rows(false, cx);
+                // Rows unfolded under the pointer join the order it holds.
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::TreeExpand(key, expand) => {
                 if self.page != "processes"
@@ -805,7 +821,7 @@ impl Desktop {
                 } else {
                     self.tree_expanded.remove(&key);
                 }
-                self.rebuild_rows(false, cx);
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::TreeExpandAll(expand) => {
                 if self.page != "processes" || self.view != "tree" || !self.query.trim().is_empty()
@@ -817,7 +833,7 @@ impl Desktop {
                 } else {
                     HashSet::new()
                 };
-                self.rebuild_rows(false, cx);
+                self.rebuild_rows(self.holds_order(), cx);
             }
             Action::Details(mode) => {
                 self.set_details_mode(mode.unwrap_or(self.details_mode.next()));
@@ -931,6 +947,12 @@ impl Desktop {
             }
             if key == "f" {
                 self.focus_process_search(window, cx);
+                cx.stop_propagation();
+                return;
+            }
+            // "Run new task" from the page bar's "More", but not while typing.
+            if key == "n" && !searching {
+                self.act(Action::Dialog("task".into(), json!({})), window, cx);
                 cx.stop_propagation();
                 return;
             }

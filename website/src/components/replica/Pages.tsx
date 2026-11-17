@@ -997,6 +997,7 @@ export function Settings({
     tray: true,
     hotkey: true,
     windowMotion: true,
+    hardwareAcceleration: true,
     history: true,
     autoUpdate: true,
     whatsNew: true,
@@ -1280,6 +1281,18 @@ export function Settings({
               ]}
             />
           </Setting>
+          <Setting
+            icon="gpu"
+            title="硬件加速"
+            desc="默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。"
+          >
+            <Switch
+              state
+              label="硬件加速"
+              checked={values.hardwareAcceleration}
+              onChange={(v) => set("hardwareAcceleration", v)}
+            />
+          </Setting>
         </section>
         <section>
           <h2>数据与历史</h2>
@@ -1430,16 +1443,47 @@ export function Settings({
 
 // A link card's moving parts (about.rs `project_link`): the hover face, the
 // line along its top edge, and its arrow, muted and in the link's colour.
-function LinkCardParts() {
+// A link card (about.rs `project_link`): the mark beside the name and address,
+// the whole card opening the address, and along its foot the pages there.
+function LinkCard({
+  repo,
+  href,
+  mark,
+  title,
+  address,
+  pages,
+}: {
+  repo?: boolean;
+  href: string;
+  mark: ReactNode;
+  title: string;
+  address: string;
+  pages: [UiIcon, string, string][];
+}) {
   return (
-    <>
+    <div className={"a-link-card" + (repo ? " is-repo" : "")}>
       <span className="a-link-face" aria-hidden="true" />
       <span className="a-link-line" aria-hidden="true" />
-      <span className="a-link-arrow" aria-hidden="true">
-        <Icon name="external" size={15} />
-        <Icon name="external" size={15} className="is-lit" />
-      </span>
-    </>
+      <a className="a-link-head" href={href} target="_blank" rel="noopener">
+        {mark}
+        <span className="a-link-name">
+          <strong>{title}</strong>
+          <span className="a-link-address">{address}</span>
+        </span>
+        <span className="a-link-arrow" aria-hidden="true">
+          <Icon name="external" size={14} />
+          <Icon name="external" size={14} className="is-lit" />
+        </span>
+      </a>
+      <nav className="a-link-pages">
+        {pages.map(([icon, text, url]) => (
+          <a key={url} className="a-btn is-ghost is-small" href={url} target="_blank" rel="noopener">
+            <Icon name={icon} size={14} />
+            {text}
+          </a>
+        ))}
+      </nav>
+    </div>
   );
 }
 
@@ -1474,22 +1518,33 @@ export function About({
           </div>
         </div>
         <div className="a-about-links">
-          <a className="a-link-card" href="https://argustask.com/" target="_blank" rel="noopener">
-            <LinkCardParts />
-            <img className="a-link-mark" src="/assets/argus.svg" width="44" height="44" alt="" />
-            <strong>Argus 官网</strong>
-            <span className="a-link-address">argustask.com</span>
-            <span>下载稳定版，阅读使用文档、常见问题和更新日志。</span>
-          </a>
-          <a className="a-link-card is-repo" href="https://github.com/Ray-lea/Argus" target="_blank" rel="noopener">
-            <LinkCardParts />
-            <span className="a-link-mark">
-              <Icon name="github" size={26} />
-            </span>
-            <strong>GitHub 仓库</strong>
-            <span className="a-link-address">github.com/Ray-lea/Argus</span>
-            <span>查看源代码，报告问题或提出建议，获取各版本的安装包。</span>
-          </a>
+          <LinkCard
+            href="https://argustask.com/"
+            mark={<img className="a-link-mark" src="/assets/argus.svg" width="40" height="40" alt="" />}
+            title="Argus 官网"
+            address="argustask.com"
+            pages={[
+              ["download", "下载", "https://argustask.com" + localized(language(), "/download/")],
+              ["guide", "使用指南", "https://argustask.com/docs/guide/"],
+              ["notes", "更新日志", "https://argustask.com" + localized(language(), "/changelog/")],
+            ]}
+          />
+          <LinkCard
+            repo
+            href="https://github.com/Ray-lea/Argus"
+            mark={
+              <span className="a-link-mark">
+                <Icon name="github" size={24} />
+              </span>
+            }
+            title="GitHub 仓库"
+            address="github.com/Ray-lea/Argus"
+            pages={[
+              ["issue", "问题反馈", "https://github.com/Ray-lea/Argus/issues/new/choose"],
+              ["discussion", "讨论区", "https://github.com/Ray-lea/Argus/discussions"],
+              ["release", "发行版", "https://github.com/Ray-lea/Argus/releases"],
+            ]}
+          />
         </div>
         <h2>项目与支持</h2>
         <Setting icon="chat" title="交流与反馈" desc="加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。">

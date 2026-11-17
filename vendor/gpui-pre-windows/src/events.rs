@@ -10,7 +10,7 @@ use windows::{
         UI::{
             Controls::*,
             HiDpi::*,
-            Input::{Ime::*, KeyboardAndMouse::*},
+            Input::{Ime::*, KeyboardAndMouse::*, Pointer::*},
             WindowsAndMessaging::*,
         },
     },
@@ -120,13 +120,21 @@ impl WindowsWindowInner {
             WM_ACTIVATE => self.handle_activate_msg(wparam),
             WM_CREATE => self.handle_create_msg(handle),
             WM_MOVE => self.handle_move_msg(handle, lparam),
-            WM_SIZE => self.handle_size_msg(wparam, lparam),
+            WM_SIZE => {
+                if wparam.0 == SIZE_MINIMIZED as usize {
+                    self.cancel_touches();
+                }
+                self.handle_size_msg(wparam, lparam)
+            }
             WM_GETMINMAXINFO => self.handle_get_min_max_info_msg(lparam),
             WM_ENTERSIZEMOVE | WM_ENTERMENULOOP => self.handle_size_move_loop(handle),
             WM_EXITSIZEMOVE | WM_EXITMENULOOP => self.handle_size_move_loop_exit(handle),
             WM_TIMER => self.handle_timer_msg(handle, wparam),
             WM_NCCALCSIZE => self.handle_calc_client_size(handle, wparam, lparam),
-            WM_DPICHANGED => self.handle_dpi_changed_msg(handle, wparam, lparam),
+            WM_DPICHANGED => {
+                self.cancel_touches();
+                self.handle_dpi_changed_msg(handle, wparam, lparam)
+            }
             WM_DISPLAYCHANGE => self.handle_display_change_msg(handle),
             WM_NCHITTEST => self.handle_hit_test_msg(handle, lparam),
             WM_PAINT => self.handle_paint_msg(handle),
@@ -170,6 +178,16 @@ impl WindowsWindowInner {
             }
             WM_MOUSEWHEEL => self.handle_mouse_wheel_msg(handle, wparam, lparam),
             WM_MOUSEHWHEEL => self.handle_mouse_horizontal_wheel_msg(handle, wparam, lparam),
+            WM_POINTERDOWN
+            | WM_POINTERUPDATE
+            | WM_POINTERUP
+            | WM_POINTERENTER
+            | WM_POINTERLEAVE
+            | WM_POINTERCAPTURECHANGED => self.handle_touch_msg(handle, msg, wparam),
+            WM_CANCELMODE => {
+                self.cancel_touches();
+                None
+            }
             WM_SYSKEYUP => self.handle_syskeyup_msg(wparam, lparam),
             WM_KEYUP => self.handle_keyup_msg(wparam, lparam),
             WM_CHAR => self.handle_char_msg(wparam),
@@ -182,6 +200,9 @@ impl WindowsWindowInner {
             WM_SHOWWINDOW => self.handle_window_visibility_changed(handle, wparam),
             WM_WINDOWPOSCHANGED => {
                 let position = unsafe { &*(lparam.0 as *const WINDOWPOS) };
+                if position.flags.contains(SWP_HIDEWINDOW) {
+                    self.cancel_touches();
+                }
                 if position.flags.0 & (SWP_SHOWWINDOW.0 | SWP_HIDEWINDOW.0) != 0 {
                     // Wake after the final visibility flags are installed too,
                     // including SetWindowPos calls without a size change.
@@ -541,6 +562,147 @@ impl WindowsWindowInner {
         self.state.callbacks.input.set(Some(func));
 
         if handled { Some(0) } else { Some(1) }
+    }
+
+    fn dispatch_touch(self: &Rc<Self>, event: TouchEvent) {
+        let cancelled = event.phase == TouchPhase::Cancelled;
+        self.state.pending_touches.borrow_mut().push_back(event);
+        if cancelled {
+            self.defer_touches();
+        } else {
+            self.flush_touches();
+        }
+    }
+
+    fn flush_touches(self: &Rc<Self>) {
+        let Some(mut callback) = self.state.callbacks.input.take() else {
+            return;
+        };
+        let mut released_at = None;
+        loop {
+            let event = self.state.pending_touches.borrow_mut().pop_front();
+            let Some(event) = event else { break };
+            released_at = (event.phase == TouchPhase::Ended).then_some(event.position);
+            callback(PlatformInput::Touch(event));
+        }
+        self.state.callbacks.input.set(Some(callback));
+        if let Some(position) = released_at {
+            self.update_touch_keyboard(position);
+        }
+    }
+
+    fn cancel_touches(self: &Rc<Self>) {
+        let events = self.state.touch.borrow_mut().cancel_all();
+        if events.is_empty() {
+            return;
+        }
+        self.state.pending_touches.borrow_mut().extend(events);
+        // Hiding or disabling a window can synchronously re-enter its window
+        // procedure while GPUI is borrowed. Preserve ordering with later
+        // touches, but deliver cancellation after the current update returns.
+        self.defer_touches();
+    }
+
+    fn defer_touches(self: &Rc<Self>) {
+        let this = self.clone();
+        self.executor
+            .spawn(async move { this.flush_touches() })
+            .detach();
+    }
+
+    fn update_touch_keyboard(&self, position: Point<Pixels>) {
+        // Synthetic/hidden/background input must never show desktop UI.
+        if unsafe { GetForegroundWindow() } != self.hwnd
+            || !unsafe { IsWindowVisible(self.hwnd) }.as_bool()
+        {
+            return;
+        }
+        let editing = self
+            .with_input_handler(|handler| {
+                handler.query_accepts_focused_text_input()
+                    && handler
+                        .element_bounds()
+                        .is_some_and(|bounds| bounds.contains(&position))
+            })
+            .unwrap_or(false);
+        if !editing && !self.state.touch_keyboard_shown.get() {
+            return;
+        }
+        use windows::{UI::ViewManagement::InputPane, Win32::System::WinRT::IInputPaneInterop};
+        let pane = windows::core::factory::<InputPane, IInputPaneInterop>()
+            .and_then(|factory| unsafe { factory.GetForWindow::<InputPane>(self.hwnd) });
+        if let Ok(pane) = pane {
+            if editing {
+                if pane.TryShow().unwrap_or(false) {
+                    self.state.touch_keyboard_shown.set(true);
+                }
+            } else if pane.TryHide().unwrap_or(false) {
+                self.state.touch_keyboard_shown.set(false);
+            }
+        }
+    }
+
+    fn handle_touch_msg(
+        self: &Rc<Self>,
+        handle: HWND,
+        message: u32,
+        wparam: WPARAM,
+    ) -> Option<isize> {
+        let pointer = wparam.loword() as u32;
+        let tracked = self.state.touch.borrow().contains(pointer);
+        // Capture-change notifications carry no new POINTER_INFO. Keep the
+        // last position and unwind the gesture even if Windows sends no UP.
+        if message == WM_POINTERCAPTURECHANGED {
+            let event = self.state.touch.borrow_mut().cancel(pointer);
+            if let Some(event) = event {
+                self.dispatch_touch(event);
+                return Some(0);
+            }
+        }
+        let mut kind = POINTER_INPUT_TYPE::default();
+        if !tracked && (unsafe { GetPointerType(pointer, &mut kind) }.is_err() || kind != PT_TOUCH)
+        {
+            return None;
+        }
+        // Consume the entire touch sequence so DefWindowProc does not also
+        // promote it to mouse input. Pen and touchpad retain their own paths.
+        if message == WM_POINTERENTER || message == WM_POINTERCAPTURECHANGED {
+            return Some(0);
+        }
+        let mut info = POINTER_INFO::default();
+        if message == WM_POINTERLEAVE
+            || unsafe { GetPointerInfo(pointer, &mut info) }.is_err()
+            || info.pointerFlags.contains(POINTER_FLAG_CANCELED)
+        {
+            let event = self.state.touch.borrow_mut().cancel(pointer);
+            if let Some(event) = event {
+                self.dispatch_touch(event);
+            }
+            return Some(0);
+        }
+        let phase = match message {
+            WM_POINTERDOWN => TouchPhase::Started,
+            WM_POINTERUP => TouchPhase::Ended,
+            _ => TouchPhase::Moved,
+        };
+        let mut position = info.ptPixelLocation;
+        let event = if unsafe { ScreenToClient(handle, &mut position) }.as_bool() {
+            self.state.touch.borrow_mut().update(
+                pointer,
+                phase,
+                logical_point(
+                    position.x as f32,
+                    position.y as f32,
+                    self.state.scale_factor.get(),
+                ),
+            )
+        } else {
+            self.state.touch.borrow_mut().cancel(pointer)
+        };
+        if let Some(event) = event {
+            self.dispatch_touch(event);
+        }
+        Some(0)
     }
 
     fn handle_mouse_up_msg(
@@ -928,6 +1090,7 @@ impl WindowsWindowInner {
         let this = self.clone();
 
         if !activated {
+            this.cancel_touches();
             this.state.cursor_visible.store(true, Ordering::Relaxed);
         }
 
@@ -1406,6 +1569,8 @@ impl WindowsWindowInner {
         self.report_visibility();
         if wparam.0 == 1 {
             self.draw_window(handle, false);
+        } else {
+            self.cancel_touches();
         }
         None
     }

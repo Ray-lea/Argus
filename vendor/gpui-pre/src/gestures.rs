@@ -789,6 +789,26 @@ impl TouchGestureRecognizer {
             },
             TouchPhase::Ended => match mem::replace(&mut self.state, TouchGestureState::Idle) {
                 TouchGestureState::Pending { touch, .. } if touch.id == event.id => {
+                    // A coalesced stream can first report movement on release.
+                    // It still belongs to the original scroller, never to a
+                    // button underneath the finger at its final position.
+                    let mut delta = event.position - touch.start_position;
+                    if delta.magnitude() > f64::from(self.tuning.touch_slop) {
+                        let axis = dominant_axis(delta);
+                        lock_delta_to_axis(&mut delta, axis);
+                        self.last_tap = None;
+                        recognized.push(RecognizedTouchGesture::Scroll(scroll_event(
+                            touch.start_position,
+                            delta,
+                            TouchPhase::Started,
+                        )));
+                        recognized.push(RecognizedTouchGesture::Scroll(scroll_event(
+                            touch.start_position,
+                            Point::default(),
+                            TouchPhase::Ended,
+                        )));
+                        return recognized;
+                    }
                     let tap_count = match &self.last_tap {
                         Some(tap)
                             if now.duration_since(tap.time) <= self.tuning.multi_tap_interval

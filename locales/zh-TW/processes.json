@@ -25,7 +25,11 @@
     }
   },
   "total": "{count} 個處理程序",
+  "totalHidden": "{total} ({count} 個隱藏)",
   "filtered": "清單已依搜尋內容篩選",
+  "orderHeld": "排序已暫停：列位置保持不變，讀數照常更新。移開游標或關閉選單、對話方塊後重新排序。",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "名稱",
@@ -283,6 +287,7 @@
     "hide": "隱藏「{name}」欄",
     "description": "勾選要顯示的資料欄；拖曳右側清單或欄位標頭可調整順序。",
     "networkUnavailable": "已選取的網路欄將在擷取可用時顯示。",
+    "gpuUnavailable": "未偵測到 GPU，已選取的 GPU 欄暫不顯示。",
     "category": {
       "general": "基本資訊",
       "cpu": "CPU",

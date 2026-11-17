@@ -32,6 +32,10 @@
     "on": "始终分组",
     "off": "不分组"
   },
+  "holdOrder": {
+    "title": "指针悬停时暂停排序",
+    "desc": "指针停在进程列表上时，行位置保持不变，读数照常刷新，移出列表后重新排序。关闭后列表随读数实时排序；右键菜单或对话框打开时仍保持行位置。"
+  },
   "language": {
     "title": "界面语言",
     "desc": "立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。",
@@ -86,6 +90,7 @@
     "pauseTitle": "临时暂停刷新",
     "searchTitle": "搜索进程",
     "search": "转到进程搜索。未输入文字时，也可按 /；在进程页直接键入字母或数字也会开始搜索。",
+    "runTask": "在任意页面启动程序，或打开文件、文件夹；输入文字时不生效。",
     "pause": "在进程页或性能页按住时暂停刷新，松开后恢复；手动暂停的状态保留。",
     "end": "结束选中的进程或应用组，操作前确认。",
     "taskManager": "启用“替换系统任务管理器”后打开 Argus。",
@@ -204,6 +209,7 @@
     "unknown": "无法读取替换状态",
     "state": {
       "disabled": "使用 Windows 任务管理器",
+      "revoked": "替换已被撤销",
       "enabled": "已替换为 Argus",
       "recoveryNeeded": "需要恢复",
       "conflict": "已有其他配置"
@@ -227,6 +233,11 @@
       "balanced": "均衡（{fps} 帧/秒）",
       "pixel": "省电（逐像素移动）",
       "off": "关闭（每次采样跳一格）"
+    },
+    "acceleration": {
+      "title": "硬件加速",
+      "desc": "默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。",
+      "error": "无法切换硬件加速：{error}"
     }
   },
   "data": {
@@ -381,11 +392,15 @@
     "links": {
       "website": {
         "title": "Argus 官网",
-        "desc": "下载稳定版，阅读使用文档、常见问题和更新日志。"
+        "download": "下载",
+        "guide": "使用指南",
+        "changelog": "更新日志"
       },
       "repository": {
         "title": "GitHub 仓库",
-        "desc": "查看源代码，报告问题或提出建议，获取各版本的安装包。"
+        "issues": "问题反馈",
+        "discussions": "讨论区",
+        "releases": "发行版"
       }
     },
     "onboarding": {

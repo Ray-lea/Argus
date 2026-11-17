@@ -181,13 +181,17 @@ pub fn run() -> anyhow::Result<()> {
     catalog::register();
     let settings = SettingsStore::load(host.path().app_config_dir()?.join("settings.json"));
     catalog::set_locale(settings.get().language.resolve());
+    // Before the event loop creates the graphics device.
+    let hardware_acceleration = settings.get().hardware_acceleration;
+    gpui_kit::gpui::set_windows_software_rendering(!hardware_acceleration);
     logging::init(
         host.path().app_log_dir()?.join("diagnostics"),
         std::env::args().any(|arg| arg == "--startup-trace"),
     )?;
     log::info!(
-        "Argus {} started; renderer=GPUI; hidden={}; isolated_test={}",
+        "Argus {} started; renderer=GPUI; hardware_acceleration={}; hidden={}; isolated_test={}",
         env!("ARGUS_VERSION"),
+        hardware_acceleration,
         options.hidden,
         options.test
     );

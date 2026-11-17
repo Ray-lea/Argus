@@ -32,6 +32,10 @@
     "on": "Always group",
     "off": "Never group"
   },
+  "holdOrder": {
+    "title": "Pause sorting while hovering",
+    "desc": "While the pointer is over the process list, rows keep their places and readings keep updating; they re-sort once the pointer leaves. When off, the list re-sorts with every update. Rows still keep their places while a context menu or dialog is open."
+  },
   "language": {
     "title": "Display language",
     "desc": "Takes effect at once, including the tray menu and messages. “Same as Windows” follows the Windows display language.",
@@ -86,6 +90,7 @@
     "pauseTitle": "Pause while held",
     "searchTitle": "Search processes",
     "search": "Go to process search. The / key also works when not typing, and on the Processes page typing a letter or digit starts a search.",
+    "runTask": "Start a program or open a file or folder from any page. Not while typing.",
     "pause": "Hold to pause updates on Processes or Performance; release to resume. A manual pause stays in effect.",
     "end": "End the selected process or app group, with confirmation.",
     "taskManager": "Open Argus when Task Manager replacement is enabled.",
@@ -204,6 +209,7 @@
     "unknown": "Couldn't read the replacement status",
     "state": {
       "disabled": "Using Windows Task Manager",
+      "revoked": "Replacement removed",
       "enabled": "Replaced by Argus",
       "recoveryNeeded": "Needs restoring",
       "conflict": "Configured by something else"
@@ -227,6 +233,11 @@
       "balanced": "Balanced ({fps} fps)",
       "pixel": "Power saving (pixel steps)",
       "off": "Off (one step per sample)"
+    },
+    "acceleration": {
+      "title": "Hardware acceleration",
+      "desc": "Draws the interface with the GPU by default. When off, the CPU draws it and Argus no longer uses the GPU. Use this if the interface stutters while the GPU is fully loaded, or to keep Argus off the GPU. CPU usage rises, so a lower chart animation setting can help. Takes effect immediately, without a restart.",
+      "error": "Couldn't change hardware acceleration: {error}"
     }
   },
   "data": {
@@ -390,11 +401,15 @@
     "links": {
       "website": {
         "title": "Argus website",
-        "desc": "Download stable releases and read the documentation, FAQ and changelog."
+        "download": "Download",
+        "guide": "User guide",
+        "changelog": "Changelog"
       },
       "repository": {
         "title": "GitHub repository",
-        "desc": "Browse the source code, report problems or suggest changes, and get the installer of any release."
+        "issues": "Issues",
+        "discussions": "Discussions",
+        "releases": "Releases"
       }
     },
     "onboarding": {

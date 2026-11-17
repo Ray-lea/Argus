@@ -214,6 +214,19 @@ impl Tips {
         )
     }
 
+    /// As [`Tips::target`], for an element that reports the part itself
+    /// while it prepaints, at `bounds`.
+    pub(super) fn report(
+        &self,
+        id: u64,
+        bounds: Bounds<Pixels>,
+        text: SharedString,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.offer(id, bounds, text, window, cx)
+    }
+
     fn offer(
         &self,
         id: u64,

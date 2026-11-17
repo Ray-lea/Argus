@@ -37,6 +37,8 @@ struct BarState {
     hovered: bool,
     /// While the thumb is held: where in the thumb it was taken.
     grab: Option<Pixels>,
+    /// Original offset of a direct touch drag, restored on cancellation.
+    touch_start: Option<Point<Pixels>>,
     /// While the track is held: the pointer, and the repeating page steps.
     press: Option<(Point<Pixels>, Task<()>)>,
 }
@@ -370,11 +372,57 @@ impl Element for Scrollbar {
             let state = state.clone();
             let hitbox = hitbox.clone();
             let handle = handle.clone();
+            move |event: &TouchDragEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let mut bar = state.borrow_mut();
+                match event.phase {
+                    TouchPhase::Started => {
+                        if !hitbox.is_hovered(window)
+                            || !geometry.thumb.contains(&event.start_position)
+                        {
+                            return;
+                        }
+                        bar.touch_start = Some(handle.offset());
+                        bar.grab = Some(
+                            geometry.along(event.start_position) - geometry.start(geometry.thumb),
+                        );
+                        bar.press = None;
+                        window.prevent_default();
+                    }
+                    TouchPhase::Moved | TouchPhase::Ended if bar.touch_start.is_some() => {
+                        let start = geometry.along(event.position) - bar.grab.unwrap_or_default();
+                        set_along(&handle, geometry.offset_for_thumb(start));
+                        if event.phase == TouchPhase::Ended {
+                            bar.touch_start = None;
+                            bar.grab = None;
+                        }
+                    }
+                    TouchPhase::Cancelled if bar.touch_start.is_some() => {
+                        handle.set_offset(bar.touch_start.take().unwrap());
+                        bar.grab = None;
+                    }
+                    _ => return,
+                }
+                bar.hovered = false;
+                notify(cx);
+                cx.stop_propagation();
+            }
+        });
+
+        window.on_mouse_event({
+            let state = state.clone();
+            let hitbox = hitbox.clone();
+            let handle = handle.clone();
             move |event: &MouseMoveEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }
                 let mut state = state.borrow_mut();
+                if state.touch_start.is_some() {
+                    return;
+                }
                 if let Some(grab) = state.grab {
                     if event.pressed_button == Some(MouseButton::Left) {
                         let start = geometry.along(event.position) - grab;

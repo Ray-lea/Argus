@@ -123,6 +123,7 @@
     "recoveryFile": "Argus タスク マネージャーの緊急復旧\r\n\r\nまず、このフォルダーにある argus-taskmgr-recover.exe を実行し、管理者の承認を許可してください。Argus の画面やバックグラウンド サービスが起動しなくても使用できます。\r\n復旧プログラムも破損している場合は、Win+R で regedit と入力し、管理者として起動して HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe を開いてください。Debugger 値がこのフォルダー内の argus-taskmgr-launcher.exe --task-manager を指しており、taskmgr-recovery.json の before.debugger が JSON の null であることを確認してください。両方を確認できた場合に限り、Debugger 値のみを削除してください。taskmgr.exe キー全体や他のツールの設定は削除しないでください。\r\n復旧では、Argus の起動コマンドと完全に一致する Debugger 値だけを削除し、その他の設定は保持します。フォルダーのアクセス許可が変更された場合や復旧記録がない場合も復旧できます。\r\n",
     "status": {
       "native": "Windows タスク マネージャーを使用しています。",
+      "revoked": "以前有効にした置き換えが解除され、現在は Windows タスク マネージャーを使用しています。再度有効にする前に、セキュリティソフトの検出履歴を確認してください。",
       "needsService": "タスク マネージャーの置き換えを有効にする前に、特権サービスをインストールしてください。",
       "conflict": "別の置換フィルターまたはパスフィルターが設定されています。Argus は上書きしません。",
       "enabled": "タスク マネージャーの起動操作で Argus が開きます。起動に失敗した場合は、Windows タスク マネージャーの起動を試みます。",
@@ -180,7 +181,7 @@
     "notAllowed": "この操作は現在の状態では許可されていません。更新して再試行してください",
     "helperNotStarted": "管理者メンテナンス ヘルパーを起動できませんでした",
     "helperBusy": "メンテナンス ヘルパーが処理中です。状態を更新し、同じ操作を繰り返さないでください。",
-    "helperFailed": "タスク マネージャーの設定が完了しませんでした。メンテナンス ヘルパーのメッセージを確認し、状態を更新してください。",
+    "helperExited": "メンテナンスヘルパーが予期せず終了しました（終了コード: {code}）。セキュリティソフトのブロック履歴を確認し、状態を更新してください。",
     "invalidCaller": "無効な UI プロセス",
     "invalidInstance": "無効なプロセス インスタンスです",
     "noLauncher": "このビルドにはスタンドアロン ランチャーが含まれていません",

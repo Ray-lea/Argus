@@ -13,26 +13,39 @@ const PRESS: Duration = Duration::from_millis(100);
 /// The line along a link card's top edge, and how much longer hover draws it.
 const LINE: f32 = 32.;
 const LINE_HOVER: f32 = 3.;
+/// A link card's inset, and the size of its mark.
+const INSET: f32 = 16.;
+const MARK: f32 = 40.;
+
+/// The pages each link card leads to besides its own address, with their
+/// icons: what was there is reached in one step (`commands::project_page`).
+const WEBSITE_PAGES: [(&str, &str); 3] = [
+    ("download", "DownloadIcon"),
+    ("guide", "GuideIcon"),
+    ("changelog", "NotesIcon"),
+];
+const REPOSITORY_PAGES: [(&str, &str); 3] = [
+    ("issues", "IssueIcon"),
+    ("discussions", "DiscussionIcon"),
+    ("releases", "ReleaseIcon"),
+];
 
 /// A link card's parts drawn for how far into its hover and press it is:
-/// raised by 2 px and its face in, its mark 6 % larger, its line three times
-/// as long and its arrow out by 2 px in the link's colour; a press sets it
-/// 1.5 % deeper.
-fn lift_values(lift: &widgets::Lift) {
+/// raised by 2 px and its face in, its line three times as long and its
+/// arrow out by 2 px in the link's colour; a press lets it back down. Only
+/// whole moves and fades: the mark and the text are never scaled, which
+/// would draw them soft. `rise` is the 2 px rounded to whole device pixels,
+/// so the raised card's text stays on the pixel grid.
+fn lift_values(lift: &widgets::Lift, rise: f32) {
     let (hover, press) = (lift.hover.get(), lift.press.get());
-    let scale = 1. - 0.015 * press;
     lift.card.set(LiveTransformValue {
-        offset: point(px(0.), px(-2. * hover * (1. - press))),
-        scale_x: scale,
-        scale_y: scale,
+        offset: point(px(0.), px(-rise * hover * (1. - press))),
         ..LiveTransformValue::default()
     });
     lift.face.set(LiveTransformValue {
         opacity: hover,
         ..LiveTransformValue::default()
     });
-    lift.mark
-        .set(LiveTransformValue::zoom(1. + 0.06 * hover, 1.));
     lift.line.set(LiveTransformValue {
         scale_x: 1. + (LINE_HOVER - 1.) * hover,
         ..LiveTransformValue::default()
@@ -392,7 +405,8 @@ impl Desktop {
 
     /// The project's two places on the web, side by side, each in its own
     /// colours: the website under the app's mark and accent, the repository
-    /// under GitHub's mark in ink. A whole card opens its address.
+    /// under GitHub's mark in ink. A whole card opens its address; the row
+    /// along its foot opens the pages most visits are for.
     fn project_links(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let manifest = argus_app::config::manifest();
@@ -402,13 +416,13 @@ impl Desktop {
                 .to_owned()
         };
         let website = text(manifest, "homepage");
-        let website_mark = widgets::logo(44.).into_any_element();
+        let website_mark = widgets::logo(MARK).into_any_element();
         let repository_mark = div()
-            .size(px(44.))
+            .size(px(MARK))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(10.))
+            .rounded(px(9.))
             .bg(p.ink)
             // The page colour, opaque: the window's own background shows through Mica.
             .child(
@@ -416,7 +430,7 @@ impl Desktop {
                     "GithubIcon",
                     widgets::solid(theme::token("window-bg", p.dark)),
                 )
-                .size(px(26.)),
+                .size(px(24.)),
             )
             .into_any_element();
         div()
@@ -430,6 +444,7 @@ impl Desktop {
                 address(website),
                 p.accent,
                 "open_homepage",
+                &WEBSITE_PAGES,
                 cx,
             ))
             .child(self.project_link(
@@ -438,13 +453,16 @@ impl Desktop {
                 address(crate::updater::REPO),
                 p.ink,
                 "open_repository",
+                &REPOSITORY_PAGES,
                 cx,
             ))
             .into_any_element()
     }
 
-    /// One of the project's links: its mark, name and address in `tone`, what
-    /// is there, and the arrow that says it leaves the app.
+    /// One of the project's links: its mark beside its name and address in
+    /// `tone`, the arrow that says it leaves the app, and along its foot the
+    /// `pages` there, each a button of its own.
+    #[allow(clippy::too_many_arguments)]
     fn project_link(
         &mut self,
         id: &'static str,
@@ -452,6 +470,7 @@ impl Desktop {
         address: String,
         tone: Hsla,
         command: &'static str,
+        pages: &[(&'static str, &'static str)],
         cx: &mut Context<Self>,
     ) -> AnyElement {
         use super::super::shift::{Anchor, live};
@@ -459,40 +478,117 @@ impl Desktop {
         let title = label(&format!("settings.about.links.{id}.title"));
         let fill = theme::mix(p.layer, tone, 0.06);
         let lifted = theme::mix(p.layer, tone, 0.12);
+        let link = theme::mix(tone, p.ink, 0.25);
+        // The address under the name: in the link's colour where it has
+        // one, muted where the link is drawn in ink.
+        let address_color = if tone == p.ink { p.muted } else { link };
         let lift = self
             .ui
             .lifts
             .entry(id)
             .or_insert_with(|| {
                 let lift = widgets::Lift::default();
-                lift_values(&lift);
+                lift_values(&lift, 2.);
                 lift
             })
             .clone();
         let anchor = || Rc::new(Cell::new(Point::default()));
-        let arrow = |color: Hsla| icon("ExternalIcon", color).size(px(15.));
+        let arrow = |color: Hsla| icon("ExternalIcon", color).size(px(14.));
         let anchors = self.ui.anchors.clone();
         let test = self.options.test;
+        let head = div()
+            .flex_1()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(INSET))
+            .pt(px(14.))
+            .pb(px(12.))
+            .child(div().flex_shrink_0().size(px(MARK)).child(mark))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    // Tall enough lines that the truncating boxes keep the
+                    // descenders (g, y).
+                    .line_height(relative(1.4))
+                    .child(
+                        div()
+                            .truncate()
+                            .font_family(theme::DISPLAY_FONT)
+                            .text_size(theme::font(15.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.ink)
+                            .child(title.clone()),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(theme::font(12.))
+                            .font_weight(theme::LABEL_WEIGHT)
+                            .text_color(address_color)
+                            .child(address),
+                    ),
+            )
+            // The arrow leans out on hover and takes the link's colour.
+            .child(
+                div()
+                    .relative()
+                    .flex_shrink_0()
+                    .size(px(14.))
+                    .child(live(
+                        div().absolute().inset_0().child(arrow(p.muted)),
+                        lift.arrow.clone(),
+                        Anchor::TopLeft,
+                        anchor(),
+                    ))
+                    .child(live(
+                        div().absolute().inset_0().child(arrow(link)),
+                        lift.lit.clone(),
+                        Anchor::TopLeft,
+                        anchor(),
+                    )),
+            );
+        // The pages there: quiet buttons on a strip under a hairline. Their
+        // press stays theirs (`btn` stops it), so the card neither sinks nor
+        // opens its own address.
+        let foot = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(2.))
+            .px(px(INSET - 8.))
+            .py(px(6.))
+            .border_t_1()
+            .border_color(tone.opacity(0.16))
+            .children(pages.iter().map(|&(page, glyph)| {
+                self.btn_small(
+                    format!("about-link-{id}-{page}"),
+                    label(&format!("settings.about.links.{id}.{page}")),
+                    Some(glyph),
+                    Tone::Ghost,
+                )
+                .role(Role::Link)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.request("open_project_page", json!({"page": page}), None, window, cx)
+                }))
+                .into_any_element()
+            }));
         let card = gpui_kit::base::Button::new(SharedString::from(format!("about-link-{id}")))
             .relative()
             .w_full()
             .min_w_0()
-            .min_h(px(132.))
             .flex()
             .flex_col()
-            .items_start()
+            .items_stretch()
             .justify_start()
-            .gap(px(2.))
-            .line_height(relative(1.45))
-            .px(px(18.))
-            .pt(px(16.))
-            .pb(px(16.))
             .border_1()
             .border_color(tone.opacity(0.28))
             .rounded(px(8.))
             .bg(fill)
             .role(Role::Link)
-            .accessibility_label(title.clone())
+            .accessibility_label(title)
             // The hover face, fading in over the card's own: a stronger
             // fill and edge in the link's colour.
             .child(live(
@@ -515,7 +611,7 @@ impl Desktop {
                 div()
                     .absolute()
                     .top_0()
-                    .left(px(18.))
+                    .left(px(INSET))
                     .w(px(LINE))
                     .h(px(2.))
                     .rounded(px(1.))
@@ -524,60 +620,8 @@ impl Desktop {
                 Anchor::TopLeft,
                 anchor(),
             ))
-            // The arrow leans out on hover and takes the link's colour.
-            .child(
-                div()
-                    .absolute()
-                    .top(px(14.))
-                    .right(px(14.))
-                    .size(px(15.))
-                    .child(live(
-                        div().absolute().inset_0().child(arrow(p.muted)),
-                        lift.arrow.clone(),
-                        Anchor::TopLeft,
-                        anchor(),
-                    ))
-                    .child(live(
-                        div()
-                            .absolute()
-                            .inset_0()
-                            .child(arrow(theme::mix(tone, p.ink, 0.25))),
-                        lift.lit.clone(),
-                        Anchor::TopLeft,
-                        anchor(),
-                    )),
-            )
-            .child(div().mb(px(10.)).child(live(
-                div().child(mark),
-                lift.mark.clone(),
-                Anchor::Center,
-                anchor(),
-            )))
-            .child(
-                div()
-                    .font_family(theme::DISPLAY_FONT)
-                    .text_size(theme::font(16.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(p.ink)
-                    .child(title),
-            )
-            .child(
-                div()
-                    .whitespace_nowrap()
-                    .text_size(theme::font(12.5))
-                    .font_weight(theme::LABEL_WEIGHT)
-                    .text_color(theme::mix(tone, p.ink, 0.25))
-                    .child(address),
-            )
-            .child(
-                div()
-                    .mt(px(2.))
-                    .text_size(theme::font(12.))
-                    .text_color(p.muted)
-                    .whitespace_normal()
-                    .text_left()
-                    .child(label(&format!("settings.about.links.{id}.desc"))),
-            )
+            .child(head)
+            .child(foot)
             // Where tests take hold of it.
             .when(test, |d| {
                 d.child(
@@ -642,11 +686,13 @@ impl Desktop {
         let lift = lift.clone();
         let (hover, press) = (f32::from(lift.hovered), f32::from(lift.pressed));
         let key = format!("about-link-{id}");
+        let scale = window.scale_factor();
+        let rise = (2. * scale).round() / scale;
         if cx.reduce_motion() {
             self.live_motions.stop(&key);
             lift.hover.set(hover);
             lift.press.set(press);
-            lift_values(&lift);
+            lift_values(&lift, rise);
         } else {
             let (from_hover, from_press) = (lift.hover.get(), lift.press.get());
             let stepped = lift.clone();
@@ -663,7 +709,7 @@ impl Desktop {
                     stepped
                         .press
                         .set(from_press + (press - from_press) * ease(PRESS));
-                    lift_values(&stepped);
+                    lift_values(&stepped, rise);
                 },
                 |_| {},
             );

@@ -16,10 +16,12 @@ pub(super) enum RegionKind {
     Details,
     /// The resource cards above the process list.
     Vitals,
-    /// The title bar row: logo, page controls, search and actions.
+    /// The title bar row: logo and search.
     Toolbar,
-    /// The page tabs (top) or the side navigation.
+    /// The page tabs with the page's controls (top) or the side navigation.
     Navigation,
+    /// The page header beside the side navigation: the page's name and controls.
+    Header,
 }
 
 /// One view type for each kind of region: the frame trace lists the views a
@@ -30,6 +32,7 @@ pub(super) mod named {
     pub struct Vitals;
     pub struct Toolbar;
     pub struct Navigation;
+    pub struct Header;
 }
 
 pub(super) struct Region<Name: 'static> {
@@ -89,6 +92,7 @@ impl Desktop {
                 RegionKind::Vitals => view::<named::Vitals>(desktop, kind, cx),
                 RegionKind::Toolbar => view::<named::Toolbar>(desktop, kind, cx),
                 RegionKind::Navigation => view::<named::Navigation>(desktop, kind, cx),
+                RegionKind::Header => view::<named::Header>(desktop, kind, cx),
             })
             .clone()
             .cached(style)
@@ -177,6 +181,12 @@ impl Desktop {
                 .flex()
                 .when(self.nav_top, |d| d.flex_col())
                 .child(self.navigation(self.nav_top, window, cx))
+                .into_any_element(),
+            RegionKind::Header => div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(self.page_header(window, cx))
                 .into_any_element(),
         };
         self.render_count = render_count;

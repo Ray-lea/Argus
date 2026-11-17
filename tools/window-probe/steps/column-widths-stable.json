@@ -1,0 +1,31 @@
+{
+  "window": [1600, 1000],
+  "steps": [
+    { "note": "A tree whose deepest branch has the longest names: the automatic widths measure it folded or not." },
+    { "control": { "page": "processes", "view": "tree", "details": false, "motion": "off", "pointerOutside": true,
+        "preference": { "processSort": { "key": "pid", "desc": false } },
+        "sample": { "set": { "/system/processCount": 6, "/processes": [
+          { "pid": 100, "ppid": 0, "createTime": 1, "name": "alpha.exe", "description": "Alpha", "path": "C:/Examples/alpha.exe", "cpu": 4, "privateWs": 104857600, "appWindow": true },
+          { "pid": 110, "ppid": 100, "createTime": 2, "name": "worker.exe", "description": "Worker", "path": "C:/Examples/worker.exe", "cpu": 2, "privateWs": 52428800 },
+          { "pid": 111, "ppid": 110, "createTime": 3, "name": "nested-helper.exe", "description": "Nested helper, longer", "path": "C:/Examples/Deeply/Nested/Folders/nested-helper.exe", "cpu": 1, "privateWs": 26214400 },
+          { "pid": 112, "ppid": 111, "createTime": 4, "name": "innermost-helper.exe", "description": "Innermost helper, longest of all", "path": "C:/Examples/Deeply/Nested/Folders/innermost-helper.exe", "cpu": 1, "privateWs": 26214400 },
+          { "pid": 200, "ppid": 0, "createTime": 1, "name": "beta.exe", "description": "Beta", "path": "C:/Examples/beta.exe", "cpu": 3, "privateWs": 83886080, "appWindow": true },
+          { "pid": 210, "ppid": 200, "createTime": 2, "name": "task.exe", "description": "Task", "path": "C:/Examples/task.exe", "cpu": 1, "privateWs": 26214400 }
+        ] } } },
+      "wait": 1500, "inspect": "layout", "label": "folded",
+      "expect": { "processTree.visibleRows": 2, "processTree.visibleChildren": 0 } },
+    { "inspect": "columns", "label": "folded-widths", "capture": "folded", "expect": { "state.visible.0.width": 448 } },
+
+    { "note": "Every branch open: the widths stay." },
+    { "control": { "headerMenu": "name" }, "wait": 250 },
+    { "control": { "keys": ["enter"] }, "wait": 800, "inspect": "layout", "label": "expanded",
+      "expect": { "processTree.visibleRows": 6 } },
+    { "inspect": "columns", "label": "expanded-widths", "capture": "expanded", "expect": { "state.visible.0.width": 448 } },
+
+    { "note": "A search that leaves only the short names: the widths stay." },
+    { "control": { "query": "beta" }, "wait": 800, "inspect": "layout", "label": "search",
+      "expect": { "processTree.visibleRows": 1, "processTree.searching": true } },
+    { "inspect": "columns", "label": "search-widths", "capture": "search", "expect": { "state.visible.0.width": 448 } },
+    { "control": { "query": "" }, "wait": 800, "inspect": "columns", "label": "cleared-widths", "expect": { "state.visible.0.width": 448 } }
+  ]
+}

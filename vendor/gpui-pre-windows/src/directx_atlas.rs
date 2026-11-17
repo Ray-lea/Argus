@@ -34,6 +34,9 @@ struct DirectXAtlasTextures {
     // replacement upload in this batch needs the same physical dimensions.
     spares: Vec<DirectXAtlasTexture>,
     recycle_pages: bool,
+    // Tiles uploaded since the renderer last took them. A recycled page or a
+    // freed slot gives the next image the id of the one it replaces.
+    fresh: std::collections::HashSet<(AtlasTextureId, u32)>,
 }
 
 struct DirectXAtlasTexture {
@@ -67,7 +70,18 @@ impl DirectXAtlas {
             subpixel_textures: Default::default(),
             spares: Vec::new(),
             recycle_pages: false,
+            fresh: Default::default(),
         })))
+    }
+
+    /// The tiles uploaded since the last call: the pixels behind their ids
+    /// may have changed although the primitives that show them did not.
+    pub(crate) fn take_fresh_tiles(&self) -> std::collections::HashSet<(AtlasTextureId, u32)> {
+        let mut lock = self.0.lock();
+        if lock.backend.fresh.is_empty() {
+            return Default::default();
+        }
+        std::mem::take(&mut lock.backend.fresh)
     }
 
     /// Returns the view backing `id`, or `None` once every tile in it has been
@@ -110,6 +124,7 @@ impl DirectXAtlas {
             );
             textures.upload_calls = 0;
             textures.upload_bytes = 0;
+            textures.fresh.clear();
             textures.device = device.clone();
             textures.device_context = device_context.clone();
             textures.monochrome_textures = AtlasTextureList::default();
@@ -179,6 +194,7 @@ impl AtlasBackend for DirectXAtlasTextures {
                     rows.insert((tile.texture_id.index, tile.tile_id.0), ink);
                 }
             }
+            self.fresh.insert((tile.texture_id, tile.tile_id.0));
             self.upload_calls = self.upload_calls.wrapping_add(1);
             self.upload_bytes = self.upload_bytes.wrapping_add(uploaded as u64);
             crate::frame_trace::record(11, bytes.len() as u64);

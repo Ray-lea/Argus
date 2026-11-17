@@ -46,7 +46,15 @@
     "many": "{count} procesos",
     "other": "{count} procesos"
   },
+  "totalHidden": {
+    "one": "{total} ({count} oculto)",
+    "many": "{total} ({count} ocultos)",
+    "other": "{total} ({count} ocultos)"
+  },
   "filtered": "La lista se filtra por la búsqueda.",
+  "orderHeld": "Ordenación en pausa: las filas mantienen su posición y los valores se siguen actualizando. Se vuelven a ordenar cuando el puntero sale de la lista o se cierra el menú o el cuadro de diálogo.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Nombre",
@@ -312,6 +320,7 @@
     "hide": "Ocultar columna {name}",
     "description": "Marque las columnas que desea mostrar. Arrástrelas en la lista de la derecha o arrastre sus encabezados para cambiar el orden.",
     "networkUnavailable": "Las columnas de red seleccionadas aparecen cuando los datos de tráfico están disponibles.",
+    "gpuUnavailable": "No se detectó ninguna GPU. Las columnas de GPU seleccionadas están ocultas.",
     "category": {
       "general": "General",
       "cpu": "CPU",

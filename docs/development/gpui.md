@@ -14,6 +14,8 @@
 
 Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘、全局快捷键、单实例、安装与任务启动。当前构建目标为 Windows x64，其他平台的采集和系统集成计划见[路线图](../roadmap.md)。
 
+Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按窗口 DPI 与界面缩放换算，每次接触分配独立标识。GPUI 负责点按、双击、滑动、惯性与长按；Windows 上未被文本选择或提示认领的长按进入右键菜单路径。失去指针捕获、系统取消、窗口隐藏或失去焦点时取消未完成的接触。前台窗口中的触摸文本输入通过 `InputPane` 请求系统触摸键盘。
+
 ## 界面验证
 
 `tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
@@ -58,6 +60,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`diagnostic-summary.json`](../../tools/window-probe/steps/diagnostic-summary.json) 检查关于页的诊断信息复制入口、深浅主题及小窗口大字号布局。模拟快照下单击复制按钮时将生成内容写入 `inspectLayout.diagnosticCopy`，保留系统剪贴板内容；摘要字段筛选、缺失值和缩放换算由相关单元测试覆盖。
 
+[`about-links.json`](../../tools/window-probe/steps/about-links.json) 检查关于页官网与 GitHub 卡片的悬停、深浅主题、最小窗口和大字号布局，并核对单击卡片底部的按钮只打开对应页面、不触发整张卡片。模拟快照不执行打开网页等命令，`inspectLayout.skippedRequest` 记录最近一次被跳过的命令及其参数；各页面的地址由 `commands.rs` 的单元测试覆盖。
+
 [`file-lock-layout.json`](../../tools/window-probe/steps/file-lock-layout.json) 检查文件选择、查询状态与结果变化后的弹窗稳定性。模拟快照实例可通过 `contentZoom`（0.5–3）复现分数缩放布局；`inspectLayout` 的 `dialog.settled` 表示高度过渡已结束。
 
 [`window-restore.json`](../../tools/window-probe/steps/window-restore.json) 用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。
@@ -88,7 +92,15 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 
 [`device-order.json`](../../tools/window-probe/steps/device-order.json) 检查设备列表的排序：用 `sample` 改写磁盘的盘符后在“按盘符”与“按磁盘编号”间切换，拖动网络适配器到顶部时磁盘顺序不变，拖动磁盘打乱顺序后改为“自定义”，并核对菜单的勾选与“恢复默认顺序”，录制行的让位与滑动。`inspectLayout.performance` 的 `diskOrder` 为磁盘排序方式，`arranged` 为拖动保存的顺序。
 
-[`column-widths.json`](../../tools/window-probe/steps/column-widths.json) 检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。
+[`process-groups.json`](../../tools/window-probe/steps/process-groups.json) 检查进程页分组：按名称排序的三个分类及其颜色，滚动后分类标题固定在顶部、被下一组的标题推出，单击固定的标题折叠该组，按用户分组时用户标题与分类标题两层叠放，以及滚动时的组名在停止滚动后消失；另截取浅色主题、150% 缩放和横向滚动后的画面。`inspect columns` 的 `state.groups` 输出各分组的标题键、颜色与行数（`groups`）、固定的标题及其位置（`held`）和组名（`name`，未显示时为 `null`）。
+
+[`column-widths.json`](../../tools/window-probe/steps/column-widths.json) 检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。[`column-widths-stable.json`](../../tools/window-probe/steps/column-widths-stable.json) 在进程树中折叠、展开分支和搜索，检查各列宽度保持不变。
+
+[`process-order-held.json`](../../tools/window-probe/steps/process-order-held.json) 检查指针悬停时进程表的排序暂停：指针停在列表上时用 `sample` 改变 CPU 读数，行序保持不变；随后双击展开、折叠，以及单击展开按钮，展开的行跟在所属条目之后，其余行不移动；指针移出列表后恢复排序；关闭 `holdOrderOnHover` 偏好后悬停不再保持行序。`inspectLayout.processTree` 的 `titles` 为各行标题，`heldOrder` 表示当前行序与排序结果不同。
+
+[`status-rate.json`](../../tools/window-probe/steps/status-rate.json) 检查状态栏的刷新控件：单击刷新状态打开频率菜单，再次单击收起，1 秒后再单击重新打开；单击右端按钮暂停、继续刷新。暂停按钮以窗口内坐标单击（1400×900 窗口、100% 缩放），用截图核对按钮位置在两种状态下相同。
+
+[`hardware-acceleration.json`](../../tools/window-probe/steps/hardware-acceleration.json) 在设置页单击“硬件加速”开关，核对窗口在运行中换到软件渲染设备、再换回 GPU，并截取两种设备下的设置页、性能页、进程页与托盘快捷面板；两段录制覆盖切换前后的每一帧，用于确认切换期间没有空白画面。`inspectLayout.graphics` 的 `softwareRequested` 为设置所请求的渲染方式，`software` 为窗口实际使用的适配器是否带软件标记。模拟快照下该开关照常执行，只改变测试实例自身的渲染设备与设置文件。步骤需在装有 GPU 的机器上运行，没有 GPU 时两种设置都使用软件适配器。
 
 [`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄到放不下 8 列时改为留空位的排布；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标、筛选项与图例；只有性能核与低功耗能效核的处理器不显示能效核筛选项。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
 
@@ -101,6 +113,7 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 | `hoverAnchor` | 指针移到已记录元素的中心 |
 | `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
 | `pointer` | `{ "at"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>` 或 `row:<行序号>`（当前表格中从 0 起的行）；省略时相对于手势起点，元素在拖动中移动也不影响 |
+| `touch` | `{ "id", "at"?, "fraction"?, "event", "dx"?, "dy"? }`：原始触摸事件，仅模拟快照；`event` 为 `down`、`move`、`up`、`cancel` 或 `tap`。每次接触使用新的 `id`，同一次接触保持不变。`at` 沿用指针锚点，也接受窗口内坐标 `[x,y]` 与 `about-scroll`；`fraction` 指定锚点内的相对位置，默认中心。事件经正式手势识别路径，长按需在 `down` 后等待至少 500 ms |
 | `headerMenu` | 打开某一列的表头菜单 |
 | `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
 | `passive` | 与 `mouse`、`wheel` 等输入一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围 |
@@ -111,6 +124,8 @@ Windows 平台层负责 HWND、窗口显隐和系统事件，宿主管理托盘�
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
 
 本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
+
+`cargo test -p argus --test touch_input` 检查触点标识复用、捕获丢失、多指接触、点按、双击、滑动取消、消息重入与长按菜单。[`touch-input.json`](../../tools/window-probe/steps/touch-input.json) 用隔离窗口复核进程树、重新排序后的长按目标、菜单、图表、150% 界面缩放下的页面滚动及滚动条拖动与取消。
 
 `cargo test -p argus --test image_atlas_edges` 在始终隐藏的窗口中读取 GPU 绘制结果，检查放大、缩小、半透明及单纹素图片的四条边。测试图块周围放置高对比度颜色，验证线性采样保持在图块边界内，防止概况带遮罩边缘混入相邻图标。
 

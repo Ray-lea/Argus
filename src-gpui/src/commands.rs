@@ -458,6 +458,20 @@ pub fn set_whats_new(
     Ok(settings_view(&app))
 }
 
+/// Draws the interface with the graphics card or, turned off, with the
+/// system's software rasterizer. The open windows change renderer in place.
+pub fn set_hardware_acceleration(
+    app: crate::native_runtime::Host,
+    enabled: bool,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.hardware_acceleration = enabled)
+        .map_err(|e| e.to_string())?;
+    log::info!("hardware acceleration set; enabled={enabled}");
+    gpui_kit::gpui::set_windows_software_rendering(!enabled);
+    Ok(settings_view(&app))
+}
+
 /// Records that the first start of this version has been dealt with, so what
 /// it changed does not show again.
 pub fn note_version_seen(app: crate::native_runtime::Host) -> Result<SettingsView, String> {
@@ -765,9 +779,9 @@ pub fn open_repository() -> Result<(), String> {
     crate::shell::open_url(updater::REPO)
 }
 
-/// The website's download page in the language `locale`: Simplified Chinese
+/// The website's page at `path` in the language `locale`: Simplified Chinese
 /// at the root, every other language under its own folder.
-fn download_page(homepage: &str, locale: argus_core::i18n::Locale) -> String {
+fn website_page(homepage: &str, locale: argus_core::i18n::Locale, path: &str) -> String {
     use argus_core::i18n::Locale;
     let folder = match locale {
         Locale::ZhCn => "",
@@ -779,18 +793,49 @@ fn download_page(homepage: &str, locale: argus_core::i18n::Locale) -> String {
         Locale::FrFr => "/fr",
         Locale::RuRu => "/ru",
     };
-    format!("{}{folder}/download/", homepage.trim_end_matches('/'))
+    format!("{}{folder}{path}", homepage.trim_end_matches('/'))
+}
+
+fn homepage() -> &'static str {
+    argus_app::config::manifest()["homepage"]
+        .as_str()
+        .expect("project homepage")
 }
 
 /// Opens the website's download page in the interface language: where a
 /// portable copy is sent for the installer.
 pub fn open_download_page() -> Result<(), String> {
-    crate::shell::open_url(&download_page(
-        argus_app::config::manifest()["homepage"]
-            .as_str()
-            .expect("project homepage"),
+    crate::shell::open_url(&website_page(
+        homepage(),
         argus_core::i18n::locale(),
+        "/download/",
     ))
+}
+
+/// The address of one of the pages the About page's link cards lead to, by
+/// the name the interface gives it; `None` for any other name, so the
+/// interface can only open these.
+fn project_page(homepage: &str, locale: argus_core::i18n::Locale, page: &str) -> Option<String> {
+    let repository = updater::REPO;
+    Some(match page {
+        "download" => website_page(homepage, locale, "/download/"),
+        "changelog" => website_page(homepage, locale, "/changelog/"),
+        // The guide is written in Simplified Chinese alone; the website's
+        // own navigation links it from every language.
+        "guide" => format!("{}/docs/guide/", homepage.trim_end_matches('/')),
+        // The issue forms, with the questions forum and the guide among them.
+        "issues" => format!("{repository}/issues/new/choose"),
+        "discussions" => format!("{repository}/discussions"),
+        "releases" => format!("{repository}/releases"),
+        _ => return None,
+    })
+}
+
+/// Opens one of the project's pages named by `project_page`.
+pub fn open_project_page(page: String) -> Result<(), String> {
+    let url = project_page(homepage(), argus_core::i18n::locale(), &page)
+        .ok_or_else(|| format!("unknown project page {page}"))?;
+    crate::shell::open_url(&url)
 }
 
 /// Opens the newest release on GitHub, with the installer among its files.
@@ -1007,19 +1052,49 @@ mod tests {
         use argus_core::i18n::Locale;
         // The website keeps Simplified Chinese at its root.
         assert_eq!(
-            download_page("https://argustask.com", Locale::ZhCn),
+            website_page("https://argustask.com", Locale::ZhCn, "/download/"),
             "https://argustask.com/download/"
         );
         assert_eq!(
-            download_page("https://argustask.com/", Locale::ZhTw),
+            website_page("https://argustask.com/", Locale::ZhTw, "/download/"),
             "https://argustask.com/zh-TW/download/"
         );
         // Every other language has a folder of its own, named apart.
         let pages = Locale::ALL
             .iter()
-            .map(|locale| download_page("https://argustask.com", *locale))
+            .map(|locale| website_page("https://argustask.com", *locale, "/download/"))
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(pages.len(), Locale::ALL.len());
         assert!(pages.contains("https://argustask.com/en/download/"));
+    }
+
+    #[test]
+    fn the_link_cards_open_only_their_own_pages() {
+        use argus_core::i18n::Locale;
+        let page = |locale, name| project_page("https://argustask.com/", locale, name);
+        assert_eq!(
+            page(Locale::EnUs, "changelog").as_deref(),
+            Some("https://argustask.com/en/changelog/")
+        );
+        assert_eq!(
+            page(Locale::ZhCn, "download").as_deref(),
+            Some("https://argustask.com/download/")
+        );
+        // The guide has one language: every interface opens the same page.
+        assert_eq!(page(Locale::JaJp, "guide"), page(Locale::ZhCn, "guide"));
+        assert_eq!(
+            page(Locale::ZhCn, "guide").as_deref(),
+            Some("https://argustask.com/docs/guide/")
+        );
+        for name in ["issues", "discussions", "releases"] {
+            let address = page(Locale::DeDe, name).expect("repository page");
+            assert!(
+                address.starts_with(&format!("{}/", updater::REPO)),
+                "{address}"
+            );
+        }
+        // Nothing else, so a request cannot name an address of its own.
+        assert_eq!(page(Locale::ZhCn, "https://example.com"), None);
+        assert_eq!(page(Locale::ZhCn, ""), None);
     }
 }

@@ -13,6 +13,31 @@ const NAV_RAIL: f32 = 48.;
 const NAV_INSET: f32 = 4.;
 /// Navigation width change per arrow key on its edge.
 const NAV_KEY_STEP: f32 = 16.;
+/// The least of the page bar's drag stretch, before it steps down a level.
+const BAR_STRETCH: f32 = 16.;
+/// The page bar's inset after "More", as the title row's before the caption buttons.
+const BAR_INSET: f32 = 12.;
+/// The page bar's "More" button, and the status bar's refresh control: their
+/// menus hang from them.
+const MORE: &str = "toolbar-more";
+const RATE: &str = "status-rate";
+/// The search box's shortcut, as the menus write shortcuts.
+const SEARCH_HINT: &str = "Ctrl+F";
+/// The search box's share of the window's width, between its placeholder's
+/// width and `searchWidth`.
+const SEARCH_SHARE: f32 = 0.3;
+/// The refresh rates on offer, in milliseconds.
+const INTERVALS: [u64; 4] = [500, 1000, 2000, 5000];
+/// Where a menu opens from its control.
+#[derive(Clone, Copy)]
+enum Side {
+    /// Under its left edge.
+    Under,
+    /// Under it, by its right edge.
+    Below,
+    /// Above it, by its right edge.
+    Above,
+}
 impl Desktop {
     pub(in crate::frontend) fn set_theme(
         &mut self,
@@ -287,11 +312,16 @@ impl Desktop {
                 })
         };
         if top {
+            // Up to the last compact level the tabs keep one row and the page
+            // bar steps down a level instead; then they wrap beside "More".
+            let wrap = self.ui.toolbar_fit.borrow().level >= 2;
             let tabs = gpui_kit::base::Tabs::new("page-navigation")
                 .relative()
                 .flex()
                 .flex_wrap()
                 .gap(px(2.))
+                .when(wrap, |tabs| tabs.flex_shrink(1.).min_w_0())
+                .when(!wrap, |tabs| tabs.flex_shrink_0())
                 .on_prepaint(track_region(
                     0,
                     self.navigation_regions.clone(),
@@ -321,12 +351,7 @@ impl Desktop {
                             .bg(p.accent),
                     )
                 });
-            return div()
-                .px(px(12.))
-                .pb(px(6.))
-                .flex_shrink_0()
-                .child(tabs)
-                .into_any_element();
+            return self.page_bar(tabs.into_any_element(), window, cx);
         }
         let toggle_tip = label(if self.nav_expanded {
             "shell.nav.collapse"
@@ -433,6 +458,17 @@ impl Desktop {
         pressed: bool,
         cx: &Context<Self>,
     ) -> Button {
+        self.tool_face(id, text, glyph, pressed)
+            .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
+    }
+    /// A toolbar button's face without what a click does.
+    fn tool_face(
+        &self,
+        id: impl Into<SharedString>,
+        text: impl Into<SharedString>,
+        glyph: Option<&str>,
+        pressed: bool,
+    ) -> Button {
         let text = text.into();
         let id: SharedString = id.into();
         let p = self.palette;
@@ -461,285 +497,45 @@ impl Desktop {
                     .child(self.icon_probe(&id))
             })
             .when(!text.is_empty(), |b| b.child(text))
-            .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
     }
+    /// The title row: the brand, the current page's search box and the
+    /// window's caption buttons. Everything else in it drags the window.
     pub(in crate::frontend) fn toolbar(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        // The compact level `fit_toolbar` chose for this frame; the regions
-        // measured below belong to it.
-        let level = {
-            let mut fit = self.ui.toolbar_fit.borrow_mut();
-            fit.drawn = Some(fit.level);
-            fit.level
-        };
-        // Level 1 hides the text of the buttons at the end.
-        let wide = level == 0;
-        // Level 2 hides the view modes' labels; on a row of their own (3) they
-        // have room for them again.
-        let view_labels = level != 2;
-        let mut controls = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .flex_shrink_0()
-            .occlude();
-        if self.page == "processes" {
-            controls = controls.child(
-                self.segments(
-                    "process-view",
-                    [
-                        ("apps", "AppsIcon"),
-                        ("tree", "TreeIcon"),
-                        ("list", "ListIcon"),
-                    ]
-                    .into_iter()
-                    .map(|(mode, glyph)| {
-                        (
-                            if view_labels {
-                                label(&format!("shell.viewMode.{mode}.label"))
-                            } else {
-                                String::new()
-                            },
-                            Some(glyph),
-                            Action::View(mode.into()),
-                            self.view == mode,
-                        )
-                    })
-                    .collect(),
-                    cx,
-                ),
-            );
-        } else {
-            controls = controls.child(self.page_controls(window, cx));
-        }
-        if matches!(self.page.as_str(), "processes" | "network") {
-            controls = controls.child(self.visibility_controls(cx));
-        }
-        let sampled = matches!(self.page.as_str(), "processes" | "performance");
-        let mut trailing = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .flex_shrink_0()
-            .occlude()
-            .child(
-                self.tool_button(
-                    "task",
-                    if wide {
-                        label("tasks.title")
-                    } else {
-                        String::new()
-                    },
-                    Some("RunTaskIcon"),
-                    Action::Dialog("task".into(), json!({})),
-                    false,
-                    cx,
-                )
-                .accessibility_label(label("tasks.title"))
-                .tooltip(|window, cx| widgets::tooltip(label("tasks.title"), window, cx)),
-            );
-        if self.page == "services" {
-            trailing = trailing.child(self.service_actions(wide, cx));
-        }
-        if sampled {
-            const INTERVALS: [u64; 4] = [500, 1000, 2000, 5000];
-            trailing = trailing.child(
-                self.select(
-                    "interval",
-                    label("shell.interval.label"),
-                    INTERVALS
-                        .iter()
-                        .map(|ms| {
-                            tr!(
-                                "shell.interval.option",
-                                seconds = crate::regional::seconds(*ms)
-                            )
-                        })
-                        .collect(),
-                    INTERVALS.iter().position(|ms| *ms == self.interval),
-                    false,
-                    |this, index, window, cx| {
-                        this.act(Action::Interval(INTERVALS[index]), window, cx);
-                    },
-                    cx,
-                ),
-            );
-            let pause_tip = if self.paused {
-                label("shell.resume")
-            } else {
-                label("shell.pause")
-            };
-            trailing = trailing.child(
-                self.tool_button(
-                    "pause",
-                    String::new(),
-                    Some(if self.paused { "PlayIcon" } else { "PauseIcon" }),
-                    Action::Pause,
-                    self.paused,
-                    cx,
-                )
-                .accessibility_label(pause_tip.clone())
-                .tooltip(move |window, cx| widgets::tooltip(pause_tip.clone(), window, cx)),
-            );
-        }
-        trailing = trailing.child(
-            self.tool_button(
-                "lock",
-                String::new(),
-                Some("LockIcon"),
-                Action::Dialog("filelock".into(), json!({})),
-                false,
-                cx,
-            )
-            .accessibility_label(label("shell.fileLock.label"))
-            .tooltip(|window, cx| widgets::tooltip(label("shell.fileLock.title"), window, cx)),
-        );
-        if self.page == "processes" {
-            // Three modes in turn: always, when a process is selected, never.
-            // Lit while the pane can show; the automatic one has its own glyph.
-            let mode = self.details_mode;
-            let name = |mode: DetailsMode| label(&format!("shell.details.mode.{}", mode.key()));
-            let tip = format!(
-                "{}\n{}",
-                tr!("shell.details.current", mode = name(mode)),
-                tr!("shell.details.next", mode = name(mode.next()))
-            );
-            trailing = trailing.child(
-                self.tool_button(
-                    "details",
-                    String::new(),
-                    Some(if mode == DetailsMode::Auto {
-                        "PanelAutoIcon"
-                    } else {
-                        "PanelIcon"
-                    }),
-                    Action::Details(None),
-                    mode != DetailsMode::Closed,
-                    cx,
-                )
-                .accessibility_label(label("shell.details.label"))
-                .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(|this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.details_menu(window, cx);
-                    }),
-                ),
-            );
-        }
-        if let Some(updates) = self.update_button() {
-            // An icon filled with the accent; the version is in the tooltip.
-            let title = if text(updates, "state") == "available" {
-                tr!(
-                    "updates.button.availableTitle",
-                    version = text(updates, "version")
-                )
-            } else {
-                tr!("updates.button.title", version = text(updates, "version"))
-            };
-            let on_accent = p.on_accent;
-            trailing = trailing.child(
-                Button::new("update-status")
-                    .relative()
-                    .size(px(32.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(p.accent)
-                    .hover(|s| s.opacity(0.92))
-                    .accessibility_label(title.clone())
-                    .child(self.moving_icon(
-                        &"update-status".into(),
-                        "UpdateIcon",
-                        Some(on_accent),
-                        None,
-                    ))
-                    .child(self.icon_probe(&"update-status".into()))
-                    .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.act(Action::Dialog("update".into(), json!({})), window, cx)
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Right, {
-                        let version = text(updates, "version").to_owned();
-                        cx.listener(move |this, _, window, cx| {
-                            cx.stop_propagation();
-                            let items = vec![
-                                MenuItem::new(
-                                    label("updates.menu.view"),
-                                    Action::Dialog("update".into(), json!({})),
-                                )
-                                .icon("UpdateIcon"),
-                                MenuItem::new(
-                                    label("updates.menu.dismiss"),
-                                    Action::Preference("updateDismissed".into(), json!(version)),
-                                )
-                                .icon("DismissIcon"),
-                            ];
-                            this.act(Action::Popup(items), window, cx);
-                        })
-                    }),
-            );
-        }
         let owner = cx.entity().downgrade();
-        let controls_row = level >= 3 && self.has_controls();
-        let search_row = level >= 4 && self.has_search();
+        let height = theme::dimension("toolbarHeight");
         let start = div()
             .flex()
             .items_center()
-            .gap_2()
+            .gap(px(10.))
+            .pl(px(4.))
             .flex_shrink_0()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .pl(px(4.))
-                    // Spanning the side pane lines the page's controls up with
-                    // the page; compact levels give that room up first
-                    // (`.toolbar[data-compact] .brand`).
-                    .when(!self.nav_top && wide, |d| {
-                        d.min_w(px(self.side_nav_width()) - px(8.))
-                    })
-                    .text_size(theme::font(14.))
-                    .text_color(p.ink)
-                    // 24 px: a pixel master at every standard scaling
-                    // (24/30/36/42/48 device pixels, as on the taskbar).
-                    .child(widgets::logo(24.))
-                    .child(argus_app::config::app_title()),
-            )
-            .on_prepaint(track_toolbar(
-                0,
-                self.toolbar_regions.clone(),
-                owner.clone(),
-            ));
-        let (start, controls) = if controls_row {
-            (start, Some(controls))
-        } else {
-            (start.child(controls), None)
-        };
-        let trailing = trailing.on_prepaint(track_toolbar(
-            1,
-            self.toolbar_regions.clone(),
-            owner.clone(),
-        ));
+            // Spanning the side pane lines the search box up with the page.
+            .when(!self.nav_top, |d| {
+                d.min_w(px(self.side_nav_width()) - px(8.))
+            })
+            .text_size(theme::font(14.))
+            .text_color(p.ink)
+            // 24 px: a pixel master at every standard scaling
+            // (24/30/36/42/48 device pixels, as on the taskbar).
+            .child(widgets::logo(24.))
+            .child(argus_app::config::app_title())
+            .on_prepaint(track_title(0, self.toolbar_regions.clone(), owner.clone()));
         let mut toolbar = div()
             .relative()
             .w_full()
-            .h(self.toolbar_height(level))
+            .h(height)
             .flex_shrink_0()
             .flex()
             .flex_col()
             .child(
                 TitleBar::new()
-                    .h(theme::dimension("toolbarHeight"))
+                    .h(height)
                     .flex_shrink_0()
                     // The row below has the interface's own 12 px inset.
                     .pl_0()
@@ -747,10 +543,7 @@ impl Desktop {
                     .border_0()
                     .child(
                         div()
-                            // Exactly the room before the caption buttons,
-                            // whatever its content needs: what does not fit
-                            // is clipped until the next compact level instead
-                            // of pushing the caption buttons out of the window.
+                            // Exactly the room before the caption buttons.
                             .h_full()
                             .w_0()
                             .flex_grow(1.)
@@ -758,27 +551,36 @@ impl Desktop {
                             .overflow_hidden()
                             .flex()
                             .items_center()
-                            .justify_between()
-                            .pt(px(14.))
-                            .pb(px(10.))
                             .pl(px(12.))
                             .pr(px(4.))
-                            .gap_2()
                             .child(start)
-                            .child(div().flex_1())
-                            .child(trailing)
-                            .on_prepaint(track_toolbar(2, self.toolbar_regions.clone(), owner)),
+                            .on_prepaint(track_title(2, self.toolbar_regions.clone(), owner)),
                     ),
             );
         if self.has_search() {
             let regions = *self.toolbar_regions.borrow();
             let left = regions[0].right() + px(8.);
-            let right = regions[1].left() - px(8.);
-            if search_row || right > left {
+            // The row's 4 px inset before the caption buttons, and 8 px more.
+            let right = regions[2].right() - px(12.);
+            if right > left {
                 let filled = !self.query.trim().is_empty();
                 let focused = self.search.read(cx).focus_handle(cx).is_focused(window);
                 let empty = self.search.read(cx).value().is_empty();
                 let placeholder: SharedString = label(self.search_placeholder()).into();
+                // A share of the window's width: narrow windows keep more of
+                // the title row to drag by. No narrower than its placeholder,
+                // no wider than `searchWidth`, and never past its neighbours.
+                let fit = self.search_fit(window, cx);
+                let width = (window.viewport_size().width * SEARCH_SHARE)
+                    .max(fit)
+                    .min(theme::dimension("searchWidth"))
+                    .min(right - left);
+                // The shortcut rests at the end of an empty, idle box that
+                // has room for it beside the whole placeholder.
+                let hint_width = theme::text_width(SEARCH_HINT, theme::font(11.), window, cx)
+                    .ceil()
+                    + px(10. + 2. + 8.);
+                let hint = empty && !focused && width >= fit + hint_width;
                 // A Fluent text box (`.search input`): the control face with a
                 // stronger bottom edge; focused, a 2 px accent bottom on the raised
                 // layer; while it filters the list, it wears the accent.
@@ -817,7 +619,7 @@ impl Desktop {
                         d.child(widgets::placeholder(
                             placeholder.clone(),
                             px(34.),
-                            px(12.),
+                            if hint { hint_width } else { px(12.) },
                             &p,
                         ))
                     })
@@ -831,7 +633,32 @@ impl Desktop {
                             .text_size(theme::font(13.))
                             .aria_label(placeholder)
                             .prefix(icon("SearchIcon", if filled { p.accent } else { p.muted })),
-                    );
+                    )
+                    .when(hint, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .right(px(7.))
+                                .flex()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .px(px(5.))
+                                        .border_1()
+                                        .border_color(p.stroke_strong)
+                                        .rounded(px(3.))
+                                        .text_size(theme::font(11.))
+                                        .text_color(p.faint)
+                                        .child(SEARCH_HINT),
+                                ),
+                        )
+                    });
+                let anchors = self.toolbar_regions.clone();
+                let owner = cx.entity().downgrade();
+                let track = track_title(1, anchors, owner);
+                let centered = (window.viewport_size().width - width) / 2.;
                 let search = div()
                     .id("toolbar-search")
                     .relative()
@@ -840,47 +667,338 @@ impl Desktop {
                     .child(face)
                     .when_some(edge, |d, width| {
                         d.child(widgets::accent_edge(p.accent, width))
-                    });
-                toolbar = toolbar.child(if search_row {
-                    // Its own row below the title row, across the toolbar.
-                    div()
-                        .flex_shrink_0()
-                        .px(px(12.))
-                        .pb(px(10.))
-                        .child(search.w_full())
-                        .into_any_element()
-                } else {
-                    let width = (right - left).min(theme::dimension("searchWidth"));
-                    let centered = (window.viewport_size().width - width) / 2.;
-                    search
+                    })
+                    .child(
+                        canvas(
+                            move |bounds, window, cx| track(bounds, window, cx),
+                            |_, _, _, _| {},
+                        )
                         .absolute()
-                        .left(centered.max(left).min(right - width))
-                        .top(px(14.))
-                        .w(width)
-                        .into_any_element()
-                });
+                        .inset_0(),
+                    )
+                    .absolute()
+                    .left(centered.max(left).min(right - width))
+                    .top((height - px(32.)) / 2.)
+                    .w(width);
+                toolbar = toolbar.child(search);
             }
-        }
-        if let Some(controls) = controls {
-            // A row of their own, reaching under the caption buttons.
-            toolbar = toolbar.child(
-                div()
-                    .flex_shrink_0()
-                    .flex()
-                    .px(px(12.))
-                    .pb(px(10.))
-                    .child(controls),
-            );
         }
         toolbar.into_any_element()
     }
-    fn has_search(&self) -> bool {
+    /// The page bar: `leading` (the tabs, or the page's name), a stretch that
+    /// drags the window, the page's own controls and "More". At the last
+    /// compact level the controls take a row of their own below.
+    fn page_bar(
+        &self,
+        leading: AnyElement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        // The compact level `fit_toolbar` chose for this frame; the regions
+        // measured below belong to it.
+        let level = {
+            let mut fit = self.ui.toolbar_fit.borrow_mut();
+            fit.drawn = Some(fit.level);
+            fit.level
+        };
+        let owner = cx.entity().downgrade();
+        let regions = self.bar_regions.clone();
+        let settling = self.bar_settling.clone();
+        let probe = move |index: usize| {
+            let track = track_bar(
+                index,
+                regions.clone(),
+                owner.clone(),
+                settling.clone(),
+                level,
+            );
+            canvas(
+                move |bounds, window, cx| track(bounds, window, cx),
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        let controls = self.page_bar_controls(level, window, cx);
+        let (inline, own_row) = if level < 2 {
+            (controls, None)
+        } else {
+            (None, controls)
+        };
+        let trailing = div()
+            .relative()
+            .flex()
+            .items_center()
+            .gap_2()
+            .flex_shrink_0()
+            .occlude()
+            .when_some(inline, |d, controls| {
+                d.child(controls)
+                    .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.stroke))
+            })
+            .child(self.more_button(cx))
+            .child(probe(0));
+        let stretch = div()
+            .relative()
+            .flex_1()
+            .min_w(px(BAR_STRETCH))
+            .h(px(32.))
+            .window_control_area(WindowControlArea::Drag)
+            .child(probe(2));
+        div()
+            .relative()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .pl(px(if self.nav_top { 12. } else { 16. }))
+            .pr(px(BAR_INSET))
+            .pb(px(6.))
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .child(leading)
+                    .child(stretch)
+                    .child(trailing),
+            )
+            .when_some(own_row, |d, controls| {
+                d.child(div().flex().pt(px(6.)).child(controls))
+            })
+            .child(probe(1))
+            .into_any_element()
+    }
+    /// The current page's own controls in the page bar, if it has any. At
+    /// compact level 1 the labelled choices drop down from a button instead.
+    fn page_bar_controls(
+        &self,
+        level: u8,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if !self.has_controls() {
+            return None;
+        }
+        let compact = level == 1;
+        let row = div().flex().items_center().gap_2().flex_shrink_0();
+        // The services and connections filters are in their status columns'
+        // headers (`NativeTable::header_filter`).
+        let row = match self.page.as_str() {
+            "processes" => {
+                // Icons only: the names are in the tooltips.
+                let views = [
+                    ("apps", "AppsIcon"),
+                    ("tree", "TreeIcon"),
+                    ("list", "ListIcon"),
+                ]
+                .into_iter()
+                .map(|(mode, glyph)| {
+                    (
+                        String::new(),
+                        Some(glyph),
+                        Action::View(mode.into()),
+                        self.view == mode,
+                    )
+                })
+                .collect();
+                row.child(self.segments("process-view", views, cx))
+                    .child(self.visibility_controls(cx))
+                    .child(self.details_button(cx))
+            }
+            "services" => row.child(self.service_actions(cx)),
+            "network" => row.child(self.visibility_controls(cx)),
+            _ => row.child(self.page_controls(compact, window, cx)),
+        };
+        Some(row.into_any_element())
+    }
+    /// Beside the side navigation: the page's name leads the page bar.
+    pub(in crate::frontend) fn page_header(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let title = div()
+            .flex()
+            .items_center()
+            .h(px(32.))
+            .flex_shrink_0()
+            .font_family(theme::display_font(cx))
+            .text_size(theme::font(20.))
+            .font_weight(theme::LABEL_WEIGHT)
+            .text_color(p.ink)
+            .whitespace_nowrap()
+            .child(label(&format!("shell.page.{}", self.page)));
+        self.page_bar(title.into_any_element(), window, cx)
+    }
+    /// The details pane's button: three modes in turn (always, when a process
+    /// is selected, never), a right click picks one. Lit while the pane can
+    /// show; the automatic mode has its own glyph.
+    fn details_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mode = self.details_mode;
+        let name = |mode: DetailsMode| label(&format!("shell.details.mode.{}", mode.key()));
+        let tip = format!(
+            "{}\n{}",
+            tr!("shell.details.current", mode = name(mode)),
+            tr!("shell.details.next", mode = name(mode.next()))
+        );
+        self.tool_button(
+            "details",
+            String::new(),
+            Some(if mode == DetailsMode::Auto {
+                "PanelAutoIcon"
+            } else {
+                "PanelIcon"
+            }),
+            Action::Details(None),
+            mode != DetailsMode::Closed,
+            cx,
+        )
+        .accessibility_label(label("shell.details.label"))
+        .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(|this, _, window, cx| {
+                cx.stop_propagation();
+                this.details_menu(window, cx);
+            }),
+        )
+        .into_any_element()
+    }
+    /// "More", at the page bar's end on every page: the tools that belong to
+    /// no page.
+    fn more_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let title = label("shell.more.label");
+        div()
+            .relative()
+            .flex_shrink_0()
+            .child(
+                self.tool_face(MORE, "", Some("MoreIcon"), false)
+                    .accessibility_label(title.clone())
+                    .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
+                    .on_click(cx.listener(|this, _, window, cx| this.open_more_menu(window, cx))),
+            )
+            .child(anchor_probe(MORE, self.ui.anchors.clone()))
+            .into_any_element()
+    }
+    fn open_more_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut items = vec![
+            MenuItem::new(
+                label("shell.more.runTask"),
+                Action::Dialog("task".into(), json!({})),
+            )
+            .icon("RunTaskIcon")
+            .hint("Ctrl+N"),
+            MenuItem::new(
+                label("shell.more.fileLock"),
+                Action::Dialog("filelock".into(), json!({})),
+            )
+            .icon("LockIcon")
+            .detail(label("shell.more.fileLockDetail")),
+        ];
+        if self.page == "services" {
+            items.push(
+                MenuItem::new(
+                    label("services.control.openConsoleTitle"),
+                    Action::Invoke("open_services_console".into(), json!({})),
+                )
+                .icon("ExternalIcon"),
+            );
+        }
+        items.push(MenuItem::separator());
+        items.push(
+            MenuItem::new(
+                label("settings.shortcuts.title"),
+                Action::Dialog("shortcuts".into(), json!({})),
+            )
+            .icon("KeyboardIcon"),
+        );
+        self.open_anchored(items, MORE, Side::Below, window, cx);
+    }
+    /// The list's filter, under its button in the status column's header.
+    pub(in crate::frontend) fn open_column_filter(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let items = self.filter_menu();
+        if !items.is_empty() {
+            self.open_anchored(items, tables::COLUMN_FILTER, Side::Under, window, cx);
+        }
+    }
+    /// Opens `items` from the control recorded as `anchor`: under its left
+    /// edge, or by its right edge (above or below it), turning toward the
+    /// free side as menus do. Unrecorded, the menu opens at the pointer.
+    fn open_anchored(
+        &mut self,
+        items: Vec<MenuItem>,
+        anchor: &str,
+        side: Side,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // A second click on the control closes its menu, as in Windows.
+        if self.menu_just_shut(anchor) {
+            return;
+        }
+        let bounds = self.ui.anchors.borrow().get(anchor).copied();
+        match bounds {
+            Some(b) => {
+                let at = match side {
+                    Side::Under => point(b.left(), b.bottom() + px(4.)),
+                    Side::Below => point(b.right(), b.bottom() + px(4.)),
+                    Side::Above => point(b.right(), b.top() - px(4.)),
+                };
+                self.open_popup_at(items, at, window, cx);
+            }
+            None => self.open_popup(items, window, cx),
+        }
+        self.anchor_menu(anchor);
+    }
+    /// A choice between labelled options: segments, or (`compact`) a button
+    /// naming the chosen option that drops the list down.
+    pub(in crate::frontend) fn choice(
+        &self,
+        id: &'static str,
+        choices: Vec<(String, Option<&'static str>, Action, bool)>,
+        compact: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if !compact {
+            return self.segments(id, choices, cx);
+        }
+        let p = self.palette;
+        let chosen = choices.iter().position(|choice| choice.3).unwrap_or(0);
+        let (text, glyph) = choices
+            .get(chosen)
+            .map(|choice| (choice.0.clone(), choice.1))
+            .unwrap_or_default();
+        let items: Vec<MenuItem> = choices
+            .into_iter()
+            .map(|(name, _, action, chosen)| MenuItem::new(name, action).checked(chosen))
+            .collect();
+        let key: SharedString = format!("{id}-menu").into();
+        let anchor = key.clone();
+        div()
+            .relative()
+            .flex_shrink_0()
+            .child(
+                self.tool_face(key.clone(), text, glyph, false)
+                    .child(icon("ChevronDown", p.muted).size(px(14.)).mr(px(-4.)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_anchored(items.clone(), &anchor, Side::Under, window, cx)
+                    })),
+            )
+            .child(anchor_probe(key, self.ui.anchors.clone()))
+            .into_any_element()
+    }
+    pub(in crate::frontend) fn has_search(&self) -> bool {
         matches!(
             self.page.as_str(),
             "processes" | "services" | "startup" | "network"
         )
     }
-    /// Pages with controls of their own in the toolbar (`.page-controls`).
+    /// Pages with controls of their own in the page bar (`.page-controls`).
     fn has_controls(&self) -> bool {
         matches!(
             self.page.as_str(),
@@ -912,71 +1030,93 @@ impl Desktop {
         *self.ui.search_fit.borrow_mut() = Some((placeholder, size, fit));
         fit
     }
-    /// Keeps the title row inside the window, as the interface's `fitToolbar`:
-    /// while the row overflows (the search box narrower than its placeholder,
-    /// or the controls running into each other) the toolbar goes one compact
-    /// level further each frame, learning the width the level wanted; it goes
-    /// back once the window is that wide. Another page, text size, language,
-    /// navigation, update button or the history page's "Latest" button
-    /// starts over. Returns the level to draw.
+    /// Keeps the page bar inside the window, as the interface's `fitToolbar`:
+    /// while its end controls run past the row (the drag stretch before them
+    /// already at its least) the bar goes one compact level further each
+    /// frame, learning the room the level wanted; it goes back once the bar
+    /// has that room. Level 1 turns the labelled choices into drop-downs
+    /// (pages without any skip it), level 2 moves the page's controls to a
+    /// row of their own. Each page, text size, language, navigation and the
+    /// history page's "Latest" button keeps what it learned: coming back, the
+    /// bar starts at the level that room allows. Until a level fits, the
+    /// frames drawn at the others are not presented (`track_bar`). Returns the
+    /// level to draw.
     pub(in crate::frontend) fn fit_toolbar(
         &self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> u8 {
         let key = format!(
-            "{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}",
             self.page,
             self.font_size,
             self.nav_top,
-            self.nav_expanded,
             argus_core::i18n::locale() as u8,
-            self.update_button().is_some(),
             // The history page's "Latest" button (`showsLatest`).
             self.page == "history" && self.history_cursor.is_some()
         );
-        let fit = self.search_fit(window, cx);
-        let regions = *self.toolbar_regions.borrow();
-        let width = window.viewport_size().width;
+        let regions = *self.bar_regions.borrow();
+        // The bar's room: the window, less the side navigation beside it.
+        let room = window.viewport_size().width
+            - if self.nav_top {
+                px(0.)
+            } else {
+                px(self.side_nav_width())
+            };
         let mut state = self.ui.toolbar_fit.borrow_mut();
         if state.key != key {
+            let mut learned = std::mem::take(&mut state.learned);
+            let previous = std::mem::take(&mut state.key);
+            if !previous.is_empty() {
+                learned.insert(previous, state.need);
+            }
+            let need = learned.get(&key).copied().unwrap_or_default();
+            // The first level this room does not rule out (an unknown need fits).
+            let mut level = 0;
+            while level < 2
+                && need[level as usize] > px(0.)
+                && room + px(0.5) < need[level as usize]
+            {
+                level += 1;
+            }
             *state = widgets::ToolbarFit {
                 key,
-                ..Default::default()
+                level,
+                need,
+                drawn: None,
+                learned,
             };
+            self.bar_settling.set(true);
         }
         let before = state.level;
-        while state.level > 0 && width + px(0.5) >= state.need[state.level as usize - 1] {
+        while state.level > 0 && room + px(0.5) >= state.need[state.level as usize - 1] {
             state.level -= 1;
         }
         // The regions measure the level last drawn: once the current one is
         // drawn, see whether it fits.
         if state.drawn == Some(state.level)
-            && state.level < 4
+            && regions[0].size.width > px(0.)
             && regions[1].size.width > px(0.)
-            && regions[2].size.width > px(0.)
         {
-            let room = if self.has_search() {
-                px(8.) + fit + px(8.)
-            } else {
-                px(8.)
-            };
-            // Nor may the end controls pass the row's 4 px inset before the
-            // caption buttons: without a search box between them, the start
-            // pushes them there (the interface's `overflow` measures the row's
-            // furthest item).
-            let overflow = (regions[0].right() + room - regions[1].left())
-                .max(regions[1].right() - (regions[2].right() - px(4.)));
-            if overflow > px(0.5) {
+            let overflow = regions[0].right() - (regions[1].right() - px(BAR_INSET));
+            if overflow > px(0.5) && state.level < 2 {
                 let level = state.level as usize;
-                state.need[level] = width + overflow;
-                state.level += 1;
+                state.need[level] = room + overflow;
+                if level == 0 && !self.has_choices() {
+                    // Nothing to fold: level 1 would draw the same bar.
+                    state.need[1] = room + overflow;
+                    state.level = 2;
+                } else {
+                    state.level += 1;
+                }
+            } else {
+                self.bar_settling.set(false);
             }
         }
         let level = state.level;
         if level != before {
             // Measure the new level on the next frame even if nothing in the
-            // toolbar changes size.
+            // bar changes size.
             let owner = cx.entity().downgrade();
             window.defer(cx, move |_, cx| {
                 let _ = owner.update(cx, |_, cx| cx.notify());
@@ -984,21 +1124,21 @@ impl Desktop {
         }
         level
     }
-    /// The toolbar at `level`: the title row and the rows the search box and
-    /// the page's controls move to.
-    pub(in crate::frontend) fn toolbar_height(&self, level: u8) -> Pixels {
-        let row = px(32. + 10.);
-        let mut height = theme::dimension("toolbarHeight");
-        if level >= 4 && self.has_search() {
-            height += row;
-        }
-        if level >= 3 && self.has_controls() {
-            height += row;
-        }
-        height
+    /// Pages whose bar has labelled choices to fold into drop-downs (level 1).
+    fn has_choices(&self) -> bool {
+        self.page == "history"
     }
-    /// What can be done to the selected service, after "Run new task".
-    fn service_actions(&self, wide: bool, cx: &Context<Self>) -> Div {
+    /// The page bar's height below its first row: the controls' own row at
+    /// the last compact level.
+    fn bar_extra(&self, level: u8) -> Pixels {
+        if level >= 2 && self.has_controls() {
+            px(32. + 6.)
+        } else {
+            px(0.)
+        }
+    }
+    /// What can be done to the selected service, after the services filter.
+    fn service_actions(&self, cx: &Context<Self>) -> Div {
         let services = self.data.get("services").map(values).unwrap_or_default();
         let selected = self
             .selected
@@ -1051,96 +1191,15 @@ impl Desktop {
                 .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx)),
             );
         }
-        let p = self.palette;
-        let hover = p.hover;
-        row.child(
-            Button::new("services-console")
-                .h(px(32.))
-                .px(px(12.))
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .rounded(px(4.))
-                .text_color(p.ink)
-                .hover(move |s| s.bg(hover))
-                .accessibility_label(label("services.control.openConsoleTitle"))
-                .child(icon("ExternalIcon", p.ink))
-                .when(wide, |b| b.child(label("services.control.openConsole")))
-                .tooltip(|window, cx| {
-                    widgets::tooltip(label("services.control.openConsoleTitle"), window, cx)
-                })
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.act(
-                        Action::Invoke("open_services_console".into(), json!({})),
-                        window,
-                        cx,
-                    )
-                })),
-        )
-        .child(div().w(px(1.)).h(px(20.)).mx_1().bg(p.stroke))
+        row
     }
     pub(in crate::frontend) fn statusbar(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let sys = &self.snapshot["system"];
-        // The version, a test build's commit count with it (the hash is in the
-        // tooltip): it opens this version's notes, and copies the full version
-        // on a right click.
-        let build = self.shown_version().to_owned();
-        let copied = build.clone();
-        let short = match build.split_once('+') {
-            Some((release, meta)) => {
-                format!("{release}+{}", meta.split('.').next().unwrap_or(meta))
-            }
-            None => build.clone(),
+        let version = match self.update_button() {
+            Some(updates) => self.update_badge(updates, cx),
+            None => self.version_badge(cx),
         };
-        let version_hint = tr!(
-            "shell.status.versionHint",
-            version = build,
-            build = self.build_label()
-        );
-        let version = Button::new("version-badge")
-            .flex()
-            .items_center()
-            .h(px(20.))
-            .my(px(-2.))
-            .px(px(8.))
-            .border_1()
-            .border_color(p.stroke)
-            .rounded_full()
-            .text_color(p.muted)
-            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
-            .hover(move |s| s.bg(p.hover).text_color(p.ink))
-            .active(move |s| s.bg(p.press))
-            .accessibility_label(version_hint.clone())
-            .tooltip(move |window, cx| widgets::tooltip(version_hint.clone(), window, cx))
-            .child(tr!("shell.status.version", version = short))
-            .when(self.options.test, |d| {
-                let anchors = self.ui.anchors.clone();
-                d.child(
-                    canvas(
-                        move |bounds, _, _| {
-                            anchors.borrow_mut().insert("version-badge".into(), bounds);
-                        },
-                        |_, _, _, _| {},
-                    )
-                    .absolute()
-                    .inset_0(),
-                )
-            })
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.open_dialog("whatsnew", json!({}), window, cx)
-            }))
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(move |this, _, window, cx| {
-                    cx.stop_propagation();
-                    this.act(
-                        Action::Copy(copied.clone(), "actions.copyWhat.version"),
-                        window,
-                        cx,
-                    );
-                }),
-            );
         let mut figures = div()
             .flex()
             .flex_wrap()
@@ -1213,37 +1272,41 @@ impl Desktop {
             .child(version)
             .child(figures)
             .when(
-                self.held_order && self.pointer_in_table && !self.paused,
+                self.held_order
+                    && self.pointer_in_table
+                    && self.hover_holds_order()
+                    && !self.paused,
                 |d| {
+                    // A badge in the accent, as the privilege badge beside it;
+                    // the pointer, not the pause button beside it.
                     d.child(
                         div()
                             .id("order-held")
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .h(px(20.))
+                            .my(px(-2.))
+                            .px(px(8.))
+                            .border_1()
+                            .border_color(p.accent.opacity(0.4))
+                            .bg(p.accent.opacity(0.08))
+                            .rounded_full()
+                            .text_color(p.accent)
+                            .child(icon("PointerIcon", p.accent).size(px(12.)))
                             .child(label("shell.status.orderHeld"))
                             .tooltip(|window, cx| {
-                                widgets::tooltip(label("shell.status.orderHeldHint"), window, cx)
+                                widgets::wrapping_tooltip(
+                                    label("shell.status.orderHeldHint").into(),
+                                    px(320.),
+                                    window,
+                                    cx,
+                                )
                             }),
                     )
                 },
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(div().size(px(6.)).rounded_full().bg(if self.paused {
-                        p.faint
-                    } else {
-                        p.cpu
-                    }))
-                    .child(if self.paused {
-                        tr!("shell.status.paused")
-                    } else {
-                        tr!(
-                            "shell.status.interval",
-                            seconds = crate::regional::seconds(self.interval)
-                        )
-                    }),
-            )
+            .child(self.refresh_control(cx))
             .child(
                 div()
                     .id("privilege-badge")
@@ -1262,6 +1325,247 @@ impl Desktop {
                     .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx)),
             )
             .into_any_element()
+    }
+    /// The version, a test build's commit count with it (the hash is in the
+    /// tooltip): it opens this version's notes, and copies the full version
+    /// on a right click.
+    fn version_badge(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let build = self.shown_version().to_owned();
+        let copied = build.clone();
+        let short = match build.split_once('+') {
+            Some((release, meta)) => {
+                format!("{release}+{}", meta.split('.').next().unwrap_or(meta))
+            }
+            None => build.clone(),
+        };
+        let version_hint = tr!(
+            "shell.status.versionHint",
+            version = build,
+            build = self.build_label()
+        );
+        Button::new("version-badge")
+            .flex()
+            .items_center()
+            .h(px(20.))
+            .my(px(-2.))
+            .px(px(8.))
+            .border_1()
+            .border_color(p.stroke)
+            .rounded_full()
+            .text_color(p.muted)
+            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+            .hover(move |s| s.bg(p.hover).text_color(p.ink))
+            .active(move |s| s.bg(p.press))
+            .accessibility_label(version_hint.clone())
+            .tooltip(move |window, cx| widgets::tooltip(version_hint.clone(), window, cx))
+            .child(tr!("shell.status.version", version = short))
+            .when(self.options.test, |d| {
+                d.child(anchor_probe("version-badge", self.ui.anchors.clone()))
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_dialog("whatsnew", json!({}), window, cx)
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.act(
+                        Action::Copy(copied.clone(), "actions.copyWhat.version"),
+                        window,
+                        cx,
+                    );
+                }),
+            )
+            .into_any_element()
+    }
+    /// The version badge while an update waits: the download's progress
+    /// fills it; ready to install, or a newer portable build out, it wears the
+    /// accent. It opens the update; a right click offers to skip the version.
+    fn update_badge(&self, updates: &Value, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let state = text(updates, "state");
+        let version = text(updates, "version").to_owned();
+        let total = number(updates, "total");
+        let progress = if total > 0. {
+            (number(updates, "received") / total).clamp(0., 1.)
+        } else {
+            0.
+        };
+        let (title, hint) = match state {
+            "downloading" => (
+                if total > 0. {
+                    tr!(
+                        "settings.update.status.downloadingPercent",
+                        version = version,
+                        percent = (progress * 100.).floor() as u64
+                    )
+                } else {
+                    tr!("settings.update.status.downloading", version = version)
+                },
+                tr!("updates.button.downloadingTitle", version = version),
+            ),
+            "available" => (
+                tr!("updates.badge.available", version = version),
+                tr!("updates.button.availableTitle", version = version),
+            ),
+            _ => (
+                tr!("updates.badge.ready", version = version),
+                tr!("updates.button.title", version = version),
+            ),
+        };
+        let filled = state != "downloading";
+        let color = if filled { p.on_accent } else { p.ink };
+        Button::new("update-status")
+            .relative()
+            .flex()
+            .items_center()
+            .gap(px(5.))
+            .h(px(20.))
+            .my(px(-2.))
+            .px(px(8.))
+            .rounded_full()
+            .overflow_hidden()
+            .text_color(color)
+            .font_features(FontFeatures(Arc::new(vec![("tnum".into(), 1)])))
+            .when(filled, |b| b.bg(p.accent).hover(|s| s.opacity(0.92)))
+            .when(!filled, |b| {
+                b.border_1()
+                    .border_color(p.stroke)
+                    .hover(move |s| s.bg(p.hover))
+                    .child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .top_0()
+                            .bottom_0()
+                            .w(relative(progress as f32))
+                            .bg(p.accent.opacity(0.22)),
+                    )
+            })
+            .child(icon("UpdateIcon", color).size(px(12.)))
+            .child(title)
+            .accessibility_label(hint.clone())
+            .tooltip(move |window, cx| widgets::tooltip(hint.clone(), window, cx))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.act(Action::Dialog("update".into(), json!({})), window, cx)
+            }))
+            .on_mouse_down(MouseButton::Right, {
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    let items = vec![
+                        MenuItem::new(
+                            label("updates.menu.view"),
+                            Action::Dialog("update".into(), json!({})),
+                        )
+                        .icon("UpdateIcon"),
+                        MenuItem::new(
+                            label("updates.menu.dismiss"),
+                            Action::Preference("updateDismissed".into(), json!(version)),
+                        )
+                        .icon("DismissIcon"),
+                    ];
+                    this.act(Action::Popup(items), window, cx);
+                })
+            })
+            .into_any_element()
+    }
+    /// Sampling in the status bar: a press pauses or resumes every page, the
+    /// reading beside it opens the refresh rate.
+    fn refresh_control(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let paused = self.paused;
+        let color = if paused { p.accent } else { p.muted };
+        let pause = label(if paused {
+            "shell.resume"
+        } else {
+            "shell.pause"
+        });
+        let pause_tip = format!("{pause}\n{}", label("shell.status.holdHint"));
+        let rate = label("shell.interval.label");
+        let reading = if paused {
+            tr!("shell.status.paused")
+        } else {
+            tr!(
+                "shell.status.interval",
+                seconds = crate::regional::seconds(self.interval)
+            )
+        };
+        div()
+            .id("status-rate")
+            .relative()
+            .flex()
+            .items_center()
+            .h(px(20.))
+            .my(px(-2.))
+            .border_1()
+            .border_color(if paused {
+                p.accent.opacity(0.55)
+            } else {
+                p.stroke
+            })
+            .rounded_full()
+            .overflow_hidden()
+            .text_color(color)
+            // The reading, then the pause button at the end: the button stays
+            // where it is as the reading changes length with the state.
+            .child(
+                Button::new("status-interval")
+                    .h_full()
+                    .pl(px(7.))
+                    .pr(px(6.))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .hover(move |s| s.bg(p.hover))
+                    .active(move |s| s.bg(p.press))
+                    .accessibility_label(rate.clone())
+                    .child(div().size(px(6.)).rounded_full().bg(if paused {
+                        p.faint
+                    } else {
+                        p.cpu
+                    }))
+                    .child(reading)
+                    .child(icon("ChevronUp", color).size(px(12.)))
+                    .tooltip(move |window, cx| widgets::tooltip(rate.clone(), window, cx))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.open_interval_menu(window, cx)),
+                    ),
+            )
+            .child(div().w(px(1.)).h_full().bg(p.stroke))
+            .child(
+                Button::new("status-pause")
+                    .h_full()
+                    .px(px(6.))
+                    .flex()
+                    .items_center()
+                    .hover(move |s| s.bg(p.hover))
+                    .active(move |s| s.bg(p.press))
+                    .accessibility_label(pause)
+                    .child(icon(if paused { "PlayIcon" } else { "PauseIcon" }, color).size(px(12.)))
+                    .tooltip(move |window, cx| widgets::tooltip(pause_tip.clone(), window, cx))
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.act(Action::Pause, window, cx)),
+                    ),
+            )
+            .child(anchor_probe(RATE, self.ui.anchors.clone()))
+            .into_any_element()
+    }
+    fn open_interval_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The menu ticks the current one (`open_popup_at`).
+        let items = INTERVALS
+            .iter()
+            .map(|ms| {
+                MenuItem::new(
+                    tr!(
+                        "shell.interval.option",
+                        seconds = crate::regional::seconds(*ms)
+                    ),
+                    Action::Interval(*ms),
+                )
+            })
+            .collect();
+        self.open_anchored(items, RATE, Side::Above, window, cx);
     }
     /// While a splitter is dragged: follows the pointer and ends the drag on
     /// release wherever they happen. The listeners are the window's, in the
@@ -1346,15 +1650,28 @@ impl Render for Desktop {
             self.hold_entrance(window, cx);
         }
         let p = self.palette;
-        let toolbar_level = self.fit_toolbar(window, cx);
+        let bar_level = self.fit_toolbar(window, cx);
+        let bar_extra = self.bar_extra(bar_level);
         let toolbar = self.region(
             regions::RegionKind::Toolbar,
             StyleRefinement::default()
                 .w_full()
-                .h(self.toolbar_height(toolbar_level))
+                .h(theme::dimension("toolbarHeight"))
                 .flex_shrink_0(),
             cx,
         );
+        // Beside the side navigation the page bar heads the page: its row
+        // (32 px and the 6 px gap below) and the controls' own row.
+        let header = (!self.nav_top).then(|| {
+            self.region(
+                regions::RegionKind::Header,
+                StyleRefinement::default()
+                    .w_full()
+                    .h(px(32. + 6.) + bar_extra)
+                    .flex_shrink_0(),
+                cx,
+            )
+        });
         // The page is a region: an animation inside the toolbar or a page
         // entrance replays it, and its own frames redraw only it.
         let content = self.region(
@@ -1382,6 +1699,7 @@ impl Render for Desktop {
                     .min_h_0()
                     .flex()
                     .flex_col()
+                    .children(header)
                     .child(
                         div()
                             .flex_1()
@@ -1428,7 +1746,7 @@ impl Render for Desktop {
                         regions::RegionKind::Navigation,
                         StyleRefinement::default()
                             .w_full()
-                            .h(tabs.max(px(32.)) + px(6.))
+                            .h(tabs.max(px(32.)) + px(6.) + bar_extra)
                             .flex_shrink_0(),
                         cx,
                     ),
@@ -1480,12 +1798,11 @@ fn track_region<const N: usize>(
     }
 }
 
-/// Measures a part of the title row (its start, its end, the row) for the
-/// search box between them and the compact level (`fit_toolbar`). Another
-/// page's controls move them on its first frame: the toolbar alone draws again
-/// to place the search box, unless the row no longer fits. A desktop
+/// Measures the title row's brand and the row itself (the search box sits
+/// between them), and the search box for tests. When the brand or the row
+/// moves, the toolbar alone draws again to place the search box: a desktop
 /// notification would draw the whole page again, in the middle of its entrance.
-fn track_toolbar(
+fn track_title(
     index: usize,
     regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
     owner: WeakEntity<Desktop>,
@@ -1495,21 +1812,72 @@ fn track_toolbar(
             return;
         }
         regions.borrow_mut()[index] = bounds;
+        if index == 1 {
+            return;
+        }
         let owner = owner.clone();
-        window.defer(cx, move |window, cx| {
+        window.defer(cx, move |_, cx| {
             let _ = owner.update(cx, |this, cx| {
-                let drawn = this.ui.toolbar_fit.borrow().drawn;
-                // Steps to another level (and asks for a desktop render) if
-                // the row overflows at the level drawn.
-                let level = this.fit_toolbar(window, cx);
-                if drawn == Some(level) {
-                    this.refresh_region(regions::RegionKind::Toolbar, cx);
-                } else {
-                    cx.notify();
-                }
+                this.refresh_region(regions::RegionKind::Toolbar, cx)
             });
         });
     }
+}
+
+/// Measures the page bar's end controls and the bar (`fit_toolbar`), and its
+/// drag stretch for tests. Another page's controls move them on its first
+/// frame: the bar steps to another level (and the desktop draws again) only
+/// if it no longer fits at the level drawn. While the bar is `settling`, a
+/// frame at a `level` that does not fit is only measured: the controls never
+/// show at the end of the row and then jump below it.
+fn track_bar(
+    index: usize,
+    regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
+    owner: WeakEntity<Desktop>,
+    settling: Rc<Cell<bool>>,
+    level: u8,
+) -> impl Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+    move |bounds, window, cx| {
+        if regions.borrow()[index] == bounds {
+            return;
+        }
+        regions.borrow_mut()[index] = bounds;
+        if index == 2 {
+            return;
+        }
+        if settling.get() && level < 2 {
+            let [trailing, bar, _] = *regions.borrow();
+            if trailing.size.width > px(0.)
+                && bar.size.width > px(0.)
+                && trailing.right() - (bar.right() - px(BAR_INSET)) > px(0.5)
+            {
+                window.defer_presentation_until_layout();
+            }
+        }
+        let owner = owner.clone();
+        window.defer(cx, move |window, cx| {
+            let _ = owner.update(cx, |this, cx| {
+                this.fit_toolbar(window, cx);
+            });
+        });
+    }
+}
+
+/// Records an element's bounds under `key`: a menu it opens hangs from them,
+/// and tests reach it there (`clickAnchor`).
+fn anchor_probe(
+    key: impl Into<SharedString>,
+    anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
+) -> impl IntoElement {
+    let key = key.into();
+    canvas(
+        move |bounds, _, _| {
+            anchors.borrow_mut().insert(key, bounds);
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .inset_0()
 }
 
 /// Up time in the status bar, in words: days and hours, hours and minutes, or minutes and seconds.

@@ -23,6 +23,10 @@ const chartGap = process.argv.includes("--chart-gap");
 const opaqueWindow = process.argv.includes("--opaque-window");
 const snapshots = process.argv.includes("--snapshots");
 const interactions = process.argv.includes("--interactions");
+const scrollCopy = process.argv.includes("--scroll-copy");
+assert(!(scrollCopy && (live || interactions)), "scroll-copy comparisons require a dedicated fixed replay");
+// Hardware acceleration off: the software rasterizer draws the window.
+const softwareRendering = process.argv.includes("--software-rendering");
 assert(!(interactions && (live || retained || chartScroll || chartGap || snapshots)), "interaction comparisons require a dedicated fixed replay");
 const previewFlag = process.argv.indexOf("--readme");
 const preview = previewFlag < 0 ? null : process.argv[previewFlag + 1];
@@ -39,7 +43,13 @@ const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
-  JSON.stringify({ language: preview ?? "zh-CN", theme: "dark", closeToTray: false, updateCheck: false }),
+  JSON.stringify({
+    language: preview ?? "zh-CN",
+    theme: "dark",
+    closeToTray: false,
+    updateCheck: false,
+    hardwareAcceleration: !softwareRendering,
+  }),
 );
 let fixture;
 if (preview) {
@@ -139,7 +149,7 @@ const child = spawn(
     ...(live ? [] : ["--fixture", resolve(output, "fixture.json")]),
     ...(preview ? ["--width", "1600", "--height", "1000"] : []),
   ],
-  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll || chartGap ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots || chartGap ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
+  { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(retained || chartScroll || chartGap || scrollCopy ? { ARGUS_GPUI_DIAGNOSTICS: "1" } : {}), ...(snapshots || chartGap ? { ARGUS_GPUI_FRAME_TRACE: "1" } : {}) } },
 );
 const events = [];
 let error = "",
@@ -520,6 +530,71 @@ try {
       const minimumEndpoint = name === "engine-grid-entry" ? 6 : 50;
       assert(endpoints > minimumEndpoint && lowest >= endpoints * 0.75, `${name}: contrast fell from ${endpoints} to ${lowest}`);
     }
+  } else if (scrollCopy) {
+    // Frames of a wheel glide copy the list from the last frame and draw only
+    // what came into view or changed. Each comparison captures the frame the
+    // glide left on screen, then a complete paint of the same scene: they
+    // must be identical. The pointer rests on the list, so the hovered row
+    // changes while the rows pass under it. Graphics cards draw a glyph moved
+    // by whole pixels to the same pixels; the software rasterizer's edges can
+    // differ by two code values from one drawn where it now is.
+    const glyphRounding = softwareRendering ? 2 : 0;
+    let copied = 0;
+    // Group headers stick to the top, draw a gradient rule and name the
+    // group beside the scrollbar for a while after a scroll: wait it out.
+    const groups = { view: "apps", preference: { processSort: { key: "name", desc: false }, groupByUser: "off" } };
+    for (const [name, state, at, settle = 700] of [
+      ["dark", { theme: "dark" }, [300, 450]],
+      ["light", { theme: "light" }, [300, 450]],
+      ["details", { theme: "dark", details: true }, [300, 450]],
+      // Inside the list of the 1000 × 680 window at each scale.
+      ["scale-125", { theme: "dark", preference: { uiScale: 125 } }, [300, 330]],
+      ["scale-150", { theme: "light", preference: { uiScale: 150 } }, [300, 300]],
+      // Last: the grouping stays for the cases that follow.
+      ["groups", { theme: "dark", ...groups, preference: { ...groups.preference, uiScale: 100 } }, [300, 450], 2000],
+      ["groups-light", { theme: "light", ...groups }, [300, 450], 2000],
+    ]) {
+      let caseCopied = 0;
+      send({ page: "processes", uiMotion: "off", motion: "fluid", details: false, pointerOutside: true, ...state });
+      await sleep(1600);
+      // Curves hold still: only the list changes between the two captures.
+      send({ chartTime: fixture.snapshot.timestamp + 700 });
+      await sleep(500);
+      send({ mouse: { type: "move", x: at[0], y: at[1] }, passive: true });
+      await sleep(300);
+      for (const [step, wheel] of [
+        ["down", { lines: -3 }],
+        ["down-again", { lines: -3 }],
+        ["down-far", { lines: -9 }],
+        ["up", { lines: 3 }],
+        ["up-far", { lines: 6 }],
+        ["sideways", { lines: -3, shift: true }],
+        ["sideways-back", { lines: 3, shift: true }],
+        ["down-late", { lines: -3 }],
+      ]) {
+        const start = events.length;
+        send({ wheel: { x: at[0], y: at[1], ...wheel }, passive: true });
+        // A glide lasts at most 200 ms.
+        await sleep(settle);
+        const frames = events.slice(start).filter((event) => event.event === "gpu-scroll-copy").length;
+        copied += frames;
+        caseCopied += frames;
+        const before = `${name}-${step}-copied`, after = `${name}-${step}-full`;
+        await capture(before, true, false);
+        send({ fullPaint: true });
+        await sleep(300);
+        await capture(after, true, false);
+        const difference = compareCaptures(before, after);
+        events.push({ event: "pixel-comparison", label: before, copiedFrames: frames, ...difference });
+        assert(difference.maxChannelDelta <= glyphRounding,
+          `${before}: a copied scroll frame differs from a complete paint: ${JSON.stringify(difference)}`);
+      }
+      // The list scrolled: some frames were copied (the sideways steps move
+      // each row on its own and are drawn the usual way).
+      if (!process.env.ARGUS_GPUI_DISABLE_SCROLL_COPY) assert(caseCopied > 0, `${name}: no scroll frame was copied`);
+    }
+    if (process.env.ARGUS_GPUI_DISABLE_SCROLL_COPY) assert.equal(copied, 0, "scroll copy ran while disabled");
+    else assert(copied > 0, "no scroll frame was copied");
   } else if (interactions) {
     for (const theme of ["dark", "light"]) {
       send({ page: "processes", theme, details: true, uiMotion: "off", motion: "fluid", pointerOutside: true });
@@ -578,11 +653,16 @@ try {
       ["overall-light", { page: "performance", device: "cpu", cpuMode: "overall" }],
       ["logical-light", { page: "performance", device: "cpu", cpuMode: "logical" }],
     ];
+    // A hovered card's tint lies over its curve together with the scrim and
+    // the text. A full paint rounds the window to 8 bits after each layer; a
+    // composed frame blends one 8-bit image of them over the curve and lets the
+    // compositor interpolate between 8-bit scroll phases. Where a steep curve
+    // edge meets all of them, single pixels differ by three code values.
     const hoverCases = ["dark", "light"].flatMap(theme => [
-      [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }],
+      [`vital-tooltip-${theme}`, { page: "processes", theme, details: true }, { hoverChart: "vital-cpu" }, 3],
       [`column-tooltip-${theme}`, { page: "processes", theme }, { hoverHeader: "name" }],
     ]);
-    for (const [name, state, hover] of hoverRetained ? hoverCases : cases) {
+    for (const [name, state, hover, chartRounding = 2] of hoverRetained ? hoverCases : cases) {
       send({ ...state, uiMotion: "off", pointerOutside: true });
       await sleep(1500);
       send({ pointerOutside: true });
@@ -615,8 +695,13 @@ try {
         const scoped = compareCompositedCaptures(picture, after, `${before}-reuse`);
         events.push({ event: "pixel-comparison", label: picture, ...scoped });
         // An unchanged parent can keep the composited charts. Their floating
-        // blend allows two code values; static ink outside their clips allows one.
-        assert(scoped.maxChannelDelta <= 2 && scoped.maxOutsideCharts <= 1,
+        // blend allows `chartRounding` code values (two, three under a hover
+        // tint); static ink outside their clips allows one. On the software
+        // rasterizer, a foreground composed from its own 8-bit image differs
+        // from one drawn straight into the frame by two at antialiased edges
+        // (a tooltip corner over a tinted cell).
+        const inkRounding = softwareRendering ? 2 : 1;
+        assert(scoped.maxChannelDelta <= Math.max(chartRounding, inkRounding) && scoped.maxOutsideCharts <= inkRounding,
           `${picture}: retained rendering differs from a full paint: ${JSON.stringify(scoped)}`);
         }
       }
@@ -746,10 +831,11 @@ if (exitCode !== 0 || error || events.some((e) => e.event === "focusViolation"))
   throw Error(`Native validation failed: ${error}`);
 for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.endsWith("-dialog"))) {
   assert(event.dragPoints > 0, `${event.label}: empty title bar lost its native drag region`);
-  assert(event.actionsAreClient, `${event.label}: toolbar controls were classified as draggable caption`);
+  assert(event.actionsAreClient, `${event.label}: search box or page bar controls were classified as draggable caption`);
+  assert(event.stretchDrags, `${event.label}: the page bar's empty stretch does not drag the window`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
 }
-if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions) {
+if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions && !scrollCopy) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {
     const state = events.find((event) => event.event === "ui-render-counts" && event.label === label);
     assert(state && state.sort === sort && state.descending === descending, `${label}: clicking the full header did not sort`);

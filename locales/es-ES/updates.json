@@ -7,7 +7,12 @@
   "openDialog": "Ver novedades",
   "button": {
     "title": "Argus {version} está listo. Haga clic para ver las novedades e instalarlo.",
-    "availableTitle": "Argus {version} está disponible. Haga clic para ver las novedades"
+    "availableTitle": "Argus {version} está disponible. Haga clic para ver las novedades",
+    "downloadingTitle": "Descargando Argus {version}. Podrá instalarse al terminar. Haga clic para ver las novedades"
+  },
+  "badge": {
+    "ready": "Instalar {version}",
+    "available": "Nueva versión {version}"
   },
   "menu": {
     "view": "Ver novedades",

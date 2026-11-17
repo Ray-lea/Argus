@@ -26,7 +26,6 @@
     "start": "啟動服務",
     "stop": "停止服務",
     "restart": "重新啟動服務",
-    "openConsole": "服務管理員",
     "openConsoleTitle": "開啟 Windows 服務管理員"
   },
   "menu": {

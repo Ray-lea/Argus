@@ -125,6 +125,7 @@
     "recoveryFile": "Recuperación de emergencia del Administrador de tareas de Argus\r\n\r\nPrimero ejecute argus-taskmgr-recover.exe en esta carpeta y acepte la solicitud de administrador. La herramienta funciona sin la ventana de Argus ni el servicio en segundo plano.\r\nSi la herramienta también está dañada: pulse Win+R, escriba regedit, ábralo como administrador y vaya a HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Compruebe que el valor Debugger apunta exactamente a argus-taskmgr-launcher.exe --task-manager en esta carpeta y que before.debugger en taskmgr-recovery.json es el valor JSON null. Solo si se cumplen ambas condiciones, elimine únicamente el valor Debugger. No elimine la clave taskmgr.exe completa ni la configuración de otras herramientas.\r\nLa recuperación elimina únicamente el valor Debugger que coincida exactamente con el comando de inicio de Argus y conserva los demás ajustes. Sigue disponible si cambian los permisos de la carpeta o falta el registro de recuperación.\r\n",
     "status": {
       "native": "Se está utilizando el Administrador de tareas de Windows.",
+      "revoked": "La sustitución activada anteriormente se ha revocado. Ahora se utiliza el Administrador de tareas de Windows. Revise los informes de detección del software de seguridad antes de volver a activarla.",
       "needsService": "Instale el servicio privilegiado antes de activar la sustitución del Administrador de tareas.",
       "conflict": "Ya existe otra configuración de sustitución o filtrado por ruta. Argus no la sobrescribirá.",
       "enabled": "Los accesos al Administrador de tareas ahora abren Argus. Si Argus no se inicia, se intenta abrir el Administrador de tareas de Windows.",
@@ -182,7 +183,7 @@
     "notAllowed": "Esta operación no está permitida en el estado actual; actualice y vuelva a intentarlo",
     "helperNotStarted": "No se pudo iniciar el asistente de mantenimiento del administrador",
     "helperBusy": "El asistente de mantenimiento sigue trabajando; actualice el estado y no repita la operación",
-    "helperFailed": "La configuración del Administrador de tareas no ha finalizado. Compruebe el mensaje del asistente de mantenimiento y actualice el estado",
+    "helperExited": "El asistente de mantenimiento finalizó de forma inesperada (código de salida: {code}). Revise los informes de bloqueo del software de seguridad y actualice el estado.",
     "invalidCaller": "Proceso UI no válido",
     "invalidInstance": "Instancia de proceso no válida",
     "noLauncher": "Esta compilación no incluye el iniciador independiente",

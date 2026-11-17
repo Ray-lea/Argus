@@ -125,6 +125,7 @@
     "recoveryFile": "Argus : récupération d’urgence du Gestionnaire des tâches\r\n\r\nExécutez d’abord argus-taskmgr-recover.exe dans ce dossier et acceptez la demande d’autorisation d’administrateur. Cet outil fonctionne sans la fenêtre Argus ni le service en arrière-plan.\r\nSi cet outil est également endommagé : appuyez sur Win+R, saisissez regedit, ouvrez-le en tant qu’administrateur et accédez à HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Vérifiez que la valeur Debugger pointe bien vers argus-taskmgr-launcher.exe --task-manager dans ce dossier et que before.debugger dans taskmgr-recovery.json contient la valeur JSON null. Si ces deux conditions sont remplies, supprimez uniquement la valeur Debugger. Conservez la clé taskmgr.exe elle-même et les paramètres des autres outils.\r\nLa récupération supprime uniquement une valeur Debugger correspondant exactement à la commande de lancement d’Argus et conserve les autres paramètres. Elle reste disponible si les autorisations du dossier changent ou si l’enregistrement de récupération manque.\r\n",
     "status": {
       "native": "Le Gestionnaire des tâches Windows est utilisé.",
+      "revoked": "Le remplacement précédemment activé a été annulé. Le Gestionnaire des tâches de Windows est à nouveau utilisé. Consultez les rapports de détection du logiciel de sécurité avant de le réactiver.",
       "needsService": "Installez le service privilégié avant d’activer le remplacement de Gestionnaire des tâches.",
       "conflict": "Un autre filtre de remplacement ou de chemin est configuré. Argus ne l’écrasera pas.",
       "enabled": "Les accès au Gestionnaire des tâches ouvrent désormais Argus. Si son démarrage échoue, une tentative d’ouverture du Gestionnaire des tâches Windows est effectuée.",
@@ -182,7 +183,7 @@
     "notAllowed": "Cette opération n’est pas autorisée dans l’état actuel ; actualisez et réessayez",
     "helperNotStarted": "Impossible de démarrer l’assistant de maintenance de l’administrateur",
     "helperBusy": "L’assistant de maintenance travaille encore ; actualisez l’état sans répéter l’opération",
-    "helperFailed": "La configuration de Gestionnaire des tâches n’a pas été terminée ; vérifiez le message de l’assistant de maintenance et actualisez l’état",
+    "helperExited": "L’assistant de maintenance s’est arrêté de façon inattendue (code de sortie : {code}). Consultez les rapports de blocage du logiciel de sécurité et actualisez l’état.",
     "invalidCaller": "Processus UI non valide",
     "invalidInstance": "Instance de processus non valide",
     "noLauncher": "Cette version n’inclut pas le lanceur autonome",

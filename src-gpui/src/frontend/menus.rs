@@ -14,6 +14,9 @@ const MIN_WIDTH: f32 = 220.;
 const SEPARATOR: f32 = 9.;
 /// Room kept from the window's edges.
 const MARGIN: f32 = 8.;
+/// How long after a press on a menu's control closed the menu the click
+/// it makes still leaves the menu closed (`Desktop::menu_shut`).
+const SHUT_CLICK: Duration = Duration::from_secs(1);
 /// Hover time before a submenu opens or another item closes it (Windows uses about 400 ms).
 const SUBMENU_DELAY: Duration = Duration::from_millis(250);
 /// `flyout-in`, and how long a closed surface takes to roll up.
@@ -74,6 +77,8 @@ pub(super) struct Popup {
     sub_leaving: Option<(Submenu, Instant)>,
     /// The pending hover change of the submenu.
     timer: Option<Task<()>>,
+    /// The control the menu drops from (`Desktop::open_anchored`).
+    anchor: Option<String>,
 }
 
 impl Popup {
@@ -368,6 +373,7 @@ impl Desktop {
             sub: None,
             sub_leaving: None,
             timer: None,
+            anchor: None,
         });
         cx.set_global(Presence {
             open: true,
@@ -375,6 +381,21 @@ impl Desktop {
         });
         window.refresh();
         cx.notify();
+    }
+
+    /// Marks the open menu as dropping from the control `anchor`.
+    pub(in crate::frontend) fn anchor_menu(&mut self, anchor: &str) {
+        if let Some(popup) = &mut self.popup {
+            popup.anchor = Some(anchor.to_owned());
+        }
+    }
+
+    /// Whether a press on the control `anchor` has just closed its menu: the
+    /// click it makes leaves the menu closed instead of opening it again.
+    pub(in crate::frontend) fn menu_just_shut(&mut self, anchor: &str) -> bool {
+        self.menu_shut
+            .take()
+            .is_some_and(|(shut, at)| shut == anchor && at.elapsed() < SHUT_CLICK)
     }
 
     /// Drops the menu at once, as its page goes.
@@ -446,10 +467,8 @@ impl Desktop {
         // press on another row must still find the rows it was aimed at.
         cx.spawn_in(window, async move |this, cx| {
             let _ = this.update_in(cx, |this, _, cx| {
-                this.rebuild_rows(
-                    this.pointer_in_table || this.modal.is_some() || this.popup.is_some(),
-                    cx,
-                );
+                let hold = this.holds_order();
+                this.rebuild_rows(hold, cx);
                 cx.notify();
             });
         })
@@ -725,7 +744,18 @@ impl Desktop {
         if let Some(popup) = &self.popup {
             layer = layer
                 // A press anywhere else closes the menu and still reaches what is there.
-                .on_any_mouse_down(cx.listener(|this, _, window, cx| {
+                .on_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    // On the menu's own control, the press only closes it.
+                    let anchor = this.popup.as_ref().and_then(|popup| popup.anchor.clone());
+                    this.menu_shut = anchor
+                        .filter(|anchor| {
+                            this.ui
+                                .anchors
+                                .borrow()
+                                .get(anchor.as_str())
+                                .is_some_and(|bounds| bounds.contains(&event.position))
+                        })
+                        .map(|anchor| (anchor, Instant::now()));
                     this.close_menu(window, cx);
                 }))
                 .children(self.menu_surfaces(popup, None, &mut animating, window, cx));

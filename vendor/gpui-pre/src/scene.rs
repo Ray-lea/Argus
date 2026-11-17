@@ -63,12 +63,29 @@ pub struct Scene {
     pub subpixel_sprites: Vec<SubpixelSprite>,
     pub polychrome_sprites: Vec<PolychromeSprite>,
     pub surfaces: Vec<PaintSurface>,
+    /// Argus: the scroll containers prepainted for this scene, where they show
+    /// their content and how far it is scrolled (`ScrollRegion`).
+    pub scroll_regions: Vec<ScrollRegion>,
+}
+
+/// Argus: a scroll container of a scene. A renderer can compare its offset
+/// with the last scene's: content that moved by whole device pixels inside
+/// `clip` may be copied there, after checking that the primitives agree.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollRegion {
+    /// Stable while the container keeps its scroll state.
+    pub id: usize,
+    /// Where the container shows its content, in device pixels.
+    pub clip: Bounds<ScaledPixels>,
+    /// How far its content is scrolled, in device pixels.
+    pub offset: Point<ScaledPixels>,
 }
 
 #[expect(missing_docs)]
 impl Scene {
     pub fn clear(&mut self) {
         self.paint_revision = next_revision();
+        self.scroll_regions.clear();
         self.force_full_redraw.set(false);
         self.animated_order = None;
         self.retained_bars.clear();
@@ -1182,7 +1199,7 @@ impl From<Underline> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Shadow {
