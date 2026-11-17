@@ -6,8 +6,8 @@
 //! default device, or of one GPU, disk or network adapter of several.
 use super::pages::performance::rail;
 use super::*;
-use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor};
-use crate::shell::{TaskbarCell, TaskbarGroup};
+use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle};
+use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarTone};
 use windows::Win32::Foundation::HWND;
 
 /// From this percent or temperature (°C) a reading turns amber, as on the
@@ -294,6 +294,8 @@ pub(in crate::frontend) struct Gauge {
     /// empty while it is unknown, so that the window keeps its height).
     pub bar: bool,
     pub high: bool,
+    /// Where its recent values are kept, for a curve.
+    pub trend: Option<Trend>,
 }
 
 /// The graphics card the GPU readings without a device follow: the one
@@ -618,6 +620,98 @@ pub(in crate::frontend) fn gauges(
                     false,
                 ),
             };
+            // Where the timeline keeps the reading's recent values.
+            let of = |sample: &Value, field: &str, kind: &str| {
+                let identity = if kind == "disks" {
+                    sample["info"]["index"].to_string()
+                } else {
+                    text(&sample["info"], "id").to_owned()
+                };
+                format!("hardware.{kind}.{identity}.{field}")
+            };
+            let gpu_trend = |field: &str, scale: Scale| {
+                gpu.map(|gpu| Trend::new(vec![of(gpu, field, "gpus")], Combine::Sum, scale))
+            };
+            let trend = match metric {
+                Metric::Cpu => Some(Trend::one("system.cpu", Scale::Percent)),
+                Metric::CpuTemperature => {
+                    Some(Trend::one(model::CPU_TEMPERATURE_SERIES, Scale::Percent))
+                }
+                Metric::CpuClock => Some(Trend::one("hardware.cpuMhz", Scale::Span)),
+                Metric::CpuPower => Some(Trend::one(
+                    if hardware["power"]["package"].is_number() {
+                        "hardware.power.package"
+                    } else {
+                        "hardware.power.cores"
+                    },
+                    Scale::Span,
+                )),
+                Metric::Memory | Metric::MemoryUsed => Some(Trend::one(
+                    "system.memUsed",
+                    Scale::Of(number(system, "memTotal")),
+                )),
+                Metric::Gpu => gpu_trend("util", Scale::Percent),
+                Metric::GpuTemperature => gpu_trend("temperature", Scale::Percent),
+                Metric::GpuMemory => gpu.and_then(|gpu| {
+                    gpu_trend(
+                        "dedicatedUsed",
+                        Scale::Of(number(&gpu["info"], "dedicatedTotal")),
+                    )
+                }),
+                Metric::GpuClock => gpu_trend("clockMhz", Scale::Span),
+                Metric::GpuPower => match gpu {
+                    Some(gpu) if gpu["boardPower"].is_null() => gpu_trend("power", Scale::Percent),
+                    _ => gpu_trend("boardPower", Scale::Span),
+                },
+                Metric::GpuFan => gpu_trend("fanRpm", Scale::Span),
+                Metric::Disk => Some(match &device {
+                    None => Trend::one("totals.disk", Scale::Peak(RATE_FLOOR)),
+                    Some(_) => Trend::new(
+                        disk_list
+                            .iter()
+                            .flat_map(|disk| {
+                                [of(disk, "read", "disks"), of(disk, "write", "disks")]
+                            })
+                            .collect(),
+                        Combine::Sum,
+                        Scale::Peak(RATE_FLOOR),
+                    ),
+                }),
+                Metric::DiskActive => Some(Trend::new(
+                    disk_list
+                        .iter()
+                        .map(|disk| of(disk, "active", "disks"))
+                        .collect(),
+                    Combine::Max,
+                    Scale::Percent,
+                )),
+                Metric::DiskTemperature => hottest.map(|disk| {
+                    Trend::new(
+                        vec![of(disk, "temperature", "disks")],
+                        Combine::Sum,
+                        Scale::Percent,
+                    )
+                }),
+                Metric::Network => Some(match &device {
+                    None => Trend::one("totals.network", Scale::Peak(RATE_FLOOR)),
+                    Some(_) => Trend::new(
+                        nic_list
+                            .iter()
+                            .flat_map(|nic| [of(nic, "rx", "nics"), of(nic, "tx", "nics")])
+                            .collect(),
+                        Combine::Sum,
+                        Scale::Peak(RATE_FLOOR),
+                    ),
+                }),
+                Metric::Battery => values(&hardware["batteries"]).first().map(|battery| {
+                    Trend::new(
+                        vec![of(battery, "percent", "batteries")],
+                        Combine::Sum,
+                        Scale::Percent,
+                    )
+                }),
+                Metric::Uptime => None,
+            };
             Gauge {
                 reading: reading.clone(),
                 name,
@@ -626,33 +720,172 @@ pub(in crate::frontend) fn gauges(
                 fraction: shown.fraction,
                 bar: shown.bar,
                 high: shown.high,
+                trend,
             }
         })
         .collect()
 }
 
+/// How a trend's series add up at each sample.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::frontend) enum Combine {
+    Sum,
+    Max,
+}
+
+/// What a trend's values are measured against: a hundred percent (or
+/// degrees), a total, the largest value it shows but no less than a floor
+/// (so that an idle rate stays low), or the span between its lowest and
+/// highest values (a clock, a power or a fan, which seldom drop to nothing:
+/// measured from zero their curves would lie flat along the top).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(in crate::frontend) enum Scale {
+    Percent,
+    Of(f64),
+    Peak(f64),
+    Span,
+}
+
+/// Where the timeline keeps a reading's recent values, for its curve on the
+/// taskbar: one series, or several added up or the largest of them taken.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) struct Trend {
+    pub keys: Vec<String>,
+    pub combine: Combine,
+    pub scale: Scale,
+}
+
+impl Trend {
+    fn new(keys: Vec<String>, combine: Combine, scale: Scale) -> Self {
+        Self {
+            keys,
+            combine,
+            scale,
+        }
+    }
+
+    fn one(key: &str, scale: Scale) -> Self {
+        Self::new(vec![key.into()], Combine::Sum, scale)
+    }
+}
+
+/// An idle disk's or adapter's curve stays low below this rate, 1 MB/s.
+const RATE_FLOOR: f64 = 1048576.;
+/// How many samples a curve shows.
+const CURVE: usize = 40;
+
+/// `trend`'s last values, 0–1 and oldest first; an unknown one repeats the
+/// one before it. Empty when the timeline keeps none of its series.
+fn history(timeline: &model::Timeline, trend: &Trend) -> Vec<f32> {
+    // Newest first, so that series of different lengths line up at the end.
+    let series = trend
+        .keys
+        .iter()
+        .filter_map(|key| timeline.samples.get(key))
+        .map(|list| {
+            list.iter()
+                .rev()
+                .take(CURVE)
+                .map(|(_, value)| *value)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let length = series.iter().map(Vec::len).max().unwrap_or(0);
+    let mut values = (0..length)
+        .map(|index| {
+            let known = series
+                .iter()
+                .filter_map(|list| list.get(index).copied().flatten());
+            match trend.combine {
+                Combine::Sum => known.reduce(|a, b| a + b),
+                Combine::Max => known.reduce(f64::max),
+            }
+        })
+        .collect::<Vec<_>>();
+    values.reverse();
+    let known = values.iter().flatten().copied();
+    let (low, high) = known
+        .clone()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), v| {
+            (low.min(v), high.max(v))
+        });
+    // Where 0 and 1 of the curve lie.
+    let (bottom, top) = match trend.scale {
+        Scale::Percent => (0., 100.),
+        Scale::Of(total) => (0., total),
+        Scale::Peak(floor) => (0., known.fold(floor, f64::max)),
+        // A span too small to see (a fixed clock) lies flat in the middle.
+        Scale::Span if high - low > high.abs() * 0.01 => {
+            let margin = (high - low) * 0.25;
+            (low - margin, high + margin)
+        }
+        Scale::Span => (low - 1., low + 1.),
+    };
+    if top.is_nan() || bottom.is_nan() || top <= bottom {
+        return Vec::new();
+    }
+    let mut last = None;
+    values
+        .iter()
+        .map(|value| {
+            if value.is_some() {
+                last = *value;
+            }
+            last.map_or(0., |last| ((last - bottom) / (top - bottom)).clamp(0., 1.)) as f32
+        })
+        .collect()
+}
+
+/// The colour a metric's readings take on the taskbar: its device's.
+fn tone(metric: Metric) -> TaskbarTone {
+    match metric {
+        Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => {
+            TaskbarTone::Cpu
+        }
+        Metric::Memory | Metric::MemoryUsed => TaskbarTone::Memory,
+        Metric::Gpu
+        | Metric::GpuTemperature
+        | Metric::GpuMemory
+        | Metric::GpuClock
+        | Metric::GpuPower
+        | Metric::GpuFan => TaskbarTone::Gpu,
+        Metric::Disk | Metric::DiskActive | Metric::DiskTemperature => TaskbarTone::Disk,
+        Metric::Network => TaskbarTone::Network,
+        Metric::Battery => TaskbarTone::Battery,
+        Metric::Uptime => TaskbarTone::Plain,
+    }
+}
+
 /// The taskbar's cells for `gauges`: a single value under its short name,
 /// a pair of rates under their marks, after the short name of the device
-/// they are of.
-fn taskbar_groups(gauges: &[Gauge]) -> Vec<TaskbarGroup> {
+/// they are of; each with its device's colour and, from `timeline`, its
+/// recent values for a curve.
+fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<TaskbarGroup> {
     gauges
         .iter()
-        .map(|gauge| match gauge.parts.as_slice() {
-            [part] => vec![TaskbarCell {
-                label: gauge.short.clone(),
-                value: part.text.clone(),
-                widest: part.widest.clone(),
-                high: gauge.high,
-            }],
-            parts => parts
-                .iter()
-                .map(|part| TaskbarCell {
-                    label: format!("{}{}", gauge.short, part.mark),
+        .map(|gauge| TaskbarGroup {
+            tone: tone(gauge.reading.metric),
+            history: timeline
+                .zip(gauge.trend.as_ref())
+                .map(|(timeline, trend)| history(timeline, trend))
+                .unwrap_or_default(),
+            cells: match gauge.parts.as_slice() {
+                [part] => vec![TaskbarCell {
+                    label: gauge.short.clone(),
                     value: part.text.clone(),
                     widest: part.widest.clone(),
-                    high: false,
-                })
-                .collect(),
+                    high: gauge.high,
+                }],
+                parts => parts
+                    .iter()
+                    .map(|part| TaskbarCell {
+                        label: format!("{}{}", gauge.short, part.mark),
+                        value: part.text.clone(),
+                        widest: part.widest.clone(),
+                        high: false,
+                    })
+                    .collect(),
+            },
         })
         .collect()
 }
@@ -1011,11 +1244,12 @@ impl Desktop {
     fn refresh_taskbar_monitor(&self) {
         let taskbar: TaskbarMonitor = self.monitor_settings("taskbarMonitor");
         if taskbar.enabled {
-            crate::shell::set_taskbar_readings(taskbar_groups(&gauges(
-                &self.snapshot,
-                &taskbar.metrics,
-                self.bits(),
-            )));
+            // Only curves need the readings' recent values.
+            let timeline = (taskbar.style == TaskbarStyle::Curves).then_some(&self.timeline);
+            crate::shell::set_taskbar_readings(taskbar_groups(
+                &gauges(&self.snapshot, &taskbar.metrics, self.bits()),
+                timeline,
+            ));
         }
     }
 
@@ -1163,6 +1397,7 @@ mod tests {
     };
     use crate::frontend::theme::label;
     use crate::settings::{Metric, Reading};
+    use crate::shell::TaskbarTone;
     use serde_json::json;
 
     fn snapshot() -> serde_json::Value {
@@ -1280,17 +1515,21 @@ mod tests {
 
     #[test]
     fn the_taskbar_shows_single_values_by_name_and_rates_by_mark() {
-        let groups = taskbar_groups(&gauges(
-            &snapshot(),
-            &plain(&[Metric::Cpu, Metric::Network]),
-            false,
-        ));
+        let groups = taskbar_groups(
+            &gauges(&snapshot(), &plain(&[Metric::Cpu, Metric::Network]), false),
+            None,
+        );
         assert_eq!(groups.len(), 2);
-        assert_eq!(groups[0].len(), 1);
-        assert!(groups[0][0].high);
-        assert_eq!(groups[0][0].widest, "100%");
+        assert_eq!(groups[0].cells.len(), 1);
+        assert!(groups[0].cells[0].high);
+        assert_eq!(groups[0].cells[0].widest, "100%");
+        assert_eq!(groups[0].tone, TaskbarTone::Cpu);
+        assert_eq!(groups[1].tone, TaskbarTone::Network);
+        // Without a timeline there is no curve.
+        assert!(groups[0].history.is_empty());
         assert_eq!(
             groups[1]
+                .cells
                 .iter()
                 .map(|cell| cell.label.as_str())
                 .collect::<Vec<_>>(),
@@ -1395,15 +1634,19 @@ mod tests {
         assert!(texts(&shown[1])[0].ends_with("MB/s"));
         assert_eq!(texts(&shown[1])[1], "0 KB/s");
         assert_eq!(shown[1].parts[0].mark, label("components.metric.read"));
-        let cells = taskbar_groups(&shown);
+        let cells = taskbar_groups(&shown, None);
         assert_eq!(
-            cells[1][0].label,
+            cells[1].cells[0].label,
             format!("C:{}", label("components.metric.read"))
         );
-        assert_eq!(cells[3][1].label, "vEthe…↑");
+        assert_eq!(cells[3].cells[1].label, "vEthe…↑");
         // Rates of every device keep their marks alone.
         assert_eq!(
-            taskbar_groups(&gauges(&snapshot, &[Reading::from(Metric::Network)], false))[0][0]
+            taskbar_groups(
+                &gauges(&snapshot, &[Reading::from(Metric::Network)], false),
+                None
+            )[0]
+            .cells[0]
                 .label,
             "↓"
         );
@@ -1450,5 +1693,64 @@ mod tests {
                 Reading::from(Metric::Network),
             ]
         );
+    }
+
+    #[test]
+    fn a_curve_follows_the_timeline_and_scales_to_its_reading() {
+        let mut timeline = super::model::Timeline::new();
+        let at = |time: f64, cpu: f64, rx: f64| {
+            json!({
+                "timestamp": time,
+                "system": {"cpu": cpu, "memUsed": 1, "memTotal": 4},
+                "hardware": {"nics": [{"info": {"id": "1", "name": "WLAN"}, "rx": rx, "tx": 0.0}]}
+            })
+        };
+        for (time, cpu, rx) in [
+            (1000., 10., 0.),
+            (2000., 50., 2097152.),
+            (3000., 30., 4194304.),
+        ] {
+            timeline.push(&at(time, cpu, rx), 1000.);
+        }
+        let shown = gauges(
+            &at(3000., 30., 4194304.),
+            &plain(&[Metric::Cpu, Metric::Network]),
+            false,
+        );
+        let groups = taskbar_groups(&shown, Some(&timeline));
+        // Percent of 100; oldest first.
+        assert_eq!(groups[0].history, [0.1, 0.5, 0.3]);
+        // Rates against their own peak, here 4 MB/s.
+        assert_eq!(groups[1].history, [0., 0.5, 1.]);
+    }
+
+    #[test]
+    fn a_clock_s_curve_spans_its_own_range() {
+        use super::{Combine, Scale, Trend, history};
+        let mut timeline = super::model::Timeline::new();
+        for (time, mhz) in [(1000., 3000.), (2000., 4000.), (3000., 3500.)] {
+            timeline.push(
+                &json!({"timestamp": time, "hardware": {"cpuMhz": mhz}}),
+                1000.,
+            );
+        }
+        let clock = Trend {
+            keys: vec!["hardware.cpuMhz".into()],
+            combine: Combine::Sum,
+            scale: Scale::Span,
+        };
+        // A quarter of the span below and above: 2750 to 4250 MHz.
+        let curve = history(&timeline, &clock);
+        assert!((curve[0] - 1. / 6.).abs() < 1e-6 && (curve[1] - 5. / 6.).abs() < 1e-6);
+        assert!((curve[2] - 0.5).abs() < 1e-6);
+        // A clock that holds still lies in the middle.
+        let mut steady = super::model::Timeline::new();
+        for time in [1000., 2000.] {
+            steady.push(
+                &json!({"timestamp": time, "hardware": {"cpuMhz": 3000.}}),
+                1000.,
+            );
+        }
+        assert_eq!(history(&steady, &clock), [0.5, 0.5]);
     }
 }

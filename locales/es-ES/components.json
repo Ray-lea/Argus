@@ -180,6 +180,13 @@
       "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados. En otros casos, el monitor aparece junto a la bandeja.",
       "tray": "Junto a la bandeja",
       "start": "Lado izquierdo"
+    },
+    "style": {
+      "title": "Estilo",
+      "desc": "Etiquetas: nombres y valores en dos filas. Curvas: una tarjeta por lectura, con su nombre y su valor sobre su curva reciente. Cifras grandes: un nombre pequeño en el color del dispositivo sobre una cifra grande. Las curvas y las cifras grandes necesitan espacio para dos filas de texto; en una barra de tareas más baja se muestran como etiquetas.",
+      "labels": "Etiquetas",
+      "curves": "Curvas",
+      "figures": "Cifras grandes"
     }
   },
   "planned": {

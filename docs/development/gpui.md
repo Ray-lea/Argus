@@ -73,7 +73,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
 
-[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数和 70% 不透明度下的画面，以及组件页的对应分组，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。
+[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。
 
 [`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
 

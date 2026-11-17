@@ -18,7 +18,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::Instant;
-pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup};
+pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup, Tone as TaskbarTone};
 pub(crate) use tray_anchor::Anchor;
 use windows::{
     Win32::{
@@ -650,14 +650,14 @@ pub fn apply_taskbar_monitor(app: &Host, monitor: &TaskbarMonitor) {
         return;
     }
     if let Some(running) = running.as_ref() {
-        running.place(monitor.place);
+        running.place(monitor.place, monitor.style);
         return;
     }
     let Some(main) = app.get_window("main").and_then(|window| window.hwnd().ok()) else {
         return;
     };
     let test = std::env::args().any(|arg| arg == "--test");
-    match taskbar::Monitor::spawn(main, monitor.place, test) {
+    match taskbar::Monitor::spawn(main, monitor.place, monitor.style, test) {
         Ok(started) => *running = Some(started),
         Err(error) => argus_core::diagnostics::warn(
             "taskbar monitor creation",

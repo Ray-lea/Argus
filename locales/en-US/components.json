@@ -180,6 +180,13 @@
       "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
       "tray": "Next to tray",
       "start": "Left side"
+    },
+    "style": {
+      "title": "Style",
+      "desc": "Labels: names and values in two rows. Curves: a tile per reading, its name and value over its recent curve. Large figures: a small name in the device's color over a large figure. Curves and large figures need room for two rows of text; on a lower taskbar they show as labels.",
+      "labels": "Labels",
+      "curves": "Curves",
+      "figures": "Large figures"
     }
   },
   "planned": {

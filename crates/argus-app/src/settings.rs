@@ -398,6 +398,41 @@ impl From<TaskbarPlace> for String {
     }
 }
 
+/// How the taskbar monitor shows its readings. Stored as its name; one
+/// this version does not know reads as the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum TaskbarStyle {
+    /// Names and values in two rows.
+    #[default]
+    Labels,
+    /// A tile per reading: its name and value over its recent curve.
+    Curves,
+    /// A small name in its device's colour over a large figure.
+    Figures,
+}
+
+impl From<String> for TaskbarStyle {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "curves" => TaskbarStyle::Curves,
+            "figures" => TaskbarStyle::Figures,
+            _ => TaskbarStyle::Labels,
+        }
+    }
+}
+
+impl From<TaskbarStyle> for String {
+    fn from(style: TaskbarStyle) -> Self {
+        match style {
+            TaskbarStyle::Labels => "labels",
+            TaskbarStyle::Curves => "curves",
+            TaskbarStyle::Figures => "figures",
+        }
+        .into()
+    }
+}
+
 /// The taskbar monitor: live readings on the primary display's taskbar.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -407,6 +442,7 @@ pub struct TaskbarMonitor {
     #[serde(deserialize_with = "lenient_metrics")]
     pub metrics: Vec<Reading>,
     pub place: TaskbarPlace,
+    pub style: TaskbarStyle,
 }
 
 impl Default for TaskbarMonitor {
@@ -417,6 +453,7 @@ impl Default for TaskbarMonitor {
                 .map(Reading::from)
                 .to_vec(),
             place: TaskbarPlace::default(),
+            style: TaskbarStyle::default(),
         }
     }
 }
@@ -825,6 +862,13 @@ mod tests {
         assert!(newer.taskbar_monitor.enabled);
         assert!(newer.taskbar_monitor.metrics.is_empty());
         assert_eq!(newer.taskbar_monitor.place, TaskbarPlace::Tray);
+        assert_eq!(newer.taskbar_monitor.style, TaskbarStyle::Labels);
+        let styled: Settings =
+            serde_json::from_str(r#"{"taskbarMonitor": {"style": "figures"}}"#).unwrap();
+        assert_eq!(styled.taskbar_monitor.style, TaskbarStyle::Figures);
+        let unknown: Settings =
+            serde_json::from_str(r#"{"taskbarMonitor": {"style": "neon"}}"#).unwrap();
+        assert_eq!(unknown.taskbar_monitor.style, TaskbarStyle::Labels);
         // A monitor that does not read at all keeps the other settings.
         let mut edited: Settings = serde_json::from_str(
             r#"{"desktopMonitor": {"opacity": "half"}, "taskbarMonitor": 3, "closeToTray": false}"#,
@@ -861,6 +905,7 @@ mod tests {
                     .unwrap(),
                 ],
                 place: TaskbarPlace::Start,
+                style: TaskbarStyle::Curves,
             },
             ..Settings::default()
         };

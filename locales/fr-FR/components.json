@@ -180,6 +180,13 @@
       "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
       "tray": "Près de la zone de notification",
       "start": "Côté gauche"
+    },
+    "style": {
+      "title": "Style",
+      "desc": "Étiquettes : noms et valeurs sur deux lignes. Courbes : une vignette par mesure, avec son nom et sa valeur au-dessus de sa courbe récente. Grands chiffres : un petit nom dans la couleur de l’appareil au-dessus d’un grand chiffre. Les courbes et les grands chiffres demandent la hauteur de deux lignes de texte ; sur une barre des tâches plus basse, ils s’affichent en étiquettes.",
+      "labels": "Étiquettes",
+      "curves": "Courbes",
+      "figures": "Grands chiffres"
     }
   },
   "planned": {

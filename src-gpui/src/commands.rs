@@ -22,7 +22,7 @@ use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
     BACKGROUND_INTERVALS, Language, MONITOR_OPACITIES, Reading, SettingsStore, SettingsView,
-    TaskbarPlace, Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
+    TaskbarPlace, TaskbarStyle, Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -629,6 +629,7 @@ pub fn set_taskbar_monitor(
     enabled: Option<bool>,
     metrics: Option<Vec<Reading>>,
     place: Option<TaskbarPlace>,
+    style: Option<TaskbarStyle>,
 ) -> Result<SettingsView, String> {
     let saved = app
         .state::<SettingsStore>()
@@ -642,6 +643,9 @@ pub fn set_taskbar_monitor(
             }
             if let Some(place) = place {
                 monitor.place = place;
+            }
+            if let Some(style) = style {
+                monitor.style = style;
             }
         })
         .map_err(|e| e.to_string())?;

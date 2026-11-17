@@ -23,7 +23,7 @@
 //! stand-in taskbar of its own, shown at the bottom of the z-order without
 //! activation (`--test`).
 use super::taskbar_draw::{Group, Layout, Painter, lay_out};
-use crate::settings::TaskbarPlace;
+use crate::settings::{TaskbarPlace, TaskbarStyle};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -95,6 +95,7 @@ pub(crate) fn live() -> bool {
 #[derive(Clone)]
 struct State {
     place: TaskbarPlace,
+    style: TaskbarStyle,
     groups: Vec<Group>,
     closed: bool,
 }
@@ -124,10 +125,16 @@ pub(crate) struct Monitor {
 
 impl Monitor {
     /// Starts the monitor's thread; clicks on it are posted to `main`.
-    pub fn spawn(main: HWND, place: TaskbarPlace, test: bool) -> std::io::Result<Self> {
+    pub fn spawn(
+        main: HWND,
+        place: TaskbarPlace,
+        style: TaskbarStyle,
+        test: bool,
+    ) -> std::io::Result<Self> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 place,
+                style,
                 groups: Vec::new(),
                 closed: false,
             }),
@@ -153,8 +160,11 @@ impl Monitor {
         self.shared.post(CHANGED);
     }
 
-    pub fn place(&self, place: TaskbarPlace) {
-        self.update(|state| state.place = place);
+    pub fn place(&self, place: TaskbarPlace, style: TaskbarStyle) {
+        self.update(|state| {
+            state.place = place;
+            state.style = style;
+        });
     }
 
     /// New readings, as the monitor's metrics show them.
@@ -664,9 +674,7 @@ impl Worker {
         let Some(painter) = &self.painter else {
             return;
         };
-        let layout = lay_out(&state.groups, height, scale, |text, value| {
-            painter.width(text, value)
-        });
+        let layout = lay_out(&state.groups, height, scale, state.style, painter);
         if layout.width <= 0 {
             self.detach();
             return;

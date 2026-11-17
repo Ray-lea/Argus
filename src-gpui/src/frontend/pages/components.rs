@@ -686,6 +686,22 @@ impl Desktop {
                 .collect(),
             cx,
         );
+        let style = text(&settings["taskbarMonitor"], "style");
+        let style = self.segments(
+            "setting-taskbarStyle",
+            ["labels", "curves", "figures"]
+                .iter()
+                .map(|value| {
+                    (
+                        label(&format!("components.taskbar.style.{value}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ "style": value })),
+                        style == *value || (style.is_empty() && *value == "labels"),
+                    )
+                })
+                .collect(),
+            cx,
+        );
         vec![
             self.setting_text(
                 "taskbarMonitor",
@@ -700,6 +716,13 @@ impl Desktop {
                 command,
                 &monitor.metrics,
                 cx,
+            ),
+            self.setting_text(
+                "taskbarStyle",
+                "PulseIcon",
+                "components.taskbar.style.title",
+                "components.taskbar.style.desc",
+                vec![style],
             ),
             self.setting_text(
                 "taskbarPlace",

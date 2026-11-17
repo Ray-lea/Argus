@@ -180,6 +180,13 @@
       "desc": "„Linke Seite“ gilt nur für die Taskleiste von Windows 11 mit zentrierten Schaltflächen. Andernfalls erscheint die Anzeige neben dem Infobereich.",
       "tray": "Neben dem Infobereich",
       "start": "Linke Seite"
+    },
+    "style": {
+      "title": "Stil",
+      "desc": "Beschriftungen: Namen und Werte in zwei Zeilen. Kurven: eine Kachel je Wert mit Name und Wert über dem jüngsten Verlauf. Große Zahlen: ein kleiner Name in der Gerätefarbe über einer großen Zahl. Kurven und große Zahlen brauchen Platz für zwei Textzeilen; auf einer niedrigeren Taskleiste erscheinen sie als Beschriftungen.",
+      "labels": "Beschriftungen",
+      "curves": "Kurven",
+      "figures": "Große Zahlen"
     }
   },
   "planned": {
