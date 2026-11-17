@@ -1116,7 +1116,23 @@ impl Desktop {
             .get("privilege")
             .cloned()
             .or(service_error)
-            .or(outdated);
+            .or(outdated)
+            // The state could not be read at all.
+            .or_else(|| self.ui.errors.get("privilegeStatus").cloned());
+        // What brings a damaged installation back, where this account may:
+        // an update, or a repair that authorizes anew and asks first.
+        let state_name = text(&status, "state");
+        let repair = match (state_name, status["repair"].as_str()) {
+            ("broken", Some("update")) => Some("update"),
+            ("broken", Some("repair")) => Some("repair"),
+            _ => None,
+        };
+        let note = label(match state_name {
+            "broken" if repair.is_some() => "settings.privilege.broken.repair",
+            "broken" => "settings.privilege.broken.remove",
+            "deletePending" => "settings.privilege.deletePending",
+            _ => "settings.privilege.statusDesc",
+        });
         let action =
             |this: &Desktop, id: &str, key: &str, act: &'static str, cx: &mut Context<Desktop>| {
                 this.btn(format!("privilege-{id}"), label(key), None, Tone::Plain)
@@ -1136,6 +1152,7 @@ impl Desktop {
             .inert(busy || checking)
             .on_click(cx.listener(|this, _, window, cx| {
                 this.ui.errors.remove("privilege");
+                this.ui.errors.remove("privilegeStatus");
                 this.data.remove("privilege");
                 this.request(
                     "privileged_service_status",
@@ -1148,7 +1165,7 @@ impl Desktop {
             .into_any_element(),
         ];
         if !status.is_null() {
-            if text(&status, "state") == "notInstalled" {
+            if state_name == "notInstalled" {
                 controls.push(action(
                     self,
                     "install",
@@ -1156,7 +1173,26 @@ impl Desktop {
                     "install",
                     cx,
                 ));
-            } else {
+            } else if state_name == "broken" {
+                // Starting or updating cannot work on what is left; removing
+                // the registration always can.
+                if let Some(repair) = repair {
+                    controls.push(action(
+                        self,
+                        "repair",
+                        "settings.privilege.repair.action",
+                        repair,
+                        cx,
+                    ));
+                }
+                controls.push(action(
+                    self,
+                    "uninstall",
+                    "settings.privilege.uninstall.action",
+                    "uninstall",
+                    cx,
+                ));
+            } else if state_name != "deletePending" {
                 if boolean(&status, "authorized") && text(&status, "state") == "stopped" {
                     controls.push(action(
                         self,
@@ -1191,15 +1227,16 @@ impl Desktop {
             label("settings.privilege.desc"),
             state,
             tone,
-            label("settings.privilege.statusDesc").into_any_element(),
+            note.into_any_element(),
             error,
             controls,
             None,
         )
     }
 
-    /// Installs, starts, updates or removes the service; only installing and
-    /// removing ask first.
+    /// Installs, starts, updates, repairs or removes the service. Installing
+    /// and removing ask first, and so does a repair: it authorizes this
+    /// account anew, which is confirmed with what an installation grants.
     pub(in crate::frontend) fn manage_service(
         &mut self,
         action: String,
@@ -1209,32 +1246,68 @@ impl Desktop {
         if self.ui.busy.contains("privilege") {
             return;
         }
-        let installing = action == "install";
-        let asks = installing || action == "uninstall";
-        if !asks {
-            self.service_action(action, window, cx);
-            return;
-        }
+        let (title, body, confirm) = match action.as_str() {
+            "install" => (
+                label("settings.privilege.install.title"),
+                label("settings.privilege.install.body"),
+                "settings.privilege.install.action",
+            ),
+            "repair" => (
+                label("settings.privilege.repair.title"),
+                format!(
+                    "{}\n\n{}",
+                    label("settings.privilege.repair.body"),
+                    label("settings.privilege.install.body")
+                ),
+                "settings.privilege.repair.confirm",
+            ),
+            "uninstall" => (
+                label("settings.privilege.uninstall.title"),
+                label("settings.privilege.uninstall.body"),
+                "settings.privilege.uninstall.confirm",
+            ),
+            _ => {
+                self.service_action(action, window, cx);
+                return;
+            }
+        };
+        let danger = action == "uninstall";
         let run = move |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
             this.service_action(action.clone(), window, cx)
         };
-        let prefix = if installing {
-            "settings.privilege.install"
-        } else {
-            "settings.privilege.uninstall"
-        };
-        self.ask(
-            label(&format!("{prefix}.title")),
-            label(&format!("{prefix}.body")),
-            label(if installing {
-                "settings.privilege.install.action"
-            } else {
-                "settings.privilege.uninstall.confirm"
-            }),
-            !installing,
-            run,
-            window,
-            cx,
+        self.ask(title, body, label(confirm), danger, run, window, cx);
+    }
+
+    /// Says once per run that the service is registered but damaged, with a
+    /// way to its card. A crash or an update that was cut short leaves it so,
+    /// and Windows then fails to start it at every boot until it is repaired
+    /// or removed. The onboarding shows the state itself.
+    pub(in crate::frontend) fn notice_service_damage(&mut self, status: &Value) {
+        if text(status, "state") != "broken"
+            || self.ui.errors.contains_key("privilegeDamageNoticed")
+            || self
+                .modal
+                .iter()
+                .chain(&self.ui.below)
+                .any(|modal| modal.kind == "onboarding")
+        {
+            return;
+        }
+        self.ui
+            .errors
+            .insert("privilegeDamageNoticed".into(), "1".into());
+        self.toast_with(
+            ToastKind::Error,
+            label("settings.privilege.broken.notice"),
+            12000,
+            vec![(
+                label("settings.privilege.broken.view"),
+                Rc::new(
+                    |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
+                        this.locate_setting("privilege", "privilegedService", window, cx)
+                    },
+                ),
+            )],
         );
     }
 
@@ -3591,10 +3664,18 @@ impl Desktop {
         match command {
             "manage_privileged_service" => {
                 self.ui.busy.remove("privilege");
+                self.ui.errors.remove("privilegeStatus");
                 self.data.insert("privilege".into(), value.clone());
                 let action = self.ui.errors.remove("privilegeAction").unwrap_or_default();
                 if action == "uninstall" {
-                    self.notify_toast(ToastKind::Success, label("settings.privilege.uninstalled"));
+                    // A registration another program still holds is on its
+                    // way out: the card says what it waits for.
+                    if text(value, "state") == "notInstalled" {
+                        self.notify_toast(
+                            ToastKind::Success,
+                            label("settings.privilege.uninstalled"),
+                        );
+                    }
                 } else if service_connected(value) {
                     self.notify_toast(ToastKind::Success, label("settings.privilege.ready"));
                 }
@@ -3705,6 +3786,15 @@ impl Desktop {
                     window,
                     cx,
                 );
+            }
+            // Read in the background every half minute, for the badge: a
+            // failure belongs on the card, which stops waiting for an answer,
+            // not in a notice each time.
+            "privileged_service_status" => {
+                self.data.insert("privilege".into(), Value::Null);
+                self.ui
+                    .errors
+                    .insert("privilegeStatus".into(), message.to_owned());
             }
             "open_native_task_manager" => {
                 self.ui.busy.remove("nativeTaskmgr");

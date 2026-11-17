@@ -100,6 +100,12 @@
     "canceled": "已取消管理员授权，未更改服务",
     "timeout": "特权服务响应超时，请刷新状态后确认操作结果",
     "osError": "{error}（{code}）",
+    "damaged": {
+      "directory": "特权服务仍在 Windows 中注册，但服务目录已不存在，服务无法启动",
+      "owner": "特权服务仍在 Windows 中注册，但授权记录缺失或无法读取，无法确认授权账户",
+      "image": "特权服务仍在 Windows 中注册，但服务程序文件已不存在，服务无法启动",
+      "ownerAndImage": "特权服务仍在 Windows 中注册，但服务程序文件与授权记录均已不存在，服务无法启动"
+    },
     "handles": {
       "accessDenied": "没有权限检查系统句柄，请启用特权服务或以管理员身份运行",
       "targetGone": "目标已不存在，或查询期间已经被移动",
@@ -132,7 +138,8 @@
       "unsafeRecovery": "目录权限或恢复记录异常。可通过管理员授权恢复 Windows 任务管理器。",
       "serviceRemoved": "特权服务已卸载，恢复程序和备份仍保留。",
       "devBuild": "开发版不提供系统任务管理器替换，请使用发布版。",
-      "otherAccount": "特权服务授权给另一个 Windows 账户。"
+      "otherAccount": "特权服务授权给另一个 Windows 账户。",
+      "serviceDamaged": "特权服务已损坏。修复或重新安装特权服务后，可启用任务管理器替换。"
     },
     "found": {
       "detail": "{status}{found}请先核对配置来源，通过对应程序恢复后刷新状态。",

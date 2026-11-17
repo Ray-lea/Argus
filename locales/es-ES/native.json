@@ -104,6 +104,12 @@
     "canceled": "Se ha cancelado la solicitud de autorización de administrador. El servicio no se ha modificado.",
     "timeout": "El servicio privilegiado no respondió a tiempo; actualice el estado para confirmar el resultado",
     "osError": "{error} ({code})",
+    "damaged": {
+      "directory": "El servicio privilegiado sigue registrado en Windows, pero su carpeta ya no existe, por lo que no puede iniciarse",
+      "owner": "El servicio privilegiado sigue registrado en Windows, pero falta su registro de autorización o no se puede leer, por lo que no es posible confirmar la cuenta autorizada",
+      "image": "El servicio privilegiado sigue registrado en Windows, pero su archivo de programa ya no existe, por lo que no puede iniciarse",
+      "ownerAndImage": "El servicio privilegiado sigue registrado en Windows, pero su archivo de programa y su registro de autorización ya no existen, por lo que no puede iniciarse"
+    },
     "handles": {
       "accessDenied": "No hay permiso para verificar los identificadores del sistema; habilite el servicio privilegiado o ejecútelo como administrador",
       "targetGone": "El objetivo ya no existe o fue movido durante la búsqueda",
@@ -136,7 +142,8 @@
       "unsafeRecovery": "Los permisos de la carpeta o el registro de recuperación no son válidos. Se puede restaurar el Administrador de tareas de Windows con autorización de administrador.",
       "serviceRemoved": "Se desinstaló el servicio privilegiado; se conservan el programa de recuperación y la copia de seguridad.",
       "devBuild": "Las versiones de desarrollo no permiten sustituir el Administrador de tareas. Utilice una compilación de distribución.",
-      "otherAccount": "El servicio privilegiado está autorizado para otra cuenta Windows."
+      "otherAccount": "El servicio privilegiado está autorizado para otra cuenta Windows.",
+      "serviceDamaged": "El servicio privilegiado está dañado. Repárelo o vuelva a instalarlo antes de activar la sustitución del Administrador de tareas."
     },
     "found": {
       "detail": "{status} {found} Verifique de dónde vino la configuración, restáurela a través del programa correspondiente y luego actualice el estado.",

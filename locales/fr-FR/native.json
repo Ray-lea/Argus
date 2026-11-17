@@ -104,6 +104,12 @@
     "canceled": "La demande d’autorisation d’administrateur a été annulée. Le service n’a pas été modifié.",
     "timeout": "Le service privilégié n’a pas répondu à temps ; actualisez le statut pour confirmer le résultat",
     "osError": "{error} ({code})",
+    "damaged": {
+      "directory": "Le service privilégié est toujours inscrit dans Windows, mais son dossier n’existe plus ; il ne peut pas démarrer",
+      "owner": "Le service privilégié est toujours inscrit dans Windows, mais son enregistrement d’autorisation est absent ou illisible ; le compte autorisé ne peut pas être confirmé",
+      "image": "Le service privilégié est toujours inscrit dans Windows, mais son fichier programme n’existe plus ; il ne peut pas démarrer",
+      "ownerAndImage": "Le service privilégié est toujours inscrit dans Windows, mais son fichier programme et son enregistrement d’autorisation n’existent plus ; il ne peut pas démarrer"
+    },
     "handles": {
       "accessDenied": "Vous n’avez pas l’autorisation de consulter les handles système ; activez le service privilégié ou exécutez Argus en tant qu’administrateur",
       "targetGone": "La cible n’existe plus ou a été déplacée lors de la recherche",
@@ -136,7 +142,8 @@
       "unsafeRecovery": "Les autorisations du dossier ou l’enregistrement de récupération sont invalides. Le Gestionnaire des tâches Windows peut être restauré avec une autorisation d’administrateur.",
       "serviceRemoved": "Le service privilégié a été désinstallé ; le programme de récupération et la sauvegarde sont conservés.",
       "devBuild": "Les versions de développement n’offrent pas de remplacement Gestionnaire des tâches. Utilisez une version release.",
-      "otherAccount": "Le service privilégié est autorisé pour un autre compte Windows."
+      "otherAccount": "Le service privilégié est autorisé pour un autre compte Windows.",
+      "serviceDamaged": "Le service privilégié est endommagé. Réparez-le ou réinstallez-le avant d’activer le remplacement de Gestionnaire des tâches."
     },
     "found": {
       "detail": "{status} {found} Vérifiez d’où vient la configuration, restaurez-la via le programme correspondant, puis actualisez l’état.",

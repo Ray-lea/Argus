@@ -76,6 +76,17 @@ impl Directory {
         Ok(self.path.join(name))
     }
 
+    /// The names in the directory that `wanted` picks, for `remove_file`.
+    /// Nothing is opened: what a name stands for stays unknown.
+    pub(crate) fn names(&self, wanted: impl Fn(&str) -> bool) -> Result<Vec<String>> {
+        Ok(fs::read_dir(&self.path)
+            .map_err(io)?
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| wanted(name))
+            .collect())
+    }
+
     pub(crate) fn remove_file(&self, name: &str) -> Result<()> {
         // DeleteFile removes a leaf symlink itself. Never open or truncate its
         // target, and never recurse into a directory with a matching filename.

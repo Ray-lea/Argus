@@ -1662,6 +1662,8 @@ impl Desktop {
             }
             "privileged_service_status" => {
                 self.data.insert("privilege".into(), value.clone());
+                self.ui.errors.remove("privilegeStatus");
+                self.notice_service_damage(value);
             }
             "kill_process" => {
                 if let Some(name) = self.ui.errors.remove("lockerEnd") {

@@ -100,6 +100,12 @@
     "canceled": "已取消系統管理員授權，未變更服務",
     "timeout": "特殊權限服務回應逾時，請重新整理狀態後確認操作結果",
     "osError": "{error}（{code}）",
+    "damaged": {
+      "directory": "特殊權限服務仍在 Windows 中登錄，但服務目錄已不存在，服務無法啟動",
+      "owner": "特殊權限服務仍在 Windows 中登錄，但授權記錄遺失或無法讀取，無法確認授權帳戶",
+      "image": "特殊權限服務仍在 Windows 中登錄，但服務程式檔案已不存在，服務無法啟動",
+      "ownerAndImage": "特殊權限服務仍在 Windows 中登錄，但服務程式檔案與授權記錄均已不存在，服務無法啟動"
+    },
     "handles": {
       "accessDenied": "沒有權限檢查系統控制代碼，請啟用特殊權限服務或以系統管理員身分執行",
       "targetGone": "目標已不存在，或查詢期間已被移動",
@@ -132,7 +138,8 @@
       "unsafeRecovery": "目錄權限或還原記錄異常。可透過系統管理員授權還原 Windows 工作管理員。",
       "serviceRemoved": "特殊權限服務已解除安裝，還原程式和備份仍保留。",
       "devBuild": "開發版不提供系統工作管理員取代，請使用正式發行版。",
-      "otherAccount": "特殊權限服務授權給另一個 Windows 帳戶。"
+      "otherAccount": "特殊權限服務授權給另一個 Windows 帳戶。",
+      "serviceDamaged": "特殊權限服務已損毀。修復或重新安裝特殊權限服務後，可啟用工作管理員取代。"
     },
     "found": {
       "detail": "{status}{found}請先核對設定來源，透過對應程式還原後重新整理狀態。",

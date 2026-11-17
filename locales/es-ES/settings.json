@@ -169,7 +169,9 @@
       "stopped": "Detenido",
       "startPending": "Iniciando",
       "stopPending": "Deteniendo",
-      "unavailable": "No disponible"
+      "unavailable": "No disponible",
+      "broken": "Dañado",
+      "deletePending": "Eliminando"
     },
     "outdated": "La versión del servicio {service} no coincide con Argus {app}. Haga clic en «Actualizar servicio».",
     "incompatible": "Haga clic en «Actualizar servicio» para instalar la versión correspondiente a Argus y establecer la conexión.",
@@ -187,7 +189,20 @@
     "start": "Iniciar servicio",
     "update": "Actualizar servicio",
     "ready": "El servicio privilegiado está listo.",
-    "uninstalled": "El servicio privilegiado ha sido desinstalado."
+    "uninstalled": "El servicio privilegiado ha sido desinstalado.",
+    "broken": {
+      "repair": "Haga clic en «Reparar servicio» para reinstalar los archivos del servicio y restablecer la conexión, o en «Desinstalar» para eliminar el registro residual del servicio. Ambas operaciones requieren autorización de administrador.",
+      "remove": "Haga clic en «Desinstalar» para eliminar el registro residual del servicio; después podrá instalarse de nuevo. La desinstalación requiere autorización de administrador.",
+      "notice": "El servicio privilegiado está dañado y no puede iniciarse. Consulte Configuración → Permisos.",
+      "view": "Ver"
+    },
+    "deletePending": "El servicio se ha desinstalado. Windows eliminará su registro cuando los demás programas cierren sus identificadores del servicio. Cierre los programas que lo muestran, como la consola Servicios, y actualice el estado; reiniciar Windows también completa la eliminación.",
+    "repair": {
+      "title": "¿Reparar el servicio privilegiado?",
+      "body": "El registro de autorización se ha perdido, por lo que no es posible confirmar la cuenta para la que se autorizó el servicio. La reparación reinstala los archivos del servicio y lo autoriza para la cuenta de Windows actual; si la sustitución del Administrador de tareas está habilitada, primero se restaura el Administrador de tareas de Windows.",
+      "confirm": "Reparar y habilitar",
+      "action": "Reparar servicio"
+    }
   },
   "taskManager": {
     "title": "Sustituir el Administrador de tareas",

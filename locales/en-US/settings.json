@@ -169,7 +169,9 @@
       "stopped": "Stopped",
       "startPending": "Starting",
       "stopPending": "Stopping",
-      "unavailable": "Unavailable"
+      "unavailable": "Unavailable",
+      "broken": "Damaged",
+      "deletePending": "Being removed"
     },
     "outdated": "Service version {service} doesn't match Argus {app}. Click Update service.",
     "incompatible": "Click Update service to install the version that matches Argus; Argus then connects to it.",
@@ -187,7 +189,20 @@
     "start": "Start service",
     "update": "Update service",
     "ready": "The privileged service is ready.",
-    "uninstalled": "The privileged service has been uninstalled."
+    "uninstalled": "The privileged service has been uninstalled.",
+    "broken": {
+      "repair": "Click Repair service to reinstall the service files and reconnect, or click Uninstall to remove the leftover service registration. Both require administrator permission.",
+      "remove": "Click Uninstall to remove the leftover service registration; the service can then be installed again. Uninstalling requires administrator permission.",
+      "notice": "The privileged service is damaged and can't start. See Settings → Permissions.",
+      "view": "View"
+    },
+    "deletePending": "The service has been uninstalled. Windows removes its registration once other programs close their handles to it. Close programs that show the service, such as the Services console, then refresh the status; restarting Windows also completes the removal.",
+    "repair": {
+      "title": "Repair the privileged service?",
+      "body": "The authorization record is lost, so the account that the service was authorized for can't be confirmed. Repairing reinstalls the service files and authorizes the service for the current Windows account; an enabled Task Manager replacement is first restored to Windows Task Manager.",
+      "confirm": "Repair and enable",
+      "action": "Repair service"
+    }
   },
   "taskManager": {
     "title": "Replace Task Manager",

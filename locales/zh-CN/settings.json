@@ -169,7 +169,9 @@
       "stopped": "已停止",
       "startPending": "正在启动",
       "stopPending": "正在停止",
-      "unavailable": "暂不可用"
+      "unavailable": "暂不可用",
+      "broken": "已损坏",
+      "deletePending": "正在移除"
     },
     "outdated": "服务版本 {service} 与 Argus {app} 不一致，请单击“更新服务”。",
     "incompatible": "单击“更新服务”安装与 Argus 一致的版本后即可连接。",
@@ -187,7 +189,20 @@
     "start": "启动服务",
     "update": "更新服务",
     "ready": "特权服务已就绪。",
-    "uninstalled": "特权服务已卸载。"
+    "uninstalled": "特权服务已卸载。",
+    "broken": {
+      "repair": "单击“修复服务”可重新安装服务文件并恢复连接，单击“卸载”可移除残留的服务注册。两项操作均需要管理员授权。",
+      "remove": "单击“卸载”可移除残留的服务注册，之后可重新安装。卸载需要管理员授权。",
+      "notice": "特权服务已损坏，无法启动。可在“设置 → 权限”中处理。",
+      "view": "查看"
+    },
+    "deletePending": "服务已卸载，其注册将在其他程序关闭该服务的句柄后由 Windows 移除。可关闭“服务”管理单元等正在查看该服务的程序后刷新状态；重新启动 Windows 也会完成移除。",
+    "repair": {
+      "title": "修复特权服务？",
+      "body": "授权记录已丢失，无法确认服务原先授权的账户。修复将重新安装服务文件，并将服务授权给当前 Windows 账户；已启用的任务管理器替换将先恢复为 Windows 任务管理器。",
+      "confirm": "修复并启用",
+      "action": "修复服务"
+    }
   },
   "taskManager": {
     "title": "替换系统任务管理器",

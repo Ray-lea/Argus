@@ -103,6 +103,12 @@
     "canceled": "Die Administratorfreigabe wurde abgebrochen. Der Dienst wurde nicht geändert.",
     "timeout": "Der privilegierte Dienst hat nicht rechtzeitig geantwortet; aktualisieren Sie den Status, um das Ergebnis zu bestätigen",
     "osError": "{error} ({code})",
+    "damaged": {
+      "directory": "Der privilegierte Dienst ist noch in Windows registriert, sein Ordner ist jedoch nicht mehr vorhanden; der Dienst kann nicht gestartet werden",
+      "owner": "Der privilegierte Dienst ist noch in Windows registriert, sein Autorisierungseintrag fehlt jedoch oder ist nicht lesbar; das autorisierte Konto kann nicht bestätigt werden",
+      "image": "Der privilegierte Dienst ist noch in Windows registriert, seine Programmdatei ist jedoch nicht mehr vorhanden; der Dienst kann nicht gestartet werden",
+      "ownerAndImage": "Der privilegierte Dienst ist noch in Windows registriert, seine Programmdatei und sein Autorisierungseintrag sind jedoch nicht mehr vorhanden; der Dienst kann nicht gestartet werden"
+    },
     "handles": {
       "accessDenied": "Keine Berechtigung zur Abfrage der Systemhandles. Aktivieren Sie den privilegierten Dienst oder führen Sie Argus als Administrator aus",
       "targetGone": "Das Ziel existiert nicht mehr oder wurde während der Suche verschoben",
@@ -135,7 +141,8 @@
       "unsafeRecovery": "Die Ordnerberechtigungen oder der Wiederherstellungsdatensatz sind ungültig. Der Windows-Task-Manager kann mit Administratorfreigabe wiederhergestellt werden.",
       "serviceRemoved": "Der privilegierte Dienst wurde deinstalliert; das Wiederherstellungsprogramm und die Sicherung bleiben erhalten.",
       "devBuild": "Entwickler-Builds bieten keinen Task-Manager-Ersatz. Verwenden Sie einen Release-Build.",
-      "otherAccount": "Der privilegierte Dienst ist für ein anderes Windows-Konto autorisiert."
+      "otherAccount": "Der privilegierte Dienst ist für ein anderes Windows-Konto autorisiert.",
+      "serviceDamaged": "Der privilegierte Dienst ist beschädigt. Reparieren Sie ihn oder installieren Sie ihn neu, bevor Sie den Task-Manager-Ersatz aktivieren."
     },
     "found": {
       "detail": "{status} {found} Überprüfen Sie, woher die Konfiguration stammt, stellen Sie sie über das entsprechende Programm wieder her und aktualisieren Sie dann den Status.",

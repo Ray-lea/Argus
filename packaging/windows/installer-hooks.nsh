@@ -25,7 +25,11 @@
   ; to this version now, so an update needs no second administrator prompt.
   ; The new argus.exe brings an enabled task manager replacement along, which
   ; stays on; when anything fails, Argus offers the update when it starts.
-  ; Never blocks the install.
+  ; A service whose program file is gone comes back with this update. One
+  ; whose authorization record is gone is left as it is (exit 0x20000009):
+  ; nothing says which account to authorize, and this installer may run as
+  ; another one. Argus reads the service's state itself when it starts, says
+  ; that it is damaged and offers the repair. Never blocks the install.
   ClearErrors
   ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
   ${IfNot} ${Errors}

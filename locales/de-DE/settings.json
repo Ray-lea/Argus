@@ -169,7 +169,9 @@
       "stopped": "Beendet",
       "startPending": "Wird gestartet",
       "stopPending": "Wird beendet",
-      "unavailable": "Nicht verfügbar"
+      "unavailable": "Nicht verfügbar",
+      "broken": "Beschädigt",
+      "deletePending": "Wird entfernt"
     },
     "outdated": "Die Dienstversion {service} stimmt nicht mit Argus {app} überein. Klicken Sie auf Dienst aktualisieren.",
     "incompatible": "Klicken Sie auf „Dienst aktualisieren“, um die zu Argus passende Version zu installieren und die Verbindung herzustellen.",
@@ -187,7 +189,20 @@
     "start": "Dienst starten",
     "update": "Dienst aktualisieren",
     "ready": "Der privilegierte Dienst ist bereit.",
-    "uninstalled": "Der privilegierte Dienst wurde deinstalliert."
+    "uninstalled": "Der privilegierte Dienst wurde deinstalliert.",
+    "broken": {
+      "repair": "Klicken Sie auf „Dienst reparieren“, um die Dienstdateien neu zu installieren und die Verbindung wiederherzustellen, oder auf „Deinstallieren“, um die verbliebene Dienstregistrierung zu entfernen. Beide Vorgänge erfordern eine Administratorfreigabe.",
+      "remove": "Klicken Sie auf „Deinstallieren“, um die verbliebene Dienstregistrierung zu entfernen; danach kann der Dienst erneut installiert werden. Die Deinstallation erfordert eine Administratorfreigabe.",
+      "notice": "Der privilegierte Dienst ist beschädigt und kann nicht gestartet werden. Siehe Einstellungen → Berechtigungen.",
+      "view": "Anzeigen"
+    },
+    "deletePending": "Der Dienst wurde deinstalliert. Windows entfernt seine Registrierung, sobald andere Programme ihre Handles auf den Dienst schließen. Schließen Sie Programme, die den Dienst anzeigen, etwa die Konsole „Dienste“, und aktualisieren Sie dann den Status; ein Neustart von Windows schließt das Entfernen ebenfalls ab.",
+    "repair": {
+      "title": "Privilegierten Dienst reparieren?",
+      "body": "Der Autorisierungseintrag ist verloren gegangen; das Konto, für das der Dienst autorisiert war, kann nicht bestätigt werden. Die Reparatur installiert die Dienstdateien neu und autorisiert den Dienst für das aktuelle Windows-Konto; ein aktivierter Task-Manager-Ersatz wird zuvor auf den Windows-Task-Manager zurückgesetzt.",
+      "confirm": "Reparieren und aktivieren",
+      "action": "Dienst reparieren"
+    }
   },
   "taskManager": {
     "title": "Task-Manager ersetzen",

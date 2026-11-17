@@ -103,6 +103,12 @@
     "canceled": "Administrator permission was canceled; the service wasn't changed",
     "timeout": "The privileged service didn't respond in time; refresh the status to confirm the result",
     "osError": "{error} ({code})",
+    "damaged": {
+      "directory": "The privileged service is still registered in Windows, but its folder no longer exists, so it can't start",
+      "owner": "The privileged service is still registered in Windows, but its authorization record is missing or unreadable, so the authorized account can't be confirmed",
+      "image": "The privileged service is still registered in Windows, but its program file no longer exists, so it can't start",
+      "ownerAndImage": "The privileged service is still registered in Windows, but its program file and authorization record no longer exist, so it can't start"
+    },
     "handles": {
       "accessDenied": "No permission to check system handles; enable the privileged service or run as administrator",
       "targetGone": "The target no longer exists or was moved during the search",
@@ -135,7 +141,8 @@
       "unsafeRecovery": "The folder permissions or recovery record are invalid. Windows Task Manager can be restored with administrator approval.",
       "serviceRemoved": "The privileged service was uninstalled; the recovery program and backup are kept.",
       "devBuild": "Dev builds don't offer Task Manager replacement. Use a release build.",
-      "otherAccount": "The privileged service is authorized for another Windows account."
+      "otherAccount": "The privileged service is authorized for another Windows account.",
+      "serviceDamaged": "The privileged service is damaged. Repair or reinstall it before enabling the Task Manager replacement."
     },
     "found": {
       "detail": "{status} {found} Check where the configuration came from, restore it through the corresponding program, then refresh the status.",

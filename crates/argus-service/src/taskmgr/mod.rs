@@ -472,10 +472,13 @@ pub fn status() -> Result<Status> {
             } else if live.debugger.is_some() || live.filtered {
                 status.conflict(tr!("taskManager.status.conflict"), &ours);
             } else {
-                status.detail = if matches!(error, 2 | 3) {
-                    tr!("taskManager.status.needsService")
-                } else {
+                status.detail = if !matches!(error, 2 | 3) {
                     util::message(error)
+                } else if crate::install::is_registered() {
+                    // Registered, its folder gone: not a service to install.
+                    tr!("taskManager.status.serviceDamaged")
+                } else {
+                    tr!("taskManager.status.needsService")
                 };
             }
             return Ok(status);
@@ -536,7 +539,13 @@ pub fn status() -> Result<Status> {
     if live.debugger.is_some() || live.filtered {
         status.conflict(tr!("taskManager.status.conflict"), &ours);
     } else if !installed {
-        status.detail = tr!("taskManager.status.serviceRemoved");
+        // Without the authorization record: removed, or registered still
+        // and damaged, which the service's own state says.
+        status.detail = if crate::install::is_registered() {
+            tr!("taskManager.status.serviceDamaged")
+        } else {
+            tr!("taskManager.status.serviceRemoved")
+        };
     } else if cfg!(debug_assertions) {
         status.detail = tr!("taskManager.status.devBuild");
     } else if !authorized {

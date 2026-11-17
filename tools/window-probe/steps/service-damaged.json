@@ -1,0 +1,63 @@
+{
+  "window": [1280, 860],
+  "steps": [
+    { "note": "The record is gone: damaged, with a repair that asks as an installation does, and the removal." },
+    { "control": { "page": "settings", "settingsSection": "privilege", "theme": "dark", "pointerOutside": true,
+        "data": { "privilege": { "state": "broken", "authorized": false, "version": null, "incompatible": false,
+          "damage": "owner", "repair": "repair",
+          "error": "特权服务仍在 Windows 中注册，但授权记录缺失或无法读取，无法确认授权账户" } } },
+      "wait": 1200, "inspect": "layout", "label": "record-missing", "expect": { "page": "settings", "toasts": [] },
+      "capture": "record-missing" },
+    { "control": { "dialog": "privilege", "args": { "action": "repair" } }, "wait": 700, "inspect": "layout",
+      "label": "repair-asks", "expect": { "dialog.kind": "confirm", "dialog.title": "修复特权服务？" }, "capture": "repair-asks" },
+    { "control": { "keys": ["escape"] }, "wait": 500, "inspect": "layout", "label": "repair-closed", "expect": { "dialog": null } },
+
+    { "note": "The image is gone, the record names this account: the repair is an update and does not ask." },
+    { "control": { "data": { "privilege": { "state": "broken", "authorized": true, "version": null, "incompatible": false,
+          "damage": "image", "repair": "update",
+          "error": "特权服务仍在 Windows 中注册，但服务程序文件已不存在，服务无法启动" } } },
+      "wait": 500, "capture": "image-missing" },
+    { "control": { "dialog": "privilege", "args": { "action": "update" } }, "wait": 400, "inspect": "layout",
+      "label": "update-does-not-ask", "expect": { "dialog": null } },
+
+    { "note": "Another account's: only the removal is left." },
+    { "control": { "data": { "privilege": { "state": "broken", "authorized": false, "version": null, "incompatible": false,
+          "damage": "image", "repair": null,
+          "error": "特权服务仍在 Windows 中注册，但服务程序文件已不存在，服务无法启动；特权服务已授权给另一个 Windows 账户，请先卸载再安装" } } },
+      "wait": 500, "capture": "other-account" },
+
+    { "note": "Deleted, the registration kept by another program's handle: nothing to do but wait." },
+    { "control": { "data": { "privilege": { "state": "deletePending", "authorized": false, "version": null,
+          "incompatible": false, "damage": null, "repair": null, "error": null } } },
+      "wait": 500, "capture": "delete-pending" },
+
+    { "note": "The state cannot be read: said on the card, with no notice." },
+    { "control": { "resolve": { "command": "privileged_service_status", "cache": "privilege", "ok": false,
+          "value": "拒绝访问。（5）" } },
+      "wait": 500, "inspect": "layout", "label": "read-failed", "expect": { "toasts": [] }, "capture": "read-failed" },
+
+    { "note": "Read as damaged on another page: one notice, which leads to the card. A second read says nothing more." },
+    { "control": { "page": "processes", "pointerOutside": true }, "wait": 900 },
+    { "control": { "resolve": { "command": "privileged_service_status", "cache": "privilege", "ok": true,
+          "value": { "state": "broken", "authorized": false, "version": null, "incompatible": false,
+            "damage": "ownerAndImage", "repair": "repair",
+            "error": "特权服务仍在 Windows 中注册，但服务程序文件与授权记录均已不存在，服务无法启动" } } },
+      "wait": 900, "inspect": "layout", "label": "noticed",
+      "expect": { "toasts": ["特权服务已损坏，无法启动。可在“设置 → 权限”中处理。"] }, "capture": "notice" },
+    { "control": { "resolve": { "command": "privileged_service_status", "cache": "privilege", "ok": true,
+          "value": { "state": "broken", "authorized": false, "version": null, "incompatible": false,
+            "damage": "directory", "repair": "repair",
+            "error": "特权服务仍在 Windows 中注册，但服务目录已不存在，服务无法启动" } } },
+      "wait": 500, "inspect": "layout", "label": "noticed-once",
+      "expect": { "toasts": ["特权服务已损坏，无法启动。可在“设置 → 权限”中处理。"] } },
+    { "control": { "clickAnchor": "toast-action-1-0" }, "wait": 1300, "inspect": "layout", "label": "located",
+      "expect": { "page": "settings" }, "capture": "located" },
+
+    { "note": "Light theme, then the smallest window with the largest text." },
+    { "control": { "theme": "light", "pointerOutside": true }, "wait": 900, "capture": "light" },
+    { "control": { "preference": { "fontSize": 20 } }, "probe": "size 960 640", "wait": 900 },
+    { "control": { "settingsSection": "privilege", "pointerOutside": true }, "wait": 1200, "capture": "small-large" },
+    { "control": { "dialog": "privilege", "args": { "action": "repair" } }, "wait": 800, "inspect": "layout",
+      "label": "small-large-asks", "expect": { "dialog.kind": "confirm", "dialog.settled": true }, "capture": "small-large-asks" }
+  ]
+}

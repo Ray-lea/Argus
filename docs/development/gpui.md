@@ -57,6 +57,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`process-suspend.json`](../../tools/window-probe/steps/process-suspend.json) 核对混合暂停状态的应用组菜单、暂停确认、取消与直接恢复，以及深浅主题下的确认文案。模拟快照中的操作由测试入口截断；真实暂停与恢复由采集层的隔离子进程测试验证。
 
+[`service-damaged.json`](../../tools/window-probe/steps/service-damaged.json) 用 `data` 控制注入特权服务的“已损坏”与“正在移除”状态，核对设置页卡片在授权记录缺失、服务程序缺失和授权给其他账户时的说明与按钮、修复确认框，以及浅色主题、最小窗口加大字号下的排版；用 `resolve` 给出 `privileged_service_status` 的失败结果，核对错误显示在卡片上且不弹出通知；在其他页面读到损坏状态时只提示一次，单击通知中的按钮回到设置页。断言中的标题与通知文字为简体中文，更换 `--language` 时仅用于查看排版。
+
 [`process-facts.json`](../../tools/window-probe/steps/process-facts.json) 核对文件版本、架构、提升状态与命令行列的启用、未知值、应用组共同值、窄窗口和恢复默认列，并捕获深浅主题画面。
 
 [`about-scroll.json`](../../tools/window-probe/steps/about-scroll.json) 检查关于页在 150% 界面缩放、大字号及窗口尺寸变化后的滚动范围与底部可达性，`inspectLayout` 的 `aboutScroll` 字段记录滚动位置和边界。

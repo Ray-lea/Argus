@@ -275,16 +275,28 @@ pub fn allow_process_query(owner: &str) -> Result<()> {
 /// Pin the directory against renaming, reject reparse points, and refuse any
 /// owner/allow ACE that could let an unprivileged account replace service code.
 pub fn protect_directory(path: &Path) -> Result<Handle> {
+    protect(path, true)
+}
+
+/// `protect_directory` for a path whose absence (2, 3) is the caller's to
+/// report: only the refusal of something that is there is logged as rejected.
+pub fn protect_present(path: &Path) -> Result<Handle> {
+    protect(path, false)
+}
+
+fn protect(path: &Path, report_absent: bool) -> Result<Handle> {
     let mut trace = PathInspection::default();
     inspect_path_with(path, &mut trace).map_err(|error| {
-        argus_core::diagnostics::warn(
-            "protected path rejected",
-            format!(
-                "{}; path={}; check={trace:?}",
-                argus_core::diagnostics::code(error.code()),
-                crate::util::log_path(path)
-            ),
-        );
+        if report_absent || !matches!(error, PathError::Os(2 | 3)) {
+            argus_core::diagnostics::warn(
+                "protected path rejected",
+                format!(
+                    "{}; path={}; check={trace:?}",
+                    argus_core::diagnostics::code(error.code()),
+                    crate::util::log_path(path)
+                ),
+            );
+        }
         error.code()
     })
 }

@@ -169,7 +169,9 @@
       "stopped": "Arrêté",
       "startPending": "Démarrage",
       "stopPending": "Arrêt en cours",
-      "unavailable": "Indisponible"
+      "unavailable": "Indisponible",
+      "broken": "Endommagé",
+      "deletePending": "Suppression en cours"
     },
     "outdated": "La version du service {service} ne correspond pas à Argus {app}. Cliquez sur « Mettre le service à jour ».",
     "incompatible": "Cliquez sur « Mettre le service à jour » pour installer la version correspondant à Argus et établir la connexion.",
@@ -187,7 +189,20 @@
     "start": "Démarrer le service",
     "update": "Mettre le service à jour",
     "ready": "Le service privilégié est prêt.",
-    "uninstalled": "Le service privilégié a été désinstallé."
+    "uninstalled": "Le service privilégié a été désinstallé.",
+    "broken": {
+      "repair": "Cliquez sur « Réparer le service » pour réinstaller les fichiers du service et rétablir la connexion, ou sur « Désinstaller » pour supprimer l’inscription résiduelle du service. Les deux opérations nécessitent une autorisation d’administrateur.",
+      "remove": "Cliquez sur « Désinstaller » pour supprimer l’inscription résiduelle du service ; il pourra ensuite être réinstallé. La désinstallation nécessite une autorisation d’administrateur.",
+      "notice": "Le service privilégié est endommagé et ne peut pas démarrer. Consultez Paramètres → Autorisations.",
+      "view": "Voir"
+    },
+    "deletePending": "Le service a été désinstallé. Windows supprimera son inscription lorsque les autres programmes auront fermé leurs handles sur ce service. Fermez les programmes qui l’affichent, comme la console Services, puis actualisez l’état ; un redémarrage de Windows termine également la suppression.",
+    "repair": {
+      "title": "Réparer le service privilégié ?",
+      "body": "L’enregistrement d’autorisation est perdu ; le compte pour lequel le service était autorisé ne peut pas être confirmé. La réparation réinstalle les fichiers du service et autorise le service pour le compte Windows actuel ; si le remplacement du Gestionnaire des tâches est activé, le Gestionnaire des tâches Windows est d’abord restauré.",
+      "confirm": "Réparer et activer",
+      "action": "Réparer le service"
+    }
   },
   "taskManager": {
     "title": "Remplacer le Gestionnaire des tâches",

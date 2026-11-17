@@ -314,6 +314,8 @@ pub(in crate::frontend) fn service_state(status: &Value) -> String {
         "stopped" => "stopped",
         "startPending" => "startPending",
         "stopPending" => "stopPending",
+        "broken" => "broken",
+        "deletePending" => "deletePending",
         _ => "unavailable",
     };
     label(&format!("settings.privilege.state.{key}"))

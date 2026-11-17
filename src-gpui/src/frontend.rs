@@ -714,8 +714,11 @@ impl Desktop {
                             }
                             this.prefetch(window, cx);
                             // The privilege badge follows the service: it may start after Argus.
+                            // An administrator needs no service, but reads its state once:
+                            // a damaged registration is reported whoever runs Argus.
                             if this.last_privilege.elapsed() >= Duration::from_secs(30)
-                                && !boolean(&this.data["info"], "elevated")
+                                && (!boolean(&this.data["info"], "elevated")
+                                    || !this.data.contains_key("privilege"))
                             {
                                 this.last_privilege = Instant::now();
                                 this.request(

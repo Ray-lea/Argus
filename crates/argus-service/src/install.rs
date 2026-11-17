@@ -14,6 +14,10 @@ use windows::Win32::Storage::FileSystem::{
     FILE_SHARE_READ,
 };
 use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::System::Registry::{
+    HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, REG_DWORD, REG_VALUE_TYPE, RegCloseKey, RegFlushKey,
+    RegOpenKeyExW, RegQueryValueExW,
+};
 use windows::Win32::System::Services::*;
 use windows::Win32::System::Threading::{
     GetExitCodeProcess, INFINITE, OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
@@ -27,13 +31,17 @@ use windows::core::{PCWSTR, PWSTR};
 
 use crate::security;
 use crate::util::{
-    FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, UNSAFE_PATH, io, message,
-    wide, win,
+    DAMAGED, FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, UNSAFE_PATH, io,
+    message, wide, win,
 };
 
 static MANAGING: AtomicBool = AtomicBool::new(false);
 const OWNER_FILE: &str = "owner.sid";
 const LOCK_FILE: &str = "install.lock";
+/// Where the SCM keeps its database.
+const SERVICES_KEY: &str = r"SYSTEM\CurrentControlSet\Services";
+/// What `manage` and the elevated helper accept.
+const ACTIONS: [&str; 5] = ["install", "update", "start", "uninstall", "repair"];
 
 #[derive(Default)]
 struct StoppedFailure(Option<(u32, u32)>);
@@ -79,6 +87,10 @@ impl Drop for Service {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceStatus {
+    /// `notInstalled`, `running`, `stopped`, `startPending`, `stopPending`;
+    /// `broken`: registered, but part of the installation is gone (`damage`);
+    /// `deletePending`: deleted, the registration going with its last handle;
+    /// `unavailable`: nothing can be said or trusted (`error`).
     pub state: &'static str,
     pub authorized: bool,
     pub version: Option<String>,
@@ -86,8 +98,83 @@ pub struct ServiceStatus {
     /// The running service speaks another protocol (`error` says so too):
     /// updating it is what reconnects, unlike a failure that may pass.
     pub incompatible: bool,
+    /// What a `broken` installation lacks.
+    pub damage: Option<Damage>,
+    /// The action that brings a `broken` installation back, where this
+    /// account may run one: `update` when the authorization record still
+    /// names it, `repair` when the record has to be written anew, which is
+    /// confirmed as an installation is. None when the record names another
+    /// account: only removing is left.
+    pub repair: Option<&'static str>,
+    /// The authorization record was read and names another account.
+    #[serde(skip)]
+    pub(crate) other_owner: bool,
     #[serde(skip)]
     pub(crate) error_code: Option<u32>,
+}
+
+impl ServiceStatus {
+    pub(crate) fn new(state: &'static str) -> Self {
+        Self {
+            state,
+            authorized: false,
+            version: None,
+            error: None,
+            incompatible: false,
+            damage: None,
+            repair: None,
+            other_owner: false,
+            error_code: None,
+        }
+    }
+
+    fn failed(state: &'static str, code: u32) -> Self {
+        Self {
+            error: Some(message(code)),
+            error_code: Some(code),
+            ..Self::new(state)
+        }
+    }
+
+    /// Whether the service is another account's. False where nothing says
+    /// whose it is (a missing folder or record), which `damage` reports.
+    pub fn other_owner(&self) -> bool {
+        self.other_owner
+    }
+}
+
+/// What a registered service lacks of its files.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Damage {
+    /// The service folder.
+    Directory,
+    /// The authorization record: absent, or not an account's SID.
+    Owner,
+    /// The executable the registration names.
+    Image,
+    OwnerAndImage,
+}
+
+impl Damage {
+    /// For the diagnostic log, in fixed words.
+    pub fn log(self) -> &'static str {
+        match self {
+            Self::Directory => "service folder missing",
+            Self::Owner => "authorization record missing or unreadable",
+            Self::Image => "registered image missing",
+            Self::OwnerAndImage => "registered image and authorization record missing",
+        }
+    }
+
+    fn text(self) -> String {
+        match self {
+            Self::Directory => tr!("service.damaged.directory"),
+            Self::Owner => tr!("service.damaged.owner"),
+            Self::Image => tr!("service.damaged.image"),
+            Self::OwnerAndImage => tr!("service.damaged.ownerAndImage"),
+        }
+    }
 }
 
 pub(crate) fn directory() -> Result<PathBuf> {
@@ -107,12 +194,176 @@ pub(crate) fn directory() -> Result<PathBuf> {
 pub(crate) fn owner(dir: &Path) -> Result<String> {
     let path = dir.join(OWNER_FILE);
     let _guard = security::protect_directory(&path)?;
-    if fs::metadata(&path).map_err(io)?.len() > 184 {
+    read_owner(&path)
+}
+
+fn read_owner(path: &Path) -> Result<String> {
+    if fs::metadata(path).map_err(io)?.len() > 184 {
         return Err(87);
     }
     let sid = fs::read_to_string(path).map_err(io)?;
     security::validate_sid(&sid)?;
     Ok(sid)
+}
+
+/// Opens a path of the installation for a check, as
+/// `security::protect_present` does. The tests examine folders of their own,
+/// which that refuses.
+type Pin<'a> = &'a dyn Fn(&Path) -> Result<Handle>;
+
+/// The authorization record, `owner.sid`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Record {
+    /// The account it authorizes.
+    Account(String),
+    /// Absent, or not an account's SID; the code says which. A crash or a
+    /// removal that was cut short leaves this behind.
+    Unusable(u32),
+    /// Its own owner, permissions or link are not safe: it is not read, and
+    /// nothing here replaces it.
+    Unsafe(u32),
+}
+
+fn record(dir: &Path, pin: Pin) -> Record {
+    let path = dir.join(OWNER_FILE);
+    let _guard = match pin(&path) {
+        Ok(guard) => guard,
+        Err(code @ (2 | 3)) => return Record::Unusable(code),
+        Err(code) => return Record::Unsafe(code),
+    };
+    match read_owner(&path) {
+        Ok(sid) => Record::Account(sid),
+        Err(code) => Record::Unusable(code),
+    }
+}
+
+/// The code with which the registered image is not there, if it is not.
+fn image_missing(image: &Path) -> Option<u32> {
+    match fs::symlink_metadata(image).map_err(io) {
+        Err(code @ (2 | 3)) => Some(code),
+        _ => None,
+    }
+}
+
+/// What a registered service has of its files.
+#[derive(Debug, PartialEq, Eq)]
+enum Health {
+    /// All of them; the account the record authorizes.
+    Whole(String),
+    /// The folder or the record cannot be trusted (owner, permissions, link)
+    /// or examined: nothing in it is read. Removing stays possible.
+    Unsafe(u32),
+    Damaged(Finding),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Finding {
+    damage: Damage,
+    /// The code of the check that found it.
+    code: u32,
+    /// The account the record authorizes, where the record is intact.
+    owner: Option<String>,
+}
+
+/// Examines the folder, the record and the registered image. The handles pin
+/// the folder for as long as the caller keeps them.
+fn examine(dir: &Path, image: &Path, pin: Pin) -> (Option<(Handle, Handle)>, Health) {
+    let Some(parent) = dir.parent() else {
+        return (None, Health::Unsafe(87));
+    };
+    let parent = match pin(parent) {
+        Ok(parent) => parent,
+        Err(code) => return (None, Health::Unsafe(code)),
+    };
+    let folder = match pin(dir) {
+        Ok(folder) => folder,
+        Err(code @ (2 | 3)) => {
+            let finding = Finding {
+                damage: Damage::Directory,
+                code,
+                owner: None,
+            };
+            return (None, Health::Damaged(finding));
+        }
+        Err(code) => return (None, Health::Unsafe(code)),
+    };
+    let health = match (record(dir, pin), image_missing(image)) {
+        (Record::Unsafe(code), _) => Health::Unsafe(code),
+        (Record::Account(owner), None) => Health::Whole(owner),
+        (Record::Account(owner), Some(code)) => Health::Damaged(Finding {
+            damage: Damage::Image,
+            code,
+            owner: Some(owner),
+        }),
+        (Record::Unusable(code), image) => Health::Damaged(Finding {
+            damage: if image.is_some() {
+                Damage::OwnerAndImage
+            } else {
+                Damage::Owner
+            },
+            code,
+            owner: None,
+        }),
+    };
+    (Some((parent, folder)), health)
+}
+
+struct RegKey(HKEY);
+impl Drop for RegKey {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = RegCloseKey(self.0);
+        }
+    }
+}
+
+fn registry_key(root: HKEY, path: &str) -> Result<RegKey> {
+    let mut key = HKEY::default();
+    let code = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(wide(path).as_ptr()),
+            None,
+            KEY_QUERY_VALUE,
+            &mut key,
+        )
+    };
+    if code.0 != 0 {
+        return Err(code.0);
+    }
+    Ok(RegKey(key))
+}
+
+/// Writes the registry hive that holds `path` to disk.
+fn flush_key(root: HKEY, path: &str) -> Result<()> {
+    let key = registry_key(root, path)?;
+    match unsafe { RegFlushKey(key.0) }.0 {
+        0 => Ok(()),
+        code => Err(code),
+    }
+}
+
+/// Whether the SCM has marked the service registered at `path` for deletion
+/// (`DeleteFlag`): another program's handle keeps the registration until it
+/// closes, and the SCM drops it when Windows starts at the latest.
+fn marked_for_deletion(root: HKEY, path: &str) -> bool {
+    let Ok(key) = registry_key(root, path) else {
+        return false;
+    };
+    let mut kind = REG_VALUE_TYPE::default();
+    let mut flag = 0u32;
+    let mut size = size_of::<u32>() as u32;
+    let code = unsafe {
+        RegQueryValueExW(
+            key.0,
+            windows::core::w!("DeleteFlag"),
+            None,
+            Some(&mut kind),
+            Some((&raw mut flag).cast()),
+            Some(&mut size),
+        )
+    };
+    code.0 == 0 && kind == REG_DWORD && size == size_of::<u32>() as u32 && flag != 0
 }
 
 fn scm(access: u32) -> Result<Service> {
@@ -209,59 +460,88 @@ pub fn status() -> std::result::Result<ServiceStatus, String> {
     crate::util::stage("privileged service status", inspect()).map_err(message)
 }
 
+/// Whether a service of this name is registered and stays so, whatever it
+/// has left of its files: one marked for deletion is on its way out.
+pub(crate) fn is_registered() -> bool {
+    scm(SC_MANAGER_CONNECT)
+        .and_then(|manager| open(&manager, SERVICE_QUERY_STATUS))
+        .is_ok_and(|service| service.is_some())
+        && !marked_for_deletion(HKEY_LOCAL_MACHINE, &registration())
+}
+
+/// The registry key of the service's registration.
+fn registration() -> String {
+    format!(r"{SERVICES_KEY}\{}", crate::SERVICE_NAME)
+}
+
 fn inspect() -> Result<ServiceStatus> {
     let manager = scm(SC_MANAGER_CONNECT)?;
     let Some(service) = open(&manager, SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG)? else {
-        return Ok(ServiceStatus {
-            state: "notInstalled",
-            authorized: false,
-            version: None,
-            error: None,
-            incompatible: false,
-            error_code: None,
-        });
+        return Ok(ServiceStatus::new("notInstalled"));
     };
     let dir = directory()?;
-    binary(&service, &dir)?;
-    let protected = (|| {
-        let parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
-        let guard = security::protect_directory(&dir)?;
-        Ok((parent, guard))
-    })();
-    let _pins = match protected {
-        Ok(pins) => pins,
-        Err(code) => {
-            return Ok(ServiceStatus {
-                state: "unavailable",
-                authorized: false,
-                version: None,
-                error: Some(message(code)),
-                incompatible: false,
-                error_code: Some(code),
-            });
-        }
+    let image = match binary(&service, &dir) {
+        Ok(image) => image,
+        // Another program's service of this name, or a registration that no
+        // longer reads as this one: nothing of it is Argus's to manage.
+        Err(code) => return Ok(ServiceStatus::failed("unavailable", code)),
     };
-    let authorized = owner(&dir)? == security::current_sid()?;
+    // A removal deletes the files once the deletion is on disk, while another
+    // program's handle may still keep the registration: that is no damage.
+    if marked_for_deletion(HKEY_LOCAL_MACHINE, &registration()) {
+        return Ok(ServiceStatus::new("deletePending"));
+    }
+    let (_pins, health) = examine(&dir, &image, &security::protect_present);
+    if let Health::Damaged(finding) = &health {
+        let lacking = match finding.damage {
+            Damage::Directory => dir.clone(),
+            Damage::Image => image.clone(),
+            Damage::Owner | Damage::OwnerAndImage => dir.join(OWNER_FILE),
+        };
+        argus_core::diagnostics::warn(
+            "privileged service installation damaged",
+            format!(
+                "{}; {}; path={}",
+                finding.damage.log(),
+                argus_core::diagnostics::code(finding.code),
+                crate::util::log_path(&lacking)
+            ),
+        );
+    }
     let s = query(&service)?;
+    Ok(describe(health, &s, &security::current_sid()?, |pid| {
+        crate::pipe::request(crate::PIPE_NAME, pid, crate::Operation::Ping)
+    }))
+}
+
+/// The status of a registered service of ours for `account`, from what
+/// `examine` found and the SCM reports. `ping` asks the running service of
+/// this account for its version.
+fn describe(
+    health: Health,
+    s: &SERVICE_STATUS_PROCESS,
+    account: &str,
+    ping: impl FnOnce(u32) -> Result<crate::Reply>,
+) -> ServiceStatus {
+    let owner = match health {
+        Health::Whole(owner) => owner,
+        Health::Unsafe(code) => return ServiceStatus::failed("unavailable", code),
+        Health::Damaged(finding) => return broken(finding, account),
+    };
+    let authorized = owner == account;
     let mut status = ServiceStatus {
-        state: match s.dwCurrentState {
+        authorized,
+        other_owner: !authorized,
+        ..ServiceStatus::new(match s.dwCurrentState {
             SERVICE_RUNNING => "running",
             SERVICE_STOPPED => "stopped",
             SERVICE_START_PENDING => "startPending",
             SERVICE_STOP_PENDING => "stopPending",
             _ => "unavailable",
-        },
-        authorized,
-        version: None,
-        error: None,
-        incompatible: false,
-        error_code: None,
+        })
     };
     if s.dwCurrentState == SERVICE_RUNNING && authorized {
-        note_ping(
-            &mut status,
-            crate::pipe::request(crate::PIPE_NAME, s.dwProcessId, crate::Operation::Ping),
-        );
+        note_ping(&mut status, ping(s.dwProcessId));
     } else if !authorized {
         status.error_code = Some(OTHER_OWNER);
         status.error = Some(message(OTHER_OWNER));
@@ -269,7 +549,32 @@ fn inspect() -> Result<ServiceStatus> {
         status.error_code = Some(s.dwWin32ExitCode);
         status.error = Some(message(s.dwWin32ExitCode));
     }
-    Ok(status)
+    status
+}
+
+/// A registered service that lacks part of its files. It cannot start, or
+/// cannot be shown to be this account's, whatever the SCM says of it.
+fn broken(finding: Finding, account: &str) -> ServiceStatus {
+    let authorized = finding.owner.as_deref() == Some(account);
+    let other_owner = finding.owner.is_some() && !authorized;
+    let text = finding.damage.text();
+    ServiceStatus {
+        authorized,
+        other_owner,
+        damage: Some(finding.damage),
+        repair: match finding.owner {
+            Some(_) if authorized => Some("update"),
+            Some(_) => None,
+            None => Some("repair"),
+        },
+        error: Some(if other_owner {
+            tr!("app.join", first = text, second = message(OTHER_OWNER))
+        } else {
+            text
+        }),
+        error_code: Some(finding.code),
+        ..ServiceStatus::new("broken")
+    }
 }
 
 /// Records what a Ping of the running service of this account answered.
@@ -301,10 +606,13 @@ pub(crate) fn running_pid() -> Result<Option<u32>> {
     let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
     let _guard = security::protect_directory(&dir)?;
     binary(&service, &dir)?;
-    if owner(&dir)? != security::current_sid()? {
-        return Ok(None);
+    match record(&dir, &security::protect_present) {
+        Record::Account(owner) => Ok((owner == security::current_sid()?).then_some(s.dwProcessId)),
+        // A service whose record is gone cannot be shown to be this
+        // account's: as absent as another account's. `status` reports it.
+        Record::Unusable(_) => Ok(None),
+        Record::Unsafe(code) => Err(code),
     }
-    Ok(Some(s.dwProcessId))
 }
 
 fn wait(service: &Service, wanted: SERVICE_STATUS_CURRENT_STATE) -> Result<()> {
@@ -480,113 +788,335 @@ pub(crate) fn new_protected_file(path: &Path) -> Result<fs::File> {
     Ok(unsafe { fs::File::from_raw_handle(h.0) })
 }
 
-fn install_or_update(
-    manager: &Service,
-    existing: Option<&Service>,
-    dir: &Path,
-    sid: &str,
-) -> Result<()> {
-    let old = existing.map(|s| binary(s, dir)).transpose()?;
-    let was_running = existing
-        .map(|s| query(s).map(|q| q.dwCurrentState == SERVICE_RUNNING))
-        .transpose()?
-        .unwrap_or(false);
-    if dir.join(OWNER_FILE).exists() && owner(dir)? != sid {
-        return Err(OTHER_OWNER);
+/// The names `copy_binary` gives: argus-service-<process>-<time>.exe.
+fn image_name(name: &str) -> bool {
+    name.strip_prefix("argus-service-")
+        .and_then(|rest| rest.strip_suffix(".exe"))
+        .and_then(|stamp| stamp.split_once('-'))
+        .is_some_and(|(process, time)| {
+            [process, time]
+                .iter()
+                .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        })
+}
+
+/// What installing, updating and removing the service do to the machine.
+/// `Machine` does it; the tests keep the registration and the files in
+/// memory, refuse steps and look at what a crash after each one would leave.
+trait Steps {
+    /// The image the registration names; None without a registration.
+    fn registered(&mut self) -> Result<Option<PathBuf>>;
+    fn running(&mut self) -> Result<bool>;
+    fn stop(&mut self) -> Result<()>;
+    fn start(&mut self) -> Result<()>;
+    /// Registers the service, naming `image`.
+    fn create(&mut self, image: &Path) -> Result<()>;
+    /// Makes the registration name `image`.
+    fn point(&mut self, image: &Path) -> Result<()>;
+    /// Deletes the registration. It may outlast the call, marked for
+    /// deletion, while another program holds a handle to it.
+    fn delete(&mut self) -> Result<()>;
+    /// Writes the registration, or its deletion, to disk.
+    fn flush(&mut self) -> Result<()>;
+    /// A new copy of this executable in the service folder.
+    fn copy(&mut self) -> Result<PathBuf>;
+    fn present(&mut self, image: &Path) -> bool;
+    /// The service executables in the folder.
+    fn images(&mut self) -> Vec<PathBuf>;
+    fn remove(&mut self, image: &Path) -> Result<()>;
+    fn record(&mut self) -> Record;
+    /// Writes the authorization record for `sid`, in place of any other.
+    fn authorize(&mut self, sid: &str) -> Result<()>;
+    fn forget(&mut self) -> Result<()>;
+}
+
+/// The service's registration and its trusted, pinned folder. A removal
+/// uses the registration only: it deletes files through `cleanup`, which
+/// needs no trust in the folder.
+struct Machine<'a> {
+    manager: &'a Service,
+    /// The registration, opened with every access; None before the service
+    /// is created and once it is deleted.
+    service: Option<Service>,
+    dir: &'a Path,
+}
+
+impl Machine<'_> {
+    fn service(&self) -> Result<&Service> {
+        self.service.as_ref().ok_or(1060)
     }
-    let new = copy_binary(dir)?;
-    let result = (|| {
-        if let Some(service) = existing {
-            stop(service)?;
-            if let Err(e) = set_binary(service, &new).and_then(|_| start(service)) {
-                // Do not delete the new binary unless rollback actually succeeds.
-                stop(service)?;
-                set_binary(service, old.as_ref().ok_or(FOREIGN_SERVICE)?)?;
-                if was_running {
-                    start(service)?;
-                }
-                return Err(e);
-            }
-        } else {
-            if !dir.join(OWNER_FILE).exists() {
-                use std::io::Write;
-                let mut file = new_protected_file(&dir.join(OWNER_FILE))?;
-                file.write_all(sid.as_bytes())
-                    .and_then(|_| file.sync_all())
-                    .map_err(io)?;
-            }
-            let service = Service(
-                unsafe {
-                    CreateServiceW(
-                        manager.0,
-                        PCWSTR(wide(crate::SERVICE_NAME).as_ptr()),
-                        PCWSTR(
-                            wide(&if cfg!(debug_assertions) {
-                                tr!("service.displayNameDev")
-                            } else {
-                                tr!("service.displayName")
-                            })
-                            .as_ptr(),
-                        ),
-                        SERVICE_ALL_ACCESS,
-                        SERVICE_WIN32_OWN_PROCESS,
-                        SERVICE_AUTO_START,
-                        SERVICE_ERROR_NORMAL,
-                        PCWSTR(command(&new).as_ptr()),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )
-                }
-                .map_err(win)
-                .inspect_err(|code| {
-                    argus_core::diagnostics::warn(
-                        "service CreateServiceW",
-                        argus_core::diagnostics::code(*code),
-                    )
-                })?,
-            );
-            let mut desc_text = wide(&tr!("service.description"));
-            let desc = SERVICE_DESCRIPTIONW {
-                lpDescription: PWSTR(desc_text.as_mut_ptr()),
-            };
+}
+
+impl Steps for Machine<'_> {
+    fn registered(&mut self) -> Result<Option<PathBuf>> {
+        // Asked of the SCM by name: a deleted registration that another
+        // program's handle keeps is still one.
+        open(self.manager, SERVICE_QUERY_CONFIG)?
+            .map(|service| binary(&service, self.dir))
+            .transpose()
+    }
+
+    fn running(&mut self) -> Result<bool> {
+        Ok(query(self.service()?)?.dwCurrentState == SERVICE_RUNNING)
+    }
+
+    fn stop(&mut self) -> Result<()> {
+        stop(self.service()?)
+    }
+
+    fn start(&mut self) -> Result<()> {
+        start(self.service()?)
+    }
+
+    fn create(&mut self, image: &Path) -> Result<()> {
+        let service = Service(
             unsafe {
-                let _ = ChangeServiceConfig2W(
-                    service.0,
-                    SERVICE_CONFIG_DESCRIPTION,
-                    Some((&desc as *const SERVICE_DESCRIPTIONW).cast()),
+                CreateServiceW(
+                    self.manager.0,
+                    PCWSTR(wide(crate::SERVICE_NAME).as_ptr()),
+                    PCWSTR(
+                        wide(&if cfg!(debug_assertions) {
+                            tr!("service.displayNameDev")
+                        } else {
+                            tr!("service.displayName")
+                        })
+                        .as_ptr(),
+                    ),
+                    SERVICE_ALL_ACCESS,
+                    SERVICE_WIN32_OWN_PROCESS,
+                    SERVICE_AUTO_START,
+                    SERVICE_ERROR_NORMAL,
+                    PCWSTR(command(image).as_ptr()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            .map_err(win)
+            .inspect_err(|code| {
+                argus_core::diagnostics::warn(
+                    "service CreateServiceW",
+                    argus_core::diagnostics::code(*code),
+                )
+            })?,
+        );
+        let mut desc_text = wide(&tr!("service.description"));
+        let desc = SERVICE_DESCRIPTIONW {
+            lpDescription: PWSTR(desc_text.as_mut_ptr()),
+        };
+        unsafe {
+            let _ = ChangeServiceConfig2W(
+                service.0,
+                SERVICE_CONFIG_DESCRIPTION,
+                Some((&desc as *const SERVICE_DESCRIPTIONW).cast()),
+            );
+        }
+        self.service = Some(service);
+        Ok(())
+    }
+
+    fn point(&mut self, image: &Path) -> Result<()> {
+        set_binary(self.service()?, image)
+    }
+
+    fn delete(&mut self) -> Result<()> {
+        let service = self.service()?;
+        match unsafe { DeleteService(service.0) }.map_err(win) {
+            // 1072: an earlier removal marked it, and a handle still keeps it.
+            Ok(()) | Err(1072) => {}
+            Err(code) => return crate::util::stage("service DeleteService", Err(code)),
+        }
+        // The SCM drops the registration when its last handle closes.
+        self.service = None;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !matches!(open(self.manager, SERVICE_QUERY_STATUS), Ok(None)) {
+            if Instant::now() >= deadline {
+                argus_core::diagnostics::warn(
+                    "service registration removal pending",
+                    "marked for deletion; another handle keeps it",
                 );
+                break;
             }
-            if let Err(e) = start(&service) {
-                stop(&service)?;
-                unsafe { DeleteService(service.0) }.map_err(win)?;
-                return Err(e);
-            }
+            std::thread::sleep(Duration::from_millis(50));
         }
         Ok(())
-    })();
-    if result.is_ok() {
-        if let Some(old) = old {
-            let _ = fs::remove_file(old);
-        }
-    } else {
-        // Preserve whichever binary the SCM still references after a failed
-        // rollback. A failed repair must not make the service unbootable.
-        let referenced = open(manager, SERVICE_QUERY_CONFIG)?.and_then(|s| binary(&s, dir).ok());
-        if referenced.as_ref() != Some(&new) {
-            let _ = fs::remove_file(new);
-        }
-        if referenced.is_none() {
-            let _ = fs::remove_file(dir.join(OWNER_FILE));
-        }
     }
+
+    fn flush(&mut self) -> Result<()> {
+        crate::util::stage(
+            "service registration RegFlushKey",
+            flush_key(HKEY_LOCAL_MACHINE, SERVICES_KEY),
+        )
+    }
+
+    fn copy(&mut self) -> Result<PathBuf> {
+        copy_binary(self.dir)
+    }
+
+    fn present(&mut self, image: &Path) -> bool {
+        image_missing(image).is_none()
+    }
+
+    fn images(&mut self) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(self.dir) else {
+            return Vec::new();
+        };
+        entries
+            .flatten()
+            .filter(|entry| entry.file_name().to_str().is_some_and(image_name))
+            .map(|entry| entry.path())
+            .collect()
+    }
+
+    fn remove(&mut self, image: &Path) -> Result<()> {
+        remove_file(image)
+    }
+
+    fn record(&mut self) -> Record {
+        record(self.dir, &security::protect_present)
+    }
+
+    fn authorize(&mut self, sid: &str) -> Result<()> {
+        use std::io::Write;
+        let path = self.dir.join(OWNER_FILE);
+        remove_file(&path)?;
+        let mut file = new_protected_file(&path)?;
+        file.write_all(sid.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(io)
+    }
+
+    fn forget(&mut self) -> Result<()> {
+        remove_file(&self.dir.join(OWNER_FILE))
+    }
+}
+
+/// Deletes a file of the pinned service folder; one already gone is fine.
+fn remove_file(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            argus_core::diagnostics::file_failure("service file removal", path, &error);
+            Err(io(error))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Installs the service for `sid`, or brings a registered one to this
+/// executable.
+///
+/// The SCM changes its database in the registry at once, but the registry
+/// reaches the disk lazily: a crash can bring back a registration from before
+/// the last change. So an image is deleted only once a registration that does
+/// not name it has been written to disk (`settle`); until then every image a
+/// registration named stays, and the service can start whatever comes back.
+fn install_or_update(system: &mut impl Steps, sid: &str) -> Result<()> {
+    let old = system.registered()?;
+    let was_running = old.is_some() && system.running()?;
+    let authorize = match (system.record(), &old) {
+        (Record::Unsafe(code), _) => return Err(code),
+        (Record::Account(owner), _) if owner == sid => false,
+        // A registered service stays with the account its record names.
+        // Only a repair or a removal changes that, and neither comes here.
+        (Record::Account(_), Some(_)) => return Err(OTHER_OWNER),
+        (Record::Unusable(_), Some(_)) => return Err(DAMAGED),
+        // Without a service a record authorizes nobody: a removal or an
+        // installation that was cut short left it behind.
+        (_, None) => true,
+    };
+    let new = system.copy()?;
+    let result = change(
+        system,
+        old.as_deref(),
+        &new,
+        was_running,
+        authorize.then_some(sid),
+    );
+    settle(system, old.is_none() && result.is_err());
     result
 }
 
+/// Registers `new`, in place of `old` if there is one, and starts it. When
+/// that fails, the registration goes back to an `old` that is still there.
+fn change(
+    system: &mut impl Steps,
+    old: Option<&Path>,
+    new: &Path,
+    was_running: bool,
+    authorize: Option<&str>,
+) -> Result<()> {
+    let Some(old) = old else {
+        if let Some(sid) = authorize {
+            system.authorize(sid)?;
+        }
+        system.create(new)?;
+        if let Err(error) = system.start() {
+            system.stop()?;
+            system.delete()?;
+            return Err(error);
+        }
+        return Ok(());
+    };
+    system.stop()?;
+    if let Err(error) = system.point(new).and_then(|_| system.start()) {
+        // An image that is gone is nothing to go back to: a new one that
+        // got registered stays, and may start the next time.
+        if system.present(old) {
+            system.stop()?;
+            system.point(old)?;
+            if was_running {
+                system.start()?;
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Deletes the images no registration names any more: the one an update
+/// replaced, the new one of an attempt that failed, and those an earlier
+/// attempt or crash left behind. After a failed installation the record
+/// written for it goes too. Nothing is deleted unless the registration read
+/// here has reached the disk.
+fn settle(system: &mut impl Steps, installation_failed: bool) {
+    // Read anew: a rollback may have stopped half way.
+    let Ok(registered) = system.registered() else {
+        return;
+    };
+    if system.flush().is_err() {
+        return;
+    }
+    let registered = registered.as_deref().and_then(Path::file_name);
+    for image in system.images() {
+        let named = image
+            .file_name()
+            .zip(registered)
+            .is_some_and(|(image, registered)| image.eq_ignore_ascii_case(registered));
+        if !named {
+            // One still running, or held by a scanner, waits for the next time.
+            let _ = system.remove(&image);
+        }
+    }
+    if registered.is_none() && installation_failed {
+        let _ = system.forget();
+    }
+}
+
+/// Stops and deletes a registered service, then writes that to disk. False
+/// when it could not be written: the files then stay, since a crash could
+/// bring the registration back.
+fn unregister(system: &mut impl Steps) -> Result<bool> {
+    if system.registered()?.is_some() {
+        system.stop()?;
+        system.delete()?;
+    }
+    Ok(system.flush().is_ok())
+}
+
 pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
-    if !matches!(action, "install" | "update" | "start" | "uninstall") {
+    if !ACTIONS.contains(&action) {
         return Err(87);
     }
     // Uninstalling authorizes nobody, and an uninstaller may run as SYSTEM
@@ -604,10 +1134,17 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     let existing = open(&manager, SERVICE_ALL_ACCESS)?;
     let dir = directory()?;
     let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
-    if action == "install" {
-        if existing.is_some() {
-            return Err(1073);
+    match (action, &existing) {
+        ("install", Some(_)) => return Err(1073),
+        ("install", None) => {}
+        (_, None) => return Err(1060),
+        // Not another program's service of this name, whatever is asked.
+        (_, Some(service)) => {
+            binary(service, &dir)?;
         }
+    }
+    // A repair brings back a folder that is gone, as an installation makes it.
+    if matches!(action, "install" | "repair") {
         let sd = security::directory_descriptor()?;
         if let Err(e) = unsafe {
             CreateDirectoryW(
@@ -623,31 +1160,50 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     }
     let guard = security::protect_directory(&dir)?;
     let lock = management_lock(&dir)?;
-    let result = match action {
-        "install" | "update" => {
-            if action == "update" && existing.is_none() {
-                return Err(1060);
+    let mut machine = Machine {
+        manager: &manager,
+        service: existing,
+        dir: &dir,
+    };
+    // Whose the registered service is. Only a repair goes on without a
+    // record: its elevation was confirmed as an installation's is, and it
+    // authorizes `sid` as one does. Never a record that names another account.
+    let reauthorize = action != "install"
+        && match machine.record() {
+            Record::Account(owner) if owner == sid => false,
+            Record::Account(_) => return Err(OTHER_OWNER),
+            Record::Unsafe(code) => return Err(code),
+            Record::Unusable(code) => {
+                argus_core::diagnostics::warn(
+                    "service authorization record unusable",
+                    format!("{}; action={action}", argus_core::diagnostics::code(code)),
+                );
+                if action != "repair" {
+                    return Err(DAMAGED);
+                }
+                true
             }
+        };
+    let result = if action == "start" {
+        machine.start()
+    } else {
+        if reauthorize {
+            // As before a removal: the replacement was enabled for the
+            // account the lost record named.
+            restore_for_removal(&dir)?;
+            machine.authorize(sid)?;
+        } else {
             // An enabled replacement comes along and stays on: its files are
             // apart from the service's and its launcher does not need it.
             // Anything else is restored first: never retire service/recovery
             // files while IFEO still owns them.
-            let followed = action == "update"
+            let followed = action != "install"
                 && crate::taskmgr::follow_update(&dir).map_err(|_| TASK_MANAGER_FOLLOW)?;
             if !followed {
                 restore_task_manager(&dir)?;
             }
-            install_or_update(&manager, existing.as_ref(), &dir, sid)
         }
-        "start" => {
-            let s = existing.as_ref().ok_or(1060u32)?;
-            binary(s, &dir)?;
-            if owner(&dir)? != sid {
-                return Err(OTHER_OWNER);
-            }
-            start(s)
-        }
-        _ => unreachable!(),
+        install_or_update(&mut machine, sid)
     };
     drop(lock);
     drop(guard);
@@ -693,38 +1249,48 @@ fn uninstall() -> Result<()> {
     let lock = pins.as_ref().map(|_| management_lock(&dir)).transpose()?;
     // SCM owns this configuration. Do not read authorization records from a
     // damaged directory or execute any program stored there while removing it.
-    let image = existing
-        .as_ref()
-        .map(|service| binary(service, &dir))
-        .transpose()?;
+    if let Some(service) = &existing {
+        binary(service, &dir)?;
+    }
     if lock.is_some() {
-        if restore_task_manager(&dir).is_err() {
-            crate::taskmgr::restore_registration(&dir)
-                .map_err(|_| crate::taskmgr::maintenance_error(&dir))?;
-        }
+        restore_for_removal(&dir)?;
     } else {
         crate::taskmgr::restore().map_err(|_| crate::taskmgr::maintenance_error(&dir))?;
     }
-    if let Some(service) = existing {
-        stop(&service)?;
-        unsafe { DeleteService(service.0) }.map_err(win)?;
+    let mut machine = Machine {
+        manager: &manager,
+        service: existing,
+        dir: &dir,
+    };
+    // The files go only once the deletion is on disk: a crash could
+    // otherwise bring back a registration that names a deleted image and
+    // starts with Windows. A registration that another program's handle
+    // keeps for now is marked for deletion there, and never starts again.
+    if !unregister(&mut machine)? {
+        return Ok(());
     }
-    if let Some(directory) = crate::cleanup::Directory::open(&dir)? {
-        if let Some(image) = image {
-            directory.remove_file(
-                image
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .ok_or(87u32)?,
-            )?;
-        }
-        directory.remove_file(OWNER_FILE)?;
-        drop(lock);
-        drop(pins);
-        directory.remove_file(LOCK_FILE)?;
-        directory.remove_empty()?;
+    let Some(directory) = crate::cleanup::Directory::open(&dir)? else {
+        return Ok(());
+    };
+    let removed = clean(&directory);
+    drop(lock);
+    drop(pins);
+    directory.remove_file(LOCK_FILE)?;
+    directory.remove_empty()?;
+    removed
+}
+
+/// Deletes what a removed service leaves in its folder: the authorization
+/// record first, which without a service authorizes nobody and must not meet
+/// a later installation for another account, then every service executable,
+/// including those an update could not delete. Goes on past a file that
+/// cannot be deleted and reports the first such failure.
+fn clean(directory: &crate::cleanup::Directory) -> Result<()> {
+    let mut result = directory.remove_file(OWNER_FILE);
+    for image in directory.names(image_name)? {
+        result = result.and(directory.remove_file(&image));
     }
-    Ok(())
+    result
 }
 
 /// Restores the system task manager before the service changes, then deletes
@@ -737,30 +1303,61 @@ fn restore_task_manager(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// `restore_task_manager` for a removal, or a repair that starts over as one
+/// does: when the recovery record cannot do it, deleting Argus's own value
+/// from taskmgr.exe's entry is the whole restore. The caller holds install.lock.
+fn restore_for_removal(dir: &Path) -> Result<()> {
+    if restore_task_manager(dir).is_err() {
+        crate::taskmgr::restore_registration(dir)
+            .map_err(|_| crate::taskmgr::maintenance_error(dir))?;
+    }
+    Ok(())
+}
+
 /// Brings an installed service to this executable, for the installer: it
 /// already runs elevated after replacing argus.exe, so an update asks for
 /// administrator rights once. The service stays with the account that
 /// installed it, and an enabled task manager replacement follows along and
 /// stays on. When this fails, Argus offers the service update when it starts.
+///
+/// A registered service whose image is gone comes back with the update: its
+/// record still says whose it is. One whose record is gone stays as it is,
+/// since nothing here says whom to authorize and the installer may run as
+/// another account: Argus reports the damage and offers the repair when it
+/// starts.
 pub(crate) fn refresh() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
     }
-    if open(&scm(SC_MANAGER_CONNECT)?, SERVICE_QUERY_STATUS)?.is_none() {
-        return Ok(());
-    }
-    let dir = directory()?;
     let owner = {
-        let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
-        let _dir = security::protect_directory(&dir)?;
-        owner(&dir)?
+        let manager = scm(SC_MANAGER_CONNECT)?;
+        let Some(service) = open(&manager, SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG)? else {
+            return Ok(());
+        };
+        let dir = directory()?;
+        let image = binary(&service, &dir)?;
+        match examine(&dir, &image, &security::protect_present).1 {
+            Health::Whole(owner) => owner,
+            Health::Unsafe(code) => return Err(code),
+            Health::Damaged(finding) => {
+                argus_core::diagnostics::warn(
+                    "privileged service installation damaged",
+                    format!(
+                        "{}; {}",
+                        finding.damage.log(),
+                        argus_core::diagnostics::code(finding.code)
+                    ),
+                );
+                finding.owner.ok_or(DAMAGED)?
+            }
+        }
     };
     run_helper("update", &owner)
 }
 
 /// UAC belongs to this explicit settings action, never a background retry.
 pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
-    if !matches!(action, "install" | "update" | "start" | "uninstall") {
+    if !ACTIONS.contains(&action) {
         return Err(message(87));
     }
     if MANAGING.swap(true, Ordering::AcqRel) {
@@ -878,12 +1475,8 @@ mod tests {
 
     fn pinged(ping: Result<crate::Reply>) -> ServiceStatus {
         let mut status = ServiceStatus {
-            state: "running",
             authorized: true,
-            version: None,
-            error: None,
-            incompatible: false,
-            error_code: None,
+            ..ServiceStatus::new("running")
         };
         note_ping(&mut status, ping);
         status
@@ -914,5 +1507,906 @@ mod tests {
             assert!(!status.incompatible);
             assert_eq!(status.error, Some(message(code)));
         }
+    }
+
+    const ACCOUNT: &str = "S-1-5-21-1004336348-1177238915-682003330-1001";
+    const OTHER: &str = "S-1-5-21-1004336348-1177238915-682003330-1002";
+
+    /// A folder of the test's own, with the service folder (not made yet)
+    /// inside it, as Program Files holds the real one.
+    struct Folder(PathBuf);
+    impl Folder {
+        fn new() -> Self {
+            let root = std::env::temp_dir()
+                .join(format!("argus-install-{}", crate::taskmgr::id().unwrap()));
+            fs::create_dir(&root).unwrap();
+            Self(root)
+        }
+        fn dir(&self) -> PathBuf {
+            self.0.join("Argus Privileged")
+        }
+        fn image(&self) -> PathBuf {
+            self.dir().join("argus-service-4242-1.exe")
+        }
+    }
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The path checks without the owner and permission rules, which a
+    /// test's own folder cannot meet: what is absent is absent all the same.
+    fn pinned(path: &Path) -> Result<Handle> {
+        use std::os::windows::io::IntoRawHandle;
+        OpenOptions::new()
+            .access_mode(0x80)
+            .share_mode(3)
+            .custom_flags(0x0220_0000)
+            .open(path)
+            .map(|file| Handle(HANDLE(file.into_raw_handle())))
+            .map_err(io)
+    }
+
+    fn damaged(damage: Damage, code: u32, owner: Option<&str>) -> Health {
+        Health::Damaged(Finding {
+            damage,
+            code,
+            owner: owner.map(str::to_owned),
+        })
+    }
+
+    #[test]
+    fn a_registered_service_is_examined_for_its_folder_record_and_image() {
+        let folder = Folder::new();
+        let (dir, image) = (folder.dir(), folder.image());
+        let health = || examine(&dir, &image, &pinned).1;
+
+        // The whole folder is gone.
+        assert_eq!(health(), damaged(Damage::Directory, 2, None));
+        assert!(examine(&dir, &image, &pinned).0.is_none());
+
+        fs::create_dir(&dir).unwrap();
+        assert_eq!(health(), damaged(Damage::OwnerAndImage, 2, None));
+        assert!(examine(&dir, &image, &pinned).0.is_some());
+
+        // The image without the record, whose loss is what is reported.
+        fs::write(&image, b"image").unwrap();
+        assert_eq!(health(), damaged(Damage::Owner, 2, None));
+
+        // A record that is there but names no account is as good as none.
+        let record = dir.join(OWNER_FILE);
+        for unusable in [
+            String::new(),
+            "S-1-1-0".into(),
+            "not a sid".into(),
+            format!("{ACCOUNT}\n"),
+            "S".repeat(185),
+        ] {
+            fs::write(&record, unusable).unwrap();
+            let Health::Damaged(finding) = health() else {
+                panic!("an unusable record passed");
+            };
+            assert_eq!((finding.damage, finding.owner), (Damage::Owner, None));
+            assert!(!matches!(finding.code, 0 | 2 | 3));
+        }
+
+        fs::write(&record, ACCOUNT).unwrap();
+        assert_eq!(health(), Health::Whole(ACCOUNT.into()));
+
+        // The record without the image still says whose the service is.
+        fs::remove_file(&image).unwrap();
+        assert_eq!(health(), damaged(Damage::Image, 2, Some(ACCOUNT)));
+    }
+
+    #[test]
+    fn what_cannot_be_trusted_is_not_reported_as_damage() {
+        let folder = Folder::new();
+        let (dir, image) = (folder.dir(), folder.image());
+        fs::create_dir(&dir).unwrap();
+        fs::write(&image, b"image").unwrap();
+        fs::write(dir.join(OWNER_FILE), ACCOUNT).unwrap();
+
+        // The service's own check refuses a folder an account can write to.
+        assert_eq!(
+            examine(&dir, &image, &security::protect_present).1,
+            Health::Unsafe(UNSAFE_PATH)
+        );
+        assert_eq!(
+            record(&dir, &security::protect_present),
+            Record::Unsafe(UNSAFE_PATH)
+        );
+        // So does one that refuses only the folder, or only the record.
+        for refused in [dir.clone(), dir.join(OWNER_FILE)] {
+            let pin = |path: &Path| {
+                if path == refused {
+                    Err(UNSAFE_PATH)
+                } else {
+                    pinned(path)
+                }
+            };
+            assert_eq!(examine(&dir, &image, &pin).1, Health::Unsafe(UNSAFE_PATH));
+        }
+        // Any other failure to open the record is not its absence either.
+        let pin = |path: &Path| {
+            if path.ends_with(OWNER_FILE) {
+                Err(5)
+            } else {
+                pinned(path)
+            }
+        };
+        assert_eq!(examine(&dir, &image, &pin).1, Health::Unsafe(5));
+        assert_eq!(record(&dir, &pin), Record::Unsafe(5));
+        assert_eq!(record(&dir, &pinned), Record::Account(ACCOUNT.into()));
+    }
+
+    #[test]
+    #[ignore = "read-only: needs this build's service installed for this account and running"]
+    fn the_installed_service_is_examined_in_its_protected_folder() {
+        let manager = scm(SC_MANAGER_CONNECT).unwrap();
+        let service = open(&manager, SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG)
+            .unwrap()
+            .expect("the service is installed");
+        let dir = directory().unwrap();
+        let image = binary(&service, &dir).unwrap();
+        let account = security::current_sid().unwrap();
+        let check = &security::protect_present;
+
+        assert!(is_registered());
+        let (pins, health) = examine(&dir, &image, check);
+        assert!(pins.is_some());
+        assert_eq!(health, Health::Whole(account.clone()));
+        let status = inspect().unwrap();
+        assert_eq!((status.state, status.authorized), ("running", true));
+        assert!(status.damage.is_none() && status.repair.is_none() && !status.other_owner());
+        assert!(running_pid().unwrap().is_some());
+
+        // What damage reads as there, with nothing touched: an image and a
+        // folder that do not exist beside the real ones.
+        let absent = dir.join("argus-service-0-0.exe");
+        assert_eq!(
+            examine(&dir, &absent, check).1,
+            damaged(Damage::Image, 2, Some(&account))
+        );
+        let absent = dir.with_file_name(format!("Argus {}", crate::taskmgr::id().unwrap()));
+        assert_eq!(
+            examine(&absent, &absent.join("argus-service-0-0.exe"), check).1,
+            damaged(Damage::Directory, 2, None)
+        );
+    }
+
+    fn stopped(exit: u32) -> SERVICE_STATUS_PROCESS {
+        SERVICE_STATUS_PROCESS {
+            dwCurrentState: SERVICE_STOPPED,
+            dwWin32ExitCode: exit,
+            ..Default::default()
+        }
+    }
+
+    fn unreached(_: u32) -> Result<crate::Reply> {
+        panic!("only a whole installation of this account is asked")
+    }
+
+    #[test]
+    fn a_damaged_installation_is_a_status_with_its_code_and_what_can_be_done() {
+        // The record is gone: nothing says whose the service is, so bringing
+        // it back authorizes anew, which the interface confirms as it does
+        // an installation.
+        for damage in [Damage::Owner, Damage::OwnerAndImage, Damage::Directory] {
+            let status = describe(damaged(damage, 2, None), &stopped(2), ACCOUNT, unreached);
+            assert_eq!(status.state, "broken");
+            assert_eq!(status.damage, Some(damage));
+            assert_eq!(status.repair, Some("repair"));
+            assert_eq!(status.error_code, Some(2));
+            assert_eq!(status.error, Some(damage.text()));
+            assert!(!status.authorized && !status.other_owner());
+        }
+
+        // The image is gone, the record names this account: an update is the repair.
+        let status = describe(
+            damaged(Damage::Image, 2, Some(ACCOUNT)),
+            &stopped(2),
+            ACCOUNT,
+            unreached,
+        );
+        assert_eq!((status.state, status.repair), ("broken", Some("update")));
+        assert!(status.authorized && !status.other_owner());
+        assert_eq!(status.error, Some(Damage::Image.text()));
+
+        // Another account's: only removing is left, and the status says whose it is.
+        let status = describe(
+            damaged(Damage::Image, 3, Some(OTHER)),
+            &stopped(2),
+            ACCOUNT,
+            unreached,
+        );
+        assert_eq!((status.state, status.repair), ("broken", None));
+        assert_eq!(status.error_code, Some(3));
+        assert!(!status.authorized && status.other_owner());
+        assert_ne!(status.error, Some(Damage::Image.text()));
+
+        // Whatever the SCM reports of it, a damaged service is not connected to.
+        let running = SERVICE_STATUS_PROCESS {
+            dwCurrentState: SERVICE_RUNNING,
+            dwProcessId: 4242,
+            ..Default::default()
+        };
+        let status = describe(
+            damaged(Damage::Owner, 2, None),
+            &running,
+            ACCOUNT,
+            unreached,
+        );
+        assert_eq!(status.state, "broken");
+
+        let value = serde_json::to_value(describe(
+            damaged(Damage::OwnerAndImage, 2, None),
+            &stopped(2),
+            ACCOUNT,
+            unreached,
+        ))
+        .unwrap();
+        assert_eq!(value["state"], "broken");
+        assert_eq!(value["damage"], "ownerAndImage");
+        assert_eq!(value["repair"], "repair");
+        assert!(value.get("otherOwner").is_none() && value.get("errorCode").is_none());
+    }
+
+    #[test]
+    fn a_whole_installation_keeps_its_states() {
+        let status = describe(
+            Health::Whole(ACCOUNT.into()),
+            &stopped(1077),
+            ACCOUNT,
+            unreached,
+        );
+        assert_eq!((status.state, status.authorized), ("stopped", true));
+        assert!(status.error.is_none() && status.damage.is_none() && status.repair.is_none());
+
+        let status = describe(
+            Health::Whole(ACCOUNT.into()),
+            &stopped(2),
+            ACCOUNT,
+            unreached,
+        );
+        assert_eq!(status.error_code, Some(2));
+        assert_eq!(status.error, Some(message(2)));
+
+        let status = describe(Health::Whole(OTHER.into()), &stopped(0), ACCOUNT, unreached);
+        assert_eq!(status.error_code, Some(OTHER_OWNER));
+        assert!(!status.authorized && status.other_owner());
+
+        let running = SERVICE_STATUS_PROCESS {
+            dwCurrentState: SERVICE_RUNNING,
+            dwProcessId: 4242,
+            ..Default::default()
+        };
+        let status = describe(Health::Whole(ACCOUNT.into()), &running, ACCOUNT, |pid| {
+            assert_eq!(pid, 4242);
+            Ok(crate::Reply::Pong {
+                version: "0.5.0".into(),
+                protocol: crate::PROTOCOL,
+                diagnostics: None,
+                sensor_driver_version: None,
+            })
+        });
+        assert_eq!(status.state, "running");
+        assert_eq!(status.version.as_deref(), Some("0.5.0"));
+
+        // An unsafe folder stays what it was: unavailable, with the cause.
+        let status = describe(Health::Unsafe(UNSAFE_PATH), &running, ACCOUNT, unreached);
+        assert_eq!(status.state, "unavailable");
+        assert_eq!(status.error_code, Some(UNSAFE_PATH));
+        assert!(status.damage.is_none() && status.repair.is_none());
+    }
+
+    #[test]
+    fn only_copies_of_the_service_executable_are_swept() {
+        for name in [
+            "argus-service-4242-1.exe",
+            "argus-service-1-18446744073709551615.exe",
+        ] {
+            assert!(image_name(name), "{name}");
+        }
+        for name in [
+            "argus-service-.exe",
+            "argus-service--1.exe",
+            "argus-service-1-.exe",
+            "argus-service-1.exe",
+            "argus-service-1-2-3.exe",
+            "argus-service-a-1.exe",
+            "argus-service-1-2.exe.bak",
+            "argus-service-1-2.dll",
+            "argus-taskmgr-launcher.exe",
+            "argus-taskmgr-ui-01234567-89ab-cdef-0123-456789abcdef.exe",
+            "owner.sid",
+            "install.lock",
+            "",
+        ] {
+            assert!(!image_name(name), "{name}");
+        }
+    }
+
+    /// A scratch key under HKCU, removed with its values.
+    struct ScratchKey(String);
+    impl ScratchKey {
+        fn new() -> Self {
+            use windows::Win32::System::Registry::{
+                HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, RegCreateKeyExW,
+            };
+            let path = format!(r"Software\ArgusTest-{}", crate::taskmgr::id().unwrap());
+            let mut key = HKEY::default();
+            let code = unsafe {
+                RegCreateKeyExW(
+                    HKEY_CURRENT_USER,
+                    PCWSTR(wide(&path).as_ptr()),
+                    None,
+                    None,
+                    REG_OPTION_NON_VOLATILE,
+                    KEY_SET_VALUE,
+                    None,
+                    &mut key,
+                    None,
+                )
+            };
+            assert_eq!(code.0, 0);
+            drop(RegKey(key));
+            Self(path)
+        }
+        fn set(&self, kind: REG_VALUE_TYPE, bytes: &[u8]) {
+            use windows::Win32::System::Registry::{
+                HKEY_CURRENT_USER, KEY_SET_VALUE, RegSetValueExW,
+            };
+            let mut key = HKEY::default();
+            let code = unsafe {
+                RegOpenKeyExW(
+                    HKEY_CURRENT_USER,
+                    PCWSTR(wide(&self.0).as_ptr()),
+                    None,
+                    KEY_SET_VALUE,
+                    &mut key,
+                )
+            };
+            assert_eq!(code.0, 0);
+            let key = RegKey(key);
+            let code = unsafe {
+                RegSetValueExW(
+                    key.0,
+                    windows::core::w!("DeleteFlag"),
+                    None,
+                    kind,
+                    Some(bytes),
+                )
+            };
+            assert_eq!(code.0, 0);
+        }
+    }
+    impl Drop for ScratchKey {
+        fn drop(&mut self) {
+            use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RegDeleteKeyW};
+            unsafe {
+                let _ = RegDeleteKeyW(HKEY_CURRENT_USER, PCWSTR(wide(&self.0).as_ptr()));
+            }
+        }
+    }
+
+    #[test]
+    fn a_registration_marked_for_deletion_is_told_by_its_flag() {
+        use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ};
+        let key = ScratchKey::new();
+        let marked = || marked_for_deletion(HKEY_CURRENT_USER, &key.0);
+        assert!(!marked());
+        key.set(REG_DWORD, &1u32.to_le_bytes());
+        assert!(marked());
+        key.set(REG_DWORD, &0u32.to_le_bytes());
+        assert!(!marked());
+        // Only the SCM's own value counts, not something else of that name.
+        key.set(REG_SZ, &[b'1', 0, 0, 0]);
+        assert!(!marked());
+        key.set(REG_DWORD, &[1]);
+        assert!(!marked());
+        assert!(!marked_for_deletion(
+            HKEY_CURRENT_USER,
+            &format!(r"{}\missing", key.0)
+        ));
+    }
+
+    #[test]
+    fn a_registry_key_is_flushed_through_a_query_handle() {
+        use windows::Win32::System::Registry::HKEY_CURRENT_USER;
+        let key = ScratchKey::new();
+        key.set(REG_DWORD, &1u32.to_le_bytes());
+        assert_eq!(flush_key(HKEY_CURRENT_USER, &key.0), Ok(()));
+        assert_eq!(
+            flush_key(HKEY_CURRENT_USER, &format!(r"{}\missing", key.0)),
+            Err(2)
+        );
+    }
+
+    /// The registration and the folder in memory. Every deletion of a file
+    /// is checked against what a crash at that moment would leave.
+    struct World {
+        /// The image the registration names, as the SCM holds it.
+        scm: Option<PathBuf>,
+        /// Every registration the disk may hold: the SCM's since the last
+        /// flush, any of which a crash can bring back.
+        disk: Vec<Option<PathBuf>>,
+        files: std::collections::BTreeSet<PathBuf>,
+        deleted: Vec<PathBuf>,
+        record: Record,
+        running: bool,
+        /// A handle of another program keeps a deleted registration.
+        held: bool,
+        /// The calls that fail: the nth of a step, counted from one.
+        refused: Vec<(&'static str, usize)>,
+        calls: std::collections::HashMap<&'static str, usize>,
+        steps: Vec<String>,
+    }
+
+    const REFUSED: u32 = 0x00c0_ffee;
+
+    impl World {
+        /// A service registered with `image`, for `ACCOUNT`.
+        fn installed(image: &str, present: bool) -> Self {
+            let image = PathBuf::from(image);
+            Self {
+                files: present.then(|| image.clone()).into_iter().collect(),
+                record: Record::Account(ACCOUNT.into()),
+                ..Self::new(Some(image))
+            }
+        }
+
+        fn new(scm: Option<PathBuf>) -> Self {
+            Self {
+                disk: vec![scm.clone()],
+                scm,
+                files: Default::default(),
+                deleted: Vec::new(),
+                record: Record::Unusable(2),
+                running: false,
+                held: false,
+                refused: Vec::new(),
+                calls: Default::default(),
+                steps: Vec::new(),
+            }
+        }
+
+        fn refusing(mut self, step: &'static str, nth: usize) -> Self {
+            self.refused.push((step, nth));
+            self
+        }
+
+        fn step(&mut self, name: &'static str, on: Option<&Path>) -> Result<()> {
+            self.steps.push(match on {
+                Some(path) => format!("{name} {}", path.display()),
+                None => name.to_owned(),
+            });
+            let nth = self.calls.entry(name).or_default();
+            *nth += 1;
+            if self.refused.contains(&(name, *nth)) {
+                return Err(REFUSED);
+            }
+            Ok(())
+        }
+
+        fn register(&mut self, image: Option<PathBuf>) {
+            self.scm = image.clone();
+            self.disk.push(image);
+        }
+
+        /// After a crash now, Windows starts with one of `disk`: none of
+        /// them may name a file deleted here.
+        fn survives_a_crash(&self) {
+            for image in self.disk.iter().flatten() {
+                assert!(
+                    !self.deleted.contains(image),
+                    "a crash after {:?} can bring back a registration of the deleted {}",
+                    self.steps.last(),
+                    image.display()
+                );
+            }
+        }
+
+        fn files(&self) -> Vec<&str> {
+            self.files.iter().filter_map(|file| file.to_str()).collect()
+        }
+
+        fn steps(&self) -> Vec<&str> {
+            self.steps.iter().map(String::as_str).collect()
+        }
+    }
+
+    impl Steps for World {
+        fn registered(&mut self) -> Result<Option<PathBuf>> {
+            self.step("registered", None)?;
+            Ok(self.scm.clone())
+        }
+        fn running(&mut self) -> Result<bool> {
+            Ok(self.running)
+        }
+        fn stop(&mut self) -> Result<()> {
+            self.step("stop", None)?;
+            self.running = false;
+            Ok(())
+        }
+        fn start(&mut self) -> Result<()> {
+            self.step("start", None)?;
+            // An image that is not there cannot start.
+            match &self.scm {
+                Some(image) if self.files.contains(image) => {
+                    self.running = true;
+                    Ok(())
+                }
+                Some(_) => Err(2),
+                None => Err(1060),
+            }
+        }
+        fn create(&mut self, image: &Path) -> Result<()> {
+            self.step("create", Some(image))?;
+            self.register(Some(image.into()));
+            Ok(())
+        }
+        fn point(&mut self, image: &Path) -> Result<()> {
+            self.step("point", Some(image))?;
+            self.register(Some(image.into()));
+            Ok(())
+        }
+        fn delete(&mut self) -> Result<()> {
+            self.step("delete", None)?;
+            // On disk a deletion, or the mark that keeps the service from
+            // ever starting again: no registration either way.
+            self.disk.push(None);
+            if !self.held {
+                self.scm = None;
+            }
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<()> {
+            self.step("flush", None)?;
+            self.disk = vec![if self.held { None } else { self.scm.clone() }];
+            Ok(())
+        }
+        fn copy(&mut self) -> Result<PathBuf> {
+            self.step("copy", None)?;
+            let image = PathBuf::from("new.exe");
+            self.files.insert(image.clone());
+            Ok(image)
+        }
+        fn present(&mut self, image: &Path) -> bool {
+            self.files.contains(image)
+        }
+        fn images(&mut self) -> Vec<PathBuf> {
+            self.files.iter().cloned().collect()
+        }
+        fn remove(&mut self, image: &Path) -> Result<()> {
+            self.step("remove", Some(image))?;
+            self.files.remove(image);
+            self.deleted.push(image.into());
+            self.survives_a_crash();
+            Ok(())
+        }
+        fn record(&mut self) -> Record {
+            self.record.clone()
+        }
+        fn authorize(&mut self, sid: &str) -> Result<()> {
+            self.step("authorize", None)?;
+            self.record = Record::Account(sid.into());
+            Ok(())
+        }
+        fn forget(&mut self) -> Result<()> {
+            self.step("forget", None)?;
+            self.record = Record::Unusable(2);
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "can bring back a registration of the deleted old.exe")]
+    fn deleting_an_image_before_the_flush_is_what_the_model_catches() {
+        // What an update did before: the new path set, the old image deleted
+        // at once, the registry still to reach the disk.
+        let mut world = World::installed("old.exe", true);
+        world.point(Path::new("new.exe")).unwrap();
+        world.remove(Path::new("old.exe")).unwrap();
+    }
+
+    #[test]
+    fn an_update_deletes_the_old_image_once_the_new_registration_is_on_disk() {
+        let mut world = World::installed("old.exe", true);
+        world.running = true;
+        // An earlier update could not delete this one.
+        world.files.insert("left.exe".into());
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "stop",
+                "point new.exe",
+                "start",
+                "registered",
+                "flush",
+                "remove left.exe",
+                "remove old.exe",
+            ]
+        );
+        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+        assert!(world.running);
+        assert_eq!(world.record, Record::Account(ACCOUNT.into()));
+    }
+
+    #[test]
+    fn without_the_flush_an_update_deletes_nothing() {
+        let mut world = World::installed("old.exe", true).refusing("flush", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(world.files(), ["new.exe", "old.exe"]);
+        assert!(world.deleted.is_empty());
+        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+    }
+
+    #[test]
+    fn a_failed_update_goes_back_and_deletes_the_new_image_after_the_flush() {
+        let mut world = World::installed("old.exe", true).refusing("start", 1);
+        world.running = true;
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "stop",
+                "point new.exe",
+                "start",
+                "stop",
+                "point old.exe",
+                "start",
+                "registered",
+                "flush",
+                "remove new.exe",
+            ]
+        );
+        assert_eq!(world.files(), ["old.exe"]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new("old.exe")));
+        assert!(world.running);
+
+        // The path could not even be set: the old registration stands.
+        let mut world = World::installed("old.exe", true).refusing("point", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.files(), ["old.exe"]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new("old.exe")));
+
+        // Going back failed too: the image the registration names stays.
+        let mut world = World::installed("old.exe", true)
+            .refusing("start", 1)
+            .refusing("point", 2);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+        assert!(world.files.contains(Path::new("new.exe")));
+
+        // Nothing could be copied: nothing changed.
+        let mut world = World::installed("old.exe", true).refusing("copy", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.steps(), ["registered", "copy"]);
+    }
+
+    #[test]
+    fn an_update_brings_back_a_missing_image() {
+        let mut world = World::installed("old.exe", false);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "stop",
+                "point new.exe",
+                "start",
+                "registered",
+                "flush"
+            ]
+        );
+        assert_eq!(world.files(), ["new.exe"]);
+        assert!(world.running);
+
+        // The new image does not start: there is no old one to go back to,
+        // so the registration keeps naming a file that exists.
+        let mut world = World::installed("old.exe", false).refusing("start", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "stop",
+                "point new.exe",
+                "start",
+                "registered",
+                "flush"
+            ]
+        );
+        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+
+        // The new path could not be set: as damaged as before, without the copy.
+        let mut world = World::installed("old.exe", false).refusing("point", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert!(world.files.is_empty());
+        assert_eq!(world.scm.as_deref(), Some(Path::new("old.exe")));
+    }
+
+    #[test]
+    fn a_registered_service_is_never_given_to_another_account_or_to_none() {
+        for (record, error) in [
+            (Record::Account(OTHER.into()), OTHER_OWNER),
+            (Record::Unusable(2), DAMAGED),
+            (Record::Unusable(87), DAMAGED),
+            (Record::Unsafe(UNSAFE_PATH), UNSAFE_PATH),
+        ] {
+            let mut world = World::installed("old.exe", true);
+            world.record = record.clone();
+            assert_eq!(install_or_update(&mut world, ACCOUNT), Err(error));
+            assert_eq!(world.steps(), ["registered"]);
+            assert_eq!(world.record, record);
+        }
+        // Nor does an installation read a record it cannot trust.
+        let mut world = World::new(None);
+        world.record = Record::Unsafe(UNSAFE_PATH);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(UNSAFE_PATH));
+        assert_eq!(world.steps(), ["registered"]);
+    }
+
+    #[test]
+    fn an_installation_writes_the_record_and_clears_what_a_cut_short_one_left() {
+        let mut world = World::new(None);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "authorize",
+                "create new.exe",
+                "start",
+                "registered",
+                "flush",
+            ]
+        );
+        assert_eq!(world.record, Record::Account(ACCOUNT.into()));
+        assert_eq!(world.files(), ["new.exe"]);
+
+        // A removal cut short left another account's record and an image:
+        // without a service they authorize and start nothing.
+        let mut world = World::new(None);
+        world.record = Record::Account(OTHER.into());
+        world.files.insert("left.exe".into());
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(world.record, Record::Account(ACCOUNT.into()));
+        assert_eq!(world.files(), ["new.exe"]);
+
+        // This account's own record is kept as it is.
+        let mut world = World::new(None);
+        world.record = Record::Account(ACCOUNT.into());
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert!(!world.steps().contains(&"authorize"));
+    }
+
+    #[test]
+    fn a_failed_installation_leaves_neither_registration_nor_files() {
+        let mut world = World::new(None).refusing("start", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "copy",
+                "authorize",
+                "create new.exe",
+                "start",
+                "stop",
+                "delete",
+                "registered",
+                "flush",
+                "remove new.exe",
+                "forget",
+            ]
+        );
+        assert!(world.scm.is_none() && world.files.is_empty());
+        assert_eq!(world.record, Record::Unusable(2));
+
+        // The service could not be registered at all.
+        let mut world = World::new(None).refusing("create", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert!(world.files.is_empty());
+        assert_eq!(world.record, Record::Unusable(2));
+
+        // Another program's handle keeps the deleted registration for now:
+        // what it names stays until it is gone.
+        let mut world = World::new(None).refusing("start", 1);
+        world.held = true;
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.record, Record::Account(ACCOUNT.into()));
+        assert!(world.deleted.is_empty());
+    }
+
+    #[test]
+    fn a_removal_puts_the_deletion_on_disk_before_any_file_goes() {
+        let mut world = World::installed("old.exe", true);
+        world.running = true;
+        assert_eq!(unregister(&mut world), Ok(true));
+        assert_eq!(world.steps(), ["registered", "stop", "delete", "flush"]);
+        assert_eq!(world.disk, vec![None::<PathBuf>]);
+        // Only now may the files go, which the model checks.
+        world.remove(Path::new("old.exe")).unwrap();
+
+        // Not written out: the caller keeps the files.
+        let mut world = World::installed("old.exe", true).refusing("flush", 1);
+        assert_eq!(unregister(&mut world), Ok(false));
+        assert_eq!(world.files(), ["old.exe"]);
+
+        // A service that does not stop keeps its registration and files.
+        let mut world = World::installed("old.exe", true).refusing("stop", 1);
+        assert_eq!(unregister(&mut world), Err(REFUSED));
+        assert_eq!(world.steps(), ["registered", "stop"]);
+        assert!(world.scm.is_some());
+
+        // Nothing registered: what an earlier removal left may still go.
+        let mut world = World::new(None);
+        assert_eq!(unregister(&mut world), Ok(true));
+        assert_eq!(world.steps(), ["registered", "flush"]);
+
+        // Kept by another program's handle: marked on disk, never to start.
+        let mut world = World::installed("old.exe", true);
+        world.held = true;
+        assert_eq!(unregister(&mut world), Ok(true));
+        world.remove(Path::new("old.exe")).unwrap();
+    }
+
+    #[test]
+    fn a_removal_deletes_the_record_and_every_service_executable() {
+        let folder = Folder::new();
+        let dir = folder.dir();
+        fs::create_dir(&dir).unwrap();
+        let kept = [
+            "argus-taskmgr-launcher.exe",
+            "taskmgr-recovery.json",
+            LOCK_FILE,
+        ];
+        let removed = [
+            OWNER_FILE,
+            "argus-service-4242-1.exe",
+            "argus-service-4242-2.exe",
+        ];
+        for name in kept.iter().chain(&removed) {
+            fs::write(dir.join(name), b"file").unwrap();
+        }
+        let names = |dir: &Path| {
+            let mut names: Vec<String> = fs::read_dir(dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect();
+            names.sort();
+            names
+        };
+        let directory = crate::cleanup::Directory::open(&dir).unwrap().unwrap();
+        assert_eq!(clean(&directory), Ok(()));
+        let mut expected = kept.map(str::to_owned).to_vec();
+        expected.sort();
+        assert_eq!(names(&dir), expected);
+        // Again, with nothing left of the service: fine.
+        assert_eq!(clean(&directory), Ok(()));
+
+        // What cannot be deleted is reported, after everything else went.
+        fs::write(dir.join(OWNER_FILE), ACCOUNT).unwrap();
+        fs::create_dir(dir.join("argus-service-1-1.exe")).unwrap();
+        fs::write(dir.join("argus-service-2-2.exe"), b"file").unwrap();
+        assert!(clean(&directory).is_err());
+        let mut expected = kept.map(str::to_owned).to_vec();
+        expected.push("argus-service-1-1.exe".into());
+        expected.sort();
+        assert_eq!(names(&dir), expected);
+        drop(directory);
     }
 }

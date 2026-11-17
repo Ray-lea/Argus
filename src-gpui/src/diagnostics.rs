@@ -278,17 +278,22 @@ pub fn log_privileged_state() {
         }
         match argus_service::status() {
             Ok(s) => log::info!(
-                "privileged service: {}{}{}{}",
+                "privileged service: {}{}{}{}{}",
                 s.state,
+                // What a registered service lacks of its files.
+                s.damage
+                    .map(|damage| format!(" ({})", damage.log()))
+                    .unwrap_or_default(),
                 match &s.version {
                     Some(v) if v == env!("CARGO_PKG_VERSION") => " (same release version)",
                     Some(_) => " (other version)",
                     None => "",
                 },
-                if s.authorized || s.state == "notInstalled" {
-                    ""
-                } else {
+                // Only where the authorization record was read and says so.
+                if s.other_owner() {
                     ", authorized for another account"
+                } else {
+                    ""
                 },
                 argus_service::status_issue(&s)
                     .map(|issue| format!(", error: {issue}"))
