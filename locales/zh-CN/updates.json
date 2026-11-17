@@ -7,7 +7,12 @@
   "openDialog": "查看更新内容",
   "button": {
     "title": "Argus {version} 已准备就绪。单击查看更新内容并安装",
-    "availableTitle": "发现新版本 {version}。单击查看更新内容"
+    "availableTitle": "发现新版本 {version}。单击查看更新内容",
+    "downloadingTitle": "正在下载 Argus {version}，完成后可安装。单击查看更新内容"
+  },
+  "badge": {
+    "ready": "安装 {version}",
+    "available": "新版本 {version}"
   },
   "menu": {
     "view": "查看更新内容",

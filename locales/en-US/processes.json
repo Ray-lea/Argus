@@ -45,7 +45,14 @@
     "one": "{count} process",
     "other": "{count} processes"
   },
+  "totalHidden": {
+    "one": "{total} ({count} hidden)",
+    "other": "{total} ({count} hidden)"
+  },
   "filtered": "The list is filtered by the search",
+  "orderHeld": "Sorting paused: rows keep their places while readings update. They re-sort once the pointer leaves the list or the menu or dialog closes.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Name",
@@ -157,7 +164,7 @@
     },
     "basePriority": {
       "label": "Base priority",
-      "title": "Numeric process base priority reported by Windows."
+      "title": "Process base priority reported by Windows, shown as its priority class. A value between the classes, which Windows gives some system processes, shows as a number."
     },
     "workingSet": {
       "label": "Working set",
@@ -312,6 +319,11 @@
     "netRates": "R: {received} S: {sent}",
     "acpiTemperature": "ACPI thermal-zone temperature"
   },
+  "memoryScope": {
+    "vital": "Physical memory in use across the whole system: total minus available, including in-use and modified pages. Process rows show their own private working sets, which add up to less. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
+    "header": "The percentage above is the share of physical memory in use across the whole system. Rows show the private working set: physical memory used by the process alone; app groups and categories add these up. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
+    "section": "Sum of the private working sets of the processes in this category. Whole-system usage also counts shared pages, the kernel and drivers, page tables, the in-use system cache and modified pages, so it is higher than the categories combined. The full breakdown is in the user guide, docs/guide/README.md (in Chinese)."
+  },
   "columns": {
     "choose": "Select columns",
     "autoWidth": "Automatic widths",
@@ -328,6 +340,7 @@
     "hide": "Hide {name} column",
     "description": "Check the columns to show. Drag them in the list on the right, or drag column headers, to change their order.",
     "networkUnavailable": "Selected network columns appear when traffic data is available.",
+    "gpuUnavailable": "No GPU detected. Selected GPU columns are hidden.",
     "category": {
       "general": "General",
       "cpu": "CPU",
@@ -348,5 +361,7 @@
     "fixed": "Fixed",
     "selectionSummary": "{count} selected",
     "virtualAliases": "virtual memory virtual bytes address reservation"
-  }
+  },
+  "basePriorityBetween": "Not a priority class. Windows gives this base priority to some system processes directly; it lies between {below} and {above}.",
+  "basePriorityCustom": "Not a priority class. Windows gives this base priority to some system processes directly."
 }

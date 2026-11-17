@@ -46,7 +46,15 @@
     "many": "{count} processus",
     "other": "{count} processus"
   },
+  "totalHidden": {
+    "one": "{total} ({count} masqué)",
+    "many": "{total} ({count} masqués)",
+    "other": "{total} ({count} masqués)"
+  },
   "filtered": "La liste est filtrée par la recherche",
+  "orderHeld": "Tri suspendu : les lignes restent en place et les valeurs continuent d’être actualisées. Elles sont triées de nouveau dès que le pointeur quitte la liste ou que le menu ou la boîte de dialogue se ferme.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Nom",
@@ -158,7 +166,7 @@
     },
     "basePriority": {
       "label": "Priorité de base",
-      "title": "Valeur numérique de la priorité de base du processus indiquée par Windows."
+      "title": "Priorité de base du processus indiquée par Windows, affichée comme classe de priorité. Une valeur située entre les classes, que Windows attribue à certains processus système, s’affiche sous forme de nombre."
     },
     "workingSet": {
       "label": "Plage de travail",
@@ -185,15 +193,15 @@
       "title": "Ordre dans lequel Windows récupère les pages mémoire du processus en cas de manque ; les plus basses d’abord."
     },
     "ioRead": {
-      "label": "Lecture E/S",
+      "label": "Lecture I/O",
       "title": "Octets I/O lus par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioWrite": {
-      "label": "Écriture E/S",
+      "label": "Écriture I/O",
       "title": "Octets I/O écrits par seconde, y compris les fichiers, le réseau et les périphériques."
     },
     "ioOther": {
-      "label": "Autres E/S",
+      "label": "Autres I/O",
       "title": "Octets transférés par seconde par d’autres opérations I/O."
     },
     "ioReadTotal": {
@@ -315,6 +323,11 @@
     "netRates": "R : {received} S : {sent}",
     "acpiTemperature": "Température de la zone thermique ACPI"
   },
+  "memoryScope": {
+    "vital": "Mémoire physique utilisée par l’ensemble du système : le total moins la mémoire disponible, pages utilisées et modifiées comprises. Les lignes de processus affichent leur propre plage de travail privée, dont la somme est inférieure. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois).",
+    "header": "Le pourcentage du haut est la part de mémoire physique utilisée par l’ensemble du système. Les lignes affichent la plage de travail privée : la mémoire physique utilisée par le seul processus ; les groupes d’applications et les catégories en font la somme. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois).",
+    "section": "Somme des plages de travail privées des processus de cette catégorie. L’utilisation du système compte aussi les pages partagées, le noyau et les pilotes, les tables de pages, le cache système en cours d’utilisation et les pages modifiées : elle dépasse donc la somme des catégories. Le détail complet figure dans le guide de l’utilisateur, docs/guide/README.md (en chinois)."
+  },
   "columns": {
     "choose": "Choisir les colonnes",
     "autoWidth": "Largeur automatique",
@@ -331,11 +344,12 @@
     "hide": "Masquer la colonne {name}",
     "description": "Cochez les colonnes à afficher. Faites-les glisser dans la liste de droite ou faites glisser les en-têtes de colonnes pour modifier leur ordre.",
     "networkUnavailable": "Les colonnes du réseau sélectionnées apparaissent lorsque les données de trafic sont disponibles.",
+    "gpuUnavailable": "Aucun GPU détecté. Les colonnes GPU sélectionnées sont masquées.",
     "category": {
       "general": "Général",
       "cpu": "CPU",
       "memory": "Mémoire",
-      "io": "Disque et E/S",
+      "io": "Disque et I/O",
       "network": "Réseau",
       "gpu": "GPU",
       "all": "Tous"
@@ -351,5 +365,7 @@
     "fixed": "Fixe",
     "selectionSummary": "Sélectionnées : {count}",
     "virtualAliases": "mémoire virtuelle octets virtuels réservation d’adresses"
-  }
+  },
+  "basePriorityBetween": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système ; elle se situe entre {below} et {above}.",
+  "basePriorityCustom": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système."
 }

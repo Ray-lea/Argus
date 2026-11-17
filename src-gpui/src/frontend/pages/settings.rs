@@ -1204,6 +1204,24 @@ impl Desktop {
                     "settings.userGroups.desc",
                     vec![self.user_grouping_setting(cx)],
                 ));
+                let hold = self.toggle(
+                    "holdOrder",
+                    label("settings.holdOrder.title"),
+                    self.hover_holds_order(),
+                    false,
+                    |this, on, window, cx| {
+                        this.preference(tables::HOLD_ORDER, json!(on), window, cx);
+                    },
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "holdOrder",
+                    "OrderIcon",
+                    "settings.holdOrder.title",
+                    "settings.holdOrder.desc",
+                    vec![hold],
+                ));
             }
             "startup" => {
                 let autostart = self.setting_toggle(
@@ -1291,6 +1309,31 @@ impl Desktop {
                     "settings.motion.chart.title",
                     "settings.motion.chart.desc",
                     vec![chart],
+                ));
+                let acceleration = self.toggle(
+                    "hardwareAcceleration",
+                    label("settings.motion.acceleration.title"),
+                    // Until the settings are read, as saved settings without it.
+                    settings["hardwareAcceleration"].as_bool().unwrap_or(true),
+                    false,
+                    |this, on, window, cx| {
+                        this.request(
+                            "set_hardware_acceleration",
+                            json!({"enabled": on}),
+                            Some("settings"),
+                            window,
+                            cx,
+                        );
+                    },
+                    window,
+                    cx,
+                );
+                cards.push(self.setting_text(
+                    "hardwareAcceleration",
+                    "GpuIcon",
+                    "settings.motion.acceleration.title",
+                    "settings.motion.acceleration.desc",
+                    vec![acceleration],
                 ));
             }
             "data" => self.data_cards(settings, &mut cards, window, cx),
@@ -3875,6 +3918,16 @@ impl Desktop {
             }
             "clear_history" => {
                 self.ui.busy.remove("clearHistory");
+                let generation = self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    + 1;
+                self.data
+                    .insert("watchGeneration".into(), json!(generation));
+                self.data.insert("processWatch".into(), Value::Null);
+                self.data.remove("watchError");
                 self.notify_toast_for(
                     ToastKind::Success,
                     label("settings.data.history.cleared"),
@@ -4049,6 +4102,10 @@ impl Desktop {
             "set_update_settings" | "set_whats_new" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.update.error"))
             }
+            "set_hardware_acceleration" => self.notify_toast(
+                ToastKind::Error,
+                wrapped("settings.motion.acceleration.error"),
+            ),
             _ => return false,
         }
         cx.notify();
@@ -4180,6 +4237,12 @@ impl Desktop {
                 "settings.shortcuts.searchTitle",
                 "settings.shortcuts.search",
                 "Ctrl+F",
+            ),
+            (
+                "RunTaskIcon",
+                "tasks.title",
+                "settings.shortcuts.runTask",
+                "Ctrl+N",
             ),
         ];
         let mut cards = common

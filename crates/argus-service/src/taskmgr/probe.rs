@@ -37,7 +37,7 @@ pub trait Probe {
 
 /// Runs the self-test, then cleans up. When the cleanup fails too, the
 /// self-test's error stays the main one and the cleanup's is added to it.
-pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Failure> {
+pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Box<Failure>> {
     cleanup(probe, Step::ProbeLeftover)?;
     let name = format!(
         "ArgusTaskmgrProbe-{}.exe",
@@ -62,11 +62,11 @@ pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Failure> {
     match (result, cleanup(probe, Step::ProbeCleanup)) {
         (result, Ok(())) => result,
         (Ok(()), Err(cleanup)) => Err(cleanup),
-        (Err(failure), Err(cleanup)) => Err(failure.kept(cleanup)),
+        (Err(failure), Err(cleanup)) => Err(Box::new(failure.kept(*cleanup))),
     }
 }
 
-fn test(probe: &mut impl Probe, name: &str) -> std::result::Result<(), Failure> {
+fn test(probe: &mut impl Probe, name: &str) -> std::result::Result<(), Box<Failure>> {
     match probe.start(name, false) {
         Ok(0) => {}
         Ok(_) => {
@@ -79,7 +79,8 @@ fn test(probe: &mut impl Probe, name: &str) -> std::result::Result<(), Failure> 
             return Err(Failure::new(
                 Step::ProbeStart,
                 tr!("taskManager.probeStartFailed", error = error),
-            ));
+            )
+            .into());
         }
     }
     match probe.start(name, true) {
@@ -91,13 +92,14 @@ fn test(probe: &mut impl Probe, name: &str) -> std::result::Result<(), Failure> 
         Err(error) => Err(Failure::new(
             Step::ProbeBypass,
             tr!("taskManager.probeStartFailed", error = error),
-        )),
+        )
+        .into()),
     }
 }
 
 /// Removes an old IFEO entry if present, the test program, then the record.
 /// An entry someone else changed stays for inspection.
-pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Failure> {
+pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Box<Failure>> {
     let text = |error: String| {
         if step == Step::ProbeLeftover {
             tr!("taskManager.probeLeftoverFailed", error = error)
@@ -112,10 +114,7 @@ pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Fa
         return Ok(());
     };
     if !valid(&name) {
-        return Err(Failure::new(
-            step,
-            text(tr!("taskManager.probeRecordInvalid")),
-        ));
+        return Err(Failure::new(step, text(tr!("taskManager.probeRecordInvalid"))).into());
     }
     if probe
         .exists(&name)
@@ -126,7 +125,7 @@ pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Fa
             .map_err(|error| refused(probe, step, &name, error, text))?;
         let debugger = probe.legacy_debugger();
         if actual.filtered || actual.debugger.as_ref().is_some_and(|d| *d != debugger) {
-            return Err(Failure::new(step, text(tr!("taskManager.probeModified"))));
+            return Err(Failure::new(step, text(tr!("taskManager.probeModified"))).into());
         }
         if actual.debugger.is_some() {
             probe
@@ -139,12 +138,12 @@ pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Fa
     }
     probe
         .forget(&name)
-        .map_err(|error| Failure::new(step, text(error)))
+        .map_err(|error| Failure::new(step, text(error)).into())
 }
 
 /// A self-test failure that is not an OS error of its own.
-fn failed(step: Step, error: String) -> Failure {
-    Failure::new(step, tr!("taskManager.selfTestFailed", error = error))
+fn failed(step: Step, error: String) -> Box<Failure> {
+    Failure::new(step, tr!("taskManager.selfTestFailed", error = error)).into()
 }
 
 /// An IFEO change the self-test could not make, with why when Windows can
@@ -155,12 +154,12 @@ fn refused(
     name: &str,
     error: registry::Error,
     text: impl FnOnce(String) -> String,
-) -> Failure {
+) -> Box<Failure> {
     let cause = probe.refusal(&error, name);
-    Failure {
+    Box::new(Failure {
         registry: error.os(),
         ..Failure::refused(step, text(error.into()), cause)
-    }
+    })
 }
 
 fn valid(name: &str) -> bool {

@@ -3231,7 +3231,8 @@ button.a-th:active {
   font-variant-numeric: tabular-nums;
 }
 /* The website and the repository side by side, each in its own colour: the
-   accent under the app's mark, ink under GitHub's. A whole card is the link. */
+   accent under the app's mark, ink under GitHub's. The head is the link, its
+   area stretched over the whole card; the pages along the foot sit above it. */
 .a-about-links {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3239,9 +3240,9 @@ button.a-th:active {
   margin-top: 8px;
 }
 /* Hover raises a card by 2 px and fades in a face of stronger fill and edge,
-   grows its mark by 6 % and its top line to three times its length, and
-   leans its arrow out in the link's colour (167 ms, decelerating); a press
-   sets it 1.5 % deeper (100 ms). Only transforms and opacity move. */
+   draws its top line three times as long and leans its arrow out in the
+   link's colour (167 ms, decelerating); pressing the head lets it back down
+   (100 ms). Only transforms and opacity move; nothing is scaled. */
 .a-link-card {
   --tone: var(--a-accent);
   --lift: 167ms var(--a-ease);
@@ -3249,17 +3250,11 @@ button.a-th:active {
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
   min-width: 0;
-  min-height: 132px;
-  padding: 16px 18px;
   border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--tone) 6%, var(--a-layer));
   color: var(--a-ink);
-  line-height: 1.45;
-  text-decoration: none;
   transition: transform var(--lift);
 }
 .a-link-card.is-repo {
@@ -3268,8 +3263,8 @@ button.a-th:active {
 .a-link-card:hover {
   transform: translateY(-2px);
 }
-.a-link-card:hover:active {
-  transform: scale(0.985);
+.a-link-card:hover:has(> .a-link-head:active) {
+  transform: none;
   transition-duration: 100ms;
 }
 .a-link-face {
@@ -3285,7 +3280,7 @@ button.a-th:active {
 .a-link-line {
   position: absolute;
   top: 0;
-  left: 18px;
+  left: 16px;
   width: 32px;
   height: 2px;
   border-radius: 1px;
@@ -3293,12 +3288,67 @@ button.a-th:active {
   transform-origin: left center;
   transition: transform var(--lift);
 }
-.a-link-arrow {
+.a-link-head {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+/* The whole card opens the head's address. */
+.a-link-head::after {
+  content: "";
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 15px;
-  height: 15px;
+  inset: 0;
+  border-radius: 8px;
+}
+.a-link-mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+/* GitHub's mark in the window's own opaque background on an ink square. */
+.is-repo .a-link-mark {
+  border-radius: 9px;
+  background: var(--a-ink);
+  color: var(--a-window);
+}
+.a-link-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.4;
+}
+.a-link-name > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-link-name strong {
+  font-family: var(--a-display);
+  font-size: calc(15px * var(--a-text));
+  font-weight: 600;
+}
+/* The address in the link's colour; muted where the link is in ink. */
+.a-link-address {
+  color: color-mix(in srgb, var(--tone), var(--a-ink) 25%);
+  font-size: calc(12px * var(--a-text));
+  font-weight: 500;
+}
+.is-repo .a-link-address {
+  color: var(--a-ink-2);
+}
+.a-link-arrow {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 .a-link-arrow .ico {
   position: absolute;
@@ -3311,16 +3361,6 @@ button.a-th:active {
 .a-link-arrow .is-lit {
   color: color-mix(in srgb, var(--tone), var(--a-ink) 25%);
   opacity: 0;
-}
-.a-link-mark {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 10px;
-  transition: transform var(--lift);
 }
 .a-link-card:hover .a-link-face,
 .a-link-card:hover .a-link-arrow .is-lit {
@@ -3335,30 +3375,22 @@ button.a-th:active {
 .a-link-card:hover .a-link-arrow .ico:not(.is-lit) {
   opacity: 0;
 }
-.a-link-card:hover .a-link-mark {
-  transform: scale(1.06);
+/* The pages there: quiet buttons on a strip under a hairline, above the
+   head's stretched area. */
+.a-link-pages {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--tone) 16%, transparent);
+  /* Between the buttons the card's own link is under the pointer. */
+  pointer-events: none;
 }
-/* GitHub's mark in the window's own opaque background on an ink square. */
-.is-repo .a-link-mark {
-  border-radius: 10px;
-  background: var(--a-ink);
-  color: var(--a-window);
-}
-.a-link-card strong {
-  font-family: var(--a-display);
-  font-size: calc(16px * var(--a-text));
-  font-weight: 600;
-}
-.a-link-card .a-link-address {
-  color: color-mix(in srgb, var(--tone), var(--a-ink) 25%);
-  font-size: calc(12.5px * var(--a-text));
-  font-weight: 500;
-  white-space: nowrap;
-}
-.a-link-card > span:last-child {
-  margin-top: 2px;
-  color: var(--a-ink-2);
-  font-size: calc(12px * var(--a-text));
+.a-link-pages .a-btn {
+  color: var(--a-ink);
+  text-decoration: none;
+  pointer-events: auto;
 }
 
 /* Floating surfaces. Menus and lists have no shadow; dialogs keep theirs over a scrim. */

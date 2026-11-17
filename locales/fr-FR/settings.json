@@ -32,6 +32,10 @@
     "on": "Toujours grouper",
     "off": "Ne jamais grouper"
   },
+  "holdOrder": {
+    "title": "Suspendre le tri au survol",
+    "desc": "Tant que le pointeur est sur la liste des processus, les lignes restent en place et les valeurs continuent d’être actualisées ; elles sont triées de nouveau quand le pointeur quitte la liste. Option désactivée, la liste est triée à chaque actualisation. Les lignes restent en place tant qu’un menu contextuel ou une boîte de dialogue est ouvert."
+  },
   "language": {
     "title": "Langue d’affichage",
     "desc": "S’applique immédiatement, y compris aux menus de la zone de notification et aux messages. « Comme Windows » suit la langue d’affichage de Windows.",
@@ -86,6 +90,7 @@
     "pauseTitle": "Suspendre pendant l’appui",
     "searchTitle": "Rechercher des processus",
     "search": "Accédez à la recherche de processus. La touche / fonctionne également lorsque vous ne tapez pas, et sur la page Processus, la saisie d’une lettre ou d’un chiffre lance une recherche.",
+    "runTask": "Lancez un programme ou ouvrez un fichier ou un dossier depuis n’importe quelle page. Inactif pendant la saisie.",
     "pause": "Maintenez la touche enfoncée pour suspendre l’actualisation sur Processus ou Performances, puis relâchez-la pour reprendre. Une pause manuelle reste active.",
     "end": "Terminez le processus ou le groupe d’applications sélectionné, avec confirmation.",
     "taskManager": "Ouvrez Argus lorsque le remplacement de Gestionnaire des tâches est activé.",
@@ -204,6 +209,7 @@
     "unknown": "Impossible de lire l’état de remplacement",
     "state": {
       "disabled": "Gestionnaire des tâches Windows utilisé",
+      "revoked": "Remplacement annulé",
       "enabled": "Remplacé par Argus",
       "recoveryNeeded": "Besoin de restauration",
       "conflict": "Configuré par un autre programme"
@@ -227,6 +233,11 @@
       "balanced": "Équilibré ({fps} fps)",
       "pixel": "Économie d’énergie (pas de pixel)",
       "off": "Désactivé (un pas par échantillon)"
+    },
+    "acceleration": {
+      "title": "Accélération matérielle",
+      "desc": "Par défaut, le GPU dessine l’interface. Une fois l’option désactivée, le CPU la dessine et Argus n’utilise plus le GPU. Utile si l’interface saccade lorsque le GPU est saturé, ou pour éviter qu’Argus sollicite le GPU. L’utilisation du CPU augmente ; si nécessaire, les animations des graphiques peuvent être réduites. S’applique immédiatement, sans redémarrage.",
+      "error": "Impossible de changer l’accélération matérielle : {error}"
     }
   },
   "data": {
@@ -393,11 +404,15 @@
     "links": {
       "website": {
         "title": "Site Web Argus",
-        "desc": "Téléchargez les versions stables et lisez la documentation, FAQ et le journal des modifications."
+        "download": "Télécharger",
+        "guide": "Guide",
+        "changelog": "Modifications"
       },
       "repository": {
         "title": "Dépôt GitHub",
-        "desc": "Parcourez le code source, signalez des problèmes ou suggérez des modifications et obtenez le programme d’installation de n’importe quelle version."
+        "issues": "Signalements",
+        "discussions": "Discussions",
+        "releases": "Versions"
       }
     },
     "onboarding": {
@@ -451,7 +466,7 @@
       "administrator": "Administrateur",
       "standard": "Utilisateur standard",
       "sampleTime": "Heure de l’instantané (UTC)",
-      "cpuCores": "Cœurs / threads du processeur",
+      "cpuCores": "Cœurs / threads CPU",
       "display": "Résolution de l’écran actuel",
       "window": "Zone cliente de la fenêtre",
       "systemScale": "Mise à l’échelle de Windows",

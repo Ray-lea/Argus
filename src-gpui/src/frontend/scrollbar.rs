@@ -37,6 +37,8 @@ struct BarState {
     hovered: bool,
     /// While the thumb is held: where in the thumb it was taken.
     grab: Option<Pixels>,
+    /// Original offset of a direct touch drag, restored on cancellation.
+    touch_start: Option<Point<Pixels>>,
     /// While the track is held: the pointer, and the repeating page steps.
     press: Option<(Point<Pixels>, Task<()>)>,
 }
@@ -292,6 +294,19 @@ impl Element for Scrollbar {
                 "thumb":geometry.map(|g| [f32::from(g.thumb.left()), f32::from(g.thumb.top()), f32::from(g.thumb.size.width), f32::from(g.thumb.size.height)])})
             );
         }
+        // A bar drawn by another view than its scroller's follows a glide on
+        // its own: an isolated glide (`ScrollHandle::isolate_glides`) draws
+        // only the cached view around the scroller, and the view drawing the
+        // bar would replay. While the glide runs, the bar asks for that view's
+        // next frame. The glide steps in the scroller's prepaint, before this
+        // one (the bar comes after the list), so each frame shows its step.
+        if self
+            .view
+            .is_some_and(|scroller| scroller != window.current_view())
+            && self.handle.gliding()
+        {
+            window.request_isolated_animation_frame();
+        }
         let Some(geometry) = self.geometry() else {
             // Nothing to scroll: a held thumb or track lets go.
             *state.borrow_mut() = BarState::default();
@@ -370,11 +385,57 @@ impl Element for Scrollbar {
             let state = state.clone();
             let hitbox = hitbox.clone();
             let handle = handle.clone();
+            move |event: &TouchDragEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let mut bar = state.borrow_mut();
+                match event.phase {
+                    TouchPhase::Started => {
+                        if !hitbox.is_hovered(window)
+                            || !geometry.thumb.contains(&event.start_position)
+                        {
+                            return;
+                        }
+                        bar.touch_start = Some(handle.offset());
+                        bar.grab = Some(
+                            geometry.along(event.start_position) - geometry.start(geometry.thumb),
+                        );
+                        bar.press = None;
+                        window.prevent_default();
+                    }
+                    TouchPhase::Moved | TouchPhase::Ended if bar.touch_start.is_some() => {
+                        let start = geometry.along(event.position) - bar.grab.unwrap_or_default();
+                        set_along(&handle, geometry.offset_for_thumb(start));
+                        if event.phase == TouchPhase::Ended {
+                            bar.touch_start = None;
+                            bar.grab = None;
+                        }
+                    }
+                    TouchPhase::Cancelled if bar.touch_start.is_some() => {
+                        handle.set_offset(bar.touch_start.take().unwrap());
+                        bar.grab = None;
+                    }
+                    _ => return,
+                }
+                bar.hovered = false;
+                notify(cx);
+                cx.stop_propagation();
+            }
+        });
+
+        window.on_mouse_event({
+            let state = state.clone();
+            let hitbox = hitbox.clone();
+            let handle = handle.clone();
             move |event: &MouseMoveEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }
                 let mut state = state.borrow_mut();
+                if state.touch_start.is_some() {
+                    return;
+                }
                 if let Some(grab) = state.grab {
                     if event.pressed_button == Some(MouseButton::Left) {
                         let start = geometry.along(event.position) - grab;

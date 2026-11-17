@@ -368,7 +368,8 @@ impl Desktop {
         // table's `row:<index>`) moved by `dx`, `dy`. Without `at`, it is measured
         // from where the gesture began, so a drag reads the same however the
         // element moves under it.
-        let step = &control["pointer"];
+        let touch = control.get("touch");
+        let step = touch.unwrap_or(&control["pointer"]);
         let target = step["at"]
             .as_str()
             .and_then(|name| {
@@ -376,11 +377,28 @@ impl Desktop {
                     self.header_bounds.borrow().get(key).copied()
                 } else if let Some(index) = name.strip_prefix("row:") {
                     self.row_bounds(index.parse().ok()?, cx)
+                } else if name == "about-scroll" {
+                    Some(self.about_scroll.bounds())
                 } else {
                     anchor(&step["at"])
                 }
             })
-            .map(|bounds| bounds.center());
+            .map(|bounds| {
+                let fraction =
+                    |axis| step["fraction"][axis].as_f64().unwrap_or(0.5).clamp(0., 1.) as f32;
+                bounds.origin
+                    + point(
+                        bounds.size.width * fraction(0),
+                        bounds.size.height * fraction(1),
+                    )
+            })
+            .or_else(|| {
+                let at = step["at"].as_array().filter(|at| at.len() == 2)?;
+                Some(point(
+                    px(at[0].as_f64()? as f32),
+                    px(at[1].as_f64()? as f32),
+                ))
+            });
         if target.is_some() {
             self.ui.gesture_origin.set(target);
         }
@@ -392,52 +410,74 @@ impl Desktop {
                     px(step["dx"].as_f64().unwrap_or(0.) as f32),
                     px(step["dy"].as_f64().unwrap_or(0.) as f32),
                 );
-            match step["event"].as_str() {
-                Some("hover") => pointer.push(moved(at, None)),
-                _ if !presses => {}
-                // A right press and release, as opens a context menu.
-                Some("context") => pointer.extend([
-                    moved(at, None),
-                    PlatformInput::MouseDown(MouseDownEvent {
+            if touch.is_some() && presses {
+                let id = TouchId(step["id"].as_u64().unwrap_or(1));
+                let event = |phase| {
+                    PlatformInput::Touch(TouchEvent {
+                        id,
+                        phase,
                         position: at,
-                        button: MouseButton::Right,
-                        click_count: 1,
                         ..Default::default()
-                    }),
-                    PlatformInput::MouseUp(MouseUpEvent {
-                        position: at,
-                        button: MouseButton::Right,
-                        click_count: 1,
-                        ..Default::default()
-                    }),
-                ]),
-                // `clicks` 2: the second press of a double-click, held.
-                Some("down") => pointer.push(PlatformInput::MouseDown(MouseDownEvent {
-                    position: at,
-                    button: MouseButton::Left,
-                    click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
-                    ..Default::default()
-                })),
-                Some("up") => pointer.push(press(at, false)),
-                // A second click in place, as the platform reports one.
-                Some("double") => pointer.extend([
-                    moved(at, None),
-                    press(at, true),
-                    press(at, false),
-                    PlatformInput::MouseDown(MouseDownEvent {
+                    })
+                };
+                match step["event"].as_str() {
+                    Some("down") => pointer.push(event(TouchPhase::Started)),
+                    Some("up") => pointer.push(event(TouchPhase::Ended)),
+                    Some("cancel") => pointer.push(event(TouchPhase::Cancelled)),
+                    Some("tap") => {
+                        pointer.extend([event(TouchPhase::Started), event(TouchPhase::Ended)])
+                    }
+                    Some("move") => pointer.push(event(TouchPhase::Moved)),
+                    _ => {}
+                }
+            } else if touch.is_none() {
+                match step["event"].as_str() {
+                    Some("hover") => pointer.push(moved(at, None)),
+                    _ if !presses => {}
+                    // A right press and release, as opens a context menu.
+                    Some("context") => pointer.extend([
+                        moved(at, None),
+                        PlatformInput::MouseDown(MouseDownEvent {
+                            position: at,
+                            button: MouseButton::Right,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                        PlatformInput::MouseUp(MouseUpEvent {
+                            position: at,
+                            button: MouseButton::Right,
+                            click_count: 1,
+                            ..Default::default()
+                        }),
+                    ]),
+                    // `clicks` 2: the second press of a double-click, held.
+                    Some("down") => pointer.push(PlatformInput::MouseDown(MouseDownEvent {
                         position: at,
                         button: MouseButton::Left,
-                        click_count: 2,
+                        click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
                         ..Default::default()
-                    }),
-                    PlatformInput::MouseUp(MouseUpEvent {
-                        position: at,
-                        button: MouseButton::Left,
-                        click_count: 2,
-                        ..Default::default()
-                    }),
-                ]),
-                _ => pointer.push(moved(at, Some(MouseButton::Left))),
+                    })),
+                    Some("up") => pointer.push(press(at, false)),
+                    // A second click in place, as the platform reports one.
+                    Some("double") => pointer.extend([
+                        moved(at, None),
+                        press(at, true),
+                        press(at, false),
+                        PlatformInput::MouseDown(MouseDownEvent {
+                            position: at,
+                            button: MouseButton::Left,
+                            click_count: 2,
+                            ..Default::default()
+                        }),
+                        PlatformInput::MouseUp(MouseUpEvent {
+                            position: at,
+                            button: MouseButton::Left,
+                            click_count: 2,
+                            ..Default::default()
+                        }),
+                    ]),
+                    _ => pointer.push(moved(at, Some(MouseButton::Left))),
+                }
             }
         }
         if !pointer.is_empty() {
@@ -539,12 +579,19 @@ impl Desktop {
                         .count()
                 })
                 .sum::<usize>();
-            let actions_are_client = window
-                .window_control_area_at(self.toolbar_regions.borrow()[1].center())
-                .is_none();
+            // The search box (on pages that have one) and the page bar's end
+            // controls take the pointer; the bar's stretch drags the window.
+            let bar = *self.bar_regions.borrow();
+            let actions_are_client = (!self.has_search()
+                || window
+                    .window_control_area_at(self.toolbar_regions.borrow()[1].center())
+                    .is_none())
+                && window.window_control_area_at(bar[0].center()).is_none();
+            let stretch_drags =
+                window.window_control_area_at(bar[2].center()) == Some(WindowControlArea::Drag);
             println!(
                 "{}",
-                json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,
+                json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,"stretchDrags":stretch_drags,
                 "minimize":control_matches(WindowControlArea::Min),"maximize":control_matches(WindowControlArea::Max),"close":control_matches(WindowControlArea::Close)})
             );
             println!(
@@ -576,25 +623,29 @@ impl Desktop {
                         && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
                 }))
             });
-            println!(
-                "{}",
-                json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
+            let mut layout = json!({"event":"ui-layout","label":label,"page":self.page,"device":self.device,
                 "vitals":self.vitals_band_state(),
                 "visibility":{"enabled":self.prefs.get::<bool>(visibility::preference(&self.page),false),
                     "pids":self.rows.iter().filter(|row|row.section.is_none()).flat_map(|row| if row.members.is_empty(){std::slice::from_ref(&row.raw)}else{row.members.as_slice()}).filter_map(|p|p["pid"].as_u64()).collect::<std::collections::BTreeSet<_>>()},
-                "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.section.is_none() && row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty()},
+                "processTree":{"view":self.view,"visibleRows":self.rows.len(),"visibleChildren":self.rows.iter().filter(|row|row.depth > 0).count(),"expandedParents":self.rows.iter().filter(|row|row.section.is_none() && row.expandable && row.expanded).count(),"searching":!self.query.trim().is_empty(),"titles":self.rows.iter().map(|row|row.title.as_str()).collect::<Vec<_>>(),"heldOrder":self.held_order},
+                "selectedRow":self.rows.iter().find(|row|self.selected.get(&self.page)==Some(&row.key)).map(|row|row.title.as_str()),
                 "animations":{"ui":!cx.reduce_motion(),"window":crate::window_motion::enabled(),"charts":format!("{:?}",self.chart_clock.borrow().mode)},
                 "cpuTemperatureHistory":{"recentSamples":temperature.len().min(60),"recentMissing":temperature.iter().rev().take(60).filter(|(_,value)|value.is_none()).count(),"last":temperature.last().and_then(|(_,value)|*value)},
                 "systemBackdrop":crate::platform::supports_backdrop(),"backgroundAlpha":theme::Palette::current(cx).background.a,
+                "graphics":{"softwareRequested":gpui_kit::gpui::windows_software_rendering_requested(),
+                    "software":window.gpu_specs().map(|specs| specs.is_software_emulated)},
                 "userGroups":{"mode":self.user_grouping().key(),"grouped":self.user_groups().is_some(),
                     "users":model::UserGroups::new(values(&self.snapshot["sessions"])).users(),
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
+                "tray":self.tray_test_state(cx),
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
                 "diagnosticCopy":if self.options.fixture.is_some() { self.data.get("diagnosticCopy") } else { None },
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),
+                "skippedRequest":self.data.get("skippedRequest"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
+                "history":{"cursor":self.history_cursor,"requestedFrame":self.data.get("historyMomentAt"),"frame":self.data.get("historyMoment").map(|m| &m["system"]["ts"])},
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,
@@ -604,8 +655,10 @@ impl Desktop {
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
                 "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
-                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()})
-            );
+                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
+            layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
+            layout["watchAction"] = json!(self.data.get("watchLastAction"));
+            println!("{layout}");
         }
         if self.options.fixture.is_some()
             && let Some(key) = control["clickHeader"].as_str()
@@ -974,6 +1027,11 @@ impl Desktop {
                 cx,
             );
         }
-        cx.notify();
+        // A passive control stands for the input it dispatches alone: it draws
+        // again only what the same input from the system would, so a frame
+        // trace shows what a pointer move or a wheel notch invalidates.
+        if control["passive"].as_bool() != Some(true) {
+            cx.notify();
+        }
     }
 }

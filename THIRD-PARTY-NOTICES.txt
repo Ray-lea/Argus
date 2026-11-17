@@ -8,7 +8,7 @@ Argus 静态链接了 Rust 标准库，其许可证为 MIT OR Apache-2.0，
 
 本文件由 scripts/notices.mjs 生成，请勿手动编辑。
 
-Rust 组件（447 个）
+Rust 组件（444 个）
   accesskit 0.24.1（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_consumer 0.38.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_windows 0.34.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
@@ -130,11 +130,11 @@ Rust 组件（447 个）
   gif 0.14.2（MIT OR Apache-2.0）https://github.com/image-rs/image-gif
   globset 0.4.21（Unlicense OR MIT）https://github.com/BurntSushi/ripgrep/tree/master/crates/globset
   globwalk 0.8.1（MIT）https://github.com/gilnaa/globwalk
-  gpui-base 0.9.1（Apache-2.0）https://github.com/longbridge/gpui-kit
-  gpui-component 0.9.1（Apache-2.0）https://github.com/longbridge/gpui-kit
-  gpui-fast 0.1.15（Apache-2.0）https://github.com/longbridge/gpui-fast
-  gpui-kit 0.9.1（Apache-2.0）https://github.com/longbridge/gpui-kit
-  gpui-kit-assets 0.9.1（Apache-2.0）https://github.com/longbridge/gpui-kit
+  gpui-base 0.10.0（Apache-2.0）https://github.com/longbridge/gpui-kit
+  gpui-component 0.10.0（Apache-2.0）https://github.com/longbridge/gpui-kit
+  gpui-fast 0.1.16（Apache-2.0）https://github.com/longbridge/gpui-fast
+  gpui-kit 0.10.0（Apache-2.0）https://github.com/longbridge/gpui-kit
+  gpui-kit-assets 0.10.0（Apache-2.0）https://github.com/longbridge/gpui-kit
   gpui-pre 0.3.12（Apache-2.0）https://github.com/zed-industries/zed
   gpui-pre-bench-metrics 0.3.12（Apache-2.0）https://github.com/zed-industries/zed
   gpui-pre-collections 0.3.12（Apache-2.0）https://github.com/zed-industries/zed
@@ -338,6 +338,7 @@ Rust 组件（447 个）
   svgtypes 0.15.3（Apache-2.0 OR MIT）https://github.com/linebender/svgtypes
   svgtypes 0.16.2（Apache-2.0 OR MIT）https://github.com/linebender/svgtypes
   sync_wrapper 1.0.2（Apache-2.0）https://github.com/Actyx/sync_wrapper
+  sys-locale 0.3.2（MIT OR Apache-2.0）https://github.com/1Password/sys-locale
   sysinfo 0.31.4（MIT）https://github.com/GuillaumeGomez/sysinfo
   taffy 0.15.1（MIT）https://github.com/DioxusLabs/taffy
   target-features 0.1.6（MIT OR Apache-2.0）https://github.com/calebzulawski/target-features
@@ -407,7 +408,6 @@ Rust 组件（447 个）
   windows 0.58.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows 0.61.3（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows 0.62.2（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
-  windows_x86_64_msvc 0.48.5（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows_x86_64_msvc 0.52.6（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-capture 1.5.0（MIT）https://github.com/NiiightmareXD/windows-capture
   windows-collections 0.2.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
@@ -430,10 +430,7 @@ Rust 组件（447 个）
   windows-strings 0.1.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-strings 0.4.2（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-strings 0.5.1（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
-  windows-sys 0.48.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
-  windows-sys 0.52.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-sys 0.61.2（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
-  windows-targets 0.48.5（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-targets 0.52.6（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-threading 0.1.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-threading 0.2.1（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
@@ -597,7 +594,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-适用于：aligned 0.4.3、arc-swap 1.9.5、arrayvec 0.7.8、as-slice 0.2.1、async-channel 2.5.0、async-executor 1.14.1、async-fs 2.2.0、async-io 2.6.0、async-lock 3.5.0、async-net 2.0.0、async-process 2.5.0、async-task 4.7.1、atomic 0.5.3、atomic-waker 1.1.2、backtrace 0.3.77、base64 0.22.1、base64 0.23.1、bit-set 0.11.1、bit-vec 0.10.2、bitflags 1.3.2、bitflags 2.13.2、bitstream-io 4.10.0、block-buffer 0.12.1、blocking 1.7.0、bstr 1.13.1、bytemuck 1.25.2、cast 0.3.0、cfg-if 1.0.5、chacha20 0.10.2、ciborium 0.2.2、ciborium-io 0.2.2、ciborium-ll 0.2.2、concurrent-queue 2.5.0、const-oid 0.10.3、core_detect 1.0.0、cpufeatures 0.3.1、criterion 0.8.2、criterion-plot 0.8.2、crossbeam-deque 0.8.8、crossbeam-epoch 0.9.21、crossbeam-queue 0.3.14、crossbeam-utils 0.8.23、crypto-common 0.2.2、data-url 0.3.2、digest 0.11.3、either 1.19.0、encoding_rs 0.8.44、encoding_rs_io 0.1.8、equivalent 1.0.3、errno 0.3.15、euclid 0.22.14、event-listener 5.4.2、event-listener-strategy 0.5.4、fastrand 2.5.0、fixedbitset 0.5.9、flate2 1.1.11、flume 0.12.0、fnv 1.0.7、form_urlencoded 1.2.2、futf 0.1.5、futures-lite 2.6.1、gif 0.13.3、gif 0.14.2、hash32 0.3.1、hashbrown 0.16.1、hashbrown 0.17.1、hdrhistogram 7.6.0、heapless 0.9.3、html5ever 0.27.0、httparse 1.10.1、hybrid-array 0.4.15、hyper-tls 0.6.0、idna 1.1.0、idna_adapter 1.2.2、imgref 1.12.3、indexmap 2.14.2、itertools 0.11.0、itertools 0.13.0、itertools 0.14.0、kurbo 0.11.3、kurbo 0.13.1、lock_api 0.4.14、log 0.4.35、markup5ever 0.12.1、markup5ever_rcdom 0.3.0、multiversion 0.8.1、nohash-hasher 0.2.0、ntapi 0.4.3、num_cpus 1.17.0、num-bigint 0.4.8、num-integer 0.1.47、num-rational 0.4.2、num-traits 0.2.19、once_cell 1.21.4、page_size 0.6.0、parking 2.2.1、parking_lot 0.12.5、parking_lot_core 0.9.12、percent-encoding 2.3.2、piper 0.2.5、png 0.17.16、png 0.18.1、polling 3.11.0、pollster 0.2.5、pollster 0.4.0、polycool 0.4.0、proptest 1.12.0、qoi 0.4.1、rayon 1.12.0、rayon-core 1.13.0、regex 1.13.1、regex-automata 0.4.18、regex-syntax 0.8.11、roxmltree 0.20.0、roxmltree 0.21.2、rustc-demangle 0.1.28、rustix 1.1.6、rusty-fork 0.3.1、scopeguard 1.2.0、sha2 0.11.1、similar 2.7.0、simplecss 0.2.2、siphasher 1.0.4、smallvec 1.16.5、smol 2.0.2、smol_str 0.3.7、socket2 0.6.5、stable_deref_trait 1.2.1、static_assertions 1.1.0、string_cache 0.8.9、svgtypes 0.15.3、svgtypes 0.16.2、target-features 0.1.6、tempfile 3.27.0、tendril 0.4.3、tinytemplate 1.2.1、tinyvec 1.13.3、triomphe 0.1.17、ttf-parser 0.25.1、unarray 0.1.4、unicode-bidi 0.3.18、unicode-bidi-mirroring 0.4.0、unicode-ccc 0.4.0、unicode-id 0.3.7、unicode-linebreak 0.1.5、unicode-properties 0.1.5、unicode-segmentation 1.13.3、unicode-vo 0.1.0、unicode-width 0.2.3、url 2.5.8、utf_types 1.0.0、utf8_iter 1.1.0、uuid 1.29.2、wait-timeout 0.2.1、waker-fn 1.2.0、wasm-bindgen 0.2.130、wasm-bindgen-shared 0.2.130、weezl 0.1.12、xml5ever 0.18.1、zeroize 1.9.1、zune-core 0.5.3、zune-jpeg 0.5.15
+适用于：aligned 0.4.3、arc-swap 1.9.5、arrayvec 0.7.8、as-slice 0.2.1、async-channel 2.5.0、async-executor 1.14.1、async-fs 2.2.0、async-io 2.6.0、async-lock 3.5.0、async-net 2.0.0、async-process 2.5.0、async-task 4.7.1、atomic 0.5.3、atomic-waker 1.1.2、backtrace 0.3.77、base64 0.22.1、base64 0.23.1、bit-set 0.11.1、bit-vec 0.10.2、bitflags 1.3.2、bitflags 2.13.2、bitstream-io 4.10.0、block-buffer 0.12.1、blocking 1.7.0、bstr 1.13.1、bytemuck 1.25.2、cast 0.3.0、cfg-if 1.0.5、chacha20 0.10.2、ciborium 0.2.2、ciborium-io 0.2.2、ciborium-ll 0.2.2、concurrent-queue 2.5.0、const-oid 0.10.3、core_detect 1.0.0、cpufeatures 0.3.1、criterion 0.8.2、criterion-plot 0.8.2、crossbeam-deque 0.8.8、crossbeam-epoch 0.9.21、crossbeam-queue 0.3.14、crossbeam-utils 0.8.23、crypto-common 0.2.2、data-url 0.3.2、digest 0.11.3、either 1.19.0、encoding_rs 0.8.44、encoding_rs_io 0.1.8、equivalent 1.0.3、errno 0.3.15、euclid 0.22.14、event-listener 5.4.2、event-listener-strategy 0.5.4、fastrand 2.5.0、fixedbitset 0.5.9、flate2 1.1.11、flume 0.12.0、fnv 1.0.7、form_urlencoded 1.2.2、futf 0.1.5、futures-lite 2.6.1、gif 0.13.3、gif 0.14.2、hash32 0.3.1、hashbrown 0.16.1、hashbrown 0.17.1、hdrhistogram 7.6.0、heapless 0.9.3、html5ever 0.27.0、httparse 1.10.1、hybrid-array 0.4.15、hyper-tls 0.6.0、idna 1.1.0、idna_adapter 1.2.2、imgref 1.12.3、indexmap 2.14.2、itertools 0.11.0、itertools 0.13.0、itertools 0.14.0、kurbo 0.11.3、kurbo 0.13.1、lock_api 0.4.14、log 0.4.35、markup5ever 0.12.1、markup5ever_rcdom 0.3.0、multiversion 0.8.1、nohash-hasher 0.2.0、ntapi 0.4.3、num_cpus 1.17.0、num-bigint 0.4.8、num-integer 0.1.47、num-rational 0.4.2、num-traits 0.2.19、once_cell 1.21.4、page_size 0.6.0、parking 2.2.1、parking_lot 0.12.5、parking_lot_core 0.9.12、percent-encoding 2.3.2、piper 0.2.5、png 0.17.16、png 0.18.1、polling 3.11.0、pollster 0.2.5、pollster 0.4.0、polycool 0.4.0、proptest 1.12.0、qoi 0.4.1、rayon 1.12.0、rayon-core 1.13.0、regex 1.13.1、regex-automata 0.4.18、regex-syntax 0.8.11、roxmltree 0.20.0、roxmltree 0.21.2、rustc-demangle 0.1.28、rustix 1.1.6、rusty-fork 0.3.1、scopeguard 1.2.0、sha2 0.11.1、similar 2.7.0、simplecss 0.2.2、siphasher 1.0.4、smallvec 1.16.5、smol 2.0.2、smol_str 0.3.7、socket2 0.6.5、stable_deref_trait 1.2.1、static_assertions 1.1.0、string_cache 0.8.9、svgtypes 0.15.3、svgtypes 0.16.2、sys-locale 0.3.2、target-features 0.1.6、tempfile 3.27.0、tendril 0.4.3、tinytemplate 1.2.1、tinyvec 1.13.3、triomphe 0.1.17、ttf-parser 0.25.1、unarray 0.1.4、unicode-bidi 0.3.18、unicode-bidi-mirroring 0.4.0、unicode-ccc 0.4.0、unicode-id 0.3.7、unicode-linebreak 0.1.5、unicode-properties 0.1.5、unicode-segmentation 1.13.3、unicode-vo 0.1.0、unicode-width 0.2.3、url 2.5.8、utf_types 1.0.0、utf8_iter 1.1.0、uuid 1.29.2、wait-timeout 0.2.1、waker-fn 1.2.0、wasm-bindgen 0.2.130、wasm-bindgen-shared 0.2.130、weezl 0.1.12、xml5ever 0.18.1、zeroize 1.9.1、zune-core 0.5.3、zune-jpeg 0.5.15
 ================================================================================
 
 Apache License
@@ -803,7 +800,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-适用于：borsh 1.8.1、deranged 0.5.9、futures 0.3.34、futures-channel 0.3.34、futures-core 0.3.34、futures-executor 0.3.34、futures-io 0.3.34、futures-sink 0.3.34、futures-task 0.3.34、futures-util 0.3.34、http 1.5.0、moxcms 0.8.1、notify-types 2.3.0、powerfmt 0.2.1、ppv-lite86 0.2.21、pxfm 0.1.30、reqwest 0.13.5、rustls-pki-types 1.16.0、typenum 1.20.1、unicode-script 0.5.9、web-time 1.1.0、windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.48.5、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.48.0、windows-sys 0.52.0、windows-sys 0.61.2、windows-targets 0.48.5、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1、zerocopy 0.8.63
+适用于：borsh 1.8.1、deranged 0.5.9、futures 0.3.34、futures-channel 0.3.34、futures-core 0.3.34、futures-executor 0.3.34、futures-io 0.3.34、futures-sink 0.3.34、futures-task 0.3.34、futures-util 0.3.34、http 1.5.0、moxcms 0.8.1、notify-types 2.3.0、powerfmt 0.2.1、ppv-lite86 0.2.21、pxfm 0.1.30、reqwest 0.13.5、rustls-pki-types 1.16.0、typenum 1.20.1、unicode-script 0.5.9、web-time 1.1.0、windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1、zerocopy 0.8.63
 ================================================================================
 
 Copyright (c) 2016 Alex Crichton
@@ -1084,7 +1081,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ================================================================================
-适用于：aligned-vec 0.6.4、alloca 0.4.0、av-scenechange 0.14.1、core_maths 0.1.1、crc32fast 1.5.5、equator 0.4.2、fdeflate 0.3.7、fluent-uri 0.1.4、half 2.7.1、image 0.25.10、image-webp 0.2.4、imagesize 0.13.0、imagesize 0.14.0、maybe-rayon 0.1.1、miniz_oxide 0.8.9、miniz_oxide 0.9.1、Native installer templates (Tauri-derived) 2.12.3、normpath 1.5.2、postage 0.5.0、precomputed-hash 0.1.1、raw-window-handle 0.6.2、rfd 0.18.0、rgb 0.8.53、ropey 2.0.0-beta.1、rust-i18n 4.2.4、schemars 1.2.3、simd-adler32 0.3.10、simdutf8 0.1.5、static_assertions 1.1.0、str_indices 0.4.4、strum 0.28.0、tiff 0.11.3、tokio 1.54.1、tokio-util 0.7.20、triomphe 0.1.17、unarray 0.1.4、unicode-script 0.5.9、web-time 1.1.0、windows-capture 1.5.0、zune-core 0.5.3、zune-jpeg 0.5.15
+适用于：aligned-vec 0.6.4、alloca 0.4.0、av-scenechange 0.14.1、core_maths 0.1.1、crc32fast 1.5.5、equator 0.4.2、fdeflate 0.3.7、fluent-uri 0.1.4、half 2.7.1、image 0.25.10、image-webp 0.2.4、imagesize 0.13.0、imagesize 0.14.0、maybe-rayon 0.1.1、miniz_oxide 0.8.9、miniz_oxide 0.9.1、Native installer templates (Tauri-derived) 2.12.3、normpath 1.5.2、postage 0.5.0、precomputed-hash 0.1.1、raw-window-handle 0.6.2、rfd 0.18.0、rgb 0.8.53、ropey 2.0.0-beta.1、rust-i18n 4.2.4、schemars 1.2.3、simd-adler32 0.3.10、simdutf8 0.1.5、static_assertions 1.1.0、str_indices 0.4.4、strum 0.28.0、sys-locale 0.3.2、tiff 0.11.3、tokio 1.54.1、tokio-util 0.7.20、triomphe 0.1.17、unarray 0.1.4、unicode-script 0.5.9、web-time 1.1.0、windows-capture 1.5.0、zune-core 0.5.3、zune-jpeg 0.5.15
 ================================================================================
 
 Copyright (c) [2021] [Marvin Countryman]
@@ -1104,6 +1101,7 @@ Copyright (c) 2019 Multimedia and Rust
 Copyright (c) 2019 Osspial
 Copyright (c) 2019 Peter Glotfelty
 Copyright (c) 2020 dylni (https://github.com/dylni)
+Copyright (c) 2021 1Password
 Copyright (c) 2021 Adel Prokurov
 Copyright (c) 2021 Joshua Holmer
 Copyright (c) 2021 Longbridge
@@ -1142,7 +1140,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ================================================================================
-适用于：allocator-api2 0.2.21、anyhow 1.0.104、dyn-clone 1.0.20、fdeflate 0.3.7、gpui-fast 0.1.15、half 2.7.1、image 0.25.10、image-webp 0.2.4、inventory 0.3.25、itoa 1.0.19、libc 0.2.191、miniz_oxide 0.8.9、miniz_oxide 0.9.1、Native installer templates (Tauri-derived) 2.12.3、normpath 1.5.2、num-conv 0.2.2、pin-project 1.1.13、pin-project-lite 0.2.17、raw-window-handle 0.6.2、ref-cast 1.0.27、resvg 0.45.1、resvg 0.46.0、rustc-hash 2.1.3、ryu 1.0.23、semver 1.0.28、serde 1.0.229、serde_core 1.0.229、serde_json 1.0.154、serde_urlencoded 0.7.1、serde-saphyr 1.3.0、simdutf8 0.1.5、sync_wrapper 1.0.2、thiserror 1.0.69、thiserror 2.0.21、time 0.3.55、time-core 0.1.9、unicode-ident 1.0.27、usvg 0.45.1、usvg 0.46.0、utf-8 0.7.6
+适用于：allocator-api2 0.2.21、anyhow 1.0.104、dyn-clone 1.0.20、fdeflate 0.3.7、gpui-fast 0.1.16、half 2.7.1、image 0.25.10、image-webp 0.2.4、inventory 0.3.25、itoa 1.0.19、libc 0.2.191、miniz_oxide 0.8.9、miniz_oxide 0.9.1、Native installer templates (Tauri-derived) 2.12.3、normpath 1.5.2、num-conv 0.2.2、pin-project 1.1.13、pin-project-lite 0.2.17、raw-window-handle 0.6.2、ref-cast 1.0.27、resvg 0.45.1、resvg 0.46.0、rustc-hash 2.1.3、ryu 1.0.23、semver 1.0.28、serde 1.0.229、serde_core 1.0.229、serde_json 1.0.154、serde_urlencoded 0.7.1、serde-saphyr 1.3.0、simdutf8 0.1.5、sync_wrapper 1.0.2、thiserror 1.0.69、thiserror 2.0.21、time 0.3.55、time-core 0.1.9、unicode-ident 1.0.27、usvg 0.45.1、usvg 0.46.0、utf-8 0.7.6
 ================================================================================
 
 Copyright 2022 - 2025 Zed Industries, Inc.
@@ -1326,7 +1324,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ================================================================================
-适用于：windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.48.5、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.48.0、windows-sys 0.52.0、windows-sys 0.61.2、windows-targets 0.48.5、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1
+适用于：windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1
 ================================================================================
 
 Copyright (c) Microsoft Corporation.
@@ -1403,7 +1401,7 @@ Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
 
 ================================================================================
-适用于：gpui-base 0.9.1、gpui-component 0.9.1、gpui-pre 0.3.12、gpui-pre-bench-metrics 0.3.12、gpui-pre-collections 0.3.12、gpui-pre-http-client 0.3.12、gpui-pre-platform 0.3.12、gpui-pre-refineable 0.3.12、gpui-pre-scheduler 0.3.12、gpui-pre-shared-string 0.3.12、gpui-pre-sum-tree 0.3.12、gpui-pre-util 0.3.12、gpui-pre-windows 0.3.12、gpui-pre-ztracing 0.3.12
+适用于：gpui-base 0.10.0、gpui-component 0.10.0、gpui-pre 0.3.12、gpui-pre-bench-metrics 0.3.12、gpui-pre-collections 0.3.12、gpui-pre-http-client 0.3.12、gpui-pre-platform 0.3.12、gpui-pre-refineable 0.3.12、gpui-pre-scheduler 0.3.12、gpui-pre-shared-string 0.3.12、gpui-pre-sum-tree 0.3.12、gpui-pre-util 0.3.12、gpui-pre-windows 0.3.12、gpui-pre-ztracing 0.3.12
 ================================================================================
 
 Copyright 2022 - 2025 Zed Industries, Inc.
@@ -6245,7 +6243,7 @@ Modifications after commit `825edf857426d034954523fed19599635cbb5043` are Copyri
 Redistributions of this Work must include all inherited and new license notices, including the notices for Chen Yuheng, Ethiraric, and Bourumir Wyngs.
 
 ================================================================================
-适用于：gpui-kit-assets 0.9.1
+适用于：gpui-kit-assets 0.10.0
 ================================================================================
 
 Copyright (c) 2013-present Cole Bemis
@@ -7545,7 +7543,7 @@ at your option.
   accesskit_consumer 0.38.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_windows 0.34.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   anes 0.1.6（MIT OR Apache-2.0）https://github.com/zrzka/anes-rs
-  gpui-kit 0.9.1（Apache-2.0）https://github.com/longbridge/gpui-kit
+  gpui-kit 0.10.0（Apache-2.0）https://github.com/longbridge/gpui-kit
   lyon 1.0.19（MIT OR Apache-2.0）https://github.com/nical/lyon
   lyon_algorithms 1.0.22（MIT OR Apache-2.0）https://github.com/nical/lyon
   lyon_geom 1.0.20（MIT OR Apache-2.0）https://github.com/nical/lyon

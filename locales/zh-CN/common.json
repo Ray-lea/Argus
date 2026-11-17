@@ -15,6 +15,7 @@
   "none": "无",
   "name": "名称",
   "status": "状态",
+  "filterColumn": "按“{column}”筛选",
   "command": "命令",
   "copyName": "复制名称",
   "copyPath": "复制路径",

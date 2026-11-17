@@ -50,9 +50,11 @@
   },
   "pause": "Aktualisierung anhalten",
   "resume": "Aktualisierung fortsetzen",
-  "fileLock": {
-    "title": "Dateisperren suchen (Dateien können auch auf das Fenster gezogen werden)",
-    "label": "Prozesse suchen, die eine Datei verwenden"
+  "more": {
+    "label": "Weitere Aktionen",
+    "runTask": "Neue Aufgabe ausführen…",
+    "fileLock": "Prozesse suchen, die eine Datei verwenden…",
+    "fileLockDetail": "Auch per Ablegen"
   },
   "details": {
     "label": "Detailbereich",
@@ -85,9 +87,10 @@
     "cached": "Im Cache",
     "pagedPool": "Ausgelagerter Pool",
     "uptime": "Betriebszeit",
-    "orderHeld": "Die Sortierung wurde angehalten, während sich der Zeiger über der Liste befindet",
-    "orderHeldHint": "Die Zeilen werden neu sortiert, sobald der Mauszeiger die Liste verlässt",
+    "orderHeld": "Sortierung angehalten",
+    "orderHeldHint": "Der Zeiger befindet sich über der Prozessliste: Die Zeilen bleiben an ihrem Platz, die Werte werden weiter aktualisiert. Sobald der Zeiger die Liste verlässt, werden die Zeilen neu sortiert.",
     "paused": "Aktualisierung angehalten",
+    "holdHint": "Auf den Seiten „Prozesse“ und „Leistung“ Strg gedrückt halten, um kurz anzuhalten",
     "interval": "Aktualisiert alle {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nKlicken, um die Neuerungen dieser Version anzuzeigen; rechtsklicken, um die Versionsnummer zu kopieren"

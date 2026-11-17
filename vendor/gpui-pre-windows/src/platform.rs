@@ -501,14 +501,20 @@ impl WindowsPlatform {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
-                    if check_device_lost(&directx_device.device)
-                        || invalidate_devices.fetch_and(false, Ordering::Acquire)
-                    {
+                    let lost = check_device_lost(&directx_device.device)
+                        || invalidate_devices.fetch_and(false, Ordering::Acquire);
+                    // The application asked for the other kind of renderer
+                    // (`gpui::set_windows_software_rendering`): the windows
+                    // move to a new device as they do after a loss.
+                    let switched =
+                        directx_device.software != gpui::windows_software_rendering_requested();
+                    if lost || switched {
                         if let Err(err) = handle_gpu_device_lost(
                             &mut directx_device,
                             platform_window.as_raw(),
                             validation_number,
                             &all_windows,
+                            lost,
                         ) {
                             panic!("Device lost: {err}");
                         }
@@ -1878,12 +1884,23 @@ fn handle_gpu_device_lost(
     platform_window: HWND,
     validation_number: usize,
     all_windows: &std::sync::Weak<RwLock<SmallVec<[TrackedWindow; 4]>>>,
+    lost: bool,
 ) -> Result<()> {
     let started = std::time::Instant::now();
-    log::info!(target: "argus::graphics", "DirectX device recovery started");
-    // Here we wait a bit to ensure the system has time to recover from the device lost state.
-    // If we don't wait, the final drawing result will be blank.
-    std::thread::sleep(std::time::Duration::from_millis(350));
+    if lost {
+        log::info!(target: "argus::graphics", "DirectX device recovery started");
+        // Here we wait a bit to ensure the system has time to recover from the device lost state.
+        // If we don't wait, the final drawing result will be blank.
+        std::thread::sleep(std::time::Duration::from_millis(350));
+    } else {
+        // A requested change of renderer: the old device still works, and the
+        // windows show nothing between giving it up and their next frame.
+        log::info!(
+            target: "argus::graphics",
+            "DirectX renderer change started; software={}",
+            gpui::windows_software_rendering_requested(),
+        );
+    }
 
     *directx_devices = try_to_recover_from_device_lost(|| {
         DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
@@ -1909,7 +1926,9 @@ fn handle_gpu_device_lost(
                 Some(lparam),
             );
         });
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        if lost {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
         for_each_recovery_window(&all_windows, |window| unsafe {
             SendMessageW(
                 window.as_raw(),

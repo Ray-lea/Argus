@@ -35,7 +35,8 @@
       "one": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
       "many": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés).",
       "other": "Processus terminés : {count} ; échecs : {failed} (accès refusé ou processus déjà terminés)."
-    }
+    },
+    "unchecked": "Processus arrêtés : {count} ; non arrêtés : {failed}, dont {unchecked} avec un état critique non vérifié."
   },
   "error": {
     "accessDenied": "Impossible de terminer {name} : accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur. Les processus protégés peuvent rester inaccessibles.",
@@ -43,7 +44,8 @@
     "critical": "{name} est un processus système critique. Son arrêt ferait planter Windows ; l’opération a été bloquée.",
     "refused": "{name} ne peut pas être terminé.",
     "serviceOutdated": "Impossible de terminer {name} : accès refusé. La version du service privilégié est incompatible. Mettez le service à jour et réessayez.",
-    "generic": "Impossible de terminer {name} : {error}"
+    "generic": "Impossible de terminer {name} : {error}",
+    "criticalityUnknown": "Impossible de vérifier si {name} est un processus système critique. L’arrêt a été bloqué."
   },
   "priority": {
     "confirmTitle": "Définir la priorité de {name} sur Temps réel ?",

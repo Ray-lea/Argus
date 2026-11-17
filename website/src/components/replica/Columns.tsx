@@ -88,7 +88,7 @@ export const COLUMNS: ColumnDef[] = [
   col("cpuTime", "cpu", "duration", 100, true, "CPU 时间", "累计用户态与内核态 CPU 时间；分组显示成员合计。"),
   col("cpuUserTime", "cpu", "duration", 115, true, "用户 CPU 时间", "进程累计使用的用户态 CPU 时间。"),
   col("cpuKernelTime", "cpu", "duration", 115, true, "内核 CPU 时间", "进程累计使用的内核态 CPU 时间。"),
-  col("basePriority", "cpu", "id", 100, false, "基本优先级", "Windows 报告的进程基本优先级数值。"),
+  col("basePriority", "cpu", "id", 100, false, "基本优先级", "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。"),
   col("mem", "memory", "memory", 96, true, "内存", "专用工作集：进程独占的物理内存", "memory"),
   col("workingSet", "memory", "memory", 110, true, "工作集", "当前驻留的物理内存，含共享页面；分组为成员工作集之和。", "memory"),
   col("peakWorkingSet", "memory", "memory", 125, false, "工作集峰值", "单进程自启动以来的工作集峰值；展开应用分组查看各进程。"),
@@ -299,7 +299,12 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "cpuTime": value = total((p) => p.cpuTime); break;
     case "cpuUserTime": value = total(userTime); break;
     case "cpuKernelTime": value = total((p) => p.cpuTime - userTime(p)); break;
-    case "basePriority": value = instance((p) => priorityBase[ctx.priority.get(p.pid) ?? "正常"] ?? 8); break;
+    case "basePriority": {
+      // The class by name, as the app shows it; sorted by its base priority.
+      const name = instance((p) => ctx.priority.get(p.pid) ?? "正常");
+      if (name === null) { value = null; break; }
+      return { text: name, sort: priorityBase[name] ?? 8, faint: true };
+    }
     case "mem": value = v.mem; break;
     case "workingSet": value = v.mem * 1.38; break;
     case "peakWorkingSet": value = instance((p) => p.mem * (1.46 + noise(p.pid * 5 + 2, 0) * 0.5)); break;
@@ -501,7 +506,8 @@ function nameNeed(row: Row, ctx: CellContext, scale: number) {
   if (row.suspended) need += 8 + 14 + textWidth(translate("已暂停"), scale, 11);
   return need;
 }
-const TEXT_COLUMNS = new Set(["name", "imageName", "path", "description", "company", "version", "architecture", "commandLine", "gpuEngine"]);
+// The base priority shows a class name, as wide as a translation makes it.
+const TEXT_COLUMNS = new Set(["name", "imageName", "path", "description", "company", "version", "architecture", "commandLine", "gpuEngine", "basePriority"]);
 /** The narrowest and widest a text column is made, whatever its contents (widths.rs `limits`). */
 const limits = (key: string): [number, number] =>
   key === "name"

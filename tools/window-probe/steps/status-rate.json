@@ -1,0 +1,17 @@
+{
+  "window": [1400, 900],
+  "steps": [
+    {"control":{"page":"processes","details":false,"motion":"off"},"wait":500,"capture":"running"},
+    {"control":{"clickAnchor":"status-rate"},"wait":300,"inspect":"menu","label":"opened","expect":{"state.open":true},"capture":"opened"},
+    {"control":{"clickAnchor":"status-rate"},"wait":400,"inspect":"menu","label":"closed-again","expect":{"state.open":false}},
+    {"wait":1100},
+    {"control":{"clickAnchor":"status-rate"},"wait":300,"inspect":"menu","label":"reopened","expect":{"state.open":true}},
+    {"control":{"keys":["escape"]},"wait":400,"inspect":"menu","label":"escaped","expect":{"state.open":false}},
+    {"control":{"mouse":{"type":"move","x":1268,"y":882}},"wait":50},
+    {"control":{"mouse":{"type":"down","x":1268,"y":882}},"wait":50},
+    {"control":{"mouse":{"type":"up","x":1268,"y":882}},"wait":400,"inspect":"layout","label":"paused","capture":"paused"},
+    {"control":{"mouse":{"type":"move","x":1268,"y":882}},"wait":50},
+    {"control":{"mouse":{"type":"down","x":1268,"y":882}},"wait":50},
+    {"control":{"mouse":{"type":"up","x":1268,"y":882}},"wait":400,"inspect":"layout","label":"resumed","capture":"resumed"}
+  ]
+}

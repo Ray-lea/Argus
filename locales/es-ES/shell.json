@@ -50,9 +50,11 @@
   },
   "pause": "Pausar actualizaciones",
   "resume": "Reanudar actualizaciones",
-  "fileLock": {
-    "title": "Encuentre qué está usando un archivo (o suelte archivos en la ventana)",
-    "label": "Buscar procesos usando un archivo"
+  "more": {
+    "label": "Más acciones",
+    "runTask": "Ejecutar nueva tarea…",
+    "fileLock": "Buscar procesos usando un archivo…",
+    "fileLockDetail": "O soltar archivos"
   },
   "details": {
     "label": "Panel de detalles",
@@ -85,9 +87,10 @@
     "cached": "En caché",
     "pagedPool": "Bloque paginado",
     "uptime": "Tiempo activo",
-    "orderHeld": "Clasificación en pausa mientras el puntero está sobre la lista",
-    "orderHeldHint": "Las filas se reordenan una vez que el puntero sale de la lista",
+    "orderHeld": "Ordenación en pausa",
+    "orderHeldHint": "El puntero está sobre la lista de procesos: las filas mantienen su posición y los valores se siguen actualizando. Se vuelven a ordenar cuando el puntero sale de la lista.",
     "paused": "Actualizaciones pausadas",
+    "holdHint": "Mantenga pulsada Ctrl en las páginas Procesos y Rendimiento para pausar brevemente",
     "interval": "Actualiza cada {seconds} s",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\nHaga clic para ver las novedades de esta versión; haga clic derecho para copiar el número de versión"

@@ -26,7 +26,6 @@
     "start": "Iniciar servicio",
     "stop": "Detener servicio",
     "restart": "Reiniciar servicio",
-    "openConsole": "Abrir Servicios",
     "openConsoleTitle": "Abrir la consola de Servicios de Windows"
   },
   "menu": {

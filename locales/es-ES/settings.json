@@ -32,6 +32,10 @@
     "on": "Agrupar siempre",
     "off": "No agrupar nunca"
   },
+  "holdOrder": {
+    "title": "Pausar la ordenación al señalar",
+    "desc": "Mientras el puntero está sobre la lista de procesos, las filas mantienen su posición y los valores se siguen actualizando; se vuelven a ordenar cuando el puntero sale de la lista. Si se desactiva, la lista se ordena en cada actualización. Las filas mantienen su posición mientras haya un menú contextual o un cuadro de diálogo abierto."
+  },
   "language": {
     "title": "Idioma de la interfaz",
     "desc": "Se aplica al instante, también a los menús y mensajes de la bandeja. «Igual que Windows» utiliza el idioma de visualización de Windows.",
@@ -86,6 +90,7 @@
     "pauseTitle": "Pausar mientras se mantiene pulsado",
     "searchTitle": "Buscar procesos",
     "search": "Ir a búsqueda de procesos. La tecla / también funciona cuando no se escribe y, en la página Procesos, al escribir una letra o un dígito se inicia una búsqueda.",
+    "runTask": "Inicie un programa o abra un archivo o una carpeta desde cualquier página. No funciona mientras escribe.",
     "pause": "Mantenga presionado para pausar las actualizaciones de Procesos o Rendimiento; suelte para reanudar. Una pausa manual permanece vigente.",
     "end": "Finaliza el proceso o grupo de aplicaciones seleccionado, con confirmación.",
     "taskManager": "Abrir Argus cuando está activado «Sustituir el Administrador de tareas».",
@@ -204,6 +209,7 @@
     "unknown": "No se pudo leer el estado de reemplazo",
     "state": {
       "disabled": "Se utiliza el Administrador de tareas de Windows",
+      "revoked": "Sustitución revocada",
       "enabled": "Reemplazado por Argus",
       "recoveryNeeded": "Necesita restauración",
       "conflict": "Configurado por otro programa"
@@ -227,6 +233,11 @@
       "balanced": "Equilibrada ({fps} fps)",
       "pixel": "Ahorro de energía (pasos de píxel)",
       "off": "Desactivada (un paso por muestra)"
+    },
+    "acceleration": {
+      "title": "Aceleración por hardware",
+      "desc": "De forma predeterminada, la GPU dibuja la interfaz. Al desactivarla, la dibuja la CPU y Argus deja de usar la GPU. Resulta útil si la interfaz se entrecorta con la GPU al máximo o para evitar que Argus use la GPU. El uso de CPU aumenta; si es necesario, se puede reducir la animación de los gráficos. Se aplica de inmediato, sin reiniciar.",
+      "error": "No se pudo cambiar la aceleración por hardware: {error}"
     }
   },
   "data": {
@@ -393,11 +404,15 @@
     "links": {
       "website": {
         "title": "Sitio web de Argus",
-        "desc": "Descargue versiones estables y lea la documentación, FAQ y el registro de cambios."
+        "download": "Descargar",
+        "guide": "Guía de uso",
+        "changelog": "Cambios"
       },
       "repository": {
         "title": "Repositorio de GitHub",
-        "desc": "Explore el código fuente, informe problemas o sugiera cambios y obtenga el instalador de cualquier versión."
+        "issues": "Incidencias",
+        "discussions": "Discusiones",
+        "releases": "Versiones"
       }
     },
     "onboarding": {

@@ -15,6 +15,7 @@ pub(super) fn shifted(child: impl IntoElement, offset: Point<Pixels>, opacity: f
         offset,
         opacity,
         viewport: None,
+        motion: None,
     }
 }
 
@@ -23,9 +24,17 @@ pub(super) struct Shifted {
     offset: Point<Pixels>,
     opacity: f32,
     viewport: Option<Rc<Cell<Bounds<Pixels>>>>,
+    motion: Option<usize>,
 }
 
 impl Shifted {
+    /// Reports the move to the renderer under `id`, to be copied from frame
+    /// to frame where it only moved (`Window::report_moving_region`).
+    pub(super) fn reports_motion(mut self, id: usize) -> Self {
+        self.motion = Some(id);
+        self
+    }
+
     /// Share the stationary parent clip with a layer painted outside this subtree.
     pub(super) fn within_viewport(mut self, viewport: Option<Rc<Cell<Bounds<Pixels>>>>) -> Self {
         self.viewport = viewport;
@@ -81,12 +90,21 @@ impl Element for Shifted {
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _: &mut (),
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
+        if let Some(id) = self.motion
+            && self.opacity >= 1.
+        {
+            let clip = self
+                .viewport
+                .as_ref()
+                .map_or(bounds, |viewport| viewport.get());
+            window.report_moving_region(id, clip, self.offset);
+        }
         if self.offset == Point::default() && self.opacity >= 1. {
             self.child.paint(window, cx);
         } else {

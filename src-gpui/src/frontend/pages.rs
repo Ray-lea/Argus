@@ -4,6 +4,7 @@ mod components;
 mod details;
 mod history;
 mod performance;
+mod process_watch;
 mod settings;
 mod vitals;
 use super::*;
@@ -252,48 +253,44 @@ impl Desktop {
             _ => div().into_any_element(),
         }
     }
-    pub(in crate::frontend) fn page_controls(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    /// The filter of the page's list (services, connections) as its status
+    /// column's header menu offers it: each choice, checked when it is the
+    /// one in force.
+    pub(in crate::frontend) fn filter_menu(&self) -> Vec<MenuItem> {
         let choices: &[&str] = tables::filter_choices(&self.page).map_or(&[], |(_, c)| c);
-        let namespace = if self.page == "network" {
-            "connections"
-        } else {
-            &self.page
-        };
+        let network = self.page == "network";
+        let namespace = if network { "connections" } else { &self.page };
         let selected = self
             .filters
             .get(&self.page)
             .map(String::as_str)
             .unwrap_or("all");
-        let mut row = div().flex().items_center().gap_1();
-        if !choices.is_empty() {
-            row = row.child(
-                self.segments(
-                    "page-filter",
-                    choices
-                        .iter()
-                        .map(|&choice| {
-                            (
-                                label(&format!(
-                                    "{namespace}.filter.{choice}{}",
-                                    if self.page == "network" { ".label" } else { "" }
-                                )),
-                                None,
-                                Action::Preference(format!("filter.{}", self.page), json!(choice)),
-                                selected == choice,
-                            )
-                        })
-                        .collect(),
-                    cx,
-                ),
-            );
-        }
+        choices
+            .iter()
+            .map(|&choice| {
+                MenuItem::new(
+                    label(&format!(
+                        "{namespace}.filter.{choice}{}",
+                        if network { ".label" } else { "" }
+                    )),
+                    Action::Preference(format!("filter.{}", self.page), json!(choice)),
+                )
+                .checked(selected == choice)
+            })
+            .collect()
+    }
+    /// The history page's time range in the page bar (`compact`: as a
+    /// drop-down), and its "Latest".
+    pub(in crate::frontend) fn page_controls(
+        &self,
+        compact: bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut row = div().flex().items_center().gap_2();
         if self.page == "history" {
             row = row.child(
-                self.segments(
+                self.choice(
                     "history-range",
                     history::RANGES
                         .into_iter()
@@ -306,12 +303,13 @@ impl Desktop {
                             )
                         })
                         .collect(),
+                    compact,
                     cx,
                 ),
             );
             if self.history_cursor.is_some() {
                 // A plain `.btn` whose text is not a `.btn-text`: it keeps its
-                // label at every compact level of the toolbar.
+                // label at every compact level of the page bar.
                 row = row.child(
                     self.btn(
                         "history-latest",
@@ -345,6 +343,15 @@ impl Desktop {
             "hideSystem.processes" | "hideSystem.network" => {
                 self.prefs.set(key, value.as_bool().unwrap_or(false));
                 self.rebuild_rows(false, cx);
+                cx.notify();
+                return;
+            }
+            tables::HOLD_ORDER => {
+                self.prefs.set(key, value.as_bool().unwrap_or(true));
+                // Turned off under the pointer: the rows re-sort at once.
+                if self.page == "processes" {
+                    self.rebuild_rows(self.holds_order(), cx);
+                }
                 cx.notify();
                 return;
             }
@@ -515,7 +522,45 @@ impl Desktop {
                 self.load_history(window, cx);
             }
             "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
+            "watchProcess" => {
+                if self.pending.values().any(|pending| {
+                    pending.command == "watch_process" && pending.args["action"]["op"] != "status"
+                }) {
+                    return;
+                }
+                let generation = self
+                    .data
+                    .get("watchGeneration")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    + 1;
+                self.data
+                    .insert("watchGeneration".into(), json!(generation));
+                if self.options.fixture.is_some() {
+                    self.data.insert("watchLastAction".into(), value.clone());
+                }
+                self.request(
+                    "watch_process",
+                    json!({"action":value,"generation":generation}),
+                    None,
+                    window,
+                    cx,
+                );
+                return;
+            }
+            "historyPeak" => {
+                self.data.remove("historySelection");
+                if let Some(at) = value.as_i64() {
+                    self.history_hover = None;
+                    self.history_cursor = Some(at);
+                    self.data.insert("historyPeakAt".into(), json!(at));
+                    self.load_history(window, cx);
+                    cx.notify();
+                }
+                return;
+            }
             "historyLatest" => {
+                self.data.remove("historyPeakAt");
                 self.history_cursor = None;
                 self.history_hover = None;
                 self.load_history(window, cx);
@@ -544,6 +589,13 @@ impl Desktop {
                         p["pid"] == value["pid"]
                             && (value["createTime"].is_null()
                                 || p["createTime"] == value["createTime"])
+                            && (value["historyFrame"].is_null()
+                                || history::recorded_target(
+                                    &value,
+                                    value["historyFrame"].as_i64(),
+                                    std::slice::from_ref(*p),
+                                )
+                                .is_some())
                     })
                     .cloned();
                 if let Some(process) = found {

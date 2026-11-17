@@ -4,6 +4,8 @@
 
 涉及进程的操作按 PID 与创建时间核对目标身份。特权服务根据调用账户和命令类型授权，内核传感器通过固定的 PawnIO 模块读取。权限边界见[特权服务](../architecture/privileged-service.md)。
 
+结束操作在同一已核对身份的句柄上检查关键进程标志。成功的否定结果、关键进程和检查失败分别处理；检查失败时拒绝执行，即使请求了强制结束。使用 [`IsProcessCritical`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-isprocesscritical)，不另外要求完整查询权限。
+
 客户端使用 `resources/app.json` 中的公钥验证更新包和更新说明的签名与版本。保留已安装客户端信任的公钥及签名对版本号的校验，签名工作流从 GitHub Secrets 读取私钥。具体流程见[提交与发布](release.md)。
 
 诊断日志记录失败阶段、系统错误码及直接参与失败的路径，重复错误按类别限频。安装、卸载和服务变更在隔离环境验证。
@@ -19,4 +21,4 @@
 | `rustybuzz 0.20.1` | `resvg → usvg` | [RUSTSEC-2026-0206](https://rustsec.org/advisories/RUSTSEC-2026-0206.html) | 跟进使用 HarfRust 的 SVG 依赖版本，核对文字整形与回退字体 |
 | `ttf-parser 0.25.1` | `gpui-pre`、`fontdb`、`rustybuzz` | [RUSTSEC-2026-0192](https://rustsec.org/advisories/RUSTSEC-2026-0192.html) | 联动迁移 SVG 字体链与直接字体查询，评估 Skrifa／Fontations，保留字体覆盖检查 |
 
-2026-11-12 升级到 GPUI Kit 0.9.1 后，它仍引入 `instant` 与 `paste`；迁移需与现有本地 GPUI 补丁一并评估。锁文件中的 `rustls-pemfile`、`zbus_names`、`zvariant`、`zvariant_derive` 另有停维护提示，当前 Windows 目标依赖树未使用这些包；扩展平台时重新核对。每次发版以最新审计数据库与实际目标依赖树为准，相关检查命令为 `pnpm check:security` 和 `cargo tree --target x86_64-pc-windows-msvc -i <包名>`。
+2026-11-16 升级到 GPUI Kit 0.10.0 后，它仍引入 `instant` 与 `paste`；迁移需与现有本地 GPUI 补丁一并评估。锁文件中的 `rustls-pemfile`、`zbus_names`、`zvariant`、`zvariant_derive` 另有停维护提示，当前 Windows 目标依赖树未使用这些包；扩展平台时重新核对。每次发版以最新审计数据库与实际目标依赖树为准，相关检查命令为 `pnpm check:security` 和 `cargo tree --target x86_64-pc-windows-msvc -i <包名>`。

@@ -3,7 +3,9 @@
 //! every region again (a notified view refreshes the cached views inside it),
 //! but an animation frame or a scroll requested while a region renders redraws
 //! only that region: its ancestors render their own trees and replay the other
-//! regions. Live charts belong to the region that built them.
+//! regions. A sample draws only the regions that show it
+//! (`Desktop::notify_snapshot`). Live charts belong to the region that built
+//! them.
 use super::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -14,18 +16,32 @@ pub(super) enum RegionKind {
     Details,
     /// The resource cards above the process list.
     Vitals,
-    /// The title bar row: logo, page controls, search and actions.
+    /// The title bar row: logo and search.
     Toolbar,
-    /// The page tabs (top) or the side navigation.
+    /// The page tabs with the page's controls (top) or the side navigation.
     Navigation,
+    /// The page header beside the side navigation: the page's name and controls.
+    Header,
 }
 
-pub(super) struct Region {
+/// One view type for each kind of region: the frame trace lists the views a
+/// draw rendered by their types, and `Region<Page>` says which region it was.
+pub(super) mod named {
+    pub struct Page;
+    pub struct Details;
+    pub struct Vitals;
+    pub struct Toolbar;
+    pub struct Navigation;
+    pub struct Header;
+}
+
+pub(super) struct Region<Name: 'static> {
     desktop: WeakEntity<Desktop>,
     kind: RegionKind,
+    name: std::marker::PhantomData<Name>,
 }
 
-impl Render for Region {
+impl<Name: 'static> Render for Region<Name> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let kind = self.kind;
         self.desktop
@@ -36,7 +52,7 @@ impl Render for Region {
 
 #[derive(Default)]
 pub(super) struct Regions {
-    views: HashMap<RegionKind, Entity<Region>>,
+    views: HashMap<RegionKind, AnyView>,
     /// The chart ids each region registered when it last rendered.
     charts: HashMap<RegionKind, HashSet<String>>,
     /// Renders of each region: chart continuity counts these.
@@ -53,22 +69,55 @@ impl Desktop {
         style: StyleRefinement,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        fn view<Name: 'static>(
+            desktop: WeakEntity<Desktop>,
+            kind: RegionKind,
+            cx: &mut Context<Desktop>,
+        ) -> AnyView {
+            cx.new(|_| Region::<Name> {
+                desktop,
+                kind,
+                name: std::marker::PhantomData,
+            })
+            .into()
+        }
         self.regions.placed.insert(kind);
         let desktop = cx.entity().downgrade();
         self.regions
             .views
             .entry(kind)
-            .or_insert_with(|| cx.new(|_| Region { desktop, kind }))
+            .or_insert_with(|| match kind {
+                RegionKind::Page => view::<named::Page>(desktop, kind, cx),
+                RegionKind::Details => view::<named::Details>(desktop, kind, cx),
+                RegionKind::Vitals => view::<named::Vitals>(desktop, kind, cx),
+                RegionKind::Toolbar => view::<named::Toolbar>(desktop, kind, cx),
+                RegionKind::Navigation => view::<named::Navigation>(desktop, kind, cx),
+                RegionKind::Header => view::<named::Header>(desktop, kind, cx),
+            })
             .clone()
             .cached(style)
             .into_any_element()
+    }
+
+    /// Whether the region has been drawn, so that it can be drawn again alone.
+    pub(super) fn has_region(&self, kind: RegionKind) -> bool {
+        self.regions.views.contains_key(&kind)
     }
 
     /// Draws one region again on the next frame; the desktop around it renders
     /// its own tree and replays the other regions.
     pub(super) fn refresh_region(&self, kind: RegionKind, cx: &mut Context<Self>) {
         if let Some(view) = self.regions.views.get(&kind) {
-            view.update(cx, |_, cx| cx.notify());
+            let app: &mut App = cx;
+            app.notify(view.entity_id());
+        }
+    }
+
+    /// Draws one region's own tree again on the next frame and replays the
+    /// regions inside it: they are drawn again when they are told themselves.
+    pub(super) fn redraw_region(&self, kind: RegionKind, window: &Window) {
+        if let Some(view) = self.regions.views.get(&kind) {
+            window.request_view_redraw(view.entity_id());
         }
     }
 
@@ -133,6 +182,12 @@ impl Desktop {
                 .when(self.nav_top, |d| d.flex_col())
                 .child(self.navigation(self.nav_top, window, cx))
                 .into_any_element(),
+            RegionKind::Header => div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(self.page_header(window, cx))
+                .into_any_element(),
         };
         self.render_count = render_count;
         let added = self
@@ -161,7 +216,8 @@ impl Desktop {
         let desktop = cx.entity().downgrade();
         move |cx| {
             let rendered = page
-                .and_then(|page| page.update(cx, |_, cx| cx.notify()).ok())
+                .and_then(|page| page.upgrade())
+                .map(|page| cx.notify(page.entity_id()))
                 .is_some();
             if !rendered {
                 let _ = desktop.update(cx, |_, cx| cx.notify());

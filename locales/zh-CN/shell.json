@@ -50,9 +50,11 @@
   },
   "pause": "暂停刷新",
   "resume": "继续刷新",
-  "fileLock": {
-    "title": "查找文件占用（也可将文件拖放到窗口）",
-    "label": "查找占用文件的进程"
+  "more": {
+    "label": "更多操作",
+    "runTask": "运行新任务…",
+    "fileLock": "查找占用文件的进程…",
+    "fileLockDetail": "可拖放文件"
   },
   "details": {
     "label": "详细信息面板",
@@ -85,9 +87,10 @@
     "cached": "缓存",
     "pagedPool": "分页缓冲池",
     "uptime": "已运行",
-    "orderHeld": "指针位于列表上，暂停重新排序",
-    "orderHeldHint": "鼠标移出列表后按当前排序重新排列",
+    "orderHeld": "排序已暂停",
+    "orderHeldHint": "指针位于进程列表上，行位置保持不变，读数照常刷新；移出列表后按当前排序重新排列。",
     "paused": "已暂停刷新",
+    "holdHint": "在进程页和性能页按住 Ctrl 可临时暂停",
     "interval": "每 {seconds} 秒刷新",
     "version": "v{version}",
     "versionHint": "Argus {version} · {build}\n单击查看本版本的更新内容，右键复制版本号"

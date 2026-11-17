@@ -17,9 +17,11 @@ mod sensors;
 pub mod startup_probe;
 mod vendor_gpu;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::diagnostics::startup_phase;
+use crate::gpu_process::GpuAdapters;
 use serde::Serialize;
 
 pub use battery::{BatteryInfo, BatteryStats};
@@ -37,6 +39,13 @@ pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
 pub use sensors::{CpuIdle, CpuPower, ThermalZone};
 pub use vendor_gpu::GpuPowerSource;
+
+/// The adapters the performance page lists and those it leaves out, as
+/// `GpuProcessTracker::new` takes them. For diagnostics; the collector reuses
+/// its own adapter list.
+pub fn gpu_adapters() -> GpuAdapters {
+    gpu::GpuTracker::new_with_vendor(false).adapters()
+}
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +163,18 @@ pub(crate) struct HardwareTracker {
 impl HardwareTracker {
     pub(crate) fn gpu_node_engine(&self, luid: u64, node: u32) -> Option<usize> {
         self.gpus.node_engine(luid, node)
+    }
+    pub(crate) fn gpu_adapters(&self) -> GpuAdapters {
+        self.gpus.adapters()
+    }
+    /// Enumerates the GPUs again; see `GpuTracker::refresh`.
+    pub(crate) fn refresh_gpus(&mut self, unknown: &HashSet<u64>) {
+        self.gpus.refresh(unknown);
+    }
+    /// Drops the listed GPUs, as if their LUIDs had changed.
+    #[cfg(test)]
+    pub(crate) fn forget_gpus(&mut self) {
+        self.gpus.forget();
     }
     pub fn new() -> Self {
         let cpu = startup_phase("hardware.cpu-info", cpu::cpu_info);

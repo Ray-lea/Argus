@@ -1463,6 +1463,9 @@ impl WindowProfiler {
     }
 
     /// Records the end of a window draw and returns the draw duration.
+    ///
+    /// The frame trace names the views by their types without module paths
+    /// (see [`short_type_name`]).
     pub fn end_draw(&mut self, dirty_at: Option<Instant>, invalidations: u64) -> Duration {
         let Some(WindowActivity::Draw {
             started_at: draw_start,
@@ -1490,7 +1493,7 @@ impl WindowProfiler {
         let draw_duration = frame_timing.draw_duration();
         let work = std::mem::take(&mut self.draw_work);
         if phase_trace_enabled() {
-            let short = |name: &str| name.rsplit("::").next().unwrap_or(name).to_owned();
+            let short = short_type_name;
             let rendered = work
                 .rendered
                 .iter()
@@ -2332,4 +2335,25 @@ mod tests {
             phases: Default::default(),
         });
     }
+}
+
+/// A type name without its module paths, generic arguments included:
+/// `a::b::Region<a::c::Page>` reads `Region<Page>`.
+fn short_type_name(name: &str) -> String {
+    let mut short = String::with_capacity(name.len());
+    // Where the path being read starts in `short`.
+    let mut path = 0;
+    let mut chars = name.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == ':' && chars.peek() == Some(&':') {
+            chars.next();
+            short.truncate(path);
+        } else {
+            short.push(c);
+            if !(c.is_alphanumeric() || c == '_') {
+                path = short.len();
+            }
+        }
+    }
+    short
 }

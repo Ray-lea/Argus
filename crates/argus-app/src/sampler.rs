@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::channel::Channel;
 use argus_core::history::{self, HistoryRecorder};
+use argus_core::watch::{WatchAction, WatchError, WatchRecorder, WatchView};
 use argus_core::{Collector, Snapshot};
 use argus_service::{DiskClient, NetworkClient, RuleRunner, SensorClient};
 
@@ -66,6 +67,11 @@ pub enum Control {
     /// Deletes the history in this folder; replies once the files are gone.
     /// Goes through this thread so no frame is being written meanwhile.
     ClearHistory(PathBuf, Sender<io::Result<()>>),
+    Watch(
+        PathBuf,
+        WatchAction,
+        Sender<Result<Option<WatchView>, WatchError>>,
+    ),
 }
 
 pub struct Sampler {
@@ -78,14 +84,17 @@ struct Schedule {
     last_sample: Instant,
     /// The cadence when the last sample was taken.
     last_period: Duration,
+    /// No snapshot has been taken since the collector established its baselines.
+    first_sample: bool,
 }
 
 impl Schedule {
     fn new(now: Instant, period: Duration) -> Self {
         Self {
-            next_tick: now + period,
+            next_tick: now + MIN_SAMPLE_GAP,
             last_sample: now,
             last_period: period,
+            first_sample: true,
         }
     }
 
@@ -95,7 +104,14 @@ impl Schedule {
 
     /// A changed cadence counts from the last sample.
     fn restart(&mut self, period: Duration) {
-        self.next_tick = self.last_sample + period;
+        // Startup controls may choose a long foreground or tray interval.
+        // Keep the first snapshot due once the rate counters have a baseline.
+        let wait = if self.first_sample {
+            MIN_SAMPLE_GAP
+        } else {
+            period
+        };
+        self.next_tick = self.last_sample + wait;
     }
 
     /// A timed tick. The next one stays on the grid of `period`, the cadence
@@ -134,6 +150,10 @@ impl Schedule {
     /// back dropped them (no network column, no disk readings).
     fn taken(&mut self, now: Instant, forced: bool, period: Duration) -> Duration {
         let stale_after = period.max(self.last_period);
+        if self.first_sample {
+            self.next_tick = now + period;
+            self.first_sample = false;
+        }
         self.last_sample = now;
         self.last_period = period;
         if forced {
@@ -190,6 +210,7 @@ impl Sampler {
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut window: Option<Probe> = None;
                 let mut history: Option<HistoryRecorder> = None;
+                let mut watch: Option<WatchRecorder> = None;
                 let mut interval = DEFAULT_INTERVAL;
                 let mut minimized = BACKGROUND_INTERVAL;
                 let mut tray = BACKGROUND_INTERVAL;
@@ -241,11 +262,32 @@ impl Sampler {
                             history = dir.map(HistoryRecorder::new);
                             continue;
                         }
-                        Ok(Control::ClearHistory(dir, reply)) => {
-                            let result = match &mut history {
-                                Some(recorder) => recorder.clear(),
-                                None => history::clear(&dir),
+                        Ok(Control::Watch(dir, action, reply)) => {
+                            let result = if let Some(recorder) = &mut watch {
+                                recorder.action(action)
+                            } else if matches!(action, WatchAction::Delete) {
+                                WatchRecorder::delete_saved(&dir).map(|()| None)
+                            } else {
+                                WatchRecorder::open(dir).and_then(|mut recorder| {
+                                    let result = recorder.action(action);
+                                    watch = Some(recorder);
+                                    result
+                                })
                             };
+                            let _ = reply.send(result);
+                            continue;
+                        }
+                        Ok(Control::ClearHistory(dir, reply)) => {
+                            let observed = match &mut watch {
+                                Some(recorder) => recorder.action(WatchAction::Delete).map(|_| ()),
+                                None => WatchRecorder::delete_saved(&dir),
+                            };
+                            let result = observed
+                                .map_err(|_| io::Error::other("process observation cleanup failed"))
+                                .and_then(|()| match &mut history {
+                                    Some(recorder) => recorder.clear(),
+                                    None => history::clear(&dir),
+                                });
                             let _ = reply.send(result);
                             continue;
                         }
@@ -281,6 +323,14 @@ impl Sampler {
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
+                    }
+                    if let Some(recorder) = &mut watch
+                        && recorder.record(&snapshot).is_err()
+                    {
+                        argus_core::diagnostics::warn(
+                            "process observation",
+                            "recording interrupted",
+                        );
                     }
                     // A paused view stays as it is, except right after an action.
                     let send =
@@ -415,5 +465,51 @@ mod tests {
         schedule.restart(s(5));
         assert_eq!(schedule.next_tick, t0 + s(13));
         assert_eq!(schedule.taken(t0 + s(13), false, s(5)), s(5));
+    }
+
+    #[test]
+    fn startup_controls_keep_the_first_snapshot_on_the_minimum_gap() {
+        let t0 = Instant::now();
+        let (s, ms) = (Duration::from_secs, Duration::from_millis);
+        for state in [
+            WindowState::Shown,
+            WindowState::Minimized,
+            WindowState::Hidden,
+        ] {
+            let mut schedule = Schedule::new(t0, s(1));
+            assert_eq!(schedule.wait(t0), MIN_SAMPLE_GAP);
+            // Subscribe, saved interval, background intervals and pause may all
+            // arrive before the first snapshot; none may defer it to 1–30 s.
+            assert!(!schedule.demand(t0 + ms(10), s(1)));
+            schedule.owe();
+            schedule.restart(cadence(state, false, s(10), s(30), s(30)));
+            schedule.restart(cadence(state, true, s(10), s(30), s(30)));
+            assert_eq!(schedule.wait(t0 + ms(10)), MIN_SAMPLE_GAP - ms(10));
+            assert!(!schedule.demand(t0 + MIN_SAMPLE_GAP - ms(1), s(30)));
+            assert!(schedule.demand(t0 + MIN_SAMPLE_GAP, s(30)));
+        }
+    }
+
+    #[test]
+    fn the_first_snapshot_starts_the_selected_regular_cadence() {
+        let t0 = Instant::now();
+        let s = Duration::from_secs;
+        for period in [MIN_SAMPLE_GAP, s(1), s(5), s(30)] {
+            for forced in [false, true] {
+                let mut schedule = Schedule::new(t0, s(1));
+                schedule.restart(period);
+                let first = t0 + MIN_SAMPLE_GAP;
+                if !forced {
+                    schedule.tick(first, period);
+                }
+                schedule.taken(first, forced, period);
+                assert_eq!(schedule.next_tick, first + period);
+                // Once a snapshot exists, normal interval changes and refresh
+                // coalescing still count from that snapshot.
+                schedule.restart(s(10));
+                assert_eq!(schedule.next_tick, first + s(10));
+                assert!(!schedule.demand(first, s(1)));
+            }
+        }
     }
 }

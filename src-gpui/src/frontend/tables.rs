@@ -1,7 +1,10 @@
 //! Native virtual tables share one column model and preserve process-instance identity.
 use super::*;
+mod cell_text;
 mod cells;
+mod groups;
 mod header;
+pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};
 mod widths;
 use gpui_kit::base::ElementExt;
@@ -60,6 +63,8 @@ struct TableLayout<'a> {
     totals: HashMap<String, String>,
     bits: bool,
     scope: (&'a str, &'a str),
+    /// The process list the automatic column widths measure (`WidthRows`).
+    measured: Option<Arc<Vec<WidthRow>>>,
 }
 /// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
@@ -83,7 +88,7 @@ pub(super) fn process_header_height() -> Pixels {
 pub(super) fn process_table_height(rows: usize) -> Pixels {
     process_header_height() + px(ROW_HEIGHT * rows as f32 + scrollbar::SIZE + 2.)
 }
-fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
+fn fields(page: &str, sources: columns::Sources, _available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
     let definitions: Vec<(&str, &str, CellKind, Track)> = match page {
@@ -162,7 +167,7 @@ fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
             ),
             ("state", "common.status", ConnectionState, Fixed(96.)),
         ],
-        _ => return process_fields(&columns::Preferences::default(), network),
+        _ => return process_fields(&columns::Preferences::default(), sources),
     };
     definitions
         .into_iter()
@@ -179,10 +184,10 @@ fn fields(page: &str, network: bool, _available: f32) -> Vec<Field> {
         .collect()
 }
 
-fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Field> {
+fn process_fields(preferences: &columns::Preferences, sources: columns::Sources) -> Vec<Field> {
     use columns::Format;
     preferences
-        .visible(network)
+        .visible(sources)
         .into_iter()
         .map(|column| {
             let kind = match column.format {
@@ -219,6 +224,38 @@ fn process_fields(preferences: &columns::Preferences, network: bool) -> Vec<Fiel
         })
         .collect()
 }
+/// A process's base priority as its priority class, or as the number Windows
+/// reports when it matches no class.
+pub(in crate::frontend) fn base_priority(process: &Value) -> Option<String> {
+    let value = process["basePriority"].as_i64()?;
+    Some(match model::priority_class(process) {
+        Some(class) => label(&format!("processes.priority.{class}")),
+        None => crate::regional::number!("{value}"),
+    })
+}
+
+/// Why a base priority shows as a number: it lies between two classes.
+pub(in crate::frontend) fn base_priority_hint(process: &Value) -> Option<String> {
+    if model::priority_class(process).is_some() {
+        return None;
+    }
+    let base = process["basePriority"].as_i64()?;
+    let class = |(value, class): (i64, &str)| {
+        format!(
+            "{} ({value})",
+            label(&format!("processes.priority.{class}"))
+        )
+    };
+    Some(match model::priority_neighbours(base) {
+        (Some(below), Some(above)) => tr!(
+            "processes.basePriorityBetween",
+            below = class(below),
+            above = class(above)
+        ),
+        _ => label("processes.basePriorityCustom"),
+    })
+}
+
 fn cell(row: &Row, field: &Field) -> String {
     let raw = &row.raw;
     let missing = || label("format.missing");
@@ -227,6 +264,11 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::ProcessText => row
             .column_text(field.key)
             .map(|value| columns::shown(field.key, value).into_owned())
+            .unwrap_or_else(missing),
+        // A process's priority class by name; groups mix them and show none.
+        CellKind::Identifier if field.key == "basePriority" => row
+            .metric(field.key)
+            .and_then(|_| base_priority(&row.members[0]))
             .unwrap_or_else(missing),
         CellKind::Identifier => row
             .metric(field.key)
@@ -366,6 +408,9 @@ pub(super) struct NativeTable {
     scope: (String, String),
     totals: HashMap<String, String>,
     auto_widths: widths::AutoWidths,
+    /// The process list the automatic widths measure (`WidthRows`); the
+    /// rows shown stand in until there is one.
+    measured: Arc<Vec<WidthRow>>,
     /// Fixed column widths of the other tables for the current language and
     /// text size, by page and column (`fit_fixed`).
     fitted: HashMap<(String, &'static str), f32>,
@@ -405,6 +450,8 @@ pub(super) struct NativeTable {
     /// so the widths it reports then are its rounding of the fit, not a
     /// width to keep.
     edge_fitted: Option<&'static str>,
+    /// The process list's user and category groups (`groups`).
+    group_view: groups::GroupView,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -454,6 +501,16 @@ impl Render for TableFrame {
         if gliding {
             window.request_animation_frame();
         }
+        // The process list's held headings and its groups beside the scrollbar
+        // (`groups`): planned before the table renders, from where it is scrolled.
+        let groups = self.state.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            if delegate.page != "processes" {
+                return None;
+            }
+            delegate.plan_groups(window, cx);
+            delegate.group_overlay(process_header_band(), window, cx)
+        });
         // Process headers carry a total above the label; the other tables use the
         // 34 px header cell. Both sit in a 4 px padded header row.
         let state = self.state.read(cx);
@@ -483,6 +540,7 @@ impl Render for TableFrame {
                     // The interface's scrollbars are drawn below.
                     .scrollbar_visible(false, false),
             )
+            .children(groups)
             // The process page draws the list's bar itself (`Desktop::table_scrollbar`).
             .when(!processes, |d| {
                 d.child(scrollbar::scrollbar("table-scrollbar", &rows, dark).view(table))
@@ -597,6 +655,7 @@ impl NativeTable {
             restored: None,
             resizing: None,
             edge_fitted: None,
+            group_view: Default::default(),
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -609,6 +668,7 @@ impl NativeTable {
             scope: (String::new(), String::new()),
             totals: HashMap::new(),
             auto_widths: Default::default(),
+            measured: Arc::new(vec![]),
             fitted: HashMap::new(),
             cell_values: HashMap::new(),
             horizontal: None,
@@ -619,7 +679,7 @@ impl NativeTable {
         &mut self,
         page: &str,
         rows: Arc<Vec<Row>>,
-        network: bool,
+        sources: columns::Sources,
         layout: TableLayout<'_>,
         sort: (&str, bool),
         cx: &App,
@@ -630,12 +690,25 @@ impl NativeTable {
             totals,
             bits,
             scope,
+            measured,
         } = layout;
         let rows_changed = !Arc::ptr_eq(&self.rows, &rows);
+        // An empty list (none sampled yet) measures nothing.
+        let measured = measured.filter(|measured| !measured.is_empty());
+        let measured_changed = measured
+            .as_ref()
+            .is_some_and(|measured| !Arc::ptr_eq(&self.measured, measured));
         let totals_changed = self.totals != totals;
         let locale = argus_core::i18n::locale();
         if rows_changed || bits != self.bits || self.locale != locale {
             self.cell_values.clear();
+        }
+        if rows_changed || self.page != page {
+            self.group_view.groups = Rc::new(if page == "processes" {
+                groups::groups(&rows)
+            } else {
+                Vec::new()
+            });
         }
         self.rows = rows;
         self.totals = totals;
@@ -644,9 +717,9 @@ impl NativeTable {
             return false;
         }
         let mut fields = if page == "processes" {
-            process_fields(preferences, network)
+            process_fields(preferences, sources)
         } else {
-            fields(page, network, f32::from(available))
+            fields(page, sources, f32::from(available))
         };
         let font_size = theme::font(12.);
         let same_layout = self.page == page
@@ -665,7 +738,10 @@ impl NativeTable {
             .horizontal
             .as_ref()
             .is_some_and(|h| h.wheel_target() != h.offset());
-        if same_layout && (!preferences.auto_width || (!rows_changed && !totals_changed) || gliding)
+        if same_layout
+            && (!preferences.auto_width
+                || (!rows_changed && !totals_changed && !measured_changed)
+                || gliding)
         {
             return false;
         }
@@ -698,6 +774,17 @@ impl NativeTable {
         self.process_columns = preferences.clone();
         self.page = page.into();
         if page == "processes" && preferences.auto_width {
+            self.measured = match measured {
+                Some(measured) => measured,
+                // Until the list is built, the rows shown stand in for it.
+                None if rows_changed || self.measured.is_empty() => Arc::new(
+                    self.rows
+                        .iter()
+                        .map(|row| widths::WidthRow::of(row, &fields, bits))
+                        .collect(),
+                ),
+                None => self.measured.clone(),
+            };
             let (first, count) = self
                 .list
                 .as_ref()
@@ -718,6 +805,7 @@ impl NativeTable {
                 widths::Contents {
                     rows: &self.rows,
                     range: first..(first + count.min(96)).min(self.rows.len()),
+                    measured: &self.measured,
                     totals: &self.totals,
                     values: &mut self.cell_values,
                     bits,
@@ -944,6 +1032,7 @@ impl NativeTable {
             widths::Contents {
                 rows: &self.rows,
                 range: 0..0,
+                measured: &self.measured,
                 totals: &self.totals,
                 values: &mut self.cell_values,
                 bits: self.bits,
@@ -1203,14 +1292,18 @@ impl TableDelegate for NativeTable {
         // Process headers: the interface's 4 px cell padding inside its 4 px
         // header padding below the label, which the header band leaves out.
         let processes = self.page == "processes";
+        let filter = self.header_filter(index, cx);
         // The table keeps its own inset at the right of a header's content
         // (`widths::HEADER_INSET`): a process header leaves out as much of its
-        // padding, so its figures end where the cells' do.
+        // padding, so its figures end where the cells' do. A filter button
+        // takes the end of its header.
         let mut cell = div()
             .size_full()
             .pl(px(CELL_PADDING))
             .pr(px(if processes {
                 CELL_PADDING - widths::HEADER_INSET
+            } else if filter.is_some() {
+                FILTER_BUTTON + 4.
             } else {
                 CELL_PADDING
             }))
@@ -1254,7 +1347,7 @@ impl TableDelegate for NativeTable {
                                 }),
                         )
                     })
-                    .child(total),
+                    .child(raised_brackets(total, theme::font(15.))),
             );
         }
         let owner = self.owner.clone();
@@ -1263,7 +1356,7 @@ impl TableDelegate for NativeTable {
             .upgrade()
             .map(|owner| {
                 let app = owner.read(cx);
-                (app.sort == key, app.descending)
+                (app.sort == key, app.descending, app.held_order)
             })
             .unwrap_or_default();
         let label = div()
@@ -1279,11 +1372,26 @@ impl TableDelegate for NativeTable {
             .text_color(if sort.0 { p.ink } else { p.muted })
             .when(sort.0, |d| d.font_weight(theme::LABEL_WEIGHT))
             .child(div().min_w_0().truncate().child(field.label.clone()))
-            .when(sort.0, |d| {
+            .when(sort.0 && !sort.2, |d| {
                 d.child(
                     icon(if sort.1 { "ChevronDown" } else { "ChevronUp" }, p.ink)
                         .size(px(12.))
                         .flex_shrink_0(),
+                )
+            })
+            // Rows held out of this order (`Desktop::holds_order`): the
+            // arrow gives way to a pause mark in the accent until they re-sort.
+            .when(sort.0 && sort.2, |d| {
+                let tip = theme::label("processes.orderHeld");
+                d.child(
+                    div()
+                        .id("order-held-mark")
+                        .flex()
+                        .flex_shrink_0()
+                        .child(icon("PauseIcon", p.accent).size(px(12.)))
+                        .tooltip(move |window, cx| {
+                            widgets::wrapping_tooltip(tip.clone().into(), px(320.), window, cx)
+                        }),
                 )
             });
         let hover = p.hover;
@@ -1316,8 +1424,17 @@ impl TableDelegate for NativeTable {
             .disabled(!sortable)
             .accessibility_label(field.label.clone())
             .when(self.page == "processes" && !resizing, |button| {
-                let title = theme::label(&format!("processes.column.{key}.title"));
-                button.tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
+                // The memory header's figure is whole-system usage, its rows
+                // private working sets: the hint names both.
+                let title = theme::label(&if key == "mem" {
+                    "processes.memoryScope.header".to_owned()
+                } else {
+                    format!("processes.column.{key}.title")
+                });
+                // Wrapped like the cells' tips: some descriptions run to a few sentences.
+                button.tooltip(move |window, cx| {
+                    widgets::wrapping_tooltip(title.clone().into(), px(420.), window, cx)
+                })
             })
             .child(cell.child(label))
             .on_click(move |_, window, cx| {
@@ -1327,7 +1444,16 @@ impl TableDelegate for NativeTable {
                     let _ = owner.update(cx, |this, cx| this.act(Action::Sort(key), window, cx));
                 });
             });
-        self.header_cell(index, button, window, cx)
+        let header = self.header_cell(index, button, window, cx);
+        match filter {
+            Some(filter) => div()
+                .relative()
+                .size_full()
+                .child(header)
+                .child(filter)
+                .into_any_element(),
+            None => header,
+        }
     }
     fn render_td(
         &mut self,
@@ -1346,12 +1472,18 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> Stateful<Div> {
         if std::mem::take(&mut self.near_due) {
-            self.near = self
-                .list
-                .as_ref()
-                .and_then(|list| tips::row_under(list, ROW_HEIGHT, self.rows.len(), window));
+            self.near = self.list.as_ref().and_then(|list| {
+                self.tips
+                    .row_under(list, ROW_HEIGHT, self.rows.len(), window)
+                    // Under a held heading, the row is out of sight.
+                    .filter(|_| !self.group_view.covers(list, window))
+            });
         }
         let p = Palette::current(cx);
+        let tint = self
+            .group_view
+            .tone(index)
+            .map(|tone| tone.color(&p).opacity(groups::HEADING_TINT));
         let row = &self.rows[index];
         let (selected, fresh, searching) = self
             .owner
@@ -1406,7 +1538,8 @@ impl TableDelegate for NativeTable {
             None => tr,
         };
         tr.when_some(refold, |d, refold| d.on_click(refold))
-            .when(row.user.is_some(), |d| d.bg(p.hover))
+            // A group's heading in its colour (`groups`).
+            .when_some(tint, |d, tint| d.bg(tint))
             .when(fresh, |d| d.bg(p.network.opacity(0.15)))
             .when(selected, |d| {
                 d.child(
@@ -1459,8 +1592,132 @@ fn mirror_selection(
         .borrow_mut()
         .deferred_scroll_to_item = None;
 }
+/// How often, at most, the samples build the list the column widths
+/// measure again (`WidthRows`). Rows on screen widen a column with each
+/// sample in between, so only rows scrolled away, folded or left out by a
+/// search wait for it.
+pub(super) const WIDTH_ROWS_EVERY: Duration = Duration::from_secs(5);
+pub(in crate::frontend) use widths::WidthRow;
+/// The process list as the automatic column widths measure it: every group
+/// open and nothing searched, so that searching or folding a group leaves
+/// the widths as they are. Each row keeps only what the widths read of it
+/// (`WidthRow`). Built again with another view, grouping, column choice
+/// or language, and from the samples now and then; the rows shown can only
+/// widen a column in between (`widths::AutoWidths::apply`).
+pub(in crate::frontend) struct WidthRows {
+    rows: Arc<Vec<WidthRow>>,
+    shape: WidthShape,
+    built: Instant,
+}
+/// What the measured list depends on besides the sample: the view, the
+/// category headings of the name order, grouping by user, the columns
+/// chosen and the language.
+#[derive(PartialEq)]
+struct WidthShape {
+    view: String,
+    sections: bool,
+    users: model::UserGrouping,
+    columns: Vec<String>,
+    locale: argus_core::i18n::Locale,
+}
+/// What the measured list is built from besides the sample, taken on the
+/// UI thread for a build that may run off it.
+pub(in crate::frontend) struct WidthSource {
+    shape: WidthShape,
+    sort: String,
+    hosted: HashMap<u64, Vec<String>>,
+    visibility: Option<visibility::Rules>,
+    columns: columns::Preferences,
+    bits: bool,
+}
+impl WidthSource {
+    /// The rows of `snapshot`'s processes with every group open and nothing
+    /// searched (`model::ProcessOptions::open`), as the widths read them.
+    pub(in crate::frontend) fn build(self, snapshot: &Value) -> WidthRows {
+        let none = HashSet::new();
+        let users = model::UserGroups::grouping(values(&snapshot["sessions"]), self.shape.users);
+        let rows = model::process_rows(
+            values(&snapshot["processes"]),
+            model::ProcessOptions {
+                mode: &self.shape.view,
+                query: "",
+                sort: &self.sort,
+                descending: false,
+                expanded: &none,
+                tree_expanded: &none,
+                sections: &none,
+                hosted: &self.hosted,
+                visibility: self.visibility.as_ref(),
+                users: users.as_ref(),
+                user_folds: &none,
+                open: true,
+            },
+        );
+        let fields = process_fields(&self.columns, columns::Sources::of(snapshot));
+        WidthRows {
+            rows: Arc::new(
+                rows.iter()
+                    .map(|row| WidthRow::of(row, &fields, self.bits))
+                    .collect(),
+            ),
+            shape: self.shape,
+            built: Instant::now(),
+        }
+    }
+}
+/// How far the brackets in a process header's figures are raised, in em.
+/// The display font has no case-sensitive forms: its brackets reach below
+/// the baseline as they do around lowercase text, and hang under the
+/// figures and the Chinese text between them. Raised, they centre on both.
+const BRACKET_RAISE: f32 = 0.08;
+/// `text` set in `size` with its brackets raised (`BRACKET_RAISE`).
+fn raised_brackets(text: String, size: Pixels) -> AnyElement {
+    if !text.contains(['(', ')']) {
+        return text.into_any_element();
+    }
+    let mut row = div().flex();
+    let mut start = 0;
+    for (at, bracket) in text.match_indices(['(', ')']) {
+        if start < at {
+            row = row.child(text[start..at].to_owned());
+        }
+        row = row.child(
+            div()
+                .relative()
+                .top(-size * BRACKET_RAISE)
+                .child(bracket.to_owned()),
+        );
+        start = at + bracket.len();
+    }
+    if start < text.len() {
+        row = row.child(text[start..].to_owned());
+    }
+    row.into_any_element()
+}
+/// The note and pin of the row marked `key`.
+fn row_mark(marks: &Value, key: &str) -> (Option<String>, bool) {
+    (
+        marks[key]["note"].as_str().map(str::to_owned),
+        boolean(&marks[key], "pinned"),
+    )
+}
 /// The icon a row shows: a WebView's host application's, else its own.
+/// The interface's preference: whether the pointer over the process list
+/// holds its order (on unless turned off).
+pub(in crate::frontend) const HOLD_ORDER: &str = "holdOrderOnHover";
 impl Desktop {
+    /// Whether the process list holds its order: the pointer is over it (as
+    /// `HOLD_ORDER` allows), or a menu or dialog is open. Its rows keep their
+    /// places while samples arrive and groups fold or unfold, until neither holds.
+    pub(in crate::frontend) fn holds_order(&self) -> bool {
+        (self.pointer_in_table && self.hover_holds_order())
+            || self.modal.is_some()
+            || self.popup.is_some()
+    }
+    /// Whether the pointer over the process list holds its order (`HOLD_ORDER`).
+    pub(in crate::frontend) fn hover_holds_order(&self) -> bool {
+        self.prefs.get(HOLD_ORDER, true)
+    }
     pub(in crate::frontend) fn rebuild_rows(&mut self, hold: bool, cx: &mut Context<Self>) {
         self.rebuild_rows_prepared(hold, None, cx);
     }
@@ -1489,6 +1746,7 @@ impl Desktop {
                     visibility: self.visibility_rules("processes").as_ref(),
                     users: users.as_ref(),
                     user_folds: &self.user_folds,
+                    open: false,
                 },
             )
         } else {
@@ -1511,13 +1769,10 @@ impl Desktop {
         };
         // The other lists come with their marks, pinned rows first.
         if self.page == "processes" {
-            let marks = self.marks();
-            for row in &mut rows {
-                if let Some(key) = &row.mark_key {
-                    row.note = marks[key]["note"].as_str().map(str::to_owned);
-                    row.pinned = boolean(&marks[key], "pinned");
-                }
-            }
+            self.mark_rows(&mut rows);
+            // A search, a fold or another order leaves the measured list as
+            // it is; another view or grouping builds it again.
+            self.refresh_width_rows(None, cx);
         }
         if hold && self.page == "processes" {
             let order: HashMap<_, _> = self
@@ -1561,6 +1816,107 @@ impl Desktop {
         self.work.rows_max_us = self.work.rows_max_us.max(elapsed);
         self.work.row_builds += 1;
     }
+    /// Gives process rows the note and pin of their row marks.
+    fn mark_rows(&self, rows: &mut [Row]) {
+        let marks = self.marks();
+        for row in rows {
+            if let Some(key) = &row.mark_key {
+                (row.note, row.pinned) = row_mark(&marks, key);
+            }
+        }
+    }
+    /// What the process list measured for the column widths depends on
+    /// besides the sample.
+    fn width_shape(&self, columns: &columns::Preferences) -> WidthShape {
+        let mut keys = columns.selected.clone();
+        keys.sort();
+        WidthShape {
+            view: self.view.clone(),
+            sections: self.sort == "name",
+            users: self.user_grouping(),
+            columns: keys,
+            locale: argus_core::i18n::locale(),
+        }
+    }
+    /// What to build the process list measured for the column widths from,
+    /// if it is to be built again: there is none, or the list takes another
+    /// shape; with a new sample, also once it is `older` than that. Only
+    /// while the process page sizes its columns automatically, and no build
+    /// is under way.
+    pub(in crate::frontend) fn width_source(&self, older: Option<Duration>) -> Option<WidthSource> {
+        if self.page != "processes" || self.width_pending {
+            return None;
+        }
+        let columns = columns::Preferences::load(&self.prefs);
+        if !columns.auto_width {
+            return None;
+        }
+        let shape = self.width_shape(&columns);
+        let due = self.width_rows.as_ref().is_none_or(|built| {
+            built.rows.is_empty()
+                || built.shape != shape
+                || older.is_some_and(|older| built.built.elapsed() >= older)
+        });
+        due.then(|| WidthSource {
+            shape,
+            sort: self.sort.clone(),
+            hosted: self.hosted_services(),
+            visibility: self.visibility_rules("processes"),
+            columns,
+            bits: self.prefs.get::<String>("netUnit", "bytes".into()) == "bits",
+        })
+    }
+    /// Keeps `built` as the list the column widths measure, with the row marks.
+    pub(in crate::frontend) fn keep_width_rows(&mut self, mut built: WidthRows) {
+        if let Some(rows) = Arc::get_mut(&mut built.rows) {
+            let marks = self.marks();
+            for row in rows {
+                if let Some(key) = &row.mark_key {
+                    (row.note, row.pinned) = row_mark(&marks, key);
+                }
+            }
+        }
+        self.width_rows = Some(built);
+    }
+    /// Builds the list the column widths measure again if it is due
+    /// (`width_source`): off the UI thread from the latest sample, the
+    /// widths keeping the list they have until it is done. Test samples
+    /// have no such source and build it here.
+    pub(in crate::frontend) fn refresh_width_rows(
+        &mut self,
+        older: Option<Duration>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source) = self.width_source(older) else {
+            return;
+        };
+        let latest = if self.options.fixture.is_none() {
+            self.host.state::<crate::Latest>().0.read().unwrap().clone()
+        } else {
+            None
+        };
+        let Some(snapshot) = latest else {
+            let built = source.build(&self.snapshot);
+            self.keep_width_rows(built);
+            return;
+        };
+        self.width_pending = true;
+        let task = cx.background_executor().spawn(async move {
+            let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
+            source.build(&model)
+        });
+        cx.spawn(async move |this, cx| {
+            let built = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.width_pending = false;
+                this.keep_width_rows(built);
+                if this.page == "processes" {
+                    this.configure_table(cx);
+                }
+            });
+        })
+        .detach();
+    }
     /// Shows `rows` on the current page's table.
     pub(in crate::frontend) fn install_rows(
         &mut self,
@@ -1573,17 +1929,28 @@ impl Desktop {
                 .reset_with_uniform_height(rows.len(), px(ROW_HEIGHT));
         }
         let previous_rows = std::mem::replace(&mut self.rows, rows);
+        self.configure_table(cx);
+        // Retain old rows until delegates release them, then reclaim the value trees off-thread.
+        if !previous_rows.is_empty() {
+            cx.background_executor()
+                .spawn(async move { drop(previous_rows) })
+                .detach();
+        }
+    }
+    /// Lays the current page's table out for its rows and the column widths.
+    fn configure_table(&mut self, cx: &mut Context<Self>) {
         // Apply data before rendering. Updating TableState from table_view
         // invalidates its parent during paint and rebuilds Desktop twice per sample.
         if let Some(table) = &self.table {
             let rows = self.rows.clone();
             let page = self.page.clone();
-            let network = boolean(&self.snapshot, "processNetwork");
+            let sources = columns::Sources::of(&self.snapshot);
             let sort = (self.sort.as_str(), self.descending);
             let column_preferences = columns::Preferences::load(&self.prefs);
             let totals = self.process_column_totals(&column_preferences);
             let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
             let scope = (self.view.as_str(), self.query.as_str());
+            let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
             let selected = self
                 .selected
                 .get(&page)
@@ -1596,13 +1963,14 @@ impl Desktop {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
-                    network,
+                    sources,
                     TableLayout {
                         available,
                         columns: &column_preferences,
                         totals,
                         bits,
                         scope,
+                        measured,
                     },
                     sort,
                     cx,
@@ -1621,12 +1989,6 @@ impl Desktop {
         }
         if let Some(frame) = &self.table_frame {
             frame.update(cx, |_, cx| cx.notify());
-        }
-        // Retain old rows until delegates release them, then reclaim the value trees off-thread.
-        if !previous_rows.is_empty() {
-            cx.background_executor()
-                .spawn(async move { drop(previous_rows) })
-                .detach();
         }
     }
     /// The list's vertical scrollbar for a page that draws it beside the table:
@@ -1647,7 +2009,7 @@ impl Desktop {
         )
     }
     /// Where the list draws the row at `index`, scrolled as it is: where a
-    /// test presses on it (see `tips::row_under` for the same measure).
+    /// test presses on it (see `Tips::row_under` for the same measure).
     pub(in crate::frontend) fn row_bounds(&self, index: usize, cx: &App) -> Option<Bounds<Pixels>> {
         let list = self.table.as_ref()?.read(cx).delegate().list.clone()?;
         let viewport = list.bounds();
@@ -1677,6 +2039,12 @@ impl Desktop {
                     .col_movable(false);
                 let list = state.vertical_scroll_handle.0.borrow().base_handle.clone();
                 let horizontal = state.horizontal_scroll_handle.as_ref().clone();
+                // A wheel glide draws only the table frame (the nearest cached
+                // view around the rows) in each frame; the regions and the
+                // desktop around it replay. What reads the offsets outside
+                // the frame asks for its own frames (`scrollbar::Scrollbar`).
+                list.isolate_glides();
+                horizontal.isolate_glides();
                 state.delegate_mut().list = Some(list);
                 state.delegate_mut().horizontal = Some(horizontal);
                 state
@@ -1786,12 +2154,12 @@ impl Desktop {
         let table = self.table.as_ref().expect("table initialized").clone();
         let rows = self.rows.clone();
         let page = self.page.clone();
-        let network = boolean(&self.snapshot, "processNetwork");
+        let sources = columns::Sources::of(&self.snapshot);
         let sort = (self.sort.as_str(), self.descending);
         let column_preferences = columns::Preferences::load(&self.prefs);
-        let totals = self.process_column_totals(&column_preferences);
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         let scope = (self.view.as_str(), self.query.as_str());
+        let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_shown() {
@@ -1808,6 +2176,24 @@ impl Desktop {
             .selected
             .get(&page)
             .and_then(|key| rows.iter().position(|r| &r.key == key));
+        // Whether the table is laid out anew. The column totals read every
+        // process and only that uses them: a frame that scrolls the list or
+        // moves a highlight leaves them alone.
+        let stale = {
+            let state = table.read(cx);
+            let delegate = state.delegate();
+            !Arc::ptr_eq(&delegate.rows, &rows)
+                || delegate.available != available
+                || (page == "processes" && delegate.process_columns != column_preferences)
+                || delegate.font_size != theme::font(12.)
+                || delegate.bits != bits
+                || delegate.locale != argus_core::i18n::locale()
+        };
+        let totals = if stale {
+            self.process_column_totals(&column_preferences)
+        } else {
+            HashMap::new()
+        };
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
             // A column dragged to a width is drawn at it already: a glide to
@@ -1819,23 +2205,18 @@ impl Desktop {
                     }
                 }
             }
-            if !Arc::ptr_eq(&state.delegate().rows, &rows)
-                || state.delegate().available != available
-                || (page == "processes" && state.delegate().process_columns != column_preferences)
-                || state.delegate().font_size != theme::font(12.)
-                || state.delegate().bits != bits
-                || state.delegate().locale != argus_core::i18n::locale()
-            {
+            if stale {
                 if state.delegate_mut().configure(
                     &page,
                     rows,
-                    network,
+                    sources,
                     TableLayout {
                         available,
                         columns: &column_preferences,
                         totals,
                         bits,
                         scope,
+                        measured,
                     },
                     sort,
                     cx,
@@ -1864,6 +2245,10 @@ impl Desktop {
         div()
             .id("table-region")
             .size_full()
+            // A row under the pointer takes its fill in place: the list does
+            // not render for the pointer moving over it. What a row shows for
+            // the pointer otherwise asks for its own render (`tips`).
+            .hover_fills_in_place()
             .on_hover(cx.listener(|this, hovered, window, cx| {
                 this.pointer_in_table = *hovered;
                 if !hovered {
@@ -1873,10 +2258,14 @@ impl Desktop {
                         this.rebuild_rows(false, cx);
                     }
                 }
-                cx.notify();
+                // Outside the list, only the status bar says the order is
+                // held: the desktop draws its own tree again. Rows put back
+                // in order told the list themselves (`install_rows`).
+                window.request_view_redraw(cx.entity_id());
             }))
             // Cell hints follow the pointer here, one listener for the table.
             .on_mouse_move(move |event, window, cx| tips.moved(event, window, cx))
+            .child(self.table_touch(cx))
             .child(
                 self.table_frame
                     .as_ref()
@@ -2000,8 +2389,13 @@ impl Desktop {
             json!({"x":f32::from(handle.offset().x),"maxX":f32::from(handle.max_offset().x),
                 "y":f32::from(state.vertical_scroll_handle.0.borrow().base_handle.offset().y)})
         });
+        // The groups, the headings held at the top and the name beside the scrollbar.
+        let groups = table.map(|table| {
+            let delegate = table.read(cx).delegate();
+            delegate.group_view.diagnostics(&delegate.rows)
+        });
         json!({"preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
-            "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},
+            "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},"groups":groups,
             "popup":self.popup.is_some(),"modal":self.modal.as_ref().filter(|modal|modal.kind=="columns").map(|modal|&modal.args)})
     }
 
@@ -2075,10 +2469,24 @@ impl Desktop {
         }
         let processes = values(&self.snapshot["processes"]);
         match key {
-            "name" => tr!(
-                "processes.total",
-                count = number(sys, "processCount") as usize
-            ),
+            "name" => {
+                let total = tr!(
+                    "processes.total",
+                    count = number(sys, "processCount") as usize
+                );
+                // With system processes hidden, how many of them the list leaves out.
+                let hidden = self.visibility_rules("processes").map_or(0, |rules| {
+                    processes
+                        .iter()
+                        .filter(|process| rules.hides_process(process))
+                        .count()
+                });
+                if hidden == 0 {
+                    total
+                } else {
+                    tr!("processes.totalHidden", total = total, count = hidden)
+                }
+            }
             "cpu" => format!("{}%", number(sys, "cpu").round()),
             "mem" => format!(
                 "{}%",
@@ -2180,7 +2588,7 @@ impl Desktop {
 }
 /// A table's first column, which orders by name.
 pub(super) fn first_column(page: &str) -> &'static str {
-    fields(page, false, f32::MAX)
+    fields(page, columns::Sources::ALL, f32::MAX)
         .first()
         .map(|field| field.key)
         .unwrap_or("name")
@@ -2289,6 +2697,13 @@ pub(super) fn sort_preference(page: &str, key: &str, descending: bool) -> Option
 }
 /// A list's filter choices and the preference that keeps the choice, named as
 /// under `services.filter` and `connections.filter`.
+/// The column whose header carries the list's filter (`filter_choices`).
+pub(super) fn filter_column(page: &str) -> Option<&'static str> {
+    filter_choices(page).map(|_| "state")
+}
+/// The column filter's button, and the key its menu hangs from.
+const FILTER_BUTTON: f32 = 22.;
+pub(super) const COLUMN_FILTER: &str = "column-filter";
 pub(super) fn filter_choices(page: &str) -> Option<(&'static str, &'static [&'static str])> {
     match page {
         "services" => Some(("services.filter", &["all", "running", "stopped"])),

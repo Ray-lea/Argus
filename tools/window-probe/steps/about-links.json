@@ -1,0 +1,15 @@
+{
+  "window": [1240, 900],
+  "steps": [
+    {"control": {"page": "about", "theme": "dark"}, "wait": 1200, "capture": "dark"},
+    {"control": {"hoverAnchor": "about-link-website"}, "wait": 500, "capture": "dark-hover-card"},
+    {"control": {"hoverAnchor": "about-link-website-guide"}, "wait": 600, "capture": "dark-hover-guide"},
+    {"control": {"clickAnchor": "about-link-website-guide"}, "wait": 300, "inspect": "layout", "label": "click-guide", "expect": {"skippedRequest.command": "open_project_page", "skippedRequest.args.page": "guide"}},
+    {"control": {"clickAnchor": "about-link-repository-releases"}, "wait": 300, "inspect": "layout", "label": "click-releases", "expect": {"skippedRequest.command": "open_project_page", "skippedRequest.args.page": "releases"}},
+    {"control": {"clickAnchor": "about-link-repository"}, "wait": 300, "inspect": "layout", "label": "click-card", "expect": {"skippedRequest.command": "open_repository"}},
+    {"control": {"theme": "light"}, "wait": 800, "capture": "light"},
+    {"control": {"hoverAnchor": "about-link-repository-issues"}, "wait": 600, "capture": "light-hover-issues"},
+    {"probe": "size 640 600", "wait": 800, "capture": "light-narrow"},
+    {"control": {"theme": "dark", "preference": {"uiScale": 150, "fontSize": 20}}, "probe": "size 1100 800", "wait": 900, "capture": "dark-large"}
+  ]
+}

@@ -1154,7 +1154,7 @@ impl Desktop {
                 let detail = status["detail"].as_str().map(str::to_owned);
                 let hint = if !ready {
                     label("onboarding.taskManager.needsService")
-                } else if enabled {
+                } else if enabled || text(&status, "state") == "revoked" {
                     detail.clone().unwrap_or_default()
                 } else if boolean(&status, "canEnable") || busy {
                     label("onboarding.taskManager.later")

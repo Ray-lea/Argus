@@ -17,6 +17,7 @@ mod keyboard;
 mod platform;
 mod system_notifications;
 mod system_settings;
+mod touch;
 mod util;
 mod vsync;
 mod window;

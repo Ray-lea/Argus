@@ -15,6 +15,7 @@
   "none": "Нет",
   "name": "Имя",
   "status": "Состояние",
+  "filterColumn": "Фильтр по столбцу «{column}»",
   "command": "Команда",
   "copyName": "Копировать имя",
   "copyPath": "Копировать путь",
@@ -26,11 +27,11 @@
   "privilegedService": "Привилегированная служба",
   "listSeparator": ", ",
   "resource": {
-    "cpu": "ЦП",
+    "cpu": "CPU",
     "memory": "Память",
     "disk": "Диск",
     "network": "Сеть",
-    "gpu": "ГП",
+    "gpu": "GPU",
     "battery": "Батарея",
     "temperature": "Температура"
   },

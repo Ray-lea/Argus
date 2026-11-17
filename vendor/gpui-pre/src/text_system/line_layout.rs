@@ -512,6 +512,31 @@ pub(crate) struct LineLayoutIndex {
     wrapped_lines_index: usize,
 }
 
+impl LineLayoutIndex {
+    /// This index, taken inside the stretch of the last frame's layouts that
+    /// starts at `from`, where [`LineLayoutCache::reuse_layouts`] put it when
+    /// it copied that stretch from `to` on. It keeps its font generation: a
+    /// stretch from before a change of fonts is never reused.
+    pub(crate) fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
+        Some(Self {
+            font_generation: self.font_generation,
+            lines_index: self
+                .lines_index
+                .checked_sub(from.lines_index)?
+                .checked_add(to.lines_index)?,
+            wrapped_lines_index: self
+                .wrapped_lines_index
+                .checked_sub(from.wrapped_lines_index)?
+                .checked_add(to.wrapped_lines_index)?,
+        })
+    }
+
+    /// Whether this index lies at or before `end` in both lists.
+    pub(crate) fn not_after(&self, end: &Self) -> bool {
+        self.lines_index <= end.lines_index && self.wrapped_lines_index <= end.wrapped_lines_index
+    }
+}
+
 impl LineLayoutCache {
     pub fn new(
         platform_text_system: Arc<dyn PlatformTextSystem>,

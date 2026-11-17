@@ -951,8 +951,9 @@ impl Desktop {
                 .copied()
                 .zip(parts.get(&(id, 1)).copied())
         };
-        // Until the first measurement the dialog stays invisible, so it never
-        // shows at the default position and then jumps.
+        // The frame that first measures the dialog is not presented
+        // (`note_part`), so it never shows at the default position and then
+        // jumps.
         // The component moves each stacked dialog 16 px lower (undone here) and
         // keeps 16 px from the window's edges; stacked confirmations are
         // centered in the same way as other dialogs.
@@ -2165,11 +2166,16 @@ fn note_part(
             "y":f32::from(top),"h":f32::from(height)})
         );
     }
-    if parts
-        .borrow()
-        .get(&key)
-        .is_none_or(|previous| part_height_changed(*previous, height, window.scale_factor()))
+    let previous = parts.borrow().get(&key).copied();
+    if previous.is_none_or(|previous| part_height_changed(previous, height, window.scale_factor()))
     {
+        // Unmeasured, the dialog is drawn where the component puts one (a
+        // tenth of the way down, at full opacity: its own fade overrides the
+        // surface's style). That frame is not presented; the next one draws
+        // the dialog in its place.
+        if previous.is_none() {
+            window.defer_presentation_until_layout();
+        }
         parts.borrow_mut().insert(key, height);
         window.defer(cx, |window, _| window.refresh());
     }
