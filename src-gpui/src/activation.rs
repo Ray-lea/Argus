@@ -69,10 +69,36 @@ fn covers(target: RECT, obstacle: RECT) -> bool {
         && area >= width * height / 3
 }
 
+/// Whether `hwnd` is cloaked: on another virtual desktop, or hidden by
+/// the system though visible to it.
+pub(crate) fn cloaked(hwnd: HWND) -> bool {
+    let mut cloak = 0u32;
+    let _ =
+        unsafe { DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, (&mut cloak as *mut u32).cast(), 4) };
+    cloak != 0
+}
+
+/// Whether a topmost window above `hwnd` covers it.
 fn obstructed(hwnd: HWND) -> bool {
+    covered_by(hwnd, true)
+}
+
+/// Whether an application's window above `hwnd` covers it: one opened
+/// or used after it, shown over the middle of it and at least a third of
+/// it. Topmost windows, tool windows and click-through overlays (a
+/// game's or a graphics driver's, often as large as the display) do not
+/// count: they float over everything.
+pub(crate) fn covered(hwnd: HWND) -> bool {
+    covered_by(hwnd, false)
+}
+
+/// Whether a window above `hwnd` covers it: a topmost one (`topmost`),
+/// or an application's ordinary one.
+fn covered_by(hwnd: HWND, topmost: bool) -> bool {
     struct Search {
         target: HWND,
         bounds: RECT,
+        topmost: bool,
         found: bool,
     }
     unsafe extern "system" fn visit(candidate: HWND, context: LPARAM) -> BOOL {
@@ -81,9 +107,15 @@ fn obstructed(hwnd: HWND) -> bool {
             return false.into();
         }
         unsafe {
+            let style = GetWindowLongPtrW(candidate, GWL_EXSTYLE) as u32;
+            let kind = if search.topmost {
+                style & WS_EX_TOPMOST.0 != 0
+            } else {
+                style & (WS_EX_TOPMOST.0 | WS_EX_TOOLWINDOW.0 | WS_EX_TRANSPARENT.0) == 0
+            };
             if !IsWindowVisible(candidate).as_bool()
                 || IsIconic(candidate).as_bool()
-                || GetWindowLongPtrW(candidate, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 == 0
+                || !kind
                 || GetAncestor(candidate, GA_ROOTOWNER) == search.target
             {
                 return true.into();
@@ -105,6 +137,7 @@ fn obstructed(hwnd: HWND) -> bool {
     let mut search = Search {
         target: hwnd,
         bounds: RECT::default(),
+        topmost,
         found: false,
     };
     unsafe {

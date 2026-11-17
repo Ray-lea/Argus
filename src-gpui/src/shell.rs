@@ -385,17 +385,39 @@ pub fn hide_main(window: &NativeWindow) {
     }
     crate::hotkey::resume_if_suspended(window.app_handle());
 }
+/// The hotkey: hides the window when it is the one in use, or else shows
+/// it in front.
 pub fn toggle_main(app: &Host) {
-    if let Some(window) = app.get_window("main") {
-        if window.is_visible().unwrap_or(false)
-            && !window.is_minimized().unwrap_or(false)
-            && was_active(&window)
-            && !crate::window_motion::is_leaving()
-        {
-            hide_main(&window);
-        } else {
-            show_main(app);
-        }
+    toggle(app, false);
+}
+/// A click on the tray icon or the taskbar monitor: hides the window when
+/// it can be seen (no other window covers it) or is the one in use, and
+/// shows it in front when covered, minimized, hidden or on another virtual
+/// desktop. Which window is the foreground one says little here: a click
+/// on the taskbar makes the taskbar the foreground window, and one on the
+/// monitor, a child window that does not take activation, may leave none.
+pub fn toggle_main_by_click(app: &Host) {
+    toggle(app, true);
+}
+fn toggle(app: &Host, click: bool) {
+    let Some(window) = app.get_window("main") else {
+        return;
+    };
+    let shown = window.is_visible().unwrap_or(false)
+        && !window.is_minimized().unwrap_or(false)
+        && window
+            .hwnd()
+            .is_ok_and(|hwnd| !crate::activation::cloaked(hwnd));
+    let seen = || {
+        click
+            && window
+                .hwnd()
+                .is_ok_and(|hwnd| !crate::activation::covered(hwnd))
+    };
+    if shown && !crate::window_motion::is_leaving() && (was_active(&window) || seen()) {
+        hide_main(&window);
+    } else {
+        show_main(app);
     }
 }
 /// The last window to take the foreground that is not the taskbar's: the
@@ -413,7 +435,8 @@ fn was_active(window: &NativeWindow) -> bool {
     active_before(
         main.0 as isize,
         foreground.0 as isize,
-        is_taskbar(foreground),
+        // None while activation moves: the last window before stands.
+        foreground.is_invalid() || is_taskbar(foreground),
         ACTIVE_APP.load(Ordering::Relaxed),
     )
 }
@@ -1328,7 +1351,7 @@ fn taskbar_action(app: &Host, action: taskbar::Action) {
         taskbar::Action::Toggle => {
             close_card();
             if !test {
-                toggle_main(app);
+                toggle_main_by_click(app);
             }
         }
         taskbar::Action::Context => {
@@ -1489,7 +1512,7 @@ fn tray_callback(app: &Host, hwnd: HWND, w: WPARAM, l: LPARAM) {
     match action {
         TrayAction::Toggle => {
             close_card();
-            toggle_main(app);
+            toggle_main_by_click(app);
         }
         TrayAction::KeyToggle => {
             let mut last = KEY_SELECT.lock().unwrap();
@@ -1498,7 +1521,7 @@ fn tray_callback(app: &Host, hwnd: HWND, w: WPARAM, l: LPARAM) {
             }
             *last = Some(Instant::now());
             drop(last);
-            toggle_main(app);
+            toggle_main_by_click(app);
         }
         TrayAction::Context => {
             close_card();

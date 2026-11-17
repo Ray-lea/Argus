@@ -339,3 +339,66 @@ fn switching_to_a_topmost_window_and_hiding_both_end_temporary_elevation() {
         }
     });
 }
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
+fn only_an_ordinary_window_above_covers_argus() {
+    on_desktop(|_| {
+        let target = window(false);
+        let other = window(false);
+        let place = |hwnd: HWND, after: HWND, x: i32, flags: SET_WINDOW_POS_FLAGS| unsafe {
+            SetWindowPos(
+                hwnd,
+                Some(after),
+                x,
+                80,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOSIZE | flags,
+            )
+            .unwrap();
+        };
+        let restyle = |style: WINDOW_EX_STYLE| unsafe {
+            SetWindowLongPtrW(other.0, GWL_EXSTYLE, style.0 as isize);
+            place(other.0, HWND_TOP, 80, SWP_FRAMECHANGED);
+        };
+        assert!(!activation::cloaked(target.0));
+        // A window opened over Argus, over its middle.
+        place(other.0, HWND_TOP, 80, SET_WINDOW_POS_FLAGS(0));
+        assert!(activation::covered(target.0));
+        // Beside it, off its middle.
+        place(other.0, HWND_TOP, 1400, SET_WINDOW_POS_FLAGS(0));
+        assert!(!activation::covered(target.0));
+        // Below it.
+        place(other.0, HWND_BOTTOM, 80, SET_WINDOW_POS_FLAGS(0));
+        assert!(!activation::covered(target.0));
+        // Click-through overlays, tool windows and topmost windows float
+        // over everything and do not count.
+        restyle(WS_EX_LAYERED | WS_EX_TRANSPARENT);
+        assert!(!activation::covered(target.0));
+        restyle(WS_EX_TOOLWINDOW);
+        assert!(!activation::covered(target.0));
+        restyle(WINDOW_EX_STYLE(0));
+        place(other.0, HWND_TOPMOST, 80, SET_WINDOW_POS_FLAGS(0));
+        assert!(!activation::covered(target.0));
+        // An ordinary one again, then minimized.
+        unsafe {
+            SetWindowPos(
+                other.0,
+                Some(HWND_NOTOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+            )
+            .unwrap();
+        }
+        place(other.0, HWND_TOP, 80, SET_WINDOW_POS_FLAGS(0));
+        assert!(activation::covered(target.0));
+        unsafe {
+            let _ = ShowWindow(other.0, SW_SHOWMINNOACTIVE);
+        }
+        assert!(!activation::covered(target.0));
+    });
+}
