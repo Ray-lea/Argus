@@ -179,8 +179,10 @@ impl Desktop {
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
                 }
-                // The monitors follow their settings wherever those changed.
+                // The monitors follow their settings wherever those changed,
+                // with metrics chosen meanwhile still shown and sent next.
                 if settings {
+                    self.send_queued_metrics(window, cx);
                     self.sync_monitors(cx);
                 }
                 self.command_completed(&pending.command, &value, window, cx);
@@ -193,6 +195,9 @@ impl Desktop {
                 }
             }
             Err(error) => {
+                if pending.cache.as_deref() == Some("settings") {
+                    self.send_queued_metrics(window, cx);
+                }
                 let message = error
                     .as_str()
                     .map(str::to_owned)

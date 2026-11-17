@@ -1,0 +1,25 @@
+{
+  "window": [1100, 900],
+  "steps": [
+    {"note":"the desktop monitor's metric options on the components page"},
+    {"control":{"page":"components"},"wait":700},
+    {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-8}},"wait":700,"capture":"metrics-before"},
+    {"note":"three clicks in quick succession: each counts, nothing else on the page moves"},
+    {"record":{"name":"clicks","ms":2000},"wait":700},
+    {"control":{"clickAnchor":"desktopMetrics-cpuTemperature"},"wait":60},
+    {"control":{"clickAnchor":"desktopMetrics-gpuMemory"},"wait":60},
+    {"control":{"clickAnchor":"desktopMetrics-gpu"},"wait":1500},
+    {"capture":"metrics-after"},
+    {"inspect":"layout","label":"chosen","expect":{
+      "monitors.desktop.rows.0.metric":"cpu",
+      "monitors.desktop.rows.1.metric":"cpuTemperature",
+      "monitors.desktop.rows.2.metric":"memory",
+      "monitors.desktop.rows.3.metric":"gpuMemory",
+      "monitors.desktop.rows.4.metric":"disk",
+      "monitors.desktop.rows.5.metric":"network"
+    }},
+    {"sheet":{"name":"clicks-sheet","from":"clicks","region":[150,380,800,180],"columns":4,"scale":1,"limit":8}},
+    {"control":{"theme":"light"},"wait":900,"capture":"metrics-light"}
+  ]
+}

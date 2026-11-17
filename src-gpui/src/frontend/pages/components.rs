@@ -232,11 +232,13 @@ impl Desktop {
     fn metric_card(
         &self,
         id: &str,
+        settings_key: &'static str,
         command: &'static str,
         chosen: &[Metric],
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let chips = Metric::ALL.iter().map(|metric| {
+        let p = self.palette;
+        let options = Metric::ALL.iter().map(|metric| {
             let on = chosen.contains(metric);
             let next = Metric::ALL
                 .iter()
@@ -244,32 +246,60 @@ impl Desktop {
                 .map(|other| metric_key(*other))
                 .collect::<Vec<_>>();
             let key = metric_key(*metric);
-            self.btn_small(
-                format!("{id}-{key}"),
-                label(&format!("components.metric.{key}.name")),
-                on.then_some("CheckIcon"),
-                if on { Tone::Accent } else { Tone::Plain },
-            )
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.request(
-                    command,
-                    json!({ "metrics": next }),
-                    Some("settings"),
-                    window,
-                    cx,
-                );
-            }))
-            .into_any_element()
+            let name = label(&format!("components.metric.{key}.name"));
+            let anchor = SharedString::from(format!("{id}-{key}"));
+            let anchors = self.ui.anchors.clone();
+            Button::new(anchor.clone())
+                .relative()
+                .when(self.options.test, |option| {
+                    option.child(
+                        canvas(
+                            move |bounds, _, _| {
+                                anchors.borrow_mut().insert(anchor.clone(), bounds);
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                })
+                .h(px(32.))
+                .min_w_0()
+                .flex()
+                .items_center()
+                .justify_start()
+                .gap(px(8.))
+                .px(px(8.))
+                .rounded(px(4.))
+                .text_size(theme::font(13.))
+                .text_color(p.ink)
+                .role(Role::CheckBox)
+                .aria_toggled(if on { Toggled::True } else { Toggled::False })
+                .accessibility_label(name.clone())
+                .hover(move |style| style.bg(p.hover))
+                .active(move |style| style.bg(p.press))
+                .child(self.check_box(on, false))
+                .child(div().min_w_0().truncate().child(name))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.choose_metrics(settings_key, command, next.clone(), window, cx);
+                }))
+                .into_any_element()
         });
+        // A fixed grid: checking an option changes only its box, never the
+        // place or size of the others or of the card.
         let desc = div()
             .child(label("components.metrics.desc"))
             .child(
                 div()
-                    .mt(px(10.))
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(6.))
-                    .children(chips),
+                    .mt(px(8.))
+                    .ml(px(-8.))
+                    .grid()
+                    .grid_cols(4)
+                    .gap_x(px(4.))
+                    .gap_y(px(2.))
+                    .text_color(p.ink)
+                    .children(options),
             )
             .into_any_element();
         self.setting(
@@ -330,7 +360,13 @@ impl Desktop {
                 "components.desktop.desc",
                 vec![enabled],
             ),
-            self.metric_card("desktopMetrics", command, &monitor.metrics, cx),
+            self.metric_card(
+                "desktopMetrics",
+                "desktopMonitor",
+                command,
+                &monitor.metrics,
+                cx,
+            ),
             self.setting_text(
                 "desktopTopmost",
                 "PinIcon",
@@ -404,7 +440,13 @@ impl Desktop {
                 "components.taskbar.desc",
                 vec![enabled],
             ),
-            self.metric_card("taskbarMetrics", command, &monitor.metrics, cx),
+            self.metric_card(
+                "taskbarMetrics",
+                "taskbarMonitor",
+                command,
+                &monitor.metrics,
+                cx,
+            ),
             self.setting_text(
                 "taskbarPlace",
                 "FitWidthIcon",

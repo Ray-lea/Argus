@@ -238,6 +238,10 @@ pub(in crate::frontend) struct Open {
 #[derive(Default)]
 pub(in crate::frontend) struct Monitors {
     desk: Option<Open>,
+    /// Metrics chosen on the components page while a settings change was on
+    /// its way: per monitor's settings key, its command and the latest
+    /// choice, sent once that change has come back.
+    queued: Vec<(&'static str, &'static str, Vec<&'static str>)>,
 }
 
 pub(in crate::frontend) struct DeskMonitor {
@@ -566,6 +570,74 @@ impl Desktop {
                 self.bits(),
             )));
         }
+    }
+
+    /// A monitor's metrics chosen on the components page: shown at once,
+    /// in the page and by the monitor, and saved. Settings changes go one
+    /// at a time; a choice made while one is on its way is saved after it,
+    /// the latest choice winning, so that quick clicks all count.
+    pub(in crate::frontend) fn choose_metrics(
+        &mut self,
+        key: &'static str,
+        command: &'static str,
+        metrics: Vec<&'static str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(monitor) = self
+            .data
+            .get_mut("settings")
+            .and_then(|settings| settings.get_mut(key))
+        {
+            monitor["metrics"] = json!(metrics);
+        }
+        self.monitors.queued.retain(|(queued, ..)| *queued != key);
+        if self
+            .pending
+            .values()
+            .any(|pending| pending.cache.as_deref() == Some("settings"))
+        {
+            self.monitors.queued.push((key, command, metrics));
+        } else {
+            self.request(
+                command,
+                json!({ "metrics": metrics }),
+                Some("settings"),
+                window,
+                cx,
+            );
+        }
+        self.sync_monitors(cx);
+        cx.notify();
+    }
+
+    /// A settings change came back: choices made meanwhile stay shown over
+    /// the settings it returned, and the next of them is sent.
+    pub(in crate::frontend) fn send_queued_metrics(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.monitors.queued.is_empty() {
+            return;
+        }
+        for (key, _, metrics) in &self.monitors.queued {
+            if let Some(monitor) = self
+                .data
+                .get_mut("settings")
+                .and_then(|settings| settings.get_mut(*key))
+            {
+                monitor["metrics"] = json!(metrics);
+            }
+        }
+        let (_, command, metrics) = self.monitors.queued.remove(0);
+        self.request(
+            command,
+            json!({ "metrics": metrics }),
+            Some("settings"),
+            window,
+            cx,
+        );
     }
 
     /// The theme or language changed: the desktop monitor draws again, and

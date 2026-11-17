@@ -432,7 +432,7 @@ impl Desktop {
 
     /// A check box as the system draws one: an accent square with a tick
     /// when checked, a stroked one when not; quieter for a fixed choice.
-    fn check_box(&self, checked: bool, fixed: bool) -> Div {
+    pub(in crate::frontend) fn check_box(&self, checked: bool, fixed: bool) -> Div {
         let p = self.palette;
         let base = div()
             .size(px(18.))
