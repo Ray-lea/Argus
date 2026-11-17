@@ -862,6 +862,13 @@ pub(crate) fn list_lineage() -> Vec<(u32, u32, i64)> {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[ignore = "owned child fixture for watch identity and launch regressions"]
+    fn liveness_child() {
+        use std::io::Read;
+        let _ = std::io::stdin().read(&mut [0u8]);
+    }
+
+    #[test]
     fn pending_queries_keep_recent_readings_but_expire_a_stuck_source() {
         let at = std::time::Instant::now();
         assert!(!super::cache_expired(
