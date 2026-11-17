@@ -118,22 +118,6 @@ impl NativeTable {
                 .into_any_element(),
         )
     }
-
-    /// The name cell as the component wraps it in a row: the column's width
-    /// across the row's height.
-    fn name_cell_root(
-        &mut self,
-        row: usize,
-        size: Size<Pixels>,
-        window: &mut Window,
-        cx: &mut Context<TableState<Self>>,
-    ) -> AnyElement {
-        let content = self.td_content(row, 0, window, cx);
-        cell_box(size.width, false, cx)
-            .h(size.height)
-            .child(content)
-            .into_any_element()
-    }
 }
 
 /// The rows of a table that draws them itself, as a view of their own: a
@@ -592,9 +576,8 @@ impl Element for Cells {
             if row >= delegate.rows.len() {
                 return (None, Vec::new());
             }
-            let name = (!delegate.fields.is_empty()).then(|| {
-                delegate.name_cell_root(row, size(frame.name, bounds.size.height), window, cx)
-            });
+            let name = (!delegate.fields.is_empty())
+                .then(|| delegate.name_root(row, size(frame.name, bounds.size.height), cx));
             let columns = delegate.fields.len();
             let cells = (lane.first..lane.last)
                 .filter(|scrolled| scrolled + 1 < columns)

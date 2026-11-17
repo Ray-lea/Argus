@@ -1,6 +1,7 @@
 //! What a table cell shows: values, marks and the name column's icon and
 //! detail, and the hints the row under the pointer reports.
 use super::*;
+use crate::frontend::plain::{Plain, Prepainted, plain, plain_text};
 
 /// A name's data-dependent marks, shared by every frame of the same row list.
 /// Page-specific visibility remains in `name_cell`; these facts have no theme
@@ -326,23 +327,20 @@ impl NativeTable {
             return Content::Text(self.text_cell(row_index, row, field, cell, hint_area, cx));
         }
         let owner = self.owner.clone();
-        let mut element = div()
-            .text_size(self.cell_values.style().key.font_size)
-            .line_height(theme::line_height())
-            .size_full()
-            .px(px(CELL_PADDING))
-            .flex()
-            .items_center()
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .when(field.end, |d| d.justify_end());
+        let mut element = self.content_box(field.end);
         if column == 0 {
             return Content::Element(self.name_cell(row_index, element, cx).into_any_element());
         }
         let value = self.cell_values.get(row_index, row, field).text.clone();
         let p = &self.cell_values.style().palette;
         let faint = p.faint;
-        let dot = |color: Hsla| div().size(px(7.)).rounded_full().flex_shrink_0().bg(color);
+        let dot = |color: Hsla| {
+            plain()
+                .size(px(7.))
+                .rounded_full()
+                .flex_shrink_0()
+                .bg(color)
+        };
         // The interface's `title` on this cell, for the row under the pointer.
         let hint = self
             .is_near(row_index)
@@ -379,12 +377,12 @@ impl NativeTable {
                                 });
                             });
                         });
-                let state = div().when(!enabled, |d| d.text_color(faint)).child(value);
+                let state = plain().when(!enabled, |d| d.text_color(faint)).child(value);
                 element = match hint {
                     // A blocked switch says why over itself and its state (`.switch-cell`).
                     Some(hint) => element.child(
                         self.hinted(
-                            div().flex().items_center().gap_2().min_w_0(),
+                            plain().flex().items_center().gap_2().min_w_0(),
                             row,
                             field.key,
                             hint,
@@ -440,8 +438,8 @@ fn icon_id(raw: &Value) -> Option<u32> {
         .map(|id| id as u32)
 }
 /// A small outlined label, with the shared tag style.
-fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
-    div()
+fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Plain {
+    plain()
         .flex_shrink_0()
         .px(px(6.))
         .border_1()
@@ -453,6 +451,41 @@ fn tag(text: impl Into<SharedString>, border: Hsla, color: Hsla) -> Div {
         .child(text.into())
 }
 impl NativeTable {
+    /// The box of a cell that is not one line of text: the cell's padding and
+    /// text, its marks in a row. Plain boxes: nothing in a cell listens but
+    /// its switch and its fold control, which are elements of their own.
+    fn content_box(&self, end: bool) -> Plain {
+        plain()
+            .text_size(self.cell_values.style().key.font_size)
+            .line_height(theme::line_height())
+            .size_full()
+            .px(px(CELL_PADDING))
+            .flex()
+            .items_center()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .when(end, |d| d.justify_end())
+    }
+
+    /// The name cell of a row Argus draws (`body`), laid out on its own:
+    /// the component's box around a cell (`render_cell`) and the cell's own
+    /// box are the same size and clip alike, so they are one box here, the
+    /// column's width across the row.
+    pub(super) fn name_root(
+        &mut self,
+        row_index: usize,
+        size: Size<Pixels>,
+        cx: &mut Context<TableState<Self>>,
+    ) -> AnyElement {
+        let element = self
+            .content_box(false)
+            .w(size.width)
+            .h(size.height)
+            .flex_shrink_0()
+            .relative();
+        self.name_cell(row_index, element, cx).into_any_element()
+    }
+
     /// Add the current hint to an already styled cell, only under the pointer.
     fn text_cell(
         &self,
@@ -484,18 +517,29 @@ impl NativeTable {
     pub(super) fn is_near(&self, row_index: usize) -> bool {
         self.near == Some(row_index)
     }
-    /// `element` as the part `part` of `row`, hinted by `hint`.
-    pub(super) fn hinted(&self, element: Div, row: &Row, part: &str, hint: String) -> Div {
-        self.tips
-            .target(element, tips::id((&self.page, &row.key, part)), hint)
-    }
-    pub(super) fn hint_text(
+    /// `element` as the part `part` of `row`, hinted by `hint`: it reports
+    /// where it was laid out as it prepaints, within its clip, as the child
+    /// `Tips::target` adds would.
+    pub(super) fn hinted<E: Prepainted>(
         &self,
-        element: Div,
+        element: E,
+        row: &Row,
+        part: &str,
+        hint: String,
+    ) -> E {
+        let tips = self.tips.clone();
+        let id = tips::id((&self.page, &row.key, part));
+        element.on_prepainted(move |bounds, window, cx| {
+            tips.report(id, bounds, hint.into(), window, cx)
+        })
+    }
+    pub(super) fn hint_text<E: Prepainted>(
+        &self,
+        element: E,
         row: &Row,
         part: &str,
         hint: Option<String>,
-    ) -> Div {
+    ) -> E {
         match hint {
             Some(hint) => self.hinted(element, row, part, hint),
             None => element,
@@ -611,9 +655,9 @@ impl NativeTable {
     pub(super) fn name_cell(
         &mut self,
         row_index: usize,
-        element: Div,
+        element: Plain,
         cx: &mut Context<TableState<Self>>,
-    ) -> Div {
+    ) -> Plain {
         self.name_facts(row_index);
         let row = &self.rows[row_index];
         let facts = &self.cell_values.names[&row_index];
@@ -671,7 +715,7 @@ impl NativeTable {
                 )))
                 // The user's mark in the group's colour.
                 .child(
-                    div()
+                    plain()
                         .size(px(20.))
                         .flex_shrink_0()
                         .rounded_full()
@@ -692,22 +736,20 @@ impl NativeTable {
                         ),
                 )
                 .child(
-                    div()
+                    plain_text(row.title.clone())
                         .flex_shrink(1.)
                         .min_w_0()
                         .truncate()
                         .text_size(theme::font(14.))
                         .font_weight(theme::LABEL_WEIGHT)
-                        .text_color(p.ink)
-                        .child(row.title.clone()),
+                        .text_color(p.ink),
                 )
                 // How many processes, and whether the user is disconnected.
                 .child(
-                    div()
+                    plain_text(row.detail.clone())
                         .flex_shrink_0()
                         .text_size(theme::font(12.))
-                        .text_color(p.faint)
-                        .child(row.detail.clone()),
+                        .text_color(p.faint),
                 );
         }
         if let Some(section) = &row.section {
@@ -724,19 +766,24 @@ impl NativeTable {
                     row.key.clone(),
                     owner,
                 )))
-                .child(div().size(px(8.)).flex_shrink_0().rounded(px(2.)).bg(tone))
                 .child(
-                    div()
+                    plain()
+                        .size(px(8.))
+                        .flex_shrink_0()
+                        .rounded(px(2.))
+                        .bg(tone),
+                )
+                .child(
+                    plain_text(row.title.clone())
                         .flex_shrink(1.)
                         .min_w_0()
                         .truncate()
                         .text_size(theme::font(14.))
                         .font_weight(theme::LABEL_WEIGHT)
-                        .text_color(p.ink)
-                        .child(row.title.clone()),
+                        .text_color(p.ink),
                 )
                 .child(
-                    div()
+                    plain()
                         .flex_shrink_0()
                         .min_w(px(22.))
                         .px(px(7.))
@@ -750,7 +797,7 @@ impl NativeTable {
                         .justify_center()
                         .child(facts.entry_count.clone()),
                 )
-                .child(div().flex_1().min_w_0().h(px(1.)).ml_1().bg(
+                .child(plain().flex_1().min_w_0().h(px(1.)).ml_1().bg(
                     gpui_kit::gpui::linear_gradient(
                         90.,
                         gpui_kit::gpui::linear_color_stop(tone.opacity(0.35), 0.),
@@ -767,7 +814,7 @@ impl NativeTable {
                 // be one more node in every row, laid out on every frame.
                 element.child(fold(row.expanded, row.key.clone(), owner).mr(px(-4.)))
             } else {
-                element.child(div().w(px(14.)).flex_shrink_0())
+                element.child(plain().w(px(14.)).flex_shrink_0())
             };
         }
         if self.page != "services" {
@@ -780,7 +827,7 @@ impl NativeTable {
             element = element.child(if let Some(image) = image {
                 img(image).size_4().flex_shrink_0().into_any_element()
             } else {
-                div()
+                plain()
                     .relative()
                     .size_4()
                     .flex_shrink_0()
@@ -790,30 +837,29 @@ impl NativeTable {
         }
         let group = processes && facts.members > 1;
         let off = self.page == "startup" && facts.startup_disabled;
-        let name = div()
+        let name = plain_text(row.title.clone())
             .min_w_0()
             .flex_shrink(1.)
             .truncate()
             .when(group, |d| d.font_weight(theme::LABEL_WEIGHT))
             .when(processes && facts.suspended, |d| d.text_color(p.muted))
-            .when(off, |d| d.text_color(p.muted))
-            .child(row.title.clone());
-        // The marks after the name carry their own `title`s.
-        let hint = |element: Div, part: &str, hint: Option<String>| {
+            .when(off, |d| d.text_color(p.muted));
+        // The name and the marks after it carry their own `title`s.
+        element = element.child(if near {
+            self.hint_text(name, row, "name", self.name_hint(row, cx))
+        } else {
+            name
+        });
+        let hint = |element: Plain, part: &str, hint: Option<String>| {
             if near {
                 self.hint_text(element, row, part, hint)
             } else {
                 element
             }
         };
-        element = element.child(hint(
-            name,
-            "name",
-            near.then(|| self.name_hint(row, cx)).flatten(),
-        ));
         if group {
             element = element.child(
-                div()
+                plain()
                     .flex_shrink_0()
                     .min_w(px(20.))
                     .px(px(6.))
@@ -828,7 +874,7 @@ impl NativeTable {
             );
         }
         if let Some(note) = &row.note {
-            let badge = div()
+            let badge = plain()
                 .flex()
                 .flex_shrink(1.)
                 .items_center()
@@ -847,7 +893,7 @@ impl NativeTable {
                         .size(px(12.))
                         .flex_shrink_0(),
                 )
-                .child(div().min_w_0().truncate().child(note.clone()));
+                .child(plain_text(note.clone()).min_w_0().truncate());
             element = element.child(hint(badge, "note", near.then(|| note.clone())));
         }
         // The image name gives way first in a narrow column, cut short with
@@ -855,12 +901,11 @@ impl NativeTable {
         // marks after it stay beside the text however wide the column is.
         if processes && !row.detail.is_empty() {
             element = element.child(
-                div()
+                plain_text(row.detail.clone())
                     .flex_shrink(1000.)
                     .min_w_0()
                     .truncate()
-                    .text_color(p.faint)
-                    .child(row.detail.clone()),
+                    .text_color(p.faint),
             );
         }
         if processes {
@@ -869,7 +914,7 @@ impl NativeTable {
                 let leaf = icon("LeafIcon", p.muted).size(px(12.)).flex_shrink_0();
                 element = if near {
                     element.child(hint(
-                        div().flex().flex_shrink_0().child(leaf),
+                        plain().flex().flex_shrink_0().child(leaf),
                         "efficiency",
                         Some(if group {
                             tr!("processes.efficiencyCount", count = efficient)
@@ -899,11 +944,11 @@ impl NativeTable {
             // The other lists' names fill their column, and the pin marks the
             // end of it; a process name's column fits it, the pin follows.
             if !processes {
-                element = element.child(div().flex_1());
+                element = element.child(plain().flex_1());
             }
             element = if near {
                 element.child(hint(
-                    div().flex().flex_shrink_0().child(pin),
+                    plain().flex().flex_shrink_0().child(pin),
                     "pin",
                     Some(label("common.marks.pinned")),
                 ))
