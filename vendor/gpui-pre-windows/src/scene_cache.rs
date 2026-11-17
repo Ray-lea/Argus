@@ -704,24 +704,70 @@ impl ScrollPass<'_> {
             0 => Some(*item),
             _ => item.shifted(by, true).and_then(|moved| in_copy(&moved)),
         };
-        let mut heads = std::collections::HashMap::<u64, u32>::with_capacity(old.len() * 2);
-        let mut entries: Vec<(u32, u8, u32)> = Vec::with_capacity(old.len() * 2);
-        for (index, item) in old.iter().enumerate() {
-            for kind in [0, 1] {
-                if let Some(seen) = form(item, kind) {
-                    let key = hash_bytes(bytes(&seen));
-                    let next = heads.insert(key, entries.len() as u32).unwrap_or(u32::MAX);
-                    entries.push((index as u32, kind, next));
-                }
-            }
-        }
         let mut used = vec![false; old.len()];
         let check = !self.fresh.is_empty();
-        for item in now {
-            let found = if check && is_fresh(item, self.fresh) {
-                None
-            } else {
-                let mut found = None;
+        let fresh = |item: &T| check && is_fresh(item, self.fresh);
+        // What each primitive now matches in the last frame, and how. A
+        // scroll keeps the order of what it moves and of what stays, so the
+        // match is most often the next unused primitive of the last frame, as
+        // it was or moved: those few are compared directly first. Hashing
+        // every form of every primitive cost more than the rest of a scroll
+        // frame's matching.
+        const WINDOW: usize = 8;
+        let mut matches: Vec<Option<(usize, u8)>> = vec![None; now.len()];
+        let mut next = 0;
+        let mut unmatched = false;
+        for (item, found) in now.iter().zip(&mut matches) {
+            if fresh(item) {
+                continue;
+            }
+            let own = bytes(item);
+            let mut moved_own: Option<Option<T>> = None;
+            for index in next..old.len().min(next + WINDOW) {
+                if used[index] {
+                    continue;
+                }
+                let candidate = &old[index];
+                let kind = if bytes(candidate) == own {
+                    Some(0)
+                } else {
+                    let moved_own = moved_own.get_or_insert_with(|| in_copy(item));
+                    moved_own
+                        .as_ref()
+                        .zip(form(candidate, 1))
+                        .is_some_and(|(own, seen)| bytes(own) == bytes(&seen))
+                        .then_some(1)
+                };
+                if let Some(kind) = kind {
+                    used[index] = true;
+                    *found = Some((index, kind));
+                    next = index + 1;
+                    break;
+                }
+            }
+            unmatched |= found.is_none();
+        }
+        // The rest by the bytes of each form, among what is still unused:
+        // as it was (0) before moved (1).
+        if unmatched {
+            let mut heads = collections::FxHashMap::<u64, u32>::default();
+            let mut entries: Vec<(u32, u8, u32)> = Vec::new();
+            for (index, item) in old.iter().enumerate() {
+                if used[index] {
+                    continue;
+                }
+                for kind in [0, 1] {
+                    if let Some(seen) = form(item, kind) {
+                        let key = hash_bytes(bytes(&seen));
+                        let next = heads.insert(key, entries.len() as u32).unwrap_or(u32::MAX);
+                        entries.push((index as u32, kind, next));
+                    }
+                }
+            }
+            for (item, found) in now.iter().zip(&mut matches) {
+                if found.is_some() || fresh(item) {
+                    continue;
+                }
                 for (kind, own) in [(0u8, Some(*item)), (1, in_copy(item))] {
                     let Some(own) = own else {
                         continue;
@@ -735,7 +781,8 @@ impl ScrollPass<'_> {
                             && form(&old[index as usize], kind)
                                 .is_some_and(|seen| bytes(&seen) == own)
                         {
-                            found = Some((index as usize, kind));
+                            used[index as usize] = true;
+                            *found = Some((index as usize, kind));
                         }
                         at = next;
                     }
@@ -743,8 +790,9 @@ impl ScrollPass<'_> {
                         break;
                     }
                 }
-                found
-            };
+            }
+        }
+        for (item, found) in now.iter().zip(matches) {
             let Some(rect) = self.rect(item) else {
                 if let Some((index, _)) = found {
                     used[index] = true;
@@ -932,6 +980,26 @@ mod tests {
             .scrolled(&list(0., near), clip, (0, -10), 300, 200, &none)
             .expect("copied pixels");
         assert!(drawn(&plan).len() > 1);
+    }
+
+    #[::core::prelude::v1::test]
+    fn rows_listed_in_another_order_match_as_rows_in_order_do() {
+        let none = FreshTiles::default();
+        let clip = rect(0, 20, 200, 120);
+        let before = list(0., card(8.));
+        let after = list(-10., card(8.));
+        let in_order = after
+            .scrolled(&before, clip, (0, -10), 300, 200, &none)
+            .expect("copied pixels");
+        // The same rows, listed back to front this frame: past the few
+        // compared in order, each is found by its bytes.
+        let mut reversed = after.clone();
+        reversed.quads[1..].reverse();
+        let plan = reversed
+            .scrolled(&before, clip, (0, -10), 300, 200, &none)
+            .expect("copied pixels");
+        assert_eq!(plan.moved, in_order.moved);
+        assert_eq!(drawn(&plan), drawn(&in_order));
     }
 
     #[::core::prelude::v1::test]

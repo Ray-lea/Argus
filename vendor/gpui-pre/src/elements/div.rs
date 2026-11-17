@@ -2569,8 +2569,9 @@ impl Interactivity {
             // were removed or the bounds became larger).
             self.scroll_max.set(scroll_max);
             let key = Rc::as_ptr(scroll_offset) as usize;
+            let isolated = smooth_scroll::isolated(scroll_offset);
             let mut scroll_offset = scroll_offset.borrow_mut();
-            smooth_scroll::advance(key, &mut scroll_offset, scroll_max, window);
+            smooth_scroll::advance(key, &mut scroll_offset, scroll_max, isolated, window);
 
             scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
             if scroll_to_bottom {
@@ -4331,6 +4332,17 @@ impl GroupHitboxes {
     pub fn pop(name: &SharedString, cx: &mut App) {
         cx.default_global::<Self>().0.get_mut(name).unwrap().pop();
     }
+
+    /// Argus patch: the hitbox each group painted around this point has, the
+    /// innermost of a name, to paint a cached view again inside them while
+    /// the elements that set them replay (`splice_paint` in view.rs).
+    pub fn innermost(cx: &mut App) -> SmallVec<[(SharedString, HitboxId); 2]> {
+        cx.default_global::<Self>()
+            .0
+            .iter()
+            .filter_map(|(name, stack)| Some((name.clone(), *stack.last()?)))
+            .collect()
+    }
 }
 
 /// A wrapper around an element that can store state, produced after assigning an ElementId.
@@ -4697,6 +4709,24 @@ impl ScrollHandle {
         let state = self.0.borrow();
         let key = Rc::as_ptr(&state.offset) as usize;
         smooth_scroll::target(key, *state.offset.borrow())
+    }
+
+    /// Argus patch: whether a glide of this handle's offset is running: it
+    /// ends during the prepaint that takes its last step, or, when its
+    /// scroller is no longer drawn, once it would have ended.
+    pub fn gliding(&self) -> bool {
+        let state = self.0.borrow();
+        smooth_scroll::stepping(Rc::as_ptr(&state.offset) as usize)
+    }
+
+    /// Argus patch: from now on, the glides of the scroller tracked by this
+    /// handle ask for isolated frames (`Window::request_isolated_animation_frame`):
+    /// only the nearest cached view around the scroller is drawn again, and
+    /// the cached views around that one replay. Whatever reads the offset
+    /// outside that view while rendering or painting must then ask for its
+    /// own frames while the handle glides (see [`Self::gliding`]).
+    pub fn isolate_glides(&self) {
+        smooth_scroll::isolate(&self.0.borrow().offset);
     }
 
     /// Set the offset explicitly. The offset is the distance from the top left of the
@@ -6045,7 +6075,12 @@ mod tests {
 /// (touchpad) deltas and programmatic scrolls apply directly and end a glide.
 pub mod smooth_scroll {
     use crate::{Pixels, Point, Window, point, px};
-    use std::{cell::RefCell, collections::HashMap, time::Instant};
+    use std::{
+        cell::RefCell,
+        collections::HashMap,
+        rc::{Rc, Weak},
+        time::Instant,
+    };
 
     /// Chromium's pixels per wheel line on Windows (`kScrollbarPixelsPerLine`):
     /// 100 px per notch at the default three lines.
@@ -6208,12 +6243,56 @@ pub mod smooth_scroll {
         GLIDES.with_borrow(|glides| glides.contains_key(&key))
     }
 
+    /// Whether a glide is running and not past its end. The scroller's
+    /// prepaint takes the last step and ends the glide; one whose scroller
+    /// is no longer drawn stays in the list, and stops counting here once it
+    /// would have ended (the longest segment, until its first step times it).
+    pub(super) fn stepping(key: usize) -> bool {
+        let now = Instant::now();
+        GLIDES.with_borrow(|glides| {
+            glides.get(&key).is_some_and(|glide| {
+                let length = glide.duration.unwrap_or_else(|| segment(0.));
+                now.saturating_duration_since(glide.start).as_secs_f32() <= length + 0.1
+            })
+        })
+    }
+
+    thread_local! {
+        /// The offsets whose glides ask for isolated frames (`ScrollHandle::isolate_glides`).
+        static ISOLATED: RefCell<Vec<Weak<RefCell<Point<Pixels>>>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// The glides of `offset` ask for isolated frames from now on.
+    pub(super) fn isolate(offset: &Rc<RefCell<Point<Pixels>>>) {
+        ISOLATED.with_borrow_mut(|isolated| {
+            isolated.retain(|known| known.strong_count() > 0);
+            if !isolated
+                .iter()
+                .any(|known| std::ptr::eq(known.as_ptr(), Rc::as_ptr(offset)))
+            {
+                isolated.push(Rc::downgrade(offset));
+            }
+        });
+    }
+
+    /// Whether the glides of `offset` ask for isolated frames.
+    pub(super) fn isolated(offset: &Rc<RefCell<Point<Pixels>>>) -> bool {
+        ISOLATED.with_borrow(|isolated| {
+            isolated
+                .iter()
+                .any(|known| std::ptr::eq(known.as_ptr(), Rc::as_ptr(offset)))
+        })
+    }
+
     /// Moves the offset along a running glide, keeping the target inside the
-    /// scrollable range, and asks for the next frame until the glide ends.
+    /// scrollable range, and asks for the next frame until the glide ends:
+    /// an isolated one (`Window::request_isolated_animation_frame`) if the
+    /// scroller's handle asked for that.
     pub(super) fn advance(
         key: usize,
         offset: &mut Point<Pixels>,
         max: Point<Pixels>,
+        isolated: bool,
         window: &mut Window,
     ) {
         GLIDES.with_borrow_mut(|glides| {
@@ -6261,7 +6340,11 @@ pub mod smooth_scroll {
             // rendering, before this prepaint moves it (a pinned group
             // header), shows where the glide ended. On whole pixels, the
             // last step can be a pixel or two.
-            window.request_animation_frame();
+            if isolated {
+                window.request_isolated_animation_frame();
+            } else {
+                window.request_animation_frame();
+            }
         });
     }
 

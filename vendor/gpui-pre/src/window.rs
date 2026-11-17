@@ -19,7 +19,7 @@ use crate::{
     PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, Subscription, SystemWindowTab,
+    StretchReuse, StrikethroughStyle, Style, SubpixelSprite, Subscription, SystemWindowTab,
     SystemWindowTabController, TabStopMap, Task, TextInputConfiguration, TextInputStateChange,
     TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState, TransformationMatrix,
     Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
@@ -130,6 +130,9 @@ struct WindowInvalidatorInner {
     pub dirty_views: FxHashSet<EntityId>,
     /// Views that asked for an animation frame: redrawn without a notification.
     pub animation_views: FxHashSet<EntityId>,
+    /// Views that asked for an isolated animation frame: redrawn without a
+    /// notification, the cached views around them replaying around them.
+    pub isolated_views: FxHashSet<EntityId>,
     pub update_count: usize,
     #[cfg(feature = "profiler")]
     pub frame_dirty: FrameDirtyAccumulator,
@@ -163,6 +166,7 @@ impl WindowInvalidator {
                 draw_phase: DrawPhase::None,
                 dirty_views: FxHashSet::default(),
                 animation_views: FxHashSet::default(),
+                isolated_views: FxHashSet::default(),
                 update_count: 0,
                 #[cfg(feature = "profiler")]
                 frame_dirty: FrameDirtyAccumulator::default(),
@@ -202,9 +206,24 @@ impl WindowInvalidator {
     /// Unlike [`Self::invalidate_view`], observers aren't notified (its state
     /// didn't change), and cached views nested in it can be replayed.
     pub fn invalidate_view_for_animation(&self, entity: EntityId) {
+        self.invalidate_view_for_frame(entity, false);
+    }
+
+    /// [`Self::invalidate_view_for_animation`] for an animation that changes
+    /// nothing outside the cached view around `entity`: the cached views
+    /// around that one replay around it (see `Window::request_isolated_animation_frame`).
+    pub fn invalidate_view_for_isolated_animation(&self, entity: EntityId) {
+        self.invalidate_view_for_frame(entity, true);
+    }
+
+    fn invalidate_view_for_frame(&self, entity: EntityId, isolated: bool) {
         let mut inner = self.inner.borrow_mut();
         inner.update_count += 1;
-        inner.animation_views.insert(entity);
+        if isolated {
+            inner.isolated_views.insert(entity);
+        } else {
+            inner.animation_views.insert(entity);
+        }
         if inner.draw_phase == DrawPhase::None {
             #[cfg(feature = "profiler")]
             let dirty_at = Self::record_frame_dirty(&mut inner);
@@ -308,6 +327,10 @@ impl WindowInvalidator {
 
     pub fn take_animation_views(&self) -> FxHashSet<EntityId> {
         mem::take(&mut self.inner.borrow_mut().animation_views)
+    }
+
+    pub fn take_isolated_views(&self) -> FxHashSet<EntityId> {
+        mem::take(&mut self.inner.borrow_mut().isolated_views)
     }
 
     pub fn replace_views(&self, views: FxHashSet<EntityId>) {
@@ -1107,6 +1130,11 @@ pub(crate) struct Frame {
     #[cfg(any(feature = "inspector", debug_assertions))]
     pub(crate) inspector_hitboxes: FxHashMap<HitboxId, crate::InspectorElementId>,
     pub(crate) tab_stops: TabStopMap,
+    /// The cached views whose ranges index this frame, by the id of their
+    /// element state: those rendered, replayed or spliced in it, and those
+    /// moved along with a view replayed around them. Only these can be drawn
+    /// again in place while the views around them replay (`splice_holes`).
+    pub(crate) cached_views: FxHashMap<EntityId, GlobalElementId>,
 }
 
 #[derive(Clone, Default)]
@@ -1199,6 +1227,24 @@ impl PrepaintStateIndex {
     pub(crate) fn accessed_element_states(range: &Range<Self>) -> Range<usize> {
         range.start.accessed_element_states_index..range.end.accessed_element_states_index
     }
+
+    /// Argus patch: how many dispatch nodes the frame had at this index.
+    pub(crate) fn dispatch_nodes(&self) -> usize {
+        self.dispatch_tree_index
+    }
+
+    /// Argus patch: how many element states the frame had used at this index.
+    pub(crate) fn element_states(&self) -> usize {
+        self.accessed_element_states_index
+    }
+
+    /// Argus patch: this index without the element state used last. A
+    /// cached view's range starts just after the use of its own state.
+    pub(crate) fn before_last_state(&self) -> Self {
+        let mut index = self.clone();
+        index.accessed_element_states_index = index.accessed_element_states_index.saturating_sub(1);
+        index
+    }
 }
 
 impl PaintIndex {
@@ -1246,6 +1292,18 @@ impl PaintIndex {
                 .line_layout_index
                 .rebased(&from.line_layout_index, &to.line_layout_index)?,
         })
+    }
+
+    /// See [`PrepaintStateIndex::element_states`].
+    pub(crate) fn element_states(&self) -> usize {
+        self.accessed_element_states_index
+    }
+
+    /// See [`PrepaintStateIndex::before_last_state`].
+    pub(crate) fn before_last_state(&self) -> Self {
+        let mut index = self.clone();
+        index.accessed_element_states_index = index.accessed_element_states_index.saturating_sub(1);
+        index
     }
 
     /// See [`PrepaintStateIndex::not_after`].
@@ -1305,6 +1363,7 @@ impl Frame {
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_hitboxes: FxHashMap::default(),
             tab_stops: TabStopMap::default(),
+            cached_views: FxHashMap::default(),
         }
     }
 
@@ -1322,6 +1381,7 @@ impl Frame {
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
         self.tab_stops.clear();
+        self.cached_views.clear();
         self.focus = None;
 
         #[cfg(any(test, feature = "test-support"))]
@@ -1497,6 +1557,13 @@ pub struct Window {
     /// Views notified (not merely animating, nor ancestors of dirty views)
     /// since the last draw. Rendering one renders the cached views inside it.
     pub(crate) notified_views: FxHashSet<EntityId>,
+    /// Views that asked for an isolated animation frame for this draw
+    /// ([`Window::request_isolated_animation_frame`]).
+    pub(crate) isolated_views: FxHashSet<EntityId>,
+    /// The views in `dirty_views` only because an isolated view lies inside
+    /// them: a cached one among them replays around the cached views that
+    /// hold those (`splice_holes`).
+    pub(crate) isolated_ancestors: FxHashSet<EntityId>,
     focus_listeners: SingleSubscriberSet<AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SingleSubscriberSet<AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
@@ -2714,6 +2781,8 @@ impl Window {
             tooltip_bounds: None,
             dirty_views: FxHashSet::default(),
             notified_views: FxHashSet::default(),
+            isolated_views: FxHashSet::default(),
+            isolated_ancestors: FxHashSet::default(),
             focus_listeners: SingleSubscriberSet::new(),
             focus_lost_listeners: SingleSubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
@@ -3280,11 +3349,40 @@ impl Window {
         });
     }
 
+    /// Argus patch: [`Self::request_animation_frame`] for an animation that
+    /// changes nothing outside the nearest cached view around this view (the
+    /// view itself if it is cached), such as a glide of a list it scrolls.
+    /// Cached views further out replay their last frame around that one,
+    /// which is drawn again in its place: their own trees are not built,
+    /// laid out or painted again. What they paint from the animated state
+    /// (a scrollbar of the list drawn outside it, say) stays as it was, so
+    /// it must ask for its own frames (`ScrollHandle::gliding`).
+    ///
+    /// A cached view around it renders as usual when anything else asks it
+    /// to, when it was not drawn in the last frame, or while assistive
+    /// technology reads the window.
+    pub fn request_isolated_animation_frame(&self) {
+        let entity = self.current_view();
+        self.on_next_frame(move |window, _| {
+            window
+                .invalidator
+                .invalidate_view_for_isolated_animation(entity)
+        });
+    }
+
     /// Redraw a view without notifying observers or invalidating its cached
     /// children. The caller must separately notify any child whose inputs changed.
     /// Use outside drawing when only uncached content owned by this view changed.
     pub fn request_view_redraw(&self, entity: EntityId) {
         self.invalidator.invalidate_view_for_animation(entity);
+    }
+
+    /// Argus patch: [`Self::request_view_redraw`] for a redraw that changes
+    /// nothing outside the nearest cached view around `entity`, as an
+    /// isolated animation frame does ([`Self::request_isolated_animation_frame`]).
+    pub fn request_isolated_view_redraw(&self, entity: EntityId) {
+        self.invalidator
+            .invalidate_view_for_isolated_animation(entity);
     }
 
     /// Draws `view` again because an element it painted changed how it looks
@@ -3455,7 +3553,7 @@ impl Window {
     pub(crate) fn for_reused_element_states<S: 'static>(
         &mut self,
         accessed: Range<usize>,
-        mut f: impl FnMut(&mut S),
+        mut f: impl FnMut(&GlobalElementId, &mut S),
     ) {
         let state_type = TypeId::of::<S>();
         let Frame {
@@ -3475,9 +3573,41 @@ impl Window {
                 .and_then(|state| state.inner.downcast_mut::<Option<S>>())
                 .and_then(Option::as_mut)
             {
-                f(state);
+                f(&key.0, state);
             }
         }
+    }
+
+    /// Argus patch: whether the last frame used the state of type `S` of the
+    /// element `global_id` just before `index` (a count of the element states
+    /// it had used).
+    pub(crate) fn rendered_state_used_before<S: 'static>(
+        &self,
+        index: usize,
+        global_id: &GlobalElementId,
+    ) -> bool {
+        index
+            .checked_sub(1)
+            .and_then(|index| self.rendered_frame.accessed_element_states.get(index))
+            .is_some_and(|(id, state_type)| id == global_id && *state_type == TypeId::of::<S>())
+    }
+
+    /// Argus patch, test support: how many element states the last frame used.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn used_element_states(&self) -> usize {
+        self.rendered_frame.accessed_element_states.len()
+    }
+
+    /// Argus patch: the state of type `S` an element kept in the last frame.
+    pub(crate) fn rendered_element_state<S: 'static>(
+        &self,
+        global_id: &GlobalElementId,
+    ) -> Option<&S> {
+        self.rendered_frame
+            .element_states
+            .get(&(global_id.clone(), TypeId::of::<S>()))
+            .and_then(|state| state.inner.downcast_ref::<Option<S>>())
+            .and_then(Option::as_ref)
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -4380,6 +4510,8 @@ impl Window {
             }
         }
         self.dirty_views.clear();
+        self.isolated_views.clear();
+        self.isolated_ancestors.clear();
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
@@ -4512,6 +4644,18 @@ impl Window {
         self.invalidator.replace_views(views);
         for entity in self.invalidator.take_animation_views() {
             self.mark_view_dirty(entity);
+        }
+        // After the others: a view on the way up from an isolated view that
+        // is dirty already (for itself or for a view inside it) renders as
+        // it would without the isolated one, and so do the views around it.
+        for entity in self.invalidator.take_isolated_views() {
+            self.isolated_views.insert(entity);
+            for view_id in self.rendered_frame.dispatch_tree.view_path_reversed(entity) {
+                if !self.dirty_views.insert(view_id) {
+                    break;
+                }
+                self.isolated_ancestors.insert(view_id);
+            }
         }
     }
 
@@ -5010,6 +5154,130 @@ impl Window {
                     accessed_entities: deferred_draw.accessed_entities.clone(),
                 }),
         );
+    }
+
+    /// Argus patch: [`Self::reuse_prepaint`] for one stretch of a view that
+    /// replays around views drawn again in its place (`splice` in view.rs).
+    /// The dispatch nodes it copies stay open for what is drawn next.
+    pub(crate) fn reuse_prepaint_stretch(
+        &mut self,
+        range: Range<PrepaintStateIndex>,
+        reuse: &mut StretchReuse,
+    ) {
+        self.next_frame.hitboxes.extend(
+            self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
+                .iter()
+                .cloned(),
+        );
+        self.next_frame.tooltip_requests.extend(
+            self.rendered_frame.tooltip_requests
+                [range.start.tooltips_index..range.end.tooltips_index]
+                .iter_mut()
+                .map(|request| request.take()),
+        );
+        self.next_frame.accessed_element_states.extend(
+            self.rendered_frame.accessed_element_states[range.start.accessed_element_states_index
+                ..range.end.accessed_element_states_index]
+                .iter()
+                .map(|(id, type_id)| (id.clone(), *type_id)),
+        );
+        self.text_system
+            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+
+        if self.next_frame.dispatch_tree.reuse_stretch(
+            reuse,
+            range.start.dispatch_tree_index..range.end.dispatch_tree_index,
+            &mut self.rendered_frame.dispatch_tree,
+            self.focus,
+        ) {
+            self.next_frame.focus = self.focus;
+        }
+
+        let active = self.next_frame.dispatch_tree.active_node_id();
+        self.next_frame.deferred_draws.extend(
+            self.rendered_frame.deferred_draws
+                [range.start.deferred_draws_index..range.end.deferred_draws_index]
+                .iter()
+                .map(|deferred_draw| DeferredDraw {
+                    current_view: deferred_draw.current_view,
+                    // `splice_fits` checked that it lies in a stretch.
+                    parent_node: reuse
+                        .refresh_node_id(deferred_draw.parent_node)
+                        .or(active)
+                        .expect("a deferred draw outside the replayed view"),
+                    element_id_stack: deferred_draw.element_id_stack.clone(),
+                    text_style_stack: deferred_draw.text_style_stack.clone(),
+                    content_mask: deferred_draw.content_mask,
+                    rem_size: deferred_draw.rem_size,
+                    priority: deferred_draw.priority,
+                    element: None,
+                    absolute_offset: deferred_draw.absolute_offset,
+                    prepaint_range: deferred_draw.prepaint_range.clone(),
+                    paint_range: deferred_draw.paint_range.clone(),
+                    accessed_entities: deferred_draw.accessed_entities.clone(),
+                }),
+        );
+    }
+
+    /// Argus patch: whether a view drawn in the last frame inside the
+    /// prepaint range `outer` (of the view around it) can be drawn again in
+    /// place while that view replays around it: `inner` is its range, it
+    /// started inside the node drawn for it, and every deferred draw outside
+    /// it belongs to a node outside it too.
+    pub(crate) fn splice_fits(
+        &self,
+        view: EntityId,
+        outer: &Range<PrepaintStateIndex>,
+        inner: &Range<PrepaintStateIndex>,
+    ) -> bool {
+        let tree = &self.rendered_frame.dispatch_tree;
+        let (start, end) = (
+            inner.start.dispatch_tree_index,
+            inner.end.dispatch_tree_index,
+        );
+        // The node drawn for the view itself comes just before its range.
+        if start <= outer.start.dispatch_tree_index
+            || tree.node_view(DispatchNodeId::from_index(start - 1)) != Some(view)
+        {
+            return false;
+        }
+        let draws = &self.rendered_frame.deferred_draws;
+        let outside = (outer.start.deferred_draws_index..inner.start.deferred_draws_index)
+            .chain(inner.end.deferred_draws_index..outer.end.deferred_draws_index);
+        outside.into_iter().all(|index| {
+            draws.get(index).is_some_and(|draw| {
+                let node = draw.parent_node.index();
+                (outer.start.dispatch_tree_index..outer.end.dispatch_tree_index).contains(&node)
+                    && !(start..end).contains(&node)
+            })
+        })
+    }
+
+    /// Argus patch: the node of the last frame drawn for a view that is about
+    /// to be drawn again in place (just before its range, see `splice_fits`):
+    /// its copy, open after the stretch before, takes the new nodes.
+    pub(crate) fn enter_spliced_view(
+        &mut self,
+        reuse: &mut StretchReuse,
+        range: &Range<PrepaintStateIndex>,
+    ) -> Option<DispatchNodeId> {
+        let parent = DispatchNodeId::from_index(range.start.dispatch_tree_index.checked_sub(1)?);
+        self.next_frame
+            .dispatch_tree
+            .reuse_enter(reuse, parent)
+            .then(|| self.next_frame.dispatch_tree.active_node_id())
+            .flatten()
+    }
+
+    /// Argus patch: closes the nodes the stretches of a replay left open.
+    pub(crate) fn finish_prepaint_reuse(&mut self, reuse: &mut StretchReuse) {
+        self.next_frame.dispatch_tree.finish_reuse(reuse);
+    }
+
+    /// Argus patch: makes `node` (of the frame being drawn) the active node
+    /// for painting a view drawn again in place.
+    pub(crate) fn activate_dispatch_node(&mut self, node: DispatchNodeId) {
+        self.next_frame.dispatch_tree.set_active_node(node);
     }
 
     pub(crate) fn paint_index(&self) -> PaintIndex {

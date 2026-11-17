@@ -21,4 +21,4 @@
 | `rustybuzz 0.20.1` | `resvg → usvg` | [RUSTSEC-2026-0206](https://rustsec.org/advisories/RUSTSEC-2026-0206.html) | 跟进使用 HarfRust 的 SVG 依赖版本，核对文字整形与回退字体 |
 | `ttf-parser 0.25.1` | `gpui-pre`、`fontdb`、`rustybuzz` | [RUSTSEC-2026-0192](https://rustsec.org/advisories/RUSTSEC-2026-0192.html) | 联动迁移 SVG 字体链与直接字体查询，评估 Skrifa／Fontations，保留字体覆盖检查 |
 
-2026-11-12 升级到 GPUI Kit 0.9.1 后，它仍引入 `instant` 与 `paste`；迁移需与现有本地 GPUI 补丁一并评估。锁文件中的 `rustls-pemfile`、`zbus_names`、`zvariant`、`zvariant_derive` 另有停维护提示，当前 Windows 目标依赖树未使用这些包；扩展平台时重新核对。每次发版以最新审计数据库与实际目标依赖树为准，相关检查命令为 `pnpm check:security` 和 `cargo tree --target x86_64-pc-windows-msvc -i <包名>`。
+2026-11-16 升级到 GPUI Kit 0.10.0 后，它仍引入 `instant` 与 `paste`；迁移需与现有本地 GPUI 补丁一并评估。锁文件中的 `rustls-pemfile`、`zbus_names`、`zvariant`、`zvariant_derive` 另有停维护提示，当前 Windows 目标依赖树未使用这些包；扩展平台时重新核对。每次发版以最新审计数据库与实际目标依赖树为准，相关检查命令为 `pnpm check:security` 和 `cargo tree --target x86_64-pc-windows-msvc -i <包名>`。

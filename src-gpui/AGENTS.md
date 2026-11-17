@@ -9,6 +9,7 @@
 - 测试只启动自身的 --hidden --test --identifier 实例，通过窗口探针不激活显示和捕获，禁止调用会抢占用户桌面的激活路径。窗口无需激活即可接收合成按键：`keys` 与单击、拖动类指针控制只在模拟快照（`--fixture`）下生效，那里不执行结束进程等真实命令；实时数据下只能悬停和检查。菜单的键盘路径用 `inspectMenu` 核对。
 - 测试模块不要写 `use super::*`：GPUI 的 `test` 属性会遮蔽标准的 `#[test]`，报错为 “recursion limit reached while expanding `#[test]`”，改为逐项导入。glob 导入链下 `Duration` 有歧义，写 `std::time::Duration`。
 - 表格（`table_view`）与详情窗格标记了 `hover_fills_in_place`：其中悬停样式只改底色的元素就地改色，所在视图不重绘。这两处的代码不能依赖“悬停会重绘视图”：随指针变化的内容自行请求重绘（`tips` 在指针于一行停留 250 ms 后通知表格），或给元素一个不止改底色的悬停样式（`icon_probe`）。其他区域的悬停、按下和提示只重绘元素所在的视图，其中的缓存视图重放。采样只重绘内容随之变化的区域（`Desktop::notify_snapshot`）：标题栏、导航显示的状态改变时，必须通知桌面或刷新对应区域。核对重绘范围用 `ARGUS_GPUI_FRAME_TRACE=1` 和带 `passive` 的指针控制（见 `docs/development/gpui.md`）；不带 `passive` 的测试控制都以通知桌面结束，看不到实际范围。
+- 表格的两个滚动句柄设了 `isolate_glides`：滚轮滑动的帧只重绘 `TableFrame`，外层的页面区域与桌面重放并把它拼回原位置（`Window::request_isolated_animation_frame`）。在 `TableFrame` 之外按表格滚动偏移绘制的内容，滑动期间必须自行请求帧：`scrollbar::Scrollbar` 由别的视图绘制时会在 `ScrollHandle::gliding()` 期间请求隔离帧，新增这类读取方（悬浮标题、定位到行的覆盖层等）时同样处理，并逐帧核对：临时在 `smooth_scroll::advance` 打印每步偏移，与读取方绘制时读到的偏移（`scrollTrace` 测试控制）在同一帧一致。
 - 表格中只显示一行文字的单元格由 `tables/cell_text.rs` 绘制，它复现 flex `div`、`truncate()` 包装与文字节点的布局和像素取整（`gpui::taffy` 的规则）。改这些单元格的字号、内边距、对齐或截断时改 `text_cell`，并用改动前后的构建在不同界面缩放（含 125%、150%）、字号和窄列下截图逐像素对照。
 - 表格单元格由组件包上 `overflow_hidden`，内容在本格之外的部分会被裁掉。需要越过相邻单元格绘制（如列换位动画）时用 `flip::escaping`，以表格可视区为裁剪范围延后绘制，不要为此改动或 vendor 组件。
 - 曲线时间来自采集时间戳，保留未知区间与暂停语义；避免在每帧复制快照或重建表格。修改曲线、帧调度或缓存逻辑时检查真实呈现与隐藏开销；静态排版与文案按根目录规定做局部验证。
