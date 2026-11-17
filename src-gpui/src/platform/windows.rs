@@ -56,6 +56,13 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         if !options.test || crate::shell::test_tray_delay().is_some() {
             let _ = crate::shell::build_tray(host);
         }
+        crate::shell::apply_taskbar_monitor(
+            host,
+            &host
+                .state::<crate::settings::SettingsStore>()
+                .get()
+                .taskbar_monitor,
+        );
         if options.hidden {
             crate::shell::started_hidden(host.state::<AppState>().task_manager_start);
         }

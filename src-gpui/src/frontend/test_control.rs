@@ -35,6 +35,34 @@ impl Desktop {
                 }
             }
         }
+        // The monitors' settings, through the commands the components page
+        // sends; a test instance's taskbar monitor sits on its stand-in.
+        if let Some(change) = control.get("desktopMonitor") {
+            self.request(
+                "set_desktop_monitor",
+                change.clone(),
+                Some("settings"),
+                window,
+                cx,
+            );
+        }
+        if let Some(change) = control.get("taskbarMonitor") {
+            self.request(
+                "set_taskbar_monitor",
+                change.clone(),
+                Some("settings"),
+                window,
+                cx,
+            );
+        }
+        // An item of the desktop monitor's menu, as if chosen: the ones
+        // that change its settings.
+        if let Some(item) = control["desktopMonitorMenu"]
+            .as_str()
+            .filter(|item| matches!(*item, "topmost" | "locked" | "hide"))
+        {
+            self.desktop_monitor_event(&json!({ "menu": item }), window, cx);
+        }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")
         {
@@ -639,6 +667,7 @@ impl Desktop {
                     "headings":self.rows.iter().filter(|row|row.user.is_some()).map(|row|json!({"key":row.key,"title":row.title,"count":row.raw["entryCount"],"expanded":row.expanded})).collect::<Vec<_>>()},
                 "dialog":self.dialog_test_state(),
                 "tray":self.tray_test_state(cx),
+                "monitors":self.monitors_test_state(cx),
                 "toasts":self.ui.toasts.iter().filter(|toast| toast.leaving.is_none()).map(|toast| toast.text.as_str()).collect::<Vec<_>>(),
                 "diagnosticCopy":if self.options.fixture.is_some() { self.data.get("diagnosticCopy") } else { None },
                 "diagnosticCopyReady":self.options.fixture.is_some() && self.data.contains_key("diagnosticCopy"),

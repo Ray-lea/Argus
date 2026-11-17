@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "Zone de notification",
+    "desktop": "Moniteur de bureau",
+    "taskbar": "Moniteur de barre des tâches",
     "planned": "Autres composants"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "Ouvrir Composants"
     }
   },
+  "metrics": {
+    "title": "Mesures affichées",
+    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous. Les mesures GPU proviennent du GPU doté du plus de mémoire dédiée."
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "Température CPU",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "Mémoire",
+      "short": "RAM"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "Température GPU",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "Mémoire GPU",
+      "short": "VRAM"
+    },
+    "disk": {
+      "name": "Disque"
+    },
+    "network": {
+      "name": "Réseau"
+    },
+    "read": "L",
+    "write": "É"
+  },
+  "desktop": {
+    "title": "Moniteur de bureau",
+    "desc": "Affiche les mesures choisies dans une petite fenêtre sur le bureau. Faites-la glisser pour la déplacer, double-cliquez pour ouvrir Argus et cliquez avec le bouton droit pour ouvrir le menu. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "topmost": {
+      "title": "Toujours au premier plan",
+      "desc": "S’affiche au-dessus des autres fenêtres."
+    },
+    "locked": {
+      "title": "Verrouiller la position",
+      "desc": "Une fois verrouillée, la fenêtre ne peut plus être déplacée."
+    },
+    "clickThrough": {
+      "title": "Laisser passer les clics",
+      "desc": "Les clics et les glissements atteignent la fenêtre située en dessous. Une fois activée, cette option ne peut être désactivée que sur cette page."
+    },
+    "opacity": {
+      "title": "Opacité",
+      "desc": "Opacité de toute la fenêtre."
+    },
+    "menu": {
+      "open": "Ouvrir Argus",
+      "topmost": "Toujours au premier plan",
+      "locked": "Verrouiller la position",
+      "settings": "Paramètres des composants…",
+      "hide": "Désactiver le moniteur de bureau"
+    }
+  },
+  "taskbar": {
+    "title": "Moniteur de barre des tâches",
+    "desc": "Affiche les mesures choisies dans la barre des tâches de l’écran principal. Le clic et le clic droit agissent comme sur l’icône de la zone de notification. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "place": {
+      "title": "Position",
+      "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
+      "tray": "Près de la zone de notification",
+      "start": "Côté gauche"
+    }
+  },
   "planned": {
     "state": "Prévu",
-    "desktop": {
-      "title": "Moniteur de bureau",
-      "desc": "Un widget qui garde les mesures choisies sur le bureau."
-    },
-    "taskbar": {
-      "title": "Moniteur de barre des tâches",
-      "desc": "CPU, mémoire et débits réseau directement dans la barre des tâches."
-    },
     "island": {
       "title": "Îlot dynamique",
       "desc": "Mesures en temps réel et notifications dans une capsule en haut de l’écran."

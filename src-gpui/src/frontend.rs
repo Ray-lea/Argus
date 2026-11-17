@@ -16,6 +16,7 @@ mod layout;
 mod lists;
 mod menus;
 mod model;
+mod monitors;
 mod motion;
 mod pages;
 mod plain;
@@ -405,6 +406,8 @@ struct Desktop {
     settings_section: String,
     /// The tray's open flyouts (`tray`).
     tray: tray::Flyouts,
+    /// The desktop monitor's window (`monitors`).
+    monitors: monitors::Monitors,
 }
 impl Desktop {
     fn process_image(&self, id: u32) -> Option<Arc<Image>> {
@@ -584,6 +587,7 @@ impl Desktop {
             history_hover: None,
             settings_section: "language".into(),
             tray: tray::Flyouts::default(),
+            monitors: monitors::Monitors::default(),
             ui_scale: appearance::SCALE.load(&prefs),
             font_size: appearance::FONT_SIZE.load(&prefs),
             prefs,

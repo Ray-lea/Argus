@@ -32,6 +32,8 @@ impl Desktop {
                     | "set_theme"
                     | "set_language"
                     | "set_hardware_acceleration"
+                    | "set_desktop_monitor"
+                    | "set_taskbar_monitor"
             ) {
                 // Kept for the tests to read (`inspectLayout.skippedRequest`):
                 // what a control asked for, in place of doing it.
@@ -154,6 +156,8 @@ impl Desktop {
                         json!({"from":pending.args["from"],"to":pending.args["to"],"buckets":pending.args["buckets"]}),
                     );
                 }
+                let settings = pending.cache.as_deref() == Some("settings")
+                    || (pending.command.starts_with("set_") && value.get("closeToTray").is_some());
                 if let Some(key) = pending.cache {
                     self.data.insert(key, value.clone());
                 }
@@ -174,6 +178,10 @@ impl Desktop {
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
                     self.data.insert("settings".into(), value.clone());
+                }
+                // The monitors follow their settings wherever those changed.
+                if settings {
+                    self.sync_monitors(cx);
                 }
                 self.command_completed(&pending.command, &value, window, cx);
                 if self.page == "network" {
@@ -250,6 +258,7 @@ impl Desktop {
                 }
                 "argus-language" => {
                     changed = true;
+                    self.restyle_monitors(cx);
                 }
                 "argus-blur" => {
                     self.set_control_paused(false, window, cx);
@@ -263,6 +272,7 @@ impl Desktop {
                 // Another window took the foreground from a panel that did not
                 // take it (one opened from the hidden icons flyout).
                 "argus-tray-dismiss" => self.close_tray_panel(cx),
+                "argus-desktop-monitor" => self.desktop_monitor_event(&event.value, window, cx),
                 "argus-tray-warm" => {
                     self.schedule_tray_warm(event.value["soon"].as_bool() == Some(true), window, cx)
                 }
@@ -363,6 +373,7 @@ impl Desktop {
                                 != model["hardware"]["cpuSensors"]["state"];
                         this.accept_snapshot_prepared(model, rows, open, window, cx);
                         this.refresh_tray(cx);
+                        this.refresh_monitors(cx);
                         super::trace_work("snapshot", None, started);
                         // Pick up the newest source sequence without accumulating a UI queue.
                         this.notifications(window, cx);

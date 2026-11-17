@@ -1,4 +1,8 @@
-//! Native window lifecycle, backdrop, tray and visibility-driven sampling.
+//! Native window lifecycle, backdrop, tray, the taskbar monitor and
+//! visibility-driven sampling.
+pub(crate) mod desk;
+mod taskbar;
+mod taskbar_draw;
 mod tray;
 mod tray_anchor;
 mod tray_icon;
@@ -6,7 +10,7 @@ mod tray_identity;
 use crate::{
     native_runtime::{Host, NativeWindow},
     sampler::{Control, WindowState},
-    settings::{Settings, SettingsStore, Theme, TrayIcon, TrayMenu},
+    settings::{Settings, SettingsStore, TaskbarMonitor, Theme, TrayIcon, TrayMenu},
 };
 use argus_core::tr;
 use std::sync::{
@@ -14,6 +18,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 use std::time::Instant;
+pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup};
 pub(crate) use tray_anchor::Anchor;
 use windows::{
     Win32::{
@@ -30,6 +35,8 @@ static HAS_SHOWN: AtomicBool = AtomicBool::new(false);
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
 static TRAY: Mutex<Option<Arc<tray::Worker>>> = Mutex::new(None);
+/// The taskbar monitor, while it is turned on.
+static TASKBAR: Mutex<Option<taskbar::Monitor>> = Mutex::new(None);
 /// The tray icon's identity, for finding it on screen.
 static TRAY_ID: OnceLock<GUID> = OnceLock::new();
 /// The shell took `NOTIFYICON_VERSION_4`: callbacks carry the event in the
@@ -477,18 +484,7 @@ fn detect_mica() -> bool {
     if gpui_kit::gpui::windows_opaque_window_requested() {
         return false;
     }
-    use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
-    #[link(name = "ntdll")]
-    unsafe extern "system" {
-        fn RtlGetVersion(info: *mut OSVERSIONINFOW) -> NTSTATUS;
-    }
-    let mut info = OSVERSIONINFOW {
-        dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
-        ..Default::default()
-    };
-    let build = unsafe { RtlGetVersion(&mut info) }
-        .is_ok()
-        .then_some(info.dwBuildNumber);
+    let build = os_build();
     // Only isolated development tests may substitute the backdrop's OS build.
     // Keep the composition renderer unchanged to exercise the real solid fallback.
     let test_build = if cfg!(debug_assertions) {
@@ -508,6 +504,26 @@ fn detect_mica() -> bool {
         None
     };
     supports_system_backdrop(test_build.or(build))
+}
+
+/// The Windows build number, as the system reports it whatever the
+/// compatibility settings.
+fn os_build() -> Option<u32> {
+    use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(info: *mut OSVERSIONINFOW) -> NTSTATUS;
+    }
+    static BUILD: OnceLock<Option<u32>> = OnceLock::new();
+    *BUILD.get_or_init(|| {
+        let mut info = OSVERSIONINFOW {
+            dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
+            ..Default::default()
+        };
+        unsafe { RtlGetVersion(&mut info) }
+            .is_ok()
+            .then_some(info.dwBuildNumber)
+    })
 }
 
 fn supports_system_backdrop(build: Option<u32>) -> bool {
@@ -612,9 +628,53 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
     Ok(())
 }
 pub fn shutdown(_app: &Host) {
+    if let Some(monitor) = TASKBAR.lock().unwrap().take() {
+        monitor.close(std::time::Duration::from_millis(200));
+    }
     if let Some(worker) = TRAY.lock().unwrap().take() {
         worker.shutdown(std::time::Duration::from_millis(100));
     }
+}
+/// Puts the taskbar monitor on the taskbar, takes it off, or moves it, as
+/// its settings say. A test instance (`--test`) puts it on a stand-in
+/// taskbar of its own and never touches the shell's.
+pub fn apply_taskbar_monitor(app: &Host, monitor: &TaskbarMonitor) {
+    let mut running = TASKBAR.lock().unwrap();
+    if !monitor.enabled {
+        // Waited for outside the lock: the interface hands it readings.
+        let stopping = running.take();
+        drop(running);
+        if let Some(stopping) = stopping {
+            stopping.close(std::time::Duration::from_millis(200));
+        }
+        return;
+    }
+    if let Some(running) = running.as_ref() {
+        running.place(monitor.place);
+        return;
+    }
+    let Some(main) = app.get_window("main").and_then(|window| window.hwnd().ok()) else {
+        return;
+    };
+    let test = std::env::args().any(|arg| arg == "--test");
+    match taskbar::Monitor::spawn(main, monitor.place, test) {
+        Ok(started) => *running = Some(started),
+        Err(error) => argus_core::diagnostics::warn(
+            "taskbar monitor creation",
+            argus_core::diagnostics::io(&error),
+        ),
+    }
+}
+/// New readings for the taskbar monitor, one group per metric it shows.
+pub fn set_taskbar_readings(groups: Vec<TaskbarGroup>) {
+    if let Some(monitor) = TASKBAR.lock().unwrap().as_ref() {
+        monitor.readings(groups);
+    }
+}
+/// The taskbar monitor's window on screen, physical pixels (left, top,
+/// right, bottom), while it shows.
+pub fn taskbar_monitor_rect() -> Option<[i32; 4]> {
+    taskbar::shown_rect()
 }
 pub fn set_tray_tooltip(_app: &Host, text: &str) {
     if let Some(worker) = TRAY.lock().unwrap().clone() {
@@ -627,9 +687,25 @@ static FLYOUT: AtomicBool = AtomicBool::new(false);
 pub fn set_flyout_open(open: bool) {
     FLYOUT.store(open, Ordering::Relaxed);
 }
+/// The desktop monitor shows live readings, as does the taskbar monitor
+/// (`taskbar::live`): sampling keeps the shown window's pace meanwhile.
+static DESKTOP_MONITOR: AtomicBool = AtomicBool::new(false);
+pub fn set_desktop_monitor_shown(shown: bool) {
+    let before = DESKTOP_MONITOR.swap(shown, Ordering::Relaxed);
+    // Shown while the window is away: a fresh sample at the faster pace.
+    if shown
+        && !before
+        && let Some(app) = HOST.get()
+    {
+        app.state::<crate::AppState>()
+            .sampler
+            .send(Control::Refresh);
+    }
+}
 /// The window's state as the sampler paces itself by it.
 pub fn sampling_state(hwnd: HWND) -> WindowState {
-    if FLYOUT.load(Ordering::Relaxed) {
+    if FLYOUT.load(Ordering::Relaxed) || DESKTOP_MONITOR.load(Ordering::Relaxed) || taskbar::live()
+    {
         WindowState::Shown
     } else {
         window_state(hwnd)
@@ -1048,7 +1124,6 @@ fn tray_action(event: u32, version_4: bool) -> Option<TrayAction> {
 /// The tray icon and its display; when the shell cannot say where the icon
 /// is, a one-pixel icon at `point`.
 fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
-    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     let id = NOTIFYICONIDENTIFIER {
         cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32,
         hWnd: hwnd,
@@ -1061,6 +1136,13 @@ fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
         right: point.x + 1,
         bottom: point.y + 1,
     });
+    anchor_around(icon, true)
+}
+
+/// A flyout's anchor beside `icon` and its display; with `overflow`, the
+/// hidden icons flyout when the icon is in it.
+fn anchor_around(icon: RECT, overflow: bool) -> Anchor {
+    use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
     let monitor = unsafe { MonitorFromRect(&icon, MONITOR_DEFAULTTONEAREST) };
     let mut info = MONITORINFO {
         cbSize: size_of::<MONITORINFO>() as u32,
@@ -1075,10 +1157,67 @@ fn tray_anchor(hwnd: HWND, point: POINT) -> Anchor {
         work: corners(info.rcWork),
         monitor: corners(info.rcMonitor),
         scale: dpi_x.max(96) as f32 / 96.,
-        overflow: overflow_at(&icon).map(|(window, rect)| tray_anchor::Overflow {
-            rect: corners(rect),
-            window: window.0 as isize,
-        }),
+        overflow: overflow
+            .then(|| overflow_at(&icon))
+            .flatten()
+            .map(|(window, rect)| tray_anchor::Overflow {
+                rect: corners(rect),
+                window: window.0 as isize,
+            }),
+    }
+}
+
+/// What a pointer on the taskbar monitor asks for: what the same on the tray
+/// icon would, with flyouts beside the monitor. A test instance's monitor
+/// sits on a stand-in taskbar and never shows the window.
+fn taskbar_action(app: &Host, hwnd: HWND, action: taskbar::Action) {
+    let anchor = || {
+        taskbar::shown_rect().map(|[left, top, right, bottom]| {
+            anchor_around(
+                RECT {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                },
+                false,
+            )
+        })
+    };
+    let close_card = || {
+        let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
+    };
+    let test = std::env::args().any(|arg| arg == "--test");
+    match action {
+        taskbar::Action::Toggle => {
+            close_card();
+            if !test {
+                toggle_main(app);
+            }
+        }
+        taskbar::Action::Context => {
+            close_card();
+            if test {
+                return;
+            }
+            if app.state::<SettingsStore>().get().tray_menu == TrayMenu::Menu {
+                tray_menu(app, hwnd);
+            } else if let Some(anchor) = anchor() {
+                let _ = app.emit("argus-tray-panel", anchor);
+            }
+        }
+        taskbar::Action::CardOpen => {
+            if app.state::<SettingsStore>().get().tray_card
+                && let Some(anchor) = anchor()
+            {
+                let _ = app.emit(
+                    "argus-tray-card",
+                    serde_json::json!({ "open": true, "anchor": anchor }),
+                );
+            }
+        }
+        taskbar::Action::CardClose => close_card(),
+        taskbar::Action::Warm => warm_flyouts(true),
     }
 }
 
@@ -1276,6 +1415,12 @@ unsafe extern "system" fn procedure(
         }
         if message == TRAY_MESSAGE {
             tray_callback(app, hwnd, w, l);
+            return LRESULT(0);
+        }
+        if message == taskbar::MESSAGE {
+            if let Some(action) = taskbar::Action::from(w.0) {
+                taskbar_action(app, hwnd, action);
+            }
             return LRESULT(0);
         }
         if message == WM_CLOSE {

@@ -1,9 +1,11 @@
-//! Components: the tray and, as they arrive, the other parts of Argus that
-//! stay on the desktop outside its window (a desktop monitor, a taskbar
-//! monitor, the island). Each available component has a section of its
+//! Components: the parts of Argus that stay on the desktop outside its
+//! window: the tray, the desktop monitor, the taskbar monitor and, as it
+//! arrives, the island. Each available component has a section of its
 //! settings; a planned one is listed with what it will be.
 use super::*;
+use crate::frontend::monitors::metric_key;
 use crate::frontend::widgets::Tone;
+use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, TaskbarMonitor};
 
 /// A component of the page: its key (`components.*` texts), its icon and
 /// whether it is available yet. Settings of a component that ships go in a
@@ -23,12 +25,12 @@ pub(in crate::frontend) const COMPONENTS: [Component; 4] = [
     Component {
         key: "desktop",
         glyph: "ComputerIcon",
-        available: false,
+        available: true,
     },
     Component {
         key: "taskbar",
         glyph: "GaugeIcon",
-        available: false,
+        available: true,
     },
     Component {
         key: "island",
@@ -52,6 +54,8 @@ impl Desktop {
         let p = self.palette;
         let settings = self.data["settings"].clone();
         let tray = self.tray_cards(&settings, window, cx);
+        let desktop = self.desktop_cards(&settings, window, cx);
+        let taskbar = self.taskbar_cards(&settings, window, cx);
         let planned = COMPONENTS
             .iter()
             .filter(|component| !component.available)
@@ -107,6 +111,8 @@ impl Desktop {
                     .flex()
                     .flex_col()
                     .child(section(true, "tray", tray))
+                    .child(section(false, "desktop", desktop))
+                    .child(section(false, "taskbar", taskbar))
                     .child(section(false, "planned", planned)),
             )
             .child(scrollbar::scrollbar(
@@ -221,6 +227,194 @@ impl Desktop {
         ]
     }
 
+    /// A monitor's metrics, chosen as chips under its card's description;
+    /// a click adds or removes one, and they keep the order offered.
+    fn metric_card(
+        &self,
+        id: &str,
+        command: &'static str,
+        chosen: &[Metric],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let chips = Metric::ALL.iter().map(|metric| {
+            let on = chosen.contains(metric);
+            let next = Metric::ALL
+                .iter()
+                .filter(|other| chosen.contains(other) != (*other == metric))
+                .map(|other| metric_key(*other))
+                .collect::<Vec<_>>();
+            let key = metric_key(*metric);
+            self.btn_small(
+                format!("{id}-{key}"),
+                label(&format!("components.metric.{key}.name")),
+                on.then_some("CheckIcon"),
+                if on { Tone::Accent } else { Tone::Plain },
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.request(
+                    command,
+                    json!({ "metrics": next }),
+                    Some("settings"),
+                    window,
+                    cx,
+                );
+            }))
+            .into_any_element()
+        });
+        let desc = div()
+            .child(label("components.metrics.desc"))
+            .child(
+                div()
+                    .mt(px(10.))
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(6.))
+                    .children(chips),
+            )
+            .into_any_element();
+        self.setting(
+            id,
+            self.glyph("ListIcon"),
+            label("components.metrics.title"),
+            Some(desc),
+            None,
+            Vec::new(),
+        )
+    }
+
+    /// The desktop monitor: on or off, its metrics, how it sits among the
+    /// other windows and how it answers the pointer.
+    fn desktop_cards(
+        &mut self,
+        settings: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let monitor: DesktopMonitor =
+            serde_json::from_value(settings["desktopMonitor"].clone()).unwrap_or_default();
+        let command = "set_desktop_monitor";
+        let mut toggle = |id: &str, value: bool, field: &str| {
+            self.setting_toggle(id, value, command, field, window, cx)
+        };
+        let enabled = toggle("desktopMonitor", monitor.enabled, "enabled");
+        let topmost = toggle("desktopTopmost", monitor.topmost, "topmost");
+        let locked = toggle("desktopLocked", monitor.locked, "locked");
+        let through = toggle("desktopClickThrough", monitor.click_through, "clickThrough");
+        let opacity = self.select(
+            "components-desktop-opacity",
+            label("components.desktop.opacity.title"),
+            MONITOR_OPACITIES
+                .iter()
+                .map(|value| format!("{value}%"))
+                .collect(),
+            MONITOR_OPACITIES
+                .iter()
+                .position(|value| *value == monitor.opacity),
+            false,
+            move |this, index, window, cx| {
+                this.request(
+                    command,
+                    json!({ "opacity": MONITOR_OPACITIES[index] }),
+                    Some("settings"),
+                    window,
+                    cx,
+                );
+            },
+            cx,
+        );
+        vec![
+            self.setting_text(
+                "desktopMonitor",
+                "ComputerIcon",
+                "components.desktop.title",
+                "components.desktop.desc",
+                vec![enabled],
+            ),
+            self.metric_card("desktopMetrics", command, &monitor.metrics, cx),
+            self.setting_text(
+                "desktopTopmost",
+                "PinIcon",
+                "components.desktop.topmost.title",
+                "components.desktop.topmost.desc",
+                vec![topmost],
+            ),
+            self.setting_text(
+                "desktopLocked",
+                "LockIcon",
+                "components.desktop.locked.title",
+                "components.desktop.locked.desc",
+                vec![locked],
+            ),
+            self.setting_text(
+                "desktopClickThrough",
+                "PointerIcon",
+                "components.desktop.clickThrough.title",
+                "components.desktop.clickThrough.desc",
+                vec![through],
+            ),
+            self.setting_text(
+                "desktopOpacity",
+                "EyeIcon",
+                "components.desktop.opacity.title",
+                "components.desktop.opacity.desc",
+                vec![opacity],
+            ),
+        ]
+    }
+
+    /// The taskbar monitor: on or off, its metrics and where it sits.
+    fn taskbar_cards(
+        &mut self,
+        settings: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let monitor: TaskbarMonitor =
+            serde_json::from_value(settings["taskbarMonitor"].clone()).unwrap_or_default();
+        let command = "set_taskbar_monitor";
+        let enabled = self.setting_toggle(
+            "taskbarMonitor",
+            monitor.enabled,
+            command,
+            "enabled",
+            window,
+            cx,
+        );
+        let place = text(&settings["taskbarMonitor"], "place");
+        let place = self.segments(
+            "setting-taskbarPlace",
+            ["tray", "start"]
+                .iter()
+                .map(|value| {
+                    (
+                        label(&format!("components.taskbar.place.{value}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ "place": value })),
+                        place == *value || (place.is_empty() && *value == "tray"),
+                    )
+                })
+                .collect(),
+            cx,
+        );
+        vec![
+            self.setting_text(
+                "taskbarMonitor",
+                "GaugeIcon",
+                "components.taskbar.title",
+                "components.taskbar.desc",
+                vec![enabled],
+            ),
+            self.metric_card("taskbarMetrics", command, &monitor.metrics, cx),
+            self.setting_text(
+                "taskbarPlace",
+                "FitWidthIcon",
+                "components.taskbar.place.title",
+                "components.taskbar.place.desc",
+                vec![place],
+            ),
+        ]
+    }
+
     /// Where Settings points to the tray's settings on this page.
     pub(in crate::frontend) fn components_link(&self, cx: &mut Context<Self>) -> AnyElement {
         let open = self
@@ -249,14 +443,14 @@ mod tests {
     use super::COMPONENTS;
 
     #[test]
-    fn the_tray_is_available_and_the_reserved_components_are_planned() {
+    fn the_tray_and_the_monitors_are_available_and_the_island_is_planned() {
         let keys = COMPONENTS.map(|component| (component.key, component.available));
         assert_eq!(
             keys,
             [
                 ("tray", true),
-                ("desktop", false),
-                ("taskbar", false),
+                ("desktop", true),
+                ("taskbar", true),
                 ("island", false)
             ]
         );

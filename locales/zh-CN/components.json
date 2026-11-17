@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "托盘",
+    "desktop": "桌面监控",
+    "taskbar": "任务栏监控",
     "planned": "更多组件"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "打开组件页"
     }
   },
+  "metrics": {
+    "title": "显示的读数",
+    "desc": "按下列顺序显示所选读数。显卡读数取专用显存最大的显卡。"
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "CPU 温度",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "内存",
+      "short": "内存"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "GPU 温度",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "显存",
+      "short": "显存"
+    },
+    "disk": {
+      "name": "磁盘"
+    },
+    "network": {
+      "name": "网络"
+    },
+    "read": "读",
+    "write": "写"
+  },
+  "desktop": {
+    "title": "桌面监控",
+    "desc": "在桌面上以小窗口显示所选读数。拖动可移动位置，双击打开 Argus，右键单击打开菜单。显示期间按“刷新频率”采样。",
+    "topmost": {
+      "title": "置顶显示",
+      "desc": "显示在其他窗口之上。"
+    },
+    "locked": {
+      "title": "锁定位置",
+      "desc": "锁定后无法拖动。"
+    },
+    "clickThrough": {
+      "title": "鼠标穿透",
+      "desc": "单击和拖动作用于下方的窗口。开启后仅可在此页关闭。"
+    },
+    "opacity": {
+      "title": "不透明度",
+      "desc": "整个小窗口的不透明度。"
+    },
+    "menu": {
+      "open": "打开 Argus",
+      "topmost": "置顶显示",
+      "locked": "锁定位置",
+      "settings": "组件设置…",
+      "hide": "关闭桌面监控"
+    }
+  },
+  "taskbar": {
+    "title": "任务栏监控",
+    "desc": "在主显示器的任务栏上显示所选读数。单击与右键单击的作用与托盘图标相同。显示期间按“刷新频率”采样。",
+    "place": {
+      "title": "位置",
+      "desc": "“任务栏左侧”仅适用于按钮居中的 Windows 11 任务栏，其他情况显示在托盘旁。",
+      "tray": "托盘旁",
+      "start": "任务栏左侧"
+    }
+  },
   "planned": {
     "state": "规划中",
-    "desktop": {
-      "title": "桌面监控",
-      "desc": "在桌面上常驻显示所选指标的小组件。"
-    },
-    "taskbar": {
-      "title": "任务栏监控",
-      "desc": "在任务栏上直接显示 CPU、内存与网络速率。"
-    },
     "island": {
       "title": "灵动岛",
       "desc": "在屏幕顶部以胶囊形式显示实时读数与通知。"

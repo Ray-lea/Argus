@@ -60,6 +60,7 @@ impl Desktop {
             table.update(cx, |_, cx| cx.notify());
             frame.update(cx, |_, cx| cx.notify());
         }
+        self.restyle_monitors(cx);
         cx.notify();
     }
     /// A saved or dragged navigation width within its limits.

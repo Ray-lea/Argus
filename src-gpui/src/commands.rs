@@ -21,8 +21,8 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, Language, SettingsStore, SettingsView, Theme, TrayIcon, TrayMenu,
-    UpdateChannel, UpdateRoute,
+    BACKGROUND_INTERVALS, Language, MONITOR_OPACITIES, Metric, SettingsStore, SettingsView,
+    TaskbarPlace, Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -562,6 +562,90 @@ pub fn set_tray(
         })
         .map_err(|e| e.to_string())?;
     shell::apply_tray(&saved);
+    Ok(settings_view(&app))
+}
+
+/// A monitor's metrics as asked for: each once, in the order given.
+fn distinct(metrics: Vec<Metric>) -> Vec<Metric> {
+    let mut kept = Vec::with_capacity(metrics.len());
+    for metric in metrics {
+        if !kept.contains(&metric) {
+            kept.push(metric);
+        }
+    }
+    kept
+}
+
+/// The desktop monitor's settings; each one given changes. The interface
+/// shows, hides or rearranges the monitor's window from the settings
+/// returned.
+#[allow(clippy::too_many_arguments)]
+pub fn set_desktop_monitor(
+    app: crate::native_runtime::Host,
+    enabled: Option<bool>,
+    metrics: Option<Vec<Metric>>,
+    topmost: Option<bool>,
+    locked: Option<bool>,
+    click_through: Option<bool>,
+    opacity: Option<u8>,
+    position: Option<[i32; 2]>,
+) -> Result<SettingsView, String> {
+    if opacity.is_some_and(|value| !MONITOR_OPACITIES.contains(&value)) {
+        return Err(tr!("app.invalidRequest"));
+    }
+    app.state::<SettingsStore>()
+        .update(|s| {
+            let monitor = &mut s.desktop_monitor;
+            if let Some(enabled) = enabled {
+                monitor.enabled = enabled;
+            }
+            if let Some(metrics) = metrics {
+                monitor.metrics = distinct(metrics);
+            }
+            if let Some(topmost) = topmost {
+                monitor.topmost = topmost;
+            }
+            if let Some(locked) = locked {
+                monitor.locked = locked;
+            }
+            if let Some(click_through) = click_through {
+                monitor.click_through = click_through;
+            }
+            if let Some(opacity) = opacity {
+                monitor.opacity = opacity;
+            }
+            if let Some(position) = position {
+                monitor.position = Some(position);
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
+/// The taskbar monitor's settings; each one given changes, and the monitor
+/// follows at once.
+pub fn set_taskbar_monitor(
+    app: crate::native_runtime::Host,
+    enabled: Option<bool>,
+    metrics: Option<Vec<Metric>>,
+    place: Option<TaskbarPlace>,
+) -> Result<SettingsView, String> {
+    let saved = app
+        .state::<SettingsStore>()
+        .update(|s| {
+            let monitor = &mut s.taskbar_monitor;
+            if let Some(enabled) = enabled {
+                monitor.enabled = enabled;
+            }
+            if let Some(metrics) = metrics {
+                monitor.metrics = distinct(metrics);
+            }
+            if let Some(place) = place {
+                monitor.place = place;
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    shell::apply_taskbar_monitor(&app, &saved.taskbar_monitor);
     Ok(settings_view(&app))
 }
 

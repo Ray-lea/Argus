@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "Bandeja del sistema",
+    "desktop": "Monitor de escritorio",
+    "taskbar": "Monitor en la barra de tareas",
     "planned": "Más componentes"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "Abrir Componentes"
     }
   },
+  "metrics": {
+    "title": "Lecturas mostradas",
+    "desc": "Las lecturas elegidas se muestran en el orden siguiente. Las lecturas de GPU corresponden a la GPU con más memoria dedicada."
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "Temperatura de CPU",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "Memoria",
+      "short": "RAM"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "Temperatura de GPU",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "Memoria de GPU",
+      "short": "VRAM"
+    },
+    "disk": {
+      "name": "Disco"
+    },
+    "network": {
+      "name": "Red"
+    },
+    "read": "L",
+    "write": "E"
+  },
+  "desktop": {
+    "title": "Monitor de escritorio",
+    "desc": "Muestra las lecturas elegidas en una pequeña ventana del escritorio. Arrástrela para moverla, haga doble clic para abrir Argus o clic derecho para abrir el menú. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "topmost": {
+      "title": "Siempre visible",
+      "desc": "Se muestra por encima de las demás ventanas."
+    },
+    "locked": {
+      "title": "Bloquear posición",
+      "desc": "Al bloquearla, no se puede arrastrar."
+    },
+    "clickThrough": {
+      "title": "Dejar pasar los clics",
+      "desc": "Los clics y arrastres llegan a la ventana de debajo. Una vez activada, esta opción solo se puede desactivar en esta página."
+    },
+    "opacity": {
+      "title": "Opacidad",
+      "desc": "Opacidad de toda la ventana."
+    },
+    "menu": {
+      "open": "Abrir Argus",
+      "topmost": "Siempre visible",
+      "locked": "Bloquear posición",
+      "settings": "Configuración de componentes…",
+      "hide": "Desactivar el monitor de escritorio"
+    }
+  },
+  "taskbar": {
+    "title": "Monitor en la barra de tareas",
+    "desc": "Muestra las lecturas elegidas en la barra de tareas de la pantalla principal. El clic y el clic derecho funcionan igual que en el icono de la bandeja. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "place": {
+      "title": "Posición",
+      "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados. En otros casos, el monitor aparece junto a la bandeja.",
+      "tray": "Junto a la bandeja",
+      "start": "Lado izquierdo"
+    }
+  },
   "planned": {
     "state": "Previsto",
-    "desktop": {
-      "title": "Monitor de escritorio",
-      "desc": "Un widget que mantiene en el escritorio las lecturas elegidas."
-    },
-    "taskbar": {
-      "title": "Monitor en la barra de tareas",
-      "desc": "CPU, memoria y velocidad de red directamente en la barra de tareas."
-    },
     "island": {
       "title": "Isla dinámica",
       "desc": "Lecturas en tiempo real y notificaciones en una cápsula en la parte superior de la pantalla."

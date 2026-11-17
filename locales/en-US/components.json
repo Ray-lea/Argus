@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "System tray",
+    "desktop": "Desktop monitor",
+    "taskbar": "Taskbar monitor",
     "planned": "More components"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "Open Components"
     }
   },
+  "metrics": {
+    "title": "Readings shown",
+    "desc": "Chosen readings appear in the order below. GPU readings come from the GPU with the most dedicated memory."
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "CPU temperature",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "Memory",
+      "short": "RAM"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "GPU temperature",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "GPU memory",
+      "short": "VRAM"
+    },
+    "disk": {
+      "name": "Disk"
+    },
+    "network": {
+      "name": "Network"
+    },
+    "read": "R",
+    "write": "W"
+  },
+  "desktop": {
+    "title": "Desktop monitor",
+    "desc": "Shows the chosen readings in a small window on the desktop. Drag to move it, double-click to open Argus, and right-click to open the menu. While it is shown, Argus samples at the “Refresh rate”.",
+    "topmost": {
+      "title": "Always on top",
+      "desc": "Stays above other windows."
+    },
+    "locked": {
+      "title": "Lock position",
+      "desc": "When locked, it can't be dragged."
+    },
+    "clickThrough": {
+      "title": "Click-through",
+      "desc": "Clicks and drags go to the window underneath. Once on, it can be turned off only on this page."
+    },
+    "opacity": {
+      "title": "Opacity",
+      "desc": "Opacity of the whole window."
+    },
+    "menu": {
+      "open": "Open Argus",
+      "topmost": "Always on top",
+      "locked": "Lock position",
+      "settings": "Component settings…",
+      "hide": "Turn off desktop monitor"
+    }
+  },
+  "taskbar": {
+    "title": "Taskbar monitor",
+    "desc": "Shows the chosen readings on the taskbar of the main display. Clicking and right-clicking work as they do on the tray icon. While it is shown, Argus samples at the “Refresh rate”.",
+    "place": {
+      "title": "Position",
+      "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
+      "tray": "Next to tray",
+      "start": "Left side"
+    }
+  },
   "planned": {
     "state": "Planned",
-    "desktop": {
-      "title": "Desktop monitor",
-      "desc": "A widget that keeps chosen readings on the desktop."
-    },
-    "taskbar": {
-      "title": "Taskbar monitor",
-      "desc": "CPU, memory and network rates right on the taskbar."
-    },
     "island": {
       "title": "Dynamic island",
       "desc": "Live readings and notifications in a capsule at the top of the screen."

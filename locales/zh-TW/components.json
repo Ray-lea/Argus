@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "系統匣",
+    "desktop": "桌面監控",
+    "taskbar": "工作列監控",
     "planned": "更多元件"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "開啟元件頁面"
     }
   },
+  "metrics": {
+    "title": "顯示的讀數",
+    "desc": "依下列順序顯示所選讀數。顯示卡讀數取自專用 GPU 記憶體最大的顯示卡。"
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "CPU 溫度",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "記憶體",
+      "short": "記憶體"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "GPU 溫度",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "GPU 記憶體",
+      "short": "VRAM"
+    },
+    "disk": {
+      "name": "磁碟"
+    },
+    "network": {
+      "name": "網路"
+    },
+    "read": "讀",
+    "write": "寫"
+  },
+  "desktop": {
+    "title": "桌面監控",
+    "desc": "在桌面上以小視窗顯示所選讀數。拖曳可移動位置，按兩下開啟 Argus，按滑鼠右鍵開啟功能表。顯示期間依「重新整理頻率」取樣。",
+    "topmost": {
+      "title": "置頂顯示",
+      "desc": "顯示在其他視窗之上。"
+    },
+    "locked": {
+      "title": "鎖定位置",
+      "desc": "鎖定後無法拖曳。"
+    },
+    "clickThrough": {
+      "title": "滑鼠穿透",
+      "desc": "按一下和拖曳會作用於下方的視窗。開啟後僅可在此頁面關閉。"
+    },
+    "opacity": {
+      "title": "不透明度",
+      "desc": "整個小視窗的不透明度。"
+    },
+    "menu": {
+      "open": "開啟 Argus",
+      "topmost": "置頂顯示",
+      "locked": "鎖定位置",
+      "settings": "元件設定…",
+      "hide": "關閉桌面監控"
+    }
+  },
+  "taskbar": {
+    "title": "工作列監控",
+    "desc": "在主顯示器的工作列上顯示所選讀數。按一下與按滑鼠右鍵的作用與系統匣圖示相同。顯示期間依「重新整理頻率」取樣。",
+    "place": {
+      "title": "位置",
+      "desc": "「工作列左側」僅適用於按鈕置中的 Windows 11 工作列，其他情況顯示在系統匣旁。",
+      "tray": "系統匣旁",
+      "start": "工作列左側"
+    }
+  },
   "planned": {
     "state": "規劃中",
-    "desktop": {
-      "title": "桌面監控",
-      "desc": "在桌面上常駐顯示所選指標的小工具。"
-    },
-    "taskbar": {
-      "title": "工作列監控",
-      "desc": "在工作列上直接顯示 CPU、記憶體與網路速率。"
-    },
     "island": {
       "title": "動態島",
       "desc": "在螢幕頂端以膠囊形式顯示即時讀數與通知。"

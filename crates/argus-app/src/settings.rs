@@ -151,6 +151,161 @@ impl From<TrayMenu> for String {
     }
 }
 
+/// A reading the desktop and taskbar monitors can show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Metric {
+    Cpu,
+    CpuTemperature,
+    Memory,
+    Gpu,
+    GpuTemperature,
+    GpuMemory,
+    /// Read and write rates of all disks.
+    Disk,
+    /// Receive and send rates of all adapters.
+    Network,
+}
+
+impl Metric {
+    /// Every metric, in the order the components page offers them.
+    pub const ALL: [Metric; 8] = [
+        Metric::Cpu,
+        Metric::CpuTemperature,
+        Metric::Memory,
+        Metric::Gpu,
+        Metric::GpuTemperature,
+        Metric::GpuMemory,
+        Metric::Disk,
+        Metric::Network,
+    ];
+}
+
+/// A list of metrics as saved: names this version does not know (from a
+/// newer Argus, or a hand edit) and repeats are left out, keeping the rest.
+fn lenient_metrics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Metric>, D::Error> {
+    let mut metrics = Vec::new();
+    if let serde_json::Value::Array(names) = serde_json::Value::deserialize(d)? {
+        for name in names {
+            if let Ok(metric) = serde_json::from_value::<Metric>(name)
+                && !metrics.contains(&metric)
+            {
+                metrics.push(metric);
+            }
+        }
+    }
+    Ok(metrics)
+}
+
+/// The window opacities the desktop monitor offers, percent.
+pub const MONITOR_OPACITIES: [u8; 5] = [100, 90, 80, 70, 60];
+
+/// The desktop monitor: a small window of live readings that stays on the
+/// desktop outside the main window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DesktopMonitor {
+    pub enabled: bool,
+    /// What it shows, in this order.
+    #[serde(deserialize_with = "lenient_metrics")]
+    pub metrics: Vec<Metric>,
+    /// It stays above other windows.
+    pub topmost: bool,
+    /// It cannot be dragged.
+    pub locked: bool,
+    /// Clicks pass through it to the windows below.
+    pub click_through: bool,
+    /// Percent; one of `MONITOR_OPACITIES`.
+    pub opacity: u8,
+    /// Its top-left corner on the virtual screen, physical pixels; none
+    /// until it was first moved (it then opens at the top right of the
+    /// primary display).
+    pub position: Option<[i32; 2]>,
+}
+
+impl Default for DesktopMonitor {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            metrics: vec![
+                Metric::Cpu,
+                Metric::Memory,
+                Metric::Gpu,
+                Metric::Disk,
+                Metric::Network,
+            ],
+            topmost: true,
+            locked: false,
+            click_through: false,
+            opacity: 100,
+            position: None,
+        }
+    }
+}
+
+/// Where on the taskbar the taskbar monitor sits. Stored as its name; one
+/// this version does not know reads as the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum TaskbarPlace {
+    /// Beside the notification area.
+    #[default]
+    Tray,
+    /// At the start of the taskbar; only on Windows 11 with the taskbar's
+    /// buttons centred, beside the tray otherwise.
+    Start,
+}
+
+impl From<String> for TaskbarPlace {
+    fn from(name: String) -> Self {
+        match name.as_str() {
+            "start" => TaskbarPlace::Start,
+            _ => TaskbarPlace::Tray,
+        }
+    }
+}
+
+impl From<TaskbarPlace> for String {
+    fn from(place: TaskbarPlace) -> Self {
+        match place {
+            TaskbarPlace::Tray => "tray",
+            TaskbarPlace::Start => "start",
+        }
+        .into()
+    }
+}
+
+/// The taskbar monitor: live readings on the primary display's taskbar.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TaskbarMonitor {
+    pub enabled: bool,
+    /// What it shows, in this order.
+    #[serde(deserialize_with = "lenient_metrics")]
+    pub metrics: Vec<Metric>,
+    pub place: TaskbarPlace,
+}
+
+impl Default for TaskbarMonitor {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            metrics: vec![Metric::Cpu, Metric::Memory, Metric::Network],
+            place: TaskbarPlace::default(),
+        }
+    }
+}
+
+/// A monitor's settings as saved, or its defaults when they do not read
+/// (a hand edit), keeping the other settings.
+fn lenient_monitor<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).unwrap_or_default())
+}
+
 /// Which releases count as updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,6 +354,10 @@ pub struct Settings {
     pub minimized_interval: u64,
     /// How often to sample while Argus is in the tray, ms.
     pub tray_interval: u64,
+    #[serde(deserialize_with = "lenient_monitor")]
+    pub desktop_monitor: DesktopMonitor,
+    #[serde(deserialize_with = "lenient_monitor")]
+    pub taskbar_monitor: TaskbarMonitor,
     /// Global shortcut that shows/hides the window, e.g. `Ctrl+Alt+Escape`
     /// (see hotkey.rs); empty disables it.
     #[serde(deserialize_with = "lenient_hotkey")]
@@ -238,6 +397,8 @@ impl Default for Settings {
             tray_menu: TrayMenu::default(),
             minimized_interval: DEFAULT_BACKGROUND_INTERVAL,
             tray_interval: DEFAULT_BACKGROUND_INTERVAL,
+            desktop_monitor: DesktopMonitor::default(),
+            taskbar_monitor: TaskbarMonitor::default(),
             hotkey: DEFAULT_HOTKEY.into(),
             hotkey_enabled: true,
             rules: Vec::new(),
@@ -267,6 +428,9 @@ impl Settings {
             if !BACKGROUND_INTERVALS.contains(ms) {
                 *ms = DEFAULT_BACKGROUND_INTERVAL;
             }
+        }
+        if !MONITOR_OPACITIES.contains(&self.desktop_monitor.opacity) {
+            self.desktop_monitor.opacity = 100;
         }
     }
 
@@ -510,6 +674,68 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn monitors_start_off_and_keep_what_they_know() {
+        // Settings saved before the monitors existed.
+        let old: Settings = serde_json::from_str(r#"{"closeToTray": false}"#).unwrap();
+        assert_eq!(old.desktop_monitor, DesktopMonitor::default());
+        assert_eq!(old.taskbar_monitor, TaskbarMonitor::default());
+        assert!(!old.desktop_monitor.enabled && !old.taskbar_monitor.enabled);
+        // Unknown and repeated metrics drop out; an unknown place reads as
+        // the tray; the rest of the monitor stays.
+        let newer: Settings = serde_json::from_str(
+            r#"{"desktopMonitor": {"enabled": true, "metrics": ["fps", "network", "cpu", "network"], "position": [-1200, 40]},
+                "taskbarMonitor": {"enabled": true, "metrics": [], "place": "middle"}}"#,
+        )
+        .unwrap();
+        assert!(newer.desktop_monitor.enabled);
+        assert_eq!(
+            newer.desktop_monitor.metrics,
+            [Metric::Network, Metric::Cpu]
+        );
+        assert_eq!(newer.desktop_monitor.position, Some([-1200, 40]));
+        assert!(newer.desktop_monitor.topmost);
+        assert!(newer.taskbar_monitor.enabled);
+        assert!(newer.taskbar_monitor.metrics.is_empty());
+        assert_eq!(newer.taskbar_monitor.place, TaskbarPlace::Tray);
+        // A monitor that does not read at all keeps the other settings.
+        let mut edited: Settings = serde_json::from_str(
+            r#"{"desktopMonitor": {"opacity": "half"}, "taskbarMonitor": 3, "closeToTray": false}"#,
+        )
+        .unwrap();
+        edited.migrate();
+        assert_eq!(edited.desktop_monitor, DesktopMonitor::default());
+        assert_eq!(edited.taskbar_monitor, TaskbarMonitor::default());
+        assert!(!edited.close_to_tray);
+        // An opacity on offer nowhere reads as opaque.
+        let mut odd: Settings =
+            serde_json::from_str(r#"{"desktopMonitor": {"opacity": 55, "locked": true}}"#).unwrap();
+        odd.migrate();
+        assert_eq!(odd.desktop_monitor.opacity, 100);
+        assert!(odd.desktop_monitor.locked);
+        // Everything round-trips.
+        let saved = Settings {
+            desktop_monitor: DesktopMonitor {
+                enabled: true,
+                metrics: Metric::ALL.to_vec(),
+                topmost: false,
+                locked: true,
+                click_through: true,
+                opacity: 70,
+                position: Some([10, 20]),
+            },
+            taskbar_monitor: TaskbarMonitor {
+                enabled: true,
+                metrics: vec![Metric::GpuTemperature, Metric::Disk],
+                place: TaskbarPlace::Start,
+            },
+            ..Settings::default()
+        };
+        let read: Settings = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(read.desktop_monitor, saved.desktop_monitor);
+        assert_eq!(read.taskbar_monitor, saved.taskbar_monitor);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 {
   "sections": {
     "tray": "Infobereich",
+    "desktop": "Desktopanzeige",
+    "taskbar": "Taskleistenanzeige",
     "planned": "Weitere Komponenten"
   },
   "tray": {
@@ -28,16 +30,83 @@
       "open": "Komponenten öffnen"
     }
   },
+  "metrics": {
+    "title": "Angezeigte Werte",
+    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. GPU-Werte stammen von der GPU mit dem meisten dedizierten Speicher."
+  },
+  "metric": {
+    "cpu": {
+      "name": "CPU",
+      "short": "CPU"
+    },
+    "cpuTemperature": {
+      "name": "CPU-Temperatur",
+      "short": "CPU"
+    },
+    "memory": {
+      "name": "Arbeitsspeicher",
+      "short": "RAM"
+    },
+    "gpu": {
+      "name": "GPU",
+      "short": "GPU"
+    },
+    "gpuTemperature": {
+      "name": "GPU-Temperatur",
+      "short": "GPU"
+    },
+    "gpuMemory": {
+      "name": "GPU-Speicher",
+      "short": "VRAM"
+    },
+    "disk": {
+      "name": "Datenträger"
+    },
+    "network": {
+      "name": "Netzwerk"
+    },
+    "read": "L",
+    "write": "S"
+  },
+  "desktop": {
+    "title": "Desktopanzeige",
+    "desc": "Zeigt die ausgewählten Werte in einem kleinen Fenster auf dem Desktop. Ziehen verschiebt das Fenster, ein Doppelklick öffnet Argus, ein Rechtsklick das Menü. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "topmost": {
+      "title": "Immer im Vordergrund",
+      "desc": "Bleibt über anderen Fenstern."
+    },
+    "locked": {
+      "title": "Position sperren",
+      "desc": "Gesperrt lässt sich das Fenster nicht verschieben."
+    },
+    "clickThrough": {
+      "title": "Klicks durchlassen",
+      "desc": "Klicks und Ziehen wirken auf das Fenster darunter. Einmal aktiviert, lässt sich die Option nur auf dieser Seite wieder ausschalten."
+    },
+    "opacity": {
+      "title": "Deckkraft",
+      "desc": "Deckkraft des gesamten Fensters."
+    },
+    "menu": {
+      "open": "Argus öffnen",
+      "topmost": "Immer im Vordergrund",
+      "locked": "Position sperren",
+      "settings": "Komponenteneinstellungen…",
+      "hide": "Desktopanzeige ausschalten"
+    }
+  },
+  "taskbar": {
+    "title": "Taskleistenanzeige",
+    "desc": "Zeigt die ausgewählten Werte in der Taskleiste des Hauptbildschirms. Klicken und Rechtsklick wirken wie beim Symbol im Infobereich. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "place": {
+      "title": "Position",
+      "desc": "„Linke Seite“ gilt nur für die Taskleiste von Windows 11 mit zentrierten Schaltflächen. Andernfalls erscheint die Anzeige neben dem Infobereich.",
+      "tray": "Neben dem Infobereich",
+      "start": "Linke Seite"
+    }
+  },
   "planned": {
     "state": "Geplant",
-    "desktop": {
-      "title": "Desktopanzeige",
-      "desc": "Ein Widget, das ausgewählte Werte dauerhaft auf dem Desktop zeigt."
-    },
-    "taskbar": {
-      "title": "Taskleistenanzeige",
-      "desc": "CPU, Arbeitsspeicher und Netzwerkraten direkt in der Taskleiste."
-    },
     "island": {
       "title": "Dynamic Island",
       "desc": "Aktuelle Werte und Benachrichtigungen in einer Kapsel am oberen Bildschirmrand."
