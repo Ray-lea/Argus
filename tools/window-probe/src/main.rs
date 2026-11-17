@@ -64,8 +64,15 @@ fn main() -> anyhow::Result<()> {
             },
             args[0] == "capture-flyout",
         )?,
+        #[cfg(all(windows, feature = "capture"))]
+        Some("capture-window") => windows::capture_class(
+            args.get(1).context("window PID required")?.parse()?,
+            args.get(2).context("PNG path required")?,
+            args.get(3).context("window class required")?,
+            args.get(4).map_or("", String::as_str),
+        )?,
         _ => anyhow::bail!(
-            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | capture-flyout PID PNG | capture-preview PID PNG INACTIVE ACTIVE | compare LEFT RIGHT | crop IN OUT X Y W H [SCALE] | sheet OUT X Y W H COLUMNS SCALE IN... | frame-contrast DIRECTORY | track-chart DIRECTORY"
+            "usage: argus-window-probe run EXE [ARGS] | capture PID PNG | capture-flyout PID PNG | capture-window PID PNG CLASS [TITLE] | capture-preview PID PNG INACTIVE ACTIVE | compare LEFT RIGHT | crop IN OUT X Y W H [SCALE] | sheet OUT X Y W H COLUMNS SCALE IN... | frame-contrast DIRECTORY | track-chart DIRECTORY"
         ),
     }
     Ok(())

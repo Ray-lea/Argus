@@ -45,6 +45,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `expect` | 以点分路径核对 `inspect` 的结果，如 `{ "state.focus.item.label": "CPU 时间" }` |
 | `capture` | 捕获窗口为 PNG |
 | `captureFlyout` | 捕获托盘的悬停卡片或快捷面板为 PNG（测试实例的可见工具窗口） |
+| `captureWindow` | `{ "name", "class", "title"? }`：捕获测试实例中指定窗口类、标题含 `title` 的可见窗口，如桌面监控（`Zed::Window`，标题为界面语言的“桌面监控”）与替身任务栏（`ArgusTestTaskbar`） |
 | `crop` | `{ "from", "name", "region": [x, y, 宽, 高], "scale"? }`：裁剪并放大一张截图 |
 | `sheet` | `{ "name", "from", "region", "columns"?, "scale"?, "every"?, "limit"? }`：把一段录制（或若干截图）的同一区域按顺序拼成一张图 |
 
@@ -71,6 +72,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 [`tray-page.json`](../../tools/window-probe/steps/tray-page.json) 检查从托盘打开的页面选择、对话框上下文及筛选保留。`hide` / `show` 经原生窗口消息触发托盘恢复；`close` 发送关闭按钮的 `WM_CLOSE`，在“关闭时隐藏到托盘”开启时经淡出进入托盘，`minimize` 不激活其他窗口地最小化，两者同样用 `show` 恢复；`show` 先输出带 `qpc100ns` 的 `restoring` 事件，可与帧跟踪的提交时刻对照恢复后的首帧。模拟快照实例的 `restored` 控制向同一事件入口注入首次显示与最小化恢复，核对页面策略。
 
 [`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
+
+[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数和 70% 不透明度下的画面，以及组件页的对应分组，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。
 
 [`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
 
@@ -119,6 +122,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `passive` | 与 `mouse`、`wheel` 等输入一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |
+| `desktopMonitor`、`taskbarMonitor` | 经组件页使用的 `set_desktop_monitor`、`set_taskbar_monitor` 修改监控设置，如 `{ "enabled": true }`、`{ "metrics": ["cpu", "network"] }`、`{ "opacity": 70 }`；模拟快照下同样执行，只改变测试实例自身的设置与窗口 |
+| `desktopMonitorMenu` | `topmost`、`locked` 或 `hide`：如同在桌面监控的右键菜单中选择该项 |
 | `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
 
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。

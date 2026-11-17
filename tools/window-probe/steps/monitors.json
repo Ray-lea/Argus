@@ -1,0 +1,27 @@
+{
+  "window": [1100, 900],
+  "steps": [
+    {"control":{"page":"components"},"wait":700},
+    {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
+    {"control":{"taskbarMonitor":{"enabled":true}},"wait":1500},
+    {"inspect":"layout","label":"on","expect":{"monitors.desktop.visible":true,"monitors.desktop.placed":true}},
+    {"captureWindow":{"name":"desktop-dark","class":"Zed::Window","title":"桌面监控"}},
+    {"captureWindow":{"name":"taskbar-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-8}},"wait":600,"capture":"components-desktop-dark"},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-12}},"wait":600,"capture":"components-taskbar-dark"},
+    {"control":{"desktopMonitor":{"metrics":["cpu","cpuTemperature","memory","gpu","gpuTemperature","gpuMemory","disk","network"]}},"wait":1200},
+    {"control":{"taskbarMonitor":{"metrics":["cpu","cpuTemperature","memory","gpu","gpuMemory","disk","network"]}},"wait":1500},
+    {"inspect":"layout","label":"all","expect":{"monitors.desktop.visible":true}},
+    {"captureWindow":{"name":"desktop-all-dark","class":"Zed::Window","title":"桌面监控"}},
+    {"captureWindow":{"name":"taskbar-all-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"place":"start"}},"wait":1200,"captureWindow":{"name":"taskbar-start-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"theme":"light"},"wait":1200},
+    {"captureWindow":{"name":"desktop-all-light","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"desktopMonitor":{"opacity":70}},"wait":800},
+    {"captureWindow":{"name":"desktop-translucent-light","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"page":"components"},"wait":700,"capture":"components-light"},
+    {"control":{"desktopMonitorMenu":"hide"},"wait":900},
+    {"control":{"taskbarMonitor":{"enabled":false}},"wait":900},
+    {"inspect":"layout","label":"off","expect":{"monitors.desktop":null,"monitors.taskbar":null}}
+  ]
+}

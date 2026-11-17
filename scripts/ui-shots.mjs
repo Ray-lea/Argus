@@ -133,6 +133,11 @@ try {
       tool("capture-flyout", String(shown.pid), join(output, `${step.captureFlyout}.png`));
       console.log(`captured ${step.captureFlyout}`);
     }
+    if (step.captureWindow) {
+      const { name, class: windowClass, title = "" } = step.captureWindow;
+      tool("capture-window", String(shown.pid), join(output, `${name}.png`), windowClass, title);
+      console.log(`captured ${name}`);
+    }
     if (step.crop) {
       const { from, name, region, scale } = step.crop;
       tool("crop", join(output, `${from}.png`), join(output, `${name}.png`), ...region.map(String), String(scale));

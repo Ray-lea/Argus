@@ -257,6 +257,7 @@ pub fn startup(args: &[String]) -> Result<()> {
                 pid,
                 hwnd: HWND::default(),
                 flyout: false,
+                window: None,
             };
             unsafe {
                 let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));
@@ -437,6 +438,10 @@ struct Search {
     hwnd: HWND,
     /// Look for a tray flyout (a visible tool window) instead of the main window.
     flyout: bool,
+    /// Look for a visible window of this class instead, whose title holds
+    /// the given text (any title when empty): the desktop monitor, the
+    /// taskbar stand-in.
+    window: Option<(String, String)>,
 }
 unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
     let search = unsafe { &mut *(data.0 as *mut Search) };
@@ -458,7 +463,11 @@ unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> BOOL {
     // The tray's flyouts are topmost tool windows of the same class, listed
     // before the main window while they show.
     let tool = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_TOOLWINDOW.0 as isize != 0;
-    let found = if search.flyout {
+    let found = if let Some((wanted, part)) = &search.window {
+        class == *wanted
+            && String::from_utf16_lossy(&title[..nt]).contains(part.as_str())
+            && unsafe { IsWindowVisible(hwnd).as_bool() }
+    } else if search.flyout {
         class == "Zed::Window" && tool && unsafe { IsWindowVisible(hwnd).as_bool() }
     } else {
         String::from_utf16_lossy(&title[..nt])
@@ -1024,6 +1033,7 @@ pub fn run(args: &[String]) -> Result<()> {
         pid: root,
         hwnd: HWND::default(),
         flyout: false,
+        window: None,
     };
     let mut measured = Instant::now();
     let mut closing = None;
@@ -1479,6 +1489,30 @@ pub fn run(args: &[String]) -> Result<()> {
 
 #[cfg(feature = "capture")]
 pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>, flyout: bool) -> Result<()> {
+    capture_window(pid, path, preview, flyout, None)
+}
+
+/// Captures a visible window of the process with class `class` whose title
+/// holds `title`.
+#[cfg(feature = "capture")]
+pub fn capture_class(pid: u32, path: &str, class: &str, title: &str) -> Result<()> {
+    capture_window(
+        pid,
+        path,
+        None,
+        false,
+        Some((class.to_owned(), title.to_owned())),
+    )
+}
+
+#[cfg(feature = "capture")]
+fn capture_window(
+    pid: u32,
+    path: &str,
+    preview: Option<(&str, &str)>,
+    flyout: bool,
+    window: Option<(String, String)>,
+) -> Result<()> {
     use windows::{
         Graphics::{
             Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem},
@@ -1502,6 +1536,7 @@ pub fn capture(pid: u32, path: &str, preview: Option<(&str, &str)>, flyout: bool
         pid,
         hwnd: HWND::default(),
         flyout,
+        window,
     };
     unsafe {
         let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));
