@@ -1,0 +1,20 @@
+{
+  "window": [1400, 900],
+  "steps": [
+    {"control":{"page":"processes","view":"apps","details":false,"motion":"off","preference":{"processSort":{"key":"name","desc":false},"groupByUser":"off"}},"wait":600,"inspect":"columns","label":"top","expect":{"state.groups.groups.length":3,"state.groups.groups.0.tone":"apps","state.groups.groups.1.tone":"background","state.groups.groups.2.tone":"windows","state.groups.held.length":0},"capture":"top"},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-10}},"wait":500,"inspect":"columns","label":"held","expect":{"state.groups.held.length":1,"state.groups.held.0.key":"s:background","state.groups.held.0.y":0,"state.groups.name.key":"s:background","state.groups.name.index":3,"state.groups.name.count":10},"capture":"held"},
+    {"wait":1400,"inspect":"columns","label":"name-gone","expect":{"state.groups.name":null,"state.groups.held.0.key":"s:background"}},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-7.55}},"wait":500,"inspect":"columns","label":"pushed","expect":{"state.groups.held.0.key":"s:background","state.groups.name.key":"s:windows"},"capture":"pushed"},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-10}},"wait":500,"inspect":"columns","label":"windows","expect":{"state.groups.held.0.key":"s:windows","state.groups.held.0.y":0},"capture":"windows"},
+    {"control":{"mouse":{"type":"move","x":300,"y":293}},"wait":50},
+    {"control":{"mouse":{"type":"down","x":300,"y":293}},"wait":50},
+    {"control":{"mouse":{"type":"up","x":300,"y":293}},"wait":500,"inspect":"columns","label":"folded","expect":{"state.groups.groups.2.rows":0},"capture":"folded"},
+    {"control":{"foldRow":2},"wait":300},
+    {"control":{"preference":{"groupByUser":"on"}},"wait":500},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-12}},"wait":500,"inspect":"columns","label":"users","expect":{"state.groups.groups.0.tone":"user1","state.groups.held.length":2,"state.groups.held.1.y":30},"capture":"users"},
+    {"control":{"theme":"light"},"wait":900,"capture":"users-light"},
+    {"control":{"preference":{"uiScale":150}},"wait":700},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-3}},"wait":500,"inspect":"columns","label":"scaled","expect":{"state.groups.held.length":2},"capture":"scaled"},
+    {"control":{"wheel":{"x":700,"y":500,"lines":-4,"shift":true}},"wait":500,"inspect":"columns","label":"sideways","expect":{"state.groups.held.length":2},"capture":"sideways"}
+  ]
+}

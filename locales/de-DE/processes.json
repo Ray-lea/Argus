@@ -45,7 +45,14 @@
     "one": "{count} Prozess",
     "other": "{count} Prozesse"
   },
+  "totalHidden": {
+    "one": "{total} ({count} ausgeblendet)",
+    "other": "{total} ({count} ausgeblendet)"
+  },
   "filtered": "Die Liste wird durch die Suche gefiltert",
+  "orderHeld": "Sortierung angehalten: Die Zeilen bleiben an ihrem Platz, die Werte werden weiter aktualisiert. Sie werden neu sortiert, sobald der Zeiger die Liste verlässt oder das Menü bzw. der Dialog geschlossen wird.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Name",
@@ -309,6 +316,7 @@
     "hide": "{name}-Spalte ausblenden",
     "description": "Markieren Sie die anzuzeigenden Spalten. Verschieben Sie Einträge in der rechten Liste oder ziehen Sie die Spaltenüberschriften, um die Reihenfolge zu ändern.",
     "networkUnavailable": "Ausgewählte Netzwerkspalten werden angezeigt, wenn Verkehrsdaten verfügbar sind.",
+    "gpuUnavailable": "Keine GPU erkannt. Ausgewählte GPU-Spalten sind ausgeblendet.",
     "category": {
       "general": "Allgemein",
       "cpu": "CPU",

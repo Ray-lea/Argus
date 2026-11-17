@@ -22,6 +22,8 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--probe` 可指定探针路径。在相同窗口尺寸与曲线模式下交替测量前后构建；单独安排截图和构建，核对各轮的实际帧率。
 
+`--software-rendering` 在测试实例的设置中关闭“硬件加速”，窗口由 WARP 在 CPU 上绘制，结果的 `instrumentation.softwareRendering` 记录该条件。与默认模式对照时使用同一发行程序、窗口尺寸与曲线模式，并核对两者的实际呈现帧率。
+
 `--width`、`--height` 设置客户区物理尺寸，`--ui-scale` 设置应用缩放百分比（80–150，默认 100）；有效比例还包含 Windows DPI。物理尺寸换算允许小于 0.01 像素的浮点舍入误差。`--no-capture` 关闭持续窗口捕获，用于对照捕获引起的合成路径与 GPU 频率变化；该模式的帧率和帧间隔字段为 `null`，资源计数仍正常记录。捕获与无捕获结果分别报告。
 
 探针默认路径为 `target/release/argus-window-probe.exe`，先用 `cargo build --release -p argus-window-probe --features capture` 构建。`--scenario <JSON路径>` 读取阶段数组：每项包含 `name`、测试控制对象 `state`，可用 `seconds` 覆盖该阶段时长，可用 `hidden: true` 测量托盘、`minimized: true` 测量最小化（相邻的同类阶段保持该状态，便于对照归还内存前后），或用 `repeat` 数组在计时期间重复操作。重复操作可包含 `app` 测试控制、`probe` 探针命令与 `waitMs` 等待时间，用于滚动、切页和缩放；不得发送激活窗口的操作。结果保留完整场景。`--fixture <JSON路径>` 可指定固定快照，结果记录数据文件摘要；测量连续曲线时，固定快照也需显式推进采样或动画时间；静态画面单独作为静态场景测量。测量与界面检查脚本确认探针退出后清理该标识的数据目录。
@@ -118,7 +120,7 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 渲染样本还记录实际绘制、背景复制、清屏、MSAA 解析的调用数与像素量，以及实例和纹理上传字节数、脏区面积与缓存分支。纹理计数是相邻渲染调用之间的增量，包含该帧之前准备的资源。首段包含渲染目标与管线状态准备；时间戳间隔会包含 GPU 队列停顿和资源依赖等待，需结合实际命令数量与引擎忙碌时间分析。例如零复制、零清屏时的首段长间隔，应继续检查交换链和调度等待。纹理上传独立抽样。诊断结束后关闭该开关，再做正式资源对照。
 
-`gpu-timing.repairedPixels` 记录静态缓存的局部重绘面积。设置 `ARGUS_GPUI_DISABLE_PREFIX_REPAIR=1` 可在同一构建上对照完整静态绘制。进程选择切换、鼠标持续移过列表／顶部／详情栏、详情滚动和曲线量程过渡分别测量；固定快照通过 `sample.set` 更新读数时，保留一秒采样节拍。量程测试包含过渡结束后的稳定段，核对合成图层恢复、实际呈现帧率与内存。
+`gpu-timing.path` 区分两种绘制：`whole` 用于没有动画后缀的页面，与上一帧比较全部图元，只清除并重绘变化的矩形；`cached` 用于含曲线或动画柱条的页面，静态前缀缓存在纹理中并局部修补。两者都补画该帧交换链缓冲区自上次绘制以来错过的变化。`repairedPixels` 记录局部重绘面积，`suffix` 表示该帧是否重绘动态后缀，`localPrimitives` 与 `scenePrimitives` 分别记录局部重绘实际上传和绘制的图元数与整个场景的图元数，`cpuStepsUs` 记录渲染函数各步骤结束时的累计 CPU 微秒数（图元比较、剔除、上传、绘制等）。设置 `ARGUS_GPUI_DISABLE_PREFIX_REPAIR=1` 可在同一构建上对照完整静态绘制，`ARGUS_GPUI_DISABLE_SCENE_CACHE=1` 同时关闭缓存与局部绘制。进程选择切换、鼠标持续移过列表／顶部／详情栏、详情滚动和曲线量程过渡分别测量；固定快照通过 `sample.set` 更新读数时，保留一秒采样节拍。量程测试包含过渡结束后的稳定段，核对合成图层恢复、实际呈现帧率与内存。
 
 `gpu-chart-dynamic` 记录局部重绘表面的数量、空间和预算回退状态；帧跟踪阶段 9 记录其逐帧更新像素数。隔离的 `--test` 实例可用 `ARGUS_GPUI_TEST_DYNAMIC_CHARTS=1` 强制检查这条路径，仍执行底色、不透明度及预算检查。用固定数据对照完整绘制，再单独测量实际帧率与资源开销。
 
@@ -142,7 +144,9 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `--chart-scroll --clipped-preview` 使用多设备侧栏验证部分可见小图的裁剪。检查包括 CPU 曲线正常滚动、额外重绘，以及滚动侧栏后被裁曲线重新出现。`ui-chart-states` 按图表列出裁剪范围、位图范围和当前绘制状态，便于定位阻止快速滚动的预览。
 
-`--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
+`--retained --require-chart-layers` 对比进程概览、详情、CPU 多核网格和各设备性能页的滚动帧与完整重绘。追加 `--software-rendering` 在测试实例的设置中关闭“硬件加速”，以同样的容差核对软件渲染设备的图层路径。`gpu-chart-layers.sparseImages` 记录使用虚拟表面修正局部背景的曲线数。多核页应一并核对 `images`、`opaqueImages`、实际呈现帧率与进程 GPU 占用。`--snapshots` 另行检查历史页移入、完整重绘和移出后的画面。
+
+`--scroll-copy` 在固定快照下以滚轮逐格滚动进程列表（指针停在列表上，悬停行随之变化），覆盖深浅主题、详情窗格以及 125%、150% 界面缩放：每次滑动结束后捕获画面，再强制完整重绘并捕获，两者须逐像素一致（软件渲染下字形边缘允许两个色阶），且每种情形都须有经复制绘制的帧。诊断事件 `gpu-scroll-copy` 记录每个复制帧的移动图元数、位移、复制与重绘的像素数和裁剪绘制次数。同一程序设置 `ARGUS_GPUI_DISABLE_SCROLL_COPY=1` 可关闭复制，对照滚动与页面切换的开销。
 
 追加 `--hover-retained` 可对照深浅主题下的顶部曲线和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
 

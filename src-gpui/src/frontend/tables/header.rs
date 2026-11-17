@@ -354,6 +354,76 @@ impl NativeTable {
         }
     }
     /// A process header, which can be dragged to another place.
+    /// The list's filter in its status column's header, as a spreadsheet's
+    /// column filter (services, connections): a button at the header's end
+    /// drops the choices down; while one narrows the list it shows a funnel
+    /// in the accent.
+    pub(super) fn header_filter(
+        &self,
+        index: usize,
+        cx: &mut Context<TableState<Self>>,
+    ) -> Option<AnyElement> {
+        let field = self.fields.get(index)?;
+        if filter_column(&self.page) != Some(field.key) {
+            return None;
+        }
+        let owner = self.owner.upgrade()?;
+        let app = owner.read(cx);
+        let active = app.filters.get(&self.page).is_some_and(|f| f != "all");
+        let anchors = app.ui.anchors.clone();
+        let p = Palette::current(cx);
+        let tip: SharedString = tr!("common.filterColumn", column = field.label.clone()).into();
+        let owner = self.owner.clone();
+        let (glyph, color) = if active {
+            ("FilterIcon", p.accent)
+        } else {
+            ("ChevronDown", p.muted)
+        };
+        let hover = p.hover_strong;
+        let press = p.press;
+        let button = Button::new(("column-filter", index))
+            .relative()
+            .size(px(FILTER_BUTTON))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(4.))
+            .when(active, |b| b.bg(p.accent.opacity(0.14)))
+            .hover(move |s| s.bg(hover))
+            .active(move |s| s.bg(press))
+            .accessibility_label(tip.clone())
+            .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+            .child(icon(glyph, color).size(px(13.)))
+            .child(
+                canvas(
+                    move |bounds, _, _| {
+                        anchors.borrow_mut().insert(COLUMN_FILTER.into(), bounds);
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            // Not a press on the header behind it, which sorts.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(move |_, window, cx| {
+                let owner = owner.clone();
+                window.defer(cx, move |window, cx| {
+                    let _ = owner.update(cx, |this, cx| this.open_column_filter(window, cx));
+                });
+            });
+        Some(
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .right(px(4.))
+                .flex()
+                .items_center()
+                .child(button)
+                .into_any_element(),
+        )
+    }
     pub(super) fn header_cell(
         &mut self,
         index: usize,

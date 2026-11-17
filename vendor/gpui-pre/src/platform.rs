@@ -2917,6 +2917,25 @@ pub fn windows_opaque_window_requested() -> bool {
     })
 }
 
+#[cfg(target_os = "windows")]
+static WINDOWS_SOFTWARE_RENDERING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Asks the Windows renderer to draw with the system's software rasterizer
+/// (WARP) instead of a graphics card, or with a card again. Set before the
+/// application starts, it decides the first device; set later, open windows
+/// move to a device of the other kind within a frame.
+#[cfg(target_os = "windows")]
+pub fn set_windows_software_rendering(requested: bool) {
+    WINDOWS_SOFTWARE_RENDERING.store(requested, std::sync::atomic::Ordering::Release);
+}
+
+/// Whether the Windows renderer was asked to draw without a graphics card.
+#[cfg(target_os = "windows")]
+pub fn windows_software_rendering_requested() -> bool {
+    WINDOWS_SOFTWARE_RENDERING.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// The appearance of the background of the window itself, when there is
 /// no content or the content is transparent.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

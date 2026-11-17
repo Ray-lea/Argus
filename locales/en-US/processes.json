@@ -45,7 +45,14 @@
     "one": "{count} process",
     "other": "{count} processes"
   },
+  "totalHidden": {
+    "one": "{total} ({count} hidden)",
+    "other": "{total} ({count} hidden)"
+  },
   "filtered": "The list is filtered by the search",
+  "orderHeld": "Sorting paused: rows keep their places while readings update. They re-sort once the pointer leaves the list or the menu or dialog closes.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Name",
@@ -309,6 +316,7 @@
     "hide": "Hide {name} column",
     "description": "Check the columns to show. Drag them in the list on the right, or drag column headers, to change their order.",
     "networkUnavailable": "Selected network columns appear when traffic data is available.",
+    "gpuUnavailable": "No GPU detected. Selected GPU columns are hidden.",
     "category": {
       "general": "General",
       "cpu": "CPU",

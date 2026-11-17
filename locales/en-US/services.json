@@ -26,7 +26,6 @@
     "start": "Start service",
     "stop": "Stop service",
     "restart": "Restart service",
-    "openConsole": "Open Services",
     "openConsoleTitle": "Open the Windows Services console"
   },
   "menu": {

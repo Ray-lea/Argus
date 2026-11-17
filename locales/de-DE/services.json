@@ -26,7 +26,6 @@
     "start": "Dienst starten",
     "stop": "Dienst beenden",
     "restart": "Dienst neu starten",
-    "openConsole": "Dienste öffnen",
     "openConsoleTitle": "Windows-Diensteverwaltung öffnen"
   },
   "menu": {

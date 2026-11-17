@@ -32,6 +32,14 @@ pub struct Palette {
     pub gpu: Hsla,
     pub battery: Hsla,
     pub danger: Hsla,
+    /// The process list's categories (`processes.section.*`): apps,
+    /// background processes and Windows processes. Apart from the heat of
+    /// busy cells and the green of new processes.
+    pub group_apps: Hsla,
+    pub group_background: Hsla,
+    pub group_windows: Hsla,
+    /// Users' groups, in turn; the system's group takes `group_windows`.
+    pub group_users: [Hsla; 3],
     pub heat: Hsla,
     /// Icons standing in for a missing process icon.
     pub glyph: Hsla,
@@ -166,6 +174,14 @@ impl Palette {
             gpu: colors.chart_5,
             battery: colors.chart_bullish,
             danger: role(cx, "danger"),
+            group_apps: token("group-apps", dark),
+            group_background: token("group-background", dark),
+            group_windows: token("group-windows", dark),
+            group_users: [
+                token("group-user-1", dark),
+                token("group-user-2", dark),
+                token("group-user-3", dark),
+            ],
             heat: parse_color(&format!(
                 "rgb({})",
                 design()[if theme.mode == ThemeMode::Dark {
@@ -415,7 +431,12 @@ pub fn base_font_size() -> f32 {
 /// GPUI's default (about 1.618) made wrapped text,
 /// and the boxes it sizes, taller than the interface's.
 pub fn line_height() -> DefiniteLength {
-    relative(design()["lineHeight"].as_f64().expect("theme line height") as f32)
+    // Read once: every table cell asks for it on every frame.
+    static LINE_HEIGHT: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    relative(
+        *LINE_HEIGHT
+            .get_or_init(|| design()["lineHeight"].as_f64().expect("theme line height") as f32),
+    )
 }
 /// A text size written for the theme's 13 px base, following the base font
 /// size the user chose: the interface's `calc(N rem / 13)`. Spacing and

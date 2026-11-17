@@ -28,6 +28,8 @@ const identifier = flag("--identifier", `dev.argus.taskmanager.test.${label}`);
 const backgroundInterval = Number(flag("--background-interval", 5000));
 assert([500, 1000, 2000, 5000, 10000, 30000].includes(backgroundInterval), "invalid background interval");
 const recordHistory = process.argv.includes("--history");
+// Hardware acceleration off: the software rasterizer draws the window.
+const softwareRendering = process.argv.includes("--software-rendering");
 const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
@@ -43,6 +45,7 @@ writeFileSync(
     trayInterval: backgroundInterval,
     hotkeyEnabled: false,
     updateCheck: false,
+    hardwareAcceleration: !softwareRendering,
   }),
 );
 const probe = resolve(flag("--probe", "target/release/argus-window-probe.exe"));
@@ -114,6 +117,7 @@ const result = {
     opaqueWindow: process.argv.includes("--opaque-window") || ["1", "true"].includes(process.env.ARGUS_GPUI_OPAQUE_WINDOW),
     prefixCompositionDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_PREFIX_COMPOSITION"),
     linearAreaDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_LINEAR_AREA"),
+    softwareRendering,
     sceneCacheDisabled: Object.hasOwn(process.env, "ARGUS_GPUI_DISABLE_SCENE_CACHE"),
     performanceCores: !!process.env.ARGUS_PROBE_PERFORMANCE_CORES,
     clockRate: process.env.ARGUS_PROBE_CLOCK_DLL ? Number(process.env.ARGUS_TEST_CLOCK_RATE) : null,

@@ -5,6 +5,7 @@
 //! NVIDIA cards leave power out of that perf data; their board power comes
 //! from NVML (`nvml.rs`), matched to the adapter by PCI address.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -14,13 +15,14 @@ use windows::Wdk::Graphics::Direct3D::{
     D3DKMT_ADAPTERINFO, D3DKMT_ADAPTERREGISTRYINFO, D3DKMT_ADAPTERTYPE, D3DKMT_CLOSEADAPTER,
     D3DKMT_ENUMADAPTERS2, D3DKMT_NODE_PERFDATA, D3DKMT_NODEMETADATA, D3DKMT_QUERY_DEVICE_IDS,
     D3DKMT_QUERYADAPTERINFO, D3DKMT_QUERYSTATISTICS, D3DKMT_QUERYSTATISTICS_ADAPTER,
-    D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTSIZEINFO,
-    D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo, D3DKMTQueryStatistics,
-    DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY, DXGK_ENGINE_TYPE_CRYPTO,
-    DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY, DXGK_ENGINE_TYPE_VIDEO_DECODE,
-    DXGK_ENGINE_TYPE_VIDEO_ENCODE, DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS,
-    KMTQAITYPE_ADAPTERPERFDATA, KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO,
-    KMTQAITYPE_ADAPTERTYPE, KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA,
+    D3DKMT_QUERYSTATISTICS_NODE, D3DKMT_QUERYSTATISTICS_SEGMENT, D3DKMT_SEGMENTGROUPSIZEINFO,
+    D3DKMT_SEGMENTSIZEINFO, D3DKMTCloseAdapter, D3DKMTEnumAdapters2, D3DKMTQueryAdapterInfo,
+    D3DKMTQueryStatistics, DXGK_ENGINE_TYPE, DXGK_ENGINE_TYPE_3D, DXGK_ENGINE_TYPE_COPY,
+    DXGK_ENGINE_TYPE_CRYPTO, DXGK_ENGINE_TYPE_OVERLAY, DXGK_ENGINE_TYPE_SCENE_ASSEMBLY,
+    DXGK_ENGINE_TYPE_VIDEO_DECODE, DXGK_ENGINE_TYPE_VIDEO_ENCODE,
+    DXGK_ENGINE_TYPE_VIDEO_PROCESSING, KMTQAITYPE_ADAPTERADDRESS, KMTQAITYPE_ADAPTERPERFDATA,
+    KMTQAITYPE_ADAPTERPERFDATA_CAPS, KMTQAITYPE_ADAPTERREGISTRYINFO, KMTQAITYPE_ADAPTERTYPE,
+    KMTQAITYPE_GETSEGMENTGROUPSIZE, KMTQAITYPE_GETSEGMENTSIZE, KMTQAITYPE_NODEMETADATA,
     KMTQAITYPE_NODEPERFDATA, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, KMTQUERYADAPTERINFOTYPE,
 };
 use windows::Win32::Foundation::LUID;
@@ -29,6 +31,7 @@ use super::nvml::Nvml;
 use super::query::Retry;
 use super::vendor_gpu::{GpuPowerSource, Pci, VendorGpu};
 use crate::diagnostics::{startup_native, startup_phase};
+use crate::gpu_process::{GpuAdapters, GpuMemoryLayout};
 use crate::util::from_wide;
 mod metadata;
 pub use metadata::DirectXInfo;
@@ -130,6 +133,7 @@ struct Adapter {
     handle: u32,
     luid: LUID,
     info: Arc<GpuInfo>,
+    memory: GpuMemoryLayout,
     /// Engine index (into `info.engines`) for every node.
     node_engine: Vec<usize>,
     prev_running: Vec<NodeCounter>,
@@ -144,9 +148,13 @@ struct Adapter {
 
 pub(crate) struct GpuTracker {
     adapters: Vec<Adapter>,
+    /// LUIDs of the adapters left out: software, display-only and compute-only
+    /// adapters, and LUIDs another source named that no enumeration returned.
+    ignored: HashSet<u64>,
     last: Option<Instant>,
     nvml: Option<Nvml>,
     vendor: VendorGpu,
+    vendor_telemetry: bool,
 }
 
 // Adapter handles are process-wide kernel handles.
@@ -161,27 +169,77 @@ impl GpuTracker {
             .get(node as usize)
             .copied()
     }
+    /// The listed adapters, with how their memory is grouped, and the ignored ones.
+    pub(crate) fn adapters(&self) -> GpuAdapters {
+        GpuAdapters {
+            listed: self
+                .adapters
+                .iter()
+                .map(|a| (luid_key(a.luid), a.memory))
+                .collect(),
+            ignored: self.ignored.clone(),
+        }
+    }
     pub fn new() -> Self {
         Self::new_with_vendor(true)
     }
 
     pub(super) fn new_with_vendor(vendor_telemetry: bool) -> Self {
-        let adapters = startup_phase("gpu.enumerate", enumerate);
-        // Only hardware adapters have a PCI address for NVML to match.
-        let nvml = adapters
-            .iter()
-            .any(|a| vendor_telemetry && a.pci.is_some())
-            .then(Nvml::load)
-            .flatten();
-        Self {
+        let (adapters, ignored) = startup_phase("gpu.enumerate", enumerate).unwrap_or_default();
+        let mut tracker = Self {
             adapters,
+            ignored,
             last: None,
-            nvml,
+            nvml: None,
             vendor: if vendor_telemetry {
                 VendorGpu::spawn()
             } else {
                 VendorGpu::inactive()
             },
+            vendor_telemetry,
+        };
+        tracker.load_nvml();
+        tracker
+    }
+
+    /// Only hardware adapters have a PCI address for NVML to match.
+    fn load_nvml(&mut self) {
+        if self.nvml.is_none()
+            && self.vendor_telemetry
+            && self.adapters.iter().any(|a| a.pci.is_some())
+        {
+            self.nvml = Nvml::load();
+        }
+    }
+
+    /// Enumerates the adapters again after another source named `unknown`
+    /// LUIDs: a driver update restarts an adapter under a new LUID, and an
+    /// adapter can be attached later. Adapters still present keep their
+    /// handles and counter baselines; LUIDs of `unknown` that this enumeration
+    /// does not return either are ignored from now on, so each causes one
+    /// successful enumeration at most. A failed enumeration changes nothing.
+    pub(crate) fn refresh(&mut self, unknown: &HashSet<u64>) {
+        let Some((found, mut ignored)) = enumerate() else {
+            crate::diagnostics::warn("gpu.enumerate", "adapters could not be enumerated again");
+            return;
+        };
+        let previous = std::mem::take(&mut self.adapters);
+        let (adapters, closed) = reconcile(previous, found, |a| luid_key(a.luid));
+        for adapter in closed {
+            close(adapter.handle, adapter.luid);
+        }
+        self.adapters = adapters;
+        let listed: HashSet<u64> = self.adapters.iter().map(|a| luid_key(a.luid)).collect();
+        ignored.extend(unknown.iter().filter(|luid| !listed.contains(luid)));
+        self.ignored = ignored;
+        self.load_nvml();
+        log::info!(target: "argus_diagnostics", "gpu adapters enumerated again; listed={}; ignored={}", self.adapters.len(), self.ignored.len());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn forget(&mut self) {
+        for adapter in std::mem::take(&mut self.adapters) {
+            close(adapter.handle, adapter.luid);
         }
     }
 
@@ -313,15 +371,38 @@ impl GpuTracker {
 impl Drop for GpuTracker {
     fn drop(&mut self) {
         for a in &self.adapters {
-            let close = D3DKMT_CLOSEADAPTER { hAdapter: a.handle };
-            startup_native(
-                "gpu.close-adapter",
-                luid_key(a.luid),
-                0,
-                || unsafe { D3DKMTCloseAdapter(&close) }.0,
-            );
+            close(a.handle, a.luid);
         }
     }
+}
+
+fn close(handle: u32, luid: LUID) {
+    let close = D3DKMT_CLOSEADAPTER { hAdapter: handle };
+    startup_native(
+        "gpu.close-adapter",
+        luid_key(luid),
+        0,
+        || unsafe { D3DKMTCloseAdapter(&close) }.0,
+    );
+}
+
+/// The adapters of a new enumeration in its order, each one taken from
+/// `previous` when it is there (its handle and counter baselines stay), and
+/// the adapters to close: the new duplicates and those that are gone.
+fn reconcile<T>(mut previous: Vec<T>, found: Vec<T>, key: impl Fn(&T) -> u64) -> (Vec<T>, Vec<T>) {
+    let mut adapters = Vec::with_capacity(found.len());
+    let mut closed = Vec::new();
+    for adapter in found {
+        match previous.iter().position(|kept| key(kept) == key(&adapter)) {
+            Some(index) => {
+                adapters.push(previous.swap_remove(index));
+                closed.push(adapter);
+            }
+            None => adapters.push(adapter),
+        }
+    }
+    closed.extend(previous);
+    (adapters, closed)
 }
 
 fn luid_key(luid: LUID) -> u64 {
@@ -354,50 +435,63 @@ fn query_info<T>(handle: u32, kind: KMTQUERYADAPTERINFOTYPE, data: &mut T) -> bo
     ) >= 0
 }
 
-fn enumerate() -> Vec<Adapter> {
-    let mut e = D3DKMT_ENUMADAPTERS2 {
-        NumAdapters: 0,
-        pAdapters: std::ptr::null_mut(),
-    };
-    if startup_native(
-        "gpu.enumerate-count",
-        0,
-        0,
-        || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
-    ) < 0
-        || e.NumAdapters == 0
-    {
-        return Vec::new();
+/// Open handles to every adapter; None when they could not be listed.
+fn adapter_list() -> Option<Vec<D3DKMT_ADAPTERINFO>> {
+    // The count can change between the two calls while an adapter starts or
+    // stops, as during a driver update; the second call then fails.
+    for _ in 0..3 {
+        let mut e = D3DKMT_ENUMADAPTERS2 {
+            NumAdapters: 0,
+            pAdapters: std::ptr::null_mut(),
+        };
+        if startup_native(
+            "gpu.enumerate-count",
+            0,
+            0,
+            || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
+        ) < 0
+        {
+            return None;
+        }
+        if e.NumAdapters == 0 {
+            return Some(Vec::new());
+        }
+        let mut list = vec![D3DKMT_ADAPTERINFO::default(); e.NumAdapters as usize];
+        e.pAdapters = list.as_mut_ptr();
+        if startup_native(
+            "gpu.enumerate-adapters",
+            0,
+            0,
+            || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
+        ) >= 0
+        {
+            list.truncate(e.NumAdapters as usize);
+            return Some(list);
+        }
     }
-    let mut list = vec![D3DKMT_ADAPTERINFO::default(); e.NumAdapters as usize];
-    e.pAdapters = list.as_mut_ptr();
-    if startup_native(
-        "gpu.enumerate-adapters",
-        0,
-        0,
-        || unsafe { D3DKMTEnumAdapters2(&mut e) }.0,
-    ) < 0
-    {
-        return Vec::new();
-    }
-    list.truncate(e.NumAdapters as usize);
+    None
+}
 
+/// The adapters to list and the LUIDs of the others; None when the adapters
+/// could not be enumerated.
+fn enumerate() -> Option<(Vec<Adapter>, HashSet<u64>)> {
+    let list = adapter_list()?;
     let mut out = Vec::new();
+    let mut ignored = HashSet::new();
+    if list.is_empty() {
+        return Some((out, ignored));
+    }
     let mut metadata = startup_phase("gpu.metadata", metadata::Metadata::new);
     for a in list {
         match describe(&a, &mut metadata) {
             Some(adapter) => out.push(adapter),
             None => {
-                let close = D3DKMT_CLOSEADAPTER {
-                    hAdapter: a.hAdapter,
-                };
-                unsafe {
-                    let _ = D3DKMTCloseAdapter(&close);
-                }
+                ignored.insert(luid_key(a.AdapterLuid));
+                close(a.hAdapter, a.AdapterLuid);
             }
         }
     }
-    out
+    Some((out, ignored))
 }
 
 fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option<Adapter> {
@@ -441,6 +535,11 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
 
     let mut sizes = D3DKMT_SEGMENTSIZEINFO::default();
     query_info(a.hAdapter, KMTQAITYPE_GETSEGMENTSIZE, &mut sizes);
+    let mut groups = D3DKMT_SEGMENTGROUPSIZEINFO::default();
+    let memory = memory_layout(
+        query_info(a.hAdapter, KMTQAITYPE_GETSEGMENTGROUPSIZE, &mut groups).then_some(&groups),
+    );
+    log::info!(target: "argus_startup", "phase=gpu.memory-groups; instance={}; local_mb={}; non_local_mb={}; layout={memory:?}", luid_key(a.AdapterLuid), groups.LocalMemory >> 20, groups.NonLocalMemory >> 20);
 
     let mut engines: Vec<String> = Vec::new();
     let mut node_engine = Vec::with_capacity(nodes as usize);
@@ -501,6 +600,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
             driver_date: driver.date,
             direct_x: metadata.direct_x(luid),
         }),
+        memory,
         node_engine,
         node_3d,
         prev_running: (0..nodes).map(|_| NodeCounter::default()).collect(),
@@ -513,6 +613,18 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
 
 fn processor_graphics(vendor: Option<u32>, pci: Option<Pci>) -> bool {
     vendor == Some(0x8086) && pci == Some((0, 2, 0))
+}
+
+/// A unified-memory (integrated) adapter puts all of its memory, the system
+/// memory it shares included, in the local budget group and has no non-local
+/// memory. Without the WDDM 2.0 query, the counters keep their discrete meaning.
+fn memory_layout(groups: Option<&D3DKMT_SEGMENTGROUPSIZEINFO>) -> GpuMemoryLayout {
+    match groups {
+        Some(groups) if groups.LocalMemory > 0 && groups.NonLocalMemory == 0 => {
+            GpuMemoryLayout::Unified
+        }
+        _ => GpuMemoryLayout::Discrete,
+    }
 }
 
 /// Hz to MHz; drivers report 0 for "not supported".
@@ -561,6 +673,42 @@ mod tests {
         assert_eq!(mhz(1_194_400_000), Some(1194.4));
         assert_eq!(mhz(0), None);
         assert_eq!(mhz(u64::MAX), None);
+    }
+
+    #[test]
+    fn enumerating_again_keeps_adapters_still_present_in_the_new_order() {
+        // (LUID, enumeration): kept adapters retain their handles and baselines.
+        let previous = vec![(1, "old"), (2, "old"), (3, "old")];
+        let found = vec![(3, "new"), (4, "new"), (1, "new")];
+        let (adapters, closed) = reconcile(previous, found, |a| a.0);
+        assert_eq!(adapters, [(3, "old"), (4, "new"), (1, "old")]);
+        assert_eq!(closed, [(3, "new"), (1, "new"), (2, "old")]);
+        let (adapters, closed) = reconcile(vec![(1, "old")], Vec::new(), |a| a.0);
+        assert!(adapters.is_empty());
+        assert_eq!(closed, [(1, "old")]);
+    }
+
+    #[test]
+    fn adapters_without_non_local_memory_have_unified_memory() {
+        let groups = |local: u64, non_local: u64| D3DKMT_SEGMENTGROUPSIZEINFO {
+            LocalMemory: local << 20,
+            NonLocalMemory: non_local << 20,
+            ..Default::default()
+        };
+        // Measured: an RTX 4060 Laptop GPU and the Microsoft Basic Render Driver.
+        assert_eq!(
+            memory_layout(Some(&groups(7956, 78419))),
+            GpuMemoryLayout::Discrete
+        );
+        assert_eq!(
+            memory_layout(Some(&groups(78419, 0))),
+            GpuMemoryLayout::Unified
+        );
+        assert_eq!(
+            memory_layout(Some(&groups(0, 0))),
+            GpuMemoryLayout::Discrete
+        );
+        assert_eq!(memory_layout(None), GpuMemoryLayout::Discrete);
     }
 
     #[test]

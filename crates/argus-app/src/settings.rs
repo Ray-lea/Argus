@@ -220,6 +220,9 @@ pub struct Settings {
     /// Show what a new version changed on its first start; off, a notice
     /// says it was updated instead.
     pub whats_new: bool,
+    /// Draw the interface with the graphics card; off, the system's software
+    /// rasterizer draws it on the processor.
+    pub hardware_acceleration: bool,
 }
 
 impl Default for Settings {
@@ -245,6 +248,7 @@ impl Default for Settings {
             update_route: UpdateRoute::default(),
             update_proxy: crate::config::PROXY_PRESETS[0].into(),
             whats_new: true,
+            hardware_acceleration: true,
         }
     }
 }
@@ -541,6 +545,19 @@ mod tests {
             serde_json::from_str(r#"{"whatsNew": false, "seenVersion": "0.2.0"}"#).unwrap();
         assert!(!saved.whats_new);
         assert_eq!(saved.seen_version, "0.2.0");
+    }
+
+    #[test]
+    fn hardware_acceleration_is_on_until_turned_off() {
+        // Settings saved before the choice existed.
+        let old: Settings = serde_json::from_str(r#"{"closeToTray": true}"#).unwrap();
+        assert!(old.hardware_acceleration);
+        let saved = Settings {
+            hardware_acceleration: false,
+            ..Settings::default()
+        };
+        let read: Settings = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert!(!read.hardware_acceleration);
     }
 
     fn scratch() -> PathBuf {

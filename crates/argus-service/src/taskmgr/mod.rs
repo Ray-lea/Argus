@@ -331,7 +331,9 @@ fn explain(error: String, cause: Option<Cause>) -> String {
 
 /// A failed enable or restore. The maintenance helper hands it to the window
 /// in `ERROR_FILE`; the window shows `message`, and only the fixed step,
-/// cause and classifications reach the log (`log`).
+/// cause and classifications reach the log (`log`). Functions return it boxed:
+/// it is too large to be the error of a `Result`. The file is the same either
+/// way, as serde writes a box as its contents.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Failure {
@@ -351,6 +353,9 @@ pub struct Failure {
     /// The replacement's state, when the action is not allowed in it.
     #[serde(skip)]
     state: Option<&'static str>,
+    /// Observed by the caller after the helper exits, never read from its report.
+    #[serde(skip)]
+    exit_code: Option<u32>,
 }
 
 impl Failure {
@@ -365,6 +370,7 @@ impl Failure {
             kept_registry: None,
             kept_cause: None,
             state: None,
+            exit_code: None,
         }
     }
 
@@ -373,6 +379,17 @@ impl Failure {
             cause,
             ..Self::new(step, explain(error, cause))
         }
+    }
+
+    fn exited(code: u32, reported: Option<Self>) -> Self {
+        let mut failure = reported.unwrap_or_else(|| {
+            Self::new(
+                Step::Helper,
+                tr!("taskManager.helperExited", code = format!("0x{code:08X}")),
+            )
+        });
+        failure.exit_code = Some(code);
+        failure
     }
 
     /// The self-test failed, and so did its cleanup: artifacts stay.
@@ -403,6 +420,9 @@ impl Failure {
         }
         if let Some(cause) = self.cause {
             line += cause.log();
+        }
+        if let Some(code) = self.exit_code {
+            line += &format!("; helper_exit=0x{code:08X}");
         }
         if let Some(kept) = &self.kept {
             line += &format!("; self-test artifacts kept ({}", failure(kept));
@@ -487,12 +507,8 @@ pub fn status() -> Result<Status> {
         Err(error) => return Err(error),
     };
     if let Some(journal) = journal {
-        if live.debugger.as_ref() == Some(&journal.replacement) && !live.filtered {
-            status.state = if journal.phase == Phase::Active {
-                "enabled"
-            } else {
-                "recoveryNeeded"
-            };
+        status.state = journal_state(&journal, &live);
+        if matches!(status.state, "enabled" | "recoveryNeeded") {
             status.detail = if status.state == "enabled" {
                 status.older = older_interface(&machine.dir, &journal.image);
                 match &status.older {
@@ -504,9 +520,12 @@ pub fn status() -> Result<Status> {
             };
             return Ok(status);
         }
-        if live != journal.before {
+        if status.state == "conflict" {
             status.conflict(tr!("taskManager.status.modified"), &ours);
             return Ok(status);
+        }
+        if status.state == "revoked" {
+            status.detail = tr!("taskManager.status.revoked");
         }
     } else if live.debugger.as_ref() == Some(&ours) {
         status.state = "recoveryNeeded";
@@ -688,9 +707,26 @@ pub(crate) fn follow_update(dir: &Path) -> Result<bool> {
 /// Whether the replacement is on and whole: a finished enable whose value
 /// taskmgr.exe's entry still holds, unfiltered. `status` calls it enabled.
 fn whole(journal: &Journal, live: &Observation) -> bool {
-    journal.phase == Phase::Active
-        && !live.filtered
-        && live.debugger.as_ref() == Some(&journal.replacement)
+    journal_state(journal, live) == "enabled"
+}
+
+/// Compare the durable record with the current entry without changing either.
+/// An active record whose entry returned to its original value preserves the
+/// evidence of an external restore until an explicit maintenance action.
+fn journal_state(journal: &Journal, live: &Observation) -> &'static str {
+    if !live.filtered && live.debugger.as_ref() == Some(&journal.replacement) {
+        if journal.phase == Phase::Active {
+            "enabled"
+        } else {
+            "recoveryNeeded"
+        }
+    } else if *live != journal.before {
+        "conflict"
+    } else if journal.phase == Phase::Active {
+        "revoked"
+    } else {
+        "disabled"
+    }
 }
 
 /// The order of `follow_update`: the new interface copy first, under a name of
@@ -830,8 +866,8 @@ fn enable(
     caller: u32,
     created: u64,
     assets: Assets,
-) -> std::result::Result<(), Failure> {
-    let check = |message| Failure::new(Step::Check, message);
+) -> std::result::Result<(), Box<Failure>> {
+    let check = |message| Box::new(Failure::new(Step::Check, message));
     if cfg!(debug_assertions) {
         return Err(check(tr!("taskManager.devBuild")));
     }
@@ -880,11 +916,11 @@ fn enable(
     result
 }
 
-fn prepare(error: String) -> Failure {
-    Failure::new(
+fn prepare(error: String) -> Box<Failure> {
+    Box::new(Failure::new(
         Step::Prepare,
         tr!("taskManager.prepareFailed", error = error),
-    )
+    ))
 }
 
 /// The rest of an enable once the self-test passed: the interface copy, its
@@ -895,7 +931,7 @@ fn finish_enable(
     owner: &str,
     caller: u32,
     created: u64,
-) -> std::result::Result<(), Failure> {
+) -> std::result::Result<(), Box<Failure>> {
     (|| {
         // Source code and embedded helper bytes are from the explicitly elevated
         // GUI executable, not adjacent user-writable sidecar files.
@@ -905,7 +941,7 @@ fn finish_enable(
         registry::atomic_file(&machine.dir, RECOVERY_TEXT, recovery_text().as_bytes())
     })()
     .map_err(prepare)?;
-    let interface = |message| Failure::new(Step::Interface, message);
+    let interface = |message| Box::new(Failure::new(Step::Interface, message));
     let probe = launch::probe_as_caller(
         &machine.dir.join(LAUNCHER),
         &["--probe-ui".into(), image.into(), owner.into()],
@@ -932,8 +968,8 @@ pub fn open_native() -> Result<()> {
     launch::native()
 }
 
-pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
-    let check = |message| Failure::new(Step::Check, message);
+pub fn manage(action: &str) -> std::result::Result<Status, Box<Failure>> {
+    let check = |message| Box::new(Failure::new(Step::Check, message));
     match action {
         "restore" => {
             if let Ok(Some(crate::Reply::Done)) =
@@ -955,10 +991,9 @@ pub fn manage(action: &str) -> std::result::Result<Status, Failure> {
         "enable" => {
             let current = status().map_err(check)?;
             if !current.can_enable {
-                return Err(Failure {
-                    state: Some(current.state),
-                    ..check(tr!("taskManager.notAllowed"))
-                });
+                let mut failure = check(tr!("taskManager.notAllowed"));
+                failure.state = Some(current.state);
+                return Err(failure);
             }
             elevate(
                 &std::env::current_exe().map_err(|e| check(e.to_string()))?,
@@ -1002,8 +1037,8 @@ fn read_failure(path: &Path, since: SystemTime) -> Option<Failure> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
-fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
-    let helper = |message| Failure::new(Step::Helper, message);
+fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Box<Failure>> {
+    let helper = |message| Box::new(Failure::new(Step::Helper, message));
     let started = SystemTime::now();
     let file = wide(&exe.to_string_lossy());
     let params = wide(
@@ -1042,7 +1077,7 @@ fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Failure> {
     if code == 0 {
         Ok(())
     } else {
-        Err(helper_error(started).unwrap_or_else(|| helper(tr!("taskManager.helperFailed"))))
+        Err(Box::new(Failure::exited(code, helper_error(started))))
     }
 }
 
@@ -1068,7 +1103,7 @@ fn code(result: Result<()>) -> i32 {
 
 /// Exit code of a maintenance helper: its error goes back to the window that
 /// started it; a message box only when it cannot be left there.
-fn report(result: std::result::Result<(), Failure>) -> i32 {
+fn report(result: std::result::Result<(), Box<Failure>>) -> i32 {
     let Err(failure) = result else { return 0 };
     let written = serde_json::to_vec(&failure)
         .map_err(|e| e.to_string())
@@ -1141,7 +1176,7 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
         [mode, action, owner, pid, created] if mode == MANAGE && action == "enable" => {
             clear_error();
             Some(report((|| {
-                let check = |message| Failure::new(Step::Check, message);
+                let check = |message| Box::new(Failure::new(Step::Check, message));
                 let pid = pid
                     .parse()
                     .map_err(|_| check(tr!("taskManager.invalidCaller")))?;
@@ -1154,9 +1189,9 @@ pub fn run_mode(assets: Option<Assets>) -> Option<i32> {
         }
         [mode, action, _owner] if mode == MANAGE && action == "restore" => {
             clear_error();
-            Some(report(
-                restore().map_err(|message| Failure::new(Step::Restore, message)),
-            ))
+            Some(report(restore().map_err(|message| {
+                Box::new(Failure::new(Step::Restore, message))
+            })))
         }
         [mode] if mode == "--argus-taskmgr-uninstall" => Some(code(uninstall_guard())),
         _ if args.first().is_some_and(|s| s == MANAGE) => Some(87),
@@ -1382,6 +1417,26 @@ mod tests {
     }
 
     #[test]
+    fn terminated_helpers_keep_the_observed_exit_code_without_losing_a_report() {
+        let failed = Failure::exited(0x40000015, None);
+        assert!(matches!(failed.step, Step::Helper));
+        assert_eq!(failed.exit_code, Some(0x40000015));
+        assert!(failed.message.contains("0x40000015"));
+        assert!(failed.log().contains("helper_exit=0x40000015"));
+
+        let reported = Failure::new(Step::Check, "private-detail".into());
+        let result = Failure::exited(1, Some(reported));
+        assert!(matches!(result.step, Step::Check));
+        assert_eq!(result.message, "private-detail");
+        assert_eq!(result.exit_code, Some(1));
+        assert!(!result.log().contains("private-detail"));
+        let serialized = serde_json::to_value(&result).unwrap();
+        assert!(serialized.get("exitCode").is_none());
+        let loaded: Failure = serde_json::from_value(serialized).unwrap();
+        assert_eq!(loaded.exit_code, None);
+    }
+
+    #[test]
     fn an_older_interface_copy_is_told_by_its_version() {
         assert!(older((0, 1, 0), "0.2.0"));
         assert!(older((0, 2, 0), "0.2.1-beta.1"));
@@ -1509,6 +1564,54 @@ mod tests {
         };
         assert!(held_by_other(&foreign, &ours) && held_by_other(&filtered, &ours));
         assert!(!held_by_other(&argus, &ours) && !held_by_other(&clean, &ours));
+    }
+
+    #[test]
+    fn external_restore_is_distinct_from_an_explicit_restore() {
+        let (mut record, mut disk, mut journal) = enabled();
+        assert_eq!(journal_state(&journal, &record.live), "enabled");
+
+        // A security product or another tool removes the entry after enable.
+        record.live = journal.before.clone();
+        let saved = serde_json::to_value(&record.saved).unwrap();
+        let files = disk.clone();
+        assert_eq!(journal_state(&journal, &record.live), "revoked");
+        assert!(!follow(&mut record, &mut disk, &mut journal, b"ui 2", NEW).unwrap());
+        assert_eq!(record.live, journal.before);
+        assert_eq!(serde_json::to_value(&record.saved).unwrap(), saved);
+        assert_eq!(disk, files);
+
+        // Explicit restoration acknowledges the already restored entry.
+        state::restore(&mut record, &mut journal).unwrap();
+        assert_eq!(journal.phase, Phase::Restored);
+        assert_eq!(journal_state(&journal, &record.live), "disabled");
+    }
+
+    #[test]
+    fn missing_registration_preserves_interruption_and_conflict_states() {
+        let clean = Observation::default();
+        for phase in [Phase::Prepared, Phase::Restoring, Phase::Restored] {
+            let journal = journal(phase);
+            assert_eq!(journal_state(&journal, &clean), "disabled");
+            let live = Observation {
+                debugger: Some(journal.replacement.clone()),
+                filtered: false,
+            };
+            assert_eq!(journal_state(&journal, &live), "recoveryNeeded");
+        }
+        let journal = journal(Phase::Active);
+        for live in [
+            Observation {
+                debugger: Some(Value::string("other.exe")),
+                filtered: false,
+            },
+            Observation {
+                debugger: None,
+                filtered: true,
+            },
+        ] {
+            assert_eq!(journal_state(&journal, &live), "conflict");
+        }
     }
 
     /// The record and taskmgr.exe's entry in memory.

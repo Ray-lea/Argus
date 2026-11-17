@@ -46,7 +46,15 @@
     "many": "{count} processus",
     "other": "{count} processus"
   },
+  "totalHidden": {
+    "one": "{total} ({count} masqué)",
+    "many": "{total} ({count} masqués)",
+    "other": "{total} ({count} masqués)"
+  },
   "filtered": "La liste est filtrée par la recherche",
+  "orderHeld": "Tri suspendu : les lignes restent en place et les valeurs continuent d’être actualisées. Elles sont triées de nouveau dès que le pointeur quitte la liste ou que le menu ou la boîte de dialogue se ferme.",
+  "groupIn": "{user} · {group}",
+  "groupPlace": "{index} / {total}",
   "column": {
     "name": {
       "label": "Nom",
@@ -312,6 +320,7 @@
     "hide": "Masquer la colonne {name}",
     "description": "Cochez les colonnes à afficher. Faites-les glisser dans la liste de droite ou faites glisser les en-têtes de colonnes pour modifier leur ordre.",
     "networkUnavailable": "Les colonnes du réseau sélectionnées apparaissent lorsque les données de trafic sont disponibles.",
+    "gpuUnavailable": "Aucun GPU détecté. Les colonnes GPU sélectionnées sont masquées.",
     "category": {
       "general": "Général",
       "cpu": "CPU",

@@ -292,8 +292,15 @@ struct Desktop {
     /// Hover hints on table cells, and the view that draws them (`tips`).
     tips: tips::Tips,
     tip_layer: Entity<tips::TipLayer>,
-    /// The title row's start and end controls, and the row itself.
+    /// The title row's brand, its search box and the row itself.
     toolbar_regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
+    /// The page bar (the tab row on top, the page header beside the side
+    /// navigation): its end controls, the bar, and its drag stretch.
+    bar_regions: Rc<RefCell<[Bounds<Pixels>; 3]>>,
+    /// Set while the page bar looks for a level that fits (another page,
+    /// language or text size): frames drawn at a level that does not fit are
+    /// measured only, never presented (`track_bar`).
+    bar_settling: Rc<Cell<bool>>,
     navigation_regions: Rc<RefCell<[Bounds<Pixels>; PAGES.len() + 1]>>,
     query: String,
     search: Entity<InputState>,
@@ -314,6 +321,11 @@ struct Desktop {
     /// The folded user groups of the process list (`collapsedUsers`).
     user_folds: HashSet<String>,
     rows: Arc<Vec<Row>>,
+    /// The process list as the automatic column widths measure it
+    /// (`tables::WidthRows`).
+    width_rows: Option<tables::WidthRows>,
+    /// A build of `width_rows` is under way off the UI thread.
+    width_pending: bool,
     /// Full process page height, independent of whether the overview band
     /// exists; `None` until the page area was first laid out.
     process_page_height: Rc<Cell<Option<Pixels>>>,
@@ -365,6 +377,8 @@ struct Desktop {
     popup: Option<menus::Popup>,
     /// The menu that just closed, fading out (`menus::Popup`).
     popup_leaving: Option<(menus::Popup, Instant)>,
+    /// The control whose menu a press on it closed, and when (`menu_just_shut`).
+    menu_shut: Option<(String, Instant)>,
     modal: Option<dialogs::Modal>,
     ui: widgets::UiState,
     last_poll: Instant,
@@ -477,6 +491,8 @@ impl Desktop {
             tips,
             tip_layer,
             toolbar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
+            bar_regions: Rc::new(RefCell::new([Bounds::default(); 3])),
+            bar_settling: Rc::new(Cell::new(true)),
             navigation_regions: Rc::new(RefCell::new([Bounds::default(); PAGES.len() + 1])),
             query: String::new(),
             search: search.clone(),
@@ -497,6 +513,8 @@ impl Desktop {
                 .into_iter()
                 .collect(),
             rows: Arc::new(vec![]),
+            width_rows: None,
+            width_pending: false,
             process_page_height: Rc::new(Cell::new(None)),
             table: None,
             table_frame: None,
@@ -542,6 +560,7 @@ impl Desktop {
             drag: None,
             popup: None,
             popup_leaving: None,
+            menu_shut: None,
             modal: None,
             ui: widgets::UiState::default(),
             last_poll: Instant::now() - Duration::from_secs(10),

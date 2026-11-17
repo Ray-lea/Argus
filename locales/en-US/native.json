@@ -124,6 +124,7 @@
     "recoveryFile": "Argus Task Manager emergency recovery\r\n\r\nFirst run argus-taskmgr-recover.exe in this folder and allow administrator permission. It doesn't depend on the Argus window or the background service.\r\nIf that program is damaged too: press Win+R, enter regedit, open it as administrator and go to HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe. Check that Debugger really points to argus-taskmgr-launcher.exe --task-manager in this folder and that before.debugger in taskmgr-recovery.json is null, then delete only the Debugger value. Don't delete the whole taskmgr.exe key, and don't delete settings of other tools.\r\nRecovery deletes only a Debugger value that exactly matches the Argus launch command and preserves other settings. Recovery remains available if folder permissions change or the recovery record is missing.\r\n",
     "status": {
       "native": "Windows Task Manager is in use.",
+      "revoked": "The previously enabled replacement has been removed. Windows Task Manager is now in use. Check the security software detection reports before enabling it again.",
       "needsService": "Install the privileged service before enabling the Task Manager replacement.",
       "conflict": "Another replacement or path filter is configured. Argus won't overwrite it.",
       "enabled": "Task Manager entry points now open Argus. If Argus fails to start, Windows Task Manager is tried instead.",
@@ -181,7 +182,7 @@
     "notAllowed": "This operation isn't allowed in the current state; refresh and try again",
     "helperNotStarted": "Couldn't start the administrator maintenance helper",
     "helperBusy": "The maintenance helper is still working; refresh the status and don't repeat the operation",
-    "helperFailed": "The Task Manager setup didn't finish; check the maintenance helper's message and refresh the status",
+    "helperExited": "The maintenance helper exited unexpectedly (exit code: {code}). Check the security software blocking reports and refresh the status.",
     "invalidCaller": "Invalid UI process",
     "invalidInstance": "Invalid process instance",
     "noLauncher": "This build doesn't include the standalone launcher",

@@ -106,6 +106,8 @@ pub(in crate::frontend) struct UiState {
     pub order_flips: flip::Flips,
     /// Where a test's pointer gesture began (test control `pointer`).
     pub gesture_origin: Cell<Option<Point<Pixels>>>,
+    /// The table item under a new contact, retained while live rows reorder.
+    pub table_touch: Rc<RefCell<Option<tables::touch::Target>>>,
     pub focus: RefCell<HashMap<SharedString, FocusHandle>>,
     /// Dialogs under the top one (`Desktop::modal`), bottom first.
     pub below: Vec<dialogs::Modal>,
@@ -198,20 +200,23 @@ pub(in crate::frontend) struct Spin {
     pub repeat: Task<()>,
 }
 
-/// The toolbar's compact level and what it learned (the interface's
-/// `fitToolbar`): 1 hides the text of the buttons at the end, 2 the labels of
-/// the view modes, 3 moves the page's controls to a row of their own and 4
-/// the search box too. `need[level]` is the width the toolbar wanted when that
-/// level stopped fitting; it returns to the level once the window is as wide.
+/// The page bar's compact level and what it learned (the interface's
+/// `fitToolbar`): 1 turns the labelled choices into drop-downs, 2 moves the
+/// page's controls to a row of their own. `need[level]` is the room the bar
+/// wanted when that level stopped fitting; it returns to the level once it has
+/// that room.
 #[derive(Default)]
 pub(in crate::frontend) struct ToolbarFit {
-    /// What the levels were learned for (page, text, navigation, language,
-    /// update button); a change starts over from level 0.
+    /// What the levels are learned for (page, text, navigation, language and
+    /// the history page's "Latest").
     pub key: String,
     pub level: u8,
     pub need: [Pixels; 4],
-    /// The level the toolbar was last drawn at: its regions measure that one.
+    /// The level the bar was last drawn at: its regions measure that one.
     pub drawn: Option<u8>,
+    /// What the other keys' levels needed, kept for when they come back: a
+    /// page seen before draws at its level from its first frame.
+    pub learned: HashMap<String, [Pixels; 4]>,
 }
 
 /// A card that eases between rest, hover and press with live transforms
@@ -224,11 +229,10 @@ pub(in crate::frontend) struct Lift {
     /// Where they are heading: hovered, held down.
     pub hovered: bool,
     pub pressed: bool,
-    /// The card (raised by hover, pressed in), its hover face, its mark, the
+    /// The card (raised by hover, let down by a press), its hover face, the
     /// line along its top edge and its arrow (muted, and in its colour).
     pub card: LiveTransform,
     pub face: LiveTransform,
-    pub mark: LiveTransform,
     pub line: LiveTransform,
     pub arrow: LiveTransform,
     pub lit: LiveTransform,
@@ -803,6 +807,8 @@ impl Desktop {
             let hover = p.hover;
             let ink = p.ink;
             let control = SharedString::from(format!("seg-{id}-{index}"));
+            // An option drawn as its icon alone names itself in a tooltip.
+            let tip = icon_only.then(|| accessible.clone());
             track = track.child(
                 gpui_kit::base::Button::new(ElementId::NamedInteger(
                     format!("seg-{id}").into(),
@@ -810,7 +816,7 @@ impl Desktop {
                 ))
                 .relative()
                 .h(px(26.))
-                .px(px(10.))
+                .px(px(if icon_only { 8. } else { 10. }))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -819,6 +825,9 @@ impl Desktop {
                 .text_size(theme::font(13.))
                 .whitespace_nowrap()
                 .text_color(color)
+                .when_some(tip, |b, tip| {
+                    b.tooltip(move |window, cx| tooltip(tip.clone(), window, cx))
+                })
                 // Before the first layout there is no pill yet: paint the choice itself.
                 .when(chosen && to.is_none(), |b| b.bg(p.control_checked))
                 .when(!chosen, |b| b.hover(move |s| s.bg(hover).text_color(ink)))
@@ -1725,7 +1734,11 @@ impl Desktop {
         };
         let offset = window.pixel_snap_point(offset);
         self.page_shift.set(offset);
-        super::shift::shifted(element, offset, 1.).into_any_element()
+        // On whole device pixels and at full opacity, each frame only moves
+        // the page: the renderer copies it from the last frame.
+        super::shift::shifted(element, offset, 1.)
+            .reports_motion(PAGE_MOTION)
+            .into_any_element()
     }
     /// Starts the page's slide again after each frame until the entering page
     /// has been presented, and once more after that frame. Its first frame
@@ -1751,6 +1764,10 @@ impl Desktop {
 /// How long a page takes to enter after a page change, as long as the
 /// navigation's selection takes to glide to its tab (`theme::ease_enter`).
 pub(in crate::frontend) const PAGE_ENTER: Duration = Duration::from_millis(250);
+
+/// The id the entering page reports its slide under: scroll containers use
+/// the address of their state, which is never 1.
+const PAGE_MOTION: usize = 1;
 
 /// The shadow of dialogs (`--shadow-flyout`); the interface's menus, lists and
 /// toasts have none.

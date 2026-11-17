@@ -26,7 +26,6 @@
     "start": "サービスを開始",
     "stop": "サービスを停止",
     "restart": "サービスを再起動",
-    "openConsole": "サービスを開く",
     "openConsoleTitle": "Windows サービス コンソールを開きます"
   },
   "menu": {

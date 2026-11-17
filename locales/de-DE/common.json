@@ -15,6 +15,7 @@
   "none": "Keine",
   "name": "Name",
   "status": "Status",
+  "filterColumn": "Nach „{column}“ filtern",
   "command": "Befehl",
   "copyName": "Namen kopieren",
   "copyPath": "Pfad kopieren",

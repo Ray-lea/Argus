@@ -73,6 +73,9 @@ pub struct WindowsWindowState {
     pub hovered: Cell<bool>,
     pub last_visibility: Cell<Option<WindowVisibility>>,
     pub direct_manipulation: DirectManipulationHandler,
+    pub(crate) touch: RefCell<crate::touch::TouchInput>,
+    pub(crate) pending_touches: RefCell<std::collections::VecDeque<TouchEvent>>,
+    pub(crate) touch_keyboard_shown: Cell<bool>,
 
     pub renderer: RefCell<DirectXRenderer>,
     pub(crate) chart_display_dirty: Cell<bool>,
@@ -105,7 +108,7 @@ pub struct WindowsWindowState {
 }
 
 pub(crate) struct WindowsWindowInner {
-    hwnd: HWND,
+    pub(crate) hwnd: HWND,
     pub(crate) dialog_owner: Rc<crate::dialog::DialogOwner>,
     drop_target_helper: IDropTargetHelper,
     pub(crate) state: WindowsWindowState,
@@ -206,6 +209,9 @@ impl WindowsWindowState {
             invalidate_devices,
             draw_coordinator,
             direct_manipulation,
+            touch: RefCell::default(),
+            pending_touches: RefCell::default(),
+            touch_keyboard_shown: Cell::new(false),
             a11y: RefCell::new(None),
             mouse_position: Cell::new(Point::default()),
         })
@@ -707,7 +713,11 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn set_content_zoom(&self, zoom: f32) {
-        let zoom = if zoom.is_finite() && zoom > 0. { zoom } else { 1. };
+        let zoom = if zoom.is_finite() && zoom > 0. {
+            zoom
+        } else {
+            1.
+        };
         let previous = self.state.scale_factor.get();
         let scale_factor = self.state.dpi_scale.get() * zoom;
         self.state.zoom.set(zoom);
@@ -715,7 +725,9 @@ impl PlatformWindow for WindowsWindow {
             return;
         }
         self.state.scale_factor.set(scale_factor);
-        self.state.direct_manipulation.set_scale_factor(scale_factor);
+        self.state
+            .direct_manipulation
+            .set_scale_factor(scale_factor);
         // The client area keeps its device size; only its logical size changes.
         // A minimized window has an empty client rectangle: rescale the last
         // size instead, and `WM_SIZE` reports the real one on restore.

@@ -3,21 +3,23 @@
 //! only ever widens, in steps: digits measure alike, so a value changing keeps
 //! its width and the columns stay put while the readings move.
 //!
-//! A text column (the name, a path, a description) is measured over every
-//! row, not only the visible ones. It is as wide as most rows need
+//! A text column (the name, a path, a description) is measured over the
+//! whole list as it would be with every group open and nothing searched
+//! (`WidthRows`), not over the rows shown: a search or a folded group does
+//! not change what the columns take. It is as wide as most rows need
 //! (`Natural::typical`), the few much longer values cut short with an
 //! ellipsis, and widens toward what every row needs while the table has room
 //! to spare (`allocate`). No column stretches to fill the table: what is left
 //! stays empty on the right.
 use super::*;
 use std::ops::Range;
+use std::sync::Weak;
 use std::time::Duration;
 
-pub(super) type CellValues = HashMap<(usize, &'static str), String>;
+/// What each cell shows, kept between frames: a frame clones a value by
+/// its reference count rather than copying the text.
+pub(super) type CellValues = HashMap<(usize, &'static str), SharedString>;
 
-/// How often every row is measured, besides when rows come or go; the
-/// visible ones are measured with each sample.
-const FULL_PASS: Duration = Duration::from_secs(2);
 /// Widths grow in steps this wide: a slightly longer value does not move
 /// every column after it.
 const STEP: f32 = 8.;
@@ -61,13 +63,16 @@ pub(super) struct AutoWidths {
     pub natural: HashMap<&'static str, Natural>,
     measured: HashMap<(Role, String), (f32, u64)>,
     epoch: u64,
-    /// When every row was last measured, and how many rows there were.
-    full: Option<(Instant, usize)>,
+    /// The list last measured in full: another one is measured again.
+    source: Weak<Vec<WidthRow>>,
 }
 
 pub(super) struct Contents<'a> {
+    /// The rows shown, and those on screen.
     pub rows: &'a [Row],
     pub range: Range<usize>,
+    /// The list measured in full (`WidthRows`).
+    pub measured: &'a Arc<Vec<WidthRow>>,
     pub totals: &'a HashMap<String, String>,
     pub values: &'a mut CellValues,
     pub bits: bool,
@@ -101,6 +106,123 @@ fn total_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
         "cpu" | "mem" | "gpu" => &["100%"],
         _ if field.kind != CellKind::Percent => envelope(field, bits),
         _ => &[],
+    }
+}
+
+/// Whether every row of the list is measured for `field`, not only the
+/// visible ones: all but the name, which lays out a row of its own
+/// (`Name`), and the figures settled by an envelope.
+fn in_full(field: &Field, bits: bool) -> bool {
+    field.kind != CellKind::Name && envelope(field, bits).is_empty()
+}
+
+/// What sets a name cell's layout apart (`NativeTable::name_cell`).
+#[derive(Clone, Copy)]
+enum NameShape {
+    /// A user's heading.
+    User,
+    /// A category heading, with how many entries it counts.
+    Section { nested: bool, count: u64 },
+    Process {
+        nested: bool,
+        depth: usize,
+        members: usize,
+        efficiency: bool,
+        suspended: bool,
+    },
+}
+
+/// What a name cell lays out.
+struct Name<'a> {
+    shape: NameShape,
+    title: &'a str,
+    detail: &'a str,
+    note: Option<&'a str>,
+    pinned: bool,
+}
+
+impl<'a> Name<'a> {
+    fn of(row: &'a Row) -> Self {
+        let shape = if row.user.is_some() {
+            NameShape::User
+        } else if row.section.is_some() {
+            NameShape::Section {
+                nested: row.nested,
+                count: row.raw["entryCount"].as_u64().unwrap_or(0),
+            }
+        } else {
+            NameShape::Process {
+                nested: row.nested,
+                depth: row.depth,
+                members: row.members.len(),
+                efficiency: row
+                    .members
+                    .iter()
+                    .any(|member| boolean(member, "efficiency")),
+                suspended: !row.members.is_empty()
+                    && row
+                        .members
+                        .iter()
+                        .all(|member| boolean(member, "suspended")),
+            }
+        };
+        Self {
+            shape,
+            title: &row.title,
+            detail: &row.detail,
+            note: row.note.as_deref(),
+            pinned: row.pinned,
+        }
+    }
+}
+
+/// A row of the list the column widths measure (`WidthRows`): what its name
+/// cell lays out and what each column measured in full shows, without the
+/// process data the row was built from.
+pub(in crate::frontend) struct WidthRow {
+    shape: NameShape,
+    title: String,
+    detail: String,
+    /// The row's marks, as `Row` has them.
+    pub mark_key: Option<String>,
+    pub note: Option<String>,
+    pub pinned: bool,
+    cells: Vec<(&'static str, SharedString)>,
+}
+
+impl WidthRow {
+    /// `row` as the widths measure it in `fields`.
+    pub(super) fn of(row: &Row, fields: &[Field], bits: bool) -> Self {
+        Self {
+            shape: Name::of(row).shape,
+            title: row.title.clone(),
+            detail: row.detail.clone(),
+            mark_key: row.mark_key.clone(),
+            note: row.note.clone(),
+            pinned: row.pinned,
+            cells: fields
+                .iter()
+                .filter(|field| in_full(field, bits))
+                .map(|field| (field.key, display_cell(row, field, bits).into()))
+                .collect(),
+        }
+    }
+
+    fn name(&self) -> Name<'_> {
+        Name {
+            shape: self.shape,
+            title: &self.title,
+            detail: &self.detail,
+            note: self.note.as_deref(),
+            pinned: self.pinned,
+        }
+    }
+
+    fn cell(&self, key: &str) -> Option<&SharedString> {
+        self.cells
+            .iter()
+            .find(|(cell, _)| *cell == key)
+            .map(|(_, text)| text)
     }
 }
 
@@ -219,7 +341,7 @@ impl AutoWidths {
     pub fn reset(&mut self) {
         self.natural.clear();
         self.measured.clear();
-        self.full = None;
+        self.source = Weak::new();
     }
 
     fn measure(
@@ -265,83 +387,98 @@ impl AutoWidths {
         width
     }
 
-    /// What the name cell of `row` takes, laid out as `NativeTable::name_cell`
-    /// draws it: the indent, the fold button or its space, the icon, the name
-    /// and whatever follows it.
+    /// What a name cell takes, laid out as `NativeTable::name_cell` draws
+    /// it: the indent, the fold button or its space, the icon, the name and
+    /// whatever follows it.
     fn name_width(
         &mut self,
-        row: &Row,
+        name: Name<'_>,
         system: &gpui_kit::gpui::WindowTextSystem,
         cx: &App,
     ) -> f32 {
         const GAP: f32 = 8.;
         const FOLD: f32 = 18.;
         let edges = CELL_PADDING * 2. + 6.;
-        if row.user.is_some() {
-            return edges
-                + FOLD
-                + GAP
-                + 16.
-                + GAP
-                + self.measure(&row.title, Role::Heading, system, cx)
-                + GAP
-                + self.measure(&row.detail, Role::Label, system, cx);
-        }
-        let inset = if row.nested { USER_INSET } else { 0. };
-        if row.section.is_some() {
-            let count = row.raw["entryCount"].to_string();
-            return edges
-                + inset
-                + FOLD
-                + GAP
-                + self.measure(&row.title, Role::Heading, system, cx)
-                + GAP
-                + (self.measure(&count, Role::Badge, system, cx) + 14.).max(22.);
-        }
+        let inset = |nested: bool| if nested { USER_INSET } else { 0. };
+        let (nested, depth, members, efficiency, suspended) = match name.shape {
+            NameShape::User => {
+                return edges
+                    + FOLD
+                    + GAP
+                    + 16.
+                    + GAP
+                    + self.measure(name.title, Role::Heading, system, cx)
+                    + GAP
+                    + self.measure(name.detail, Role::Label, system, cx);
+            }
+            NameShape::Section { nested, count } => {
+                return edges
+                    + inset(nested)
+                    + FOLD
+                    + GAP
+                    + self.measure(name.title, Role::Heading, system, cx)
+                    + GAP
+                    + (self.measure(&count.to_string(), Role::Badge, system, cx) + 14.).max(22.);
+            }
+            NameShape::Process {
+                nested,
+                depth,
+                members,
+                efficiency,
+                suspended,
+            } => (nested, depth, members, efficiency, suspended),
+        };
         // The fold button overlaps the icon's gap by 4 px; a row that cannot
         // fold keeps 14 px in its place.
         let mut width = edges
-            + inset
-            + row.depth as f32 * 20.
+            + inset(nested)
+            + depth as f32 * 20.
             + 14.
             + GAP
             + 16.
             + GAP
-            + self.measure(&row.title, Role::Cell, system, cx);
-        if row.members.len() > 1 {
-            width += GAP
-                + (self.measure(&row.members.len().to_string(), Role::Badge, system, cx) + 12.)
-                    .max(20.);
+            + self.measure(name.title, Role::Cell, system, cx);
+        if members > 1 {
+            width +=
+                GAP + (self.measure(&members.to_string(), Role::Badge, system, cx) + 12.).max(20.);
         }
-        if let Some(note) = &row.note {
+        if let Some(note) = name.note {
             width += GAP + (self.measure(note, Role::Label, system, cx) + 26.).max(40.);
         }
-        if !row.detail.is_empty() {
-            width += GAP + self.measure(&row.detail, Role::Cell, system, cx);
+        if !name.detail.is_empty() {
+            width += GAP + self.measure(name.detail, Role::Cell, system, cx);
         }
-        if row
-            .members
-            .iter()
-            .any(|member| boolean(member, "efficiency"))
-        {
+        if efficiency {
             width += GAP + 12.;
         }
-        if !row.members.is_empty()
-            && row
-                .members
-                .iter()
-                .all(|member| boolean(member, "suspended"))
-        {
+        if suspended {
             width +=
                 GAP + self.measure(&label("processes.suspended"), Role::Badge, system, cx) + 14.;
         }
-        if row.pinned {
+        if name.pinned {
             width += GAP + 16.;
         }
         width
     }
 
-    /// What one row needs in `field`.
+    /// What a cell showing `text` in `field` needs.
+    fn text_width(
+        &mut self,
+        field: &Field,
+        text: &str,
+        system: &gpui_kit::gpui::WindowTextSystem,
+        cx: &App,
+    ) -> f32 {
+        let text = if numeric(field.kind) {
+            figures(text)
+        } else {
+            text.to_owned()
+        };
+        self.measure(&text, Role::Cell, system, cx) + CELL_PADDING * 2.
+    }
+
+    /// What the row shown at `index` needs in `field`; the text is kept
+    /// for the cell to draw.
     fn row_width(
         &mut self,
         index: usize,
@@ -352,18 +489,43 @@ impl AutoWidths {
     ) -> Option<f32> {
         let row = contents.rows.get(index)?;
         if field.kind == CellKind::Name {
-            return Some(self.name_width(row, system, cx));
+            return Some(self.name_width(Name::of(row), system, cx));
         }
         let text = contents
             .values
             .entry((index, field.key))
-            .or_insert_with(|| display_cell(row, field, contents.bits));
-        let text = if numeric(field.kind) {
-            figures(text)
-        } else {
-            text.clone()
-        };
-        Some(self.measure(&text, Role::Cell, system, cx) + CELL_PADDING * 2.)
+            .or_insert_with(|| display_cell(row, field, contents.bits).into())
+            .clone();
+        Some(self.text_width(field, &text, system, cx))
+    }
+
+    /// What each row of the measured list needs in `field`. A column chosen
+    /// since the list was built has no text there: the rows shown stand in
+    /// until the next.
+    fn measured_widths(
+        &mut self,
+        field: &Field,
+        contents: &mut Contents<'_>,
+        system: &gpui_kit::gpui::WindowTextSystem,
+        cx: &App,
+    ) -> Vec<f32> {
+        let measured = contents.measured;
+        let widths = measured
+            .iter()
+            .filter_map(|row| {
+                if field.kind == CellKind::Name {
+                    return Some(self.name_width(row.name(), system, cx));
+                }
+                let text = row.cell(field.key)?;
+                Some(self.text_width(field, text, system, cx))
+            })
+            .collect::<Vec<_>>();
+        if !widths.is_empty() {
+            return widths;
+        }
+        (0..contents.rows.len())
+            .filter_map(|index| self.row_width(index, field, contents, system, cx))
+            .collect()
     }
 
     /// What `field`'s header needs: its label with room for the sort arrow,
@@ -416,18 +578,16 @@ impl AutoWidths {
         stepped(required.clamp(minimum, limit.max(header).max(total)))
     }
 
-    /// Measures the columns for the rows now shown, keeping each one's
-    /// widths in `natural`.
+    /// Measures the columns, keeping each one's widths in `natural`: every
+    /// row of a list not measured yet, else the rows on screen, which can
+    /// only widen a column. A search or a fold changes the rows shown, not
+    /// the measured list, and so leaves the widths as they are.
     pub fn apply(&mut self, fields: &[Field], mut contents: Contents<'_>, cx: &App) {
         self.epoch = self.epoch.wrapping_add(1);
         let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
-        let now = Instant::now();
-        let count = contents.rows.len();
-        let full = self
-            .full
-            .is_none_or(|(at, rows)| rows != count || now.duration_since(at) >= FULL_PASS);
+        let full = !std::ptr::eq(self.source.as_ptr(), Arc::as_ptr(contents.measured));
         if full {
-            self.full = Some((now, count));
+            self.source = Arc::downgrade(contents.measured);
         }
         for field in fields {
             let (header, total) = self.header_width(field, &contents, &system, cx);
@@ -436,14 +596,11 @@ impl AutoWidths {
             let ceiling = limit.max(header).max(total);
             let current = self.natural.get(field.key).copied();
             let natural = if text(field.kind) {
-                // Every row now and then, so that rows scrolled to later fit
-                // already; the visible ones in between can only widen it.
+                // Every row of each new list, so that rows scrolled to,
+                // unfolded or searched for later fit already; the visible
+                // ones in between can only widen it.
                 if full || current.is_none() {
-                    let widths = (0..count)
-                        .filter_map(|index| {
-                            self.row_width(index, field, &mut contents, &system, cx)
-                        })
-                        .collect::<Vec<_>>();
+                    let widths = self.measured_widths(field, &mut contents, &system, cx);
                     let all = widths.iter().copied().fold(0., f32::max);
                     let typical = stepped(typical(widths).clamp(floor, ceiling));
                     let all = stepped(all.clamp(floor, ceiling)).max(typical);
@@ -471,14 +628,14 @@ impl AutoWidths {
                         .max(self.measure(text, Role::Cell, &system, cx) + CELL_PADDING * 2.);
                 }
                 // A column with an envelope checks the visible rows for
-                // rarer, wider values; the others measure every row now and
-                // then.
-                let range = if full && bounds.is_empty() {
-                    0..count
-                } else {
-                    contents.range.clone()
-                };
-                for index in range {
+                // rarer, wider values; the others measure every row of each
+                // new list too.
+                if (full || current.is_none()) && bounds.is_empty() {
+                    for width in self.measured_widths(field, &mut contents, &system, cx) {
+                        required = required.max(width);
+                    }
+                }
+                for index in contents.range.clone() {
                     if let Some(width) = self.row_width(index, field, &mut contents, &system, cx) {
                         required = required.max(width);
                     }

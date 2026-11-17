@@ -42,15 +42,37 @@ pub(crate) struct DirectXDevices {
     pub(crate) dxgi_factory: IDXGIFactory6,
     pub(crate) device: ID3D11Device,
     pub(crate) device_context: ID3D11DeviceContext,
+    /// Whether the software rasterizer was asked for when this was created.
+    /// It is what the request is compared with, not what was found: a system
+    /// without that adapter keeps its hardware device instead of looking again
+    /// on every frame.
+    pub(crate) software: bool,
 }
 
 impl DirectXDevices {
     pub(crate) fn new() -> Result<Self> {
+        Self::create(gpui::windows_software_rendering_requested())
+    }
+
+    /// Devices on the software rasterizer when `software` is set and the
+    /// system lists it, on the first usable adapter otherwise.
+    pub(crate) fn create(software: bool) -> Result<Self> {
         let debug_layer_available = check_debug_layer_available();
         let dxgi_factory =
             get_dxgi_factory(debug_layer_available).context("Creating DXGI factory")?;
+        let selected = if software {
+            get_adapter(&dxgi_factory, debug_layer_available, true).or_else(|_| {
+                log::warn!(
+                    target: "argus::graphics",
+                    "DirectX software adapter unavailable; using the hardware adapters",
+                );
+                get_adapter(&dxgi_factory, debug_layer_available, false)
+            })
+        } else {
+            get_adapter(&dxgi_factory, debug_layer_available, false)
+        };
         let (adapter, device, device_context, feature_level) =
-            get_adapter(&dxgi_factory, debug_layer_available).context("Getting DXGI adapter")?;
+            selected.context("Getting DXGI adapter")?;
         match feature_level {
             D3D_FEATURE_LEVEL_11_1 => {
                 log::info!("Created device with Direct3D 11.1 feature level.")
@@ -69,6 +91,7 @@ impl DirectXDevices {
             dxgi_factory,
             device,
             device_context,
+            software,
         })
     }
 }
@@ -107,6 +130,7 @@ fn get_dxgi_factory(debug_layer_available: bool) -> Result<IDXGIFactory6> {
 fn get_adapter(
     dxgi_factory: &IDXGIFactory6,
     debug_layer_available: bool,
+    software_only: bool,
 ) -> Result<(
     IDXGIAdapter1,
     ID3D11Device,
@@ -115,13 +139,20 @@ fn get_adapter(
 )> {
     for adapter_index in 0.. {
         let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(adapter_index)?.cast()? };
-        if let Ok(desc) = unsafe { adapter.GetDesc1() } {
+        let desc = unsafe { adapter.GetDesc1() };
+        let software = desc
+            .as_ref()
+            .is_ok_and(|desc| desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0);
+        // The software rasterizer is listed after the hardware adapters.
+        if software_only && !software {
+            continue;
+        }
+        if let Ok(desc) = desc {
             log::info!(
                 target: "argus::graphics",
-                "DirectX adapter initialization; index={adapter_index}; vendor_id=0x{:04X}; device_id=0x{:04X}; software={}",
+                "DirectX adapter initialization; index={adapter_index}; vendor_id=0x{:04X}; device_id=0x{:04X}; software={software}",
                 desc.VendorId,
                 desc.DeviceId,
-                desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0,
             );
         }
         // Check to see whether the adapter supports Direct3D 11 and create
@@ -216,5 +247,20 @@ fn get_device(
         Err(anyhow::anyhow!(
             "Required feature StructuredBuffer is not supported by GPU/driver"
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DXGI_ADAPTER_FLAG_SOFTWARE, DirectXDevices};
+
+    #[test]
+    fn a_software_request_takes_the_software_adapter() {
+        let devices = DirectXDevices::create(true).expect("software devices");
+        assert!(devices.software);
+        let desc = unsafe { devices.adapter.GetDesc1() }.expect("adapter description");
+        assert_ne!(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32, 0);
+        // The request is kept as made, whatever adapter the system offers first.
+        assert!(!DirectXDevices::create(false).expect("devices").software);
     }
 }

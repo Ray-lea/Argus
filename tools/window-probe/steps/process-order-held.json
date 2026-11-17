@@ -1,0 +1,47 @@
+{
+  "window": [1400, 900],
+  "steps": [
+    {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"cpu","desc":true}},"sample":{"set":{"/system/processCount":6,"/processes":[
+      {"pid":100,"ppid":0,"createTime":1,"name":"alpha.exe","description":"Alpha","path":"C:/Examples/alpha.exe","cpu":4,"privateWs":104857600,"appWindow":true},
+      {"pid":110,"ppid":100,"createTime":2,"name":"worker.exe","description":"Worker","path":"C:/Examples/worker.exe","cpu":2,"privateWs":52428800},
+      {"pid":120,"ppid":100,"createTime":4,"name":"helper.exe","description":"Helper","path":"C:/Examples/helper.exe","cpu":1,"privateWs":26214400},
+      {"pid":200,"ppid":0,"createTime":1,"name":"beta.exe","description":"Beta","path":"C:/Examples/beta.exe","cpu":3,"privateWs":83886080,"appWindow":true},
+      {"pid":210,"ppid":200,"createTime":2,"name":"task.exe","description":"Task","path":"C:/Examples/task.exe","cpu":1,"privateWs":26214400},
+      {"pid":300,"ppid":999,"createTime":3,"name":"orphan.exe","description":"Orphan","path":"C:/Examples/orphan.exe","cpu":0,"privateWs":10485760}
+    ]}}},"wait":500,"inspect":"layout","label":"sorted","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Beta","processTree.titles.2":"Orphan","processTree.visibleRows":3,"processTree.heldOrder":false},"capture":"sorted"},
+    {"control":{"pointer":{"at":"row:2","event":"hover"}},"wait":100},
+    {"control":{"sample":{"set":{"/processes":[
+      {"pid":100,"ppid":0,"createTime":1,"name":"alpha.exe","description":"Alpha","path":"C:/Examples/alpha.exe","cpu":4,"privateWs":104857600,"appWindow":true},
+      {"pid":110,"ppid":100,"createTime":2,"name":"worker.exe","description":"Worker","path":"C:/Examples/worker.exe","cpu":1,"privateWs":52428800},
+      {"pid":120,"ppid":100,"createTime":4,"name":"helper.exe","description":"Helper","path":"C:/Examples/helper.exe","cpu":2,"privateWs":26214400},
+      {"pid":200,"ppid":0,"createTime":1,"name":"beta.exe","description":"Beta","path":"C:/Examples/beta.exe","cpu":20,"privateWs":83886080,"appWindow":true},
+      {"pid":210,"ppid":200,"createTime":2,"name":"task.exe","description":"Task","path":"C:/Examples/task.exe","cpu":1,"privateWs":26214400},
+      {"pid":300,"ppid":999,"createTime":3,"name":"orphan.exe","description":"Orphan","path":"C:/Examples/orphan.exe","cpu":0,"privateWs":10485760}
+    ]}}},"wait":300,"inspect":"layout","label":"held","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Beta","processTree.titles.2":"Orphan","processTree.visibleRows":3,"processTree.heldOrder":true}},
+    {"control":{"pointer":{"at":"row:0","event":"double"}},"wait":300,"inspect":"layout","label":"double-click-expanded","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Helper","processTree.titles.2":"Worker","processTree.titles.3":"Beta","processTree.titles.4":"Orphan","processTree.visibleRows":5,"processTree.expandedParents":1,"processTree.heldOrder":true},"capture":"double-click-expanded"},
+    {"control":{"foldRow":0},"wait":300,"inspect":"layout","label":"folded","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Beta","processTree.titles.2":"Orphan","processTree.visibleRows":3,"processTree.heldOrder":true}},
+    {"control":{"mouse":{"type":"move","x":28,"y":323}},"wait":100},
+    {"control":{"mouse":{"type":"down","x":28,"y":323}},"wait":50},
+    {"control":{"mouse":{"type":"up","x":28,"y":323}},"wait":300,"inspect":"layout","label":"second-expanded","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Beta","processTree.titles.2":"Task","processTree.titles.3":"Orphan","processTree.visibleRows":4,"processTree.heldOrder":true}},
+    {"control":{"mouse":{"type":"move","x":700,"y":10}},"wait":300,"inspect":"layout","label":"released","expect":{"processTree.titles.0":"Beta","processTree.titles.1":"Task","processTree.titles.2":"Alpha","processTree.titles.3":"Orphan","processTree.visibleRows":4,"processTree.heldOrder":false}},
+    {"control":{"preference":{"holdOrderOnHover":false}},"wait":100},
+    {"control":{"pointer":{"at":"row:3","event":"hover"}},"wait":100},
+    {"control":{"sample":{"set":{"/processes":[
+      {"pid":100,"ppid":0,"createTime":1,"name":"alpha.exe","description":"Alpha","path":"C:/Examples/alpha.exe","cpu":30,"privateWs":104857600,"appWindow":true},
+      {"pid":110,"ppid":100,"createTime":2,"name":"worker.exe","description":"Worker","path":"C:/Examples/worker.exe","cpu":1,"privateWs":52428800},
+      {"pid":120,"ppid":100,"createTime":4,"name":"helper.exe","description":"Helper","path":"C:/Examples/helper.exe","cpu":2,"privateWs":26214400},
+      {"pid":200,"ppid":0,"createTime":1,"name":"beta.exe","description":"Beta","path":"C:/Examples/beta.exe","cpu":20,"privateWs":83886080,"appWindow":true},
+      {"pid":210,"ppid":200,"createTime":2,"name":"task.exe","description":"Task","path":"C:/Examples/task.exe","cpu":1,"privateWs":26214400},
+      {"pid":300,"ppid":999,"createTime":3,"name":"orphan.exe","description":"Orphan","path":"C:/Examples/orphan.exe","cpu":0,"privateWs":10485760}
+    ]}}},"wait":300,"inspect":"layout","label":"hover-off","expect":{"processTree.titles.0":"Alpha","processTree.titles.1":"Beta","processTree.heldOrder":false}},
+    {"control":{"preference":{"holdOrderOnHover":true}},"wait":100},
+    {"control":{"sample":{"set":{"/processes":[
+      {"pid":100,"ppid":0,"createTime":1,"name":"alpha.exe","description":"Alpha","path":"C:/Examples/alpha.exe","cpu":4,"privateWs":104857600,"appWindow":true},
+      {"pid":110,"ppid":100,"createTime":2,"name":"worker.exe","description":"Worker","path":"C:/Examples/worker.exe","cpu":1,"privateWs":52428800},
+      {"pid":120,"ppid":100,"createTime":4,"name":"helper.exe","description":"Helper","path":"C:/Examples/helper.exe","cpu":2,"privateWs":26214400},
+      {"pid":200,"ppid":0,"createTime":1,"name":"beta.exe","description":"Beta","path":"C:/Examples/beta.exe","cpu":20,"privateWs":83886080,"appWindow":true},
+      {"pid":210,"ppid":200,"createTime":2,"name":"task.exe","description":"Task","path":"C:/Examples/task.exe","cpu":1,"privateWs":26214400},
+      {"pid":300,"ppid":999,"createTime":3,"name":"orphan.exe","description":"Orphan","path":"C:/Examples/orphan.exe","cpu":0,"privateWs":10485760}
+    ]}}},"wait":300,"inspect":"layout","label":"hover-on","expect":{"processTree.titles.0":"Alpha","processTree.heldOrder":true},"capture":"hover-on"}
+  ]
+}

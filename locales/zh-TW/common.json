@@ -15,6 +15,7 @@
   "none": "無",
   "name": "名稱",
   "status": "狀態",
+  "filterColumn": "依「{column}」篩選",
   "command": "命令",
   "copyName": "複製名稱",
   "copyPath": "複製路徑",
