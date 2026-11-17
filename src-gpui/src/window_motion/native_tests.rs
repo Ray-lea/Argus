@@ -22,9 +22,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM
     unsafe { DefWindowProcW(hwnd, msg, w, l) }
 }
 
-#[test]
-#[ignore = "creates windows on an inactive desktop"]
-fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() {
+fn with_window(test: impl FnOnce(HWND) + Send + 'static) {
     let name: Vec<u16> = format!("ArgusWindowMotion-{}", std::process::id())
         .encode_utf16()
         .chain(Some(0))
@@ -88,6 +86,20 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
             }
         }
         let _window = Owned(hwnd);
+        test(hwnd);
+    })
+    .join();
+    stop.send(()).unwrap();
+    monitor.join().unwrap();
+    // Windows may retain helper threads until this short-lived test process exits.
+    let _ = unsafe { CloseDesktop(desktop) };
+    result.unwrap();
+}
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
+fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() {
+    with_window(|hwnd| unsafe {
         install(hwnd);
         perform(hwnd, Op::Enable(false));
         SetWindowPos(
@@ -202,11 +214,80 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
             GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_LAYERED.0,
             0
         );
-    })
-    .join();
-    stop.send(()).unwrap();
-    monitor.join().unwrap();
-    // Windows may retain helper threads until this short-lived test process exits.
-    let _ = unsafe { CloseDesktop(desktop) };
-    result.unwrap();
+    });
+}
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
+fn window_placement_survives_hiding_and_reopening() {
+    use crate::window_state;
+    use argus_app::preferences::{WindowPlacement, save_window, window};
+
+    let file = std::env::temp_dir().join(format!(
+        "argus-window-placement-{}.json",
+        std::process::id()
+    ));
+    let rect = [90, 80, 890, 680];
+    save_window(
+        &file,
+        WindowPlacement {
+            rect,
+            maximized: true,
+        },
+    )
+    .unwrap();
+    for (maximized, visible_start) in [(true, false), (false, true), (true, true)] {
+        let file = file.clone();
+        let saved = WindowPlacement { rect, maximized };
+        with_window(move |hwnd| unsafe {
+            if visible_start {
+                SetWindowPos(
+                    hwnd,
+                    Some(HWND_BOTTOM),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                )
+                .unwrap();
+            }
+            window_state::install(hwnd, file.clone());
+            install(hwnd);
+            perform(hwnd, Op::Enable(false));
+            assert_eq!(IsWindowVisible(hwnd).as_bool(), visible_start);
+            window_state::prepare_show(hwnd);
+            super::show(hwnd);
+            assert!(IsWindowVisible(hwnd).as_bool());
+            assert_eq!(IsZoomed(hwnd).as_bool(), maximized, "first show");
+
+            for animate in [false, true] {
+                super::hide(hwnd);
+                assert!(!IsWindowVisible(hwnd).as_bool());
+                perform(hwnd, Op::Enable(animate));
+                super::show(hwnd);
+                assert_eq!(IsZoomed(hwnd).as_bool(), maximized, "show from tray");
+                perform(hwnd, Op::Enable(false));
+            }
+            let _ = ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
+            assert!(IsIconic(hwnd).as_bool());
+            window_state::flush();
+            assert_eq!(window(&file), Some(saved), "save while minimized");
+            super::show(hwnd);
+            assert_eq!(IsZoomed(hwnd).as_bool(), maximized, "restore from taskbar");
+
+            // The next window reads the placement left by this one.
+            let _ = ShowWindow(hwnd, if maximized { SW_RESTORE } else { SW_MAXIMIZE });
+            super::hide(hwnd);
+            window_state::flush();
+            assert_eq!(
+                window(&file),
+                Some(WindowPlacement {
+                    rect,
+                    maximized: !maximized
+                })
+            );
+        });
+    }
+    std::fs::remove_file(file).unwrap();
 }

@@ -661,6 +661,7 @@ impl Desktop {
                     .viewport_size()
                     .map(|length| length * window.scale_factor());
                 Some(json!({
+                    "visible": unsafe { IsWindowVisible(hwnd).as_bool() },
                     "maximized": unsafe { IsZoomed(hwnd).as_bool() },
                     "width": client.right, "height": client.bottom,
                     "viewportMatchesClient": (f32::from(viewport.width) - client.right as f32).abs() < 1.

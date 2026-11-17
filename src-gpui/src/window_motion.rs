@@ -21,8 +21,8 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, LWA_ALPHA,
     PostMessageW, SC_MINIMIZE, SC_RESTORE, STYLESTRUCT, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
-    SW_SHOWNOACTIVATE, SendMessageW, SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow,
-    WM_APP, WM_NCDESTROY, WM_STYLECHANGED, WM_STYLECHANGING, WM_SYSCOMMAND, WM_WINDOWPOSCHANGED,
+    SW_SHOWNA, SendMessageW, SetLayeredWindowAttributes, SetWindowLongPtrW, ShowWindow, WM_APP,
+    WM_NCDESTROY, WM_STYLECHANGED, WM_STYLECHANGING, WM_SYSCOMMAND, WM_WINDOWPOSCHANGED,
     WS_EX_LAYERED,
 };
 
@@ -303,7 +303,8 @@ fn apply(hwnd: HWND, target: Target) {
     unsafe {
         let command = match target {
             Target::Shown if IsIconic(hwnd).as_bool() => SW_RESTORE,
-            Target::Shown => SW_SHOWNOACTIVATE,
+            // A hidden or already visible window keeps its current placement.
+            Target::Shown => SW_SHOWNA,
             Target::Hidden => SW_HIDE,
             Target::Minimized => SW_MINIMIZE,
         };
