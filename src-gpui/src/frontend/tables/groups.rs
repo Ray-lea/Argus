@@ -135,14 +135,24 @@ fn held(groups: &[Group], count: usize, scroll: f32) -> (Vec<(usize, f32)>, f32)
     (bands, covered.max(0.))
 }
 
+/// How far down the headings at the top of a list scrolled `scroll` down
+/// keep the name beside the scrollbar, and the row it names: a whole row for
+/// each heading, counted as half a pixel more of scrolling would hold them.
+/// The headings in place at the very top count as they will once held, and
+/// a heading pushed up by the next one counts until the next is held in its
+/// place, so the name does not jump at either (`held` reaches less there).
+fn reach(groups: &[Group], count: usize, scroll: f32) -> f32 {
+    held(groups, count, scroll + 0.5).0.len() as f32 * ROW_HEIGHT
+}
+
 /// Where the name beside the scrollbar goes: by the thumb, as the bar draws
-/// it (`scrollbar::Geometry`), below the held headings.
-fn name_top(scroll: f32, height: f32, max: f32, covered: f32) -> f32 {
+/// it (`scrollbar::Geometry`), below the headings at the top (`reach`).
+fn name_top(scroll: f32, height: f32, max: f32, reach: f32) -> f32 {
     let total = height + max;
     let thumb = (height / total * height).round().max(17.).min(height);
     let middle = scroll / max.max(1.) * (height - thumb) + thumb / 2.;
     (middle - NAME_HEIGHT / 2.)
-        .max(covered + 4.)
+        .max(reach + 4.)
         .min(height - NAME_HEIGHT - 4.)
 }
 
@@ -224,6 +234,8 @@ pub(super) struct Overlay {
     bands: Vec<(usize, f32)>,
     /// How far down the held headings reach.
     covered: f32,
+    /// How far down the headings at the top keep the name (`reach`).
+    reach: f32,
     scroll: f32,
     height: f32,
     max: f32,
@@ -313,6 +325,7 @@ impl NativeTable {
         let mut overlay = Overlay {
             bands,
             covered,
+            reach: reach(&view.groups, count, scroll),
             scroll,
             height,
             max: f32::from(list.max_offset().y),
@@ -356,7 +369,7 @@ impl NativeTable {
             }
         }
         if overlay.name > 0. {
-            let row = (((scroll + overlay.covered) / ROW_HEIGHT).floor() as usize).min(count - 1);
+            let row = (((scroll + overlay.reach) / ROW_HEIGHT).floor() as usize).min(count - 1);
             overlay.named = view.group_of(row).map(|group| (group, row));
         }
         view.overlay = overlay;
@@ -510,7 +523,7 @@ impl NativeTable {
         let view = &self.group_view;
         let total = height + max;
         let current = view
-            .group_of(((scroll + view.overlay.covered) / ROW_HEIGHT).floor() as usize)
+            .group_of(((scroll + view.overlay.reach) / ROW_HEIGHT).floor() as usize)
             .map(|group| group.heading);
         // The innermost groups: a user's own when it has no categories.
         let leaves = view.groups.iter().filter(|group| {
@@ -576,7 +589,7 @@ impl NativeTable {
             index = row.saturating_sub(group.heading).max(1),
             total = group.end - group.heading - 1
         );
-        let top = name_top(scroll, height, max, overlay.covered);
+        let top = name_top(scroll, height, max, overlay.reach);
         let (list, groups, count) = (
             self.list.clone(),
             self.group_view.groups.clone(),
@@ -585,8 +598,7 @@ impl NativeTable {
         let shift = move || {
             list.as_ref().map_or(0., |list| {
                 let scroll = scrolled(list);
-                let covered = held(&groups, count, scroll).1;
-                name_top(scroll, height, max, covered) - top
+                name_top(scroll, height, max, reach(&groups, count, scroll)) - top
             })
         };
         let color = group.tone.color(p);
@@ -625,7 +637,7 @@ impl NativeTable {
 
 #[cfg(test)]
 mod tests {
-    use super::{Group, Tone, groups};
+    use super::{Group, ROW_HEIGHT, Tone, groups, held, reach};
     use crate::frontend::model::{Row, UserHeading};
     use serde_json::json;
 
@@ -703,5 +715,42 @@ mod tests {
     #[test]
     fn a_list_without_headings_has_no_groups() {
         assert!(groups(&[process(), process()]).is_empty());
+    }
+    #[test]
+    fn the_name_keeps_below_the_headings_at_the_top_without_jumping() {
+        let human = UserHeading {
+            system: false,
+            current: true,
+            disconnected: false,
+        };
+        // Three categories of three processes each.
+        let mut rows = Vec::new();
+        for section in ["apps", "background", "windows"] {
+            rows.push(heading(section, None));
+            rows.extend((0..3).map(|_| process()));
+        }
+        let categories = groups(&rows);
+        let count = rows.len();
+        // Unscrolled, the first heading is in place rather than held; the
+        // background heading pushes the apps heading out from 90 to 120.
+        assert_eq!(held(&categories, count, 0.).1, 0.);
+        assert!(held(&categories, count, 105.).1 < ROW_HEIGHT);
+        for scroll in [0., 0.25, 10., 89.5, 90., 105., 119.9, 120., 120.2, 150.] {
+            assert_eq!(reach(&categories, count, scroll), ROW_HEIGHT, "at {scroll}");
+        }
+        // A user's heading and its first category's both sit at the top.
+        let mut rows = vec![heading("user", Some(human))];
+        for section in ["apps", "background"] {
+            rows.push(heading(section, None));
+            rows.extend((0..3).map(|_| process()));
+        }
+        let users = groups(&rows);
+        for scroll in [0., 0.25, 10., 60., 75., 90., 100.] {
+            assert_eq!(
+                reach(&users, rows.len(), scroll),
+                2. * ROW_HEIGHT,
+                "at {scroll}"
+            );
+        }
     }
 }
