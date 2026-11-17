@@ -356,8 +356,8 @@ impl Desktop {
                 self.process_batch("priority", &args, window, cx);
                 return;
             }
-            "efficiency" => {
-                self.process_batch("efficiency", &args, window, cx);
+            "efficiency" | "ioPriority" | "memoryPriority" => {
+                self.process_batch(kind, &args, window, cx);
                 return;
             }
             // Resuming is harmless; suspending asks first.

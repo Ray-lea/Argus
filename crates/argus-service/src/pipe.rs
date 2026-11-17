@@ -780,13 +780,33 @@ pub(crate) mod tests {
         };
         // An old service: the Ping after the dropped request reports its
         // protocol, so the request is known not to have run.
-        let name = name();
-        let server = dropping_server(&name, crate::PROTOCOL - 1, 2);
-        assert_eq!(
-            request(&name, std::process::id(), terminate()).unwrap_err(),
-            INCOMPATIBLE
-        );
-        assert_eq!(server.join().unwrap(), ["Terminate", "Ping"]);
+        for (operation, expected) in [
+            (terminate(), "Terminate"),
+            (
+                Operation::IoPriority {
+                    pid: 5,
+                    create_time: 1,
+                    priority: argus_core::actions::IoPriority::Low,
+                },
+                "IoPriority",
+            ),
+            (
+                Operation::MemoryPriority {
+                    pid: 5,
+                    create_time: 1,
+                    priority: argus_core::actions::MemoryPriority::Low,
+                },
+                "MemoryPriority",
+            ),
+        ] {
+            let name = name();
+            let server = dropping_server(&name, crate::PROTOCOL - 1, 2);
+            assert_eq!(
+                request(&name, std::process::id(), operation).unwrap_err(),
+                INCOMPATIBLE
+            );
+            assert_eq!(server.join().unwrap(), [expected, "Ping"]);
+        }
         // A current service that dropped it may have run it: the error stays.
         let name = self::name();
         let server = dropping_server(&name, crate::PROTOCOL, 2);
