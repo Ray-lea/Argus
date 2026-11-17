@@ -59,6 +59,8 @@ pub(crate) enum Action {
     Context = 2,
     /// The pointer reached the monitor: its panel may follow.
     Warm = 3,
+    /// The right button went down on the monitor.
+    Press = 4,
 }
 
 impl Action {
@@ -67,6 +69,7 @@ impl Action {
             1 => Action::Toggle,
             2 => Action::Context,
             3 => Action::Warm,
+            4 => Action::Press,
             _ => return None,
         })
     }
@@ -397,11 +400,13 @@ unsafe extern "system" fn window_procedure(
             with_worker(|worker| worker.ask(Action::Context));
             LRESULT(0)
         }
-        // Handled here: passed on, they would reach the taskbar and open
-        // its own menu.
-        WM_LBUTTONDOWN | WM_LBUTTONDBLCLK | WM_RBUTTONDOWN | WM_RBUTTONDBLCLK | WM_CONTEXTMENU => {
+        WM_RBUTTONDOWN => {
+            with_worker(|worker| worker.ask(Action::Press));
             LRESULT(0)
         }
+        // Handled here: passed on, they would reach the taskbar and open
+        // its own menu.
+        WM_LBUTTONDOWN | WM_LBUTTONDBLCLK | WM_RBUTTONDBLCLK | WM_CONTEXTMENU => LRESULT(0),
         WM_DESTROY => {
             with_worker(|worker| {
                 if worker.window == Some(hwnd) {

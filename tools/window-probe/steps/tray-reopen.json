@@ -7,10 +7,19 @@
     {"control":{"trayFlyout":"panel"},"wait":900,"inspect":"layout","label":"card-to-panel","expect":{"tray.panel":true,"tray.visible":true,"tray.samplingShown":true},"captureFlyout":"panel"},
     {"control":{"trayFlyout":"panel"},"wait":700,"inspect":"layout","label":"panel-closed","expect":{"tray.panel":false,"tray.visible":false,"tray.samplingShown":false}},
     {"control":{"trayFlyout":"panel"},"wait":900,"inspect":"layout","label":"panel-reopened","expect":{"tray.panel":true,"tray.visible":true,"tray.samplingShown":true}},
+    {"control":{"trayPress":true,"trayFlyout":"panel"},"wait":150},
+    {"control":{"trayPress":true,"trayFlyout":"panel"},"wait":900,"inspect":"layout","label":"panel-quick-reopen","expect":{"tray.panel":true,"tray.visible":true}},
     {"control":{"trayFlyout":"close"},"wait":700,"inspect":"layout","label":"closed","expect":{"tray.visible":false,"tray.samplingShown":false}},
+    {"control":{"trayHover":"rest"},"wait":200,"inspect":"layout","label":"hover-waits","expect":{"tray.visible":false}},
+    {"wait":500,"inspect":"layout","label":"hover-card","expect":{"tray.card":true,"tray.visible":true}},
+    {"control":{"trayHover":"leave"},"wait":500,"inspect":"layout","label":"hover-left","expect":{"tray.visible":false}},
+    {"control":{"trayHover":"rest"},"wait":150},
+    {"control":{"trayHover":"leave"},"wait":600,"inspect":"layout","label":"hover-passed","expect":{"tray.visible":false}},
     {"control":{"theme":"light","windowMotion":"on"},"wait":300},
     {"control":{"trayFlyout":"card"},"wait":900},
     {"control":{"trayFlyout":"panel"},"wait":900,"inspect":"layout","label":"motion-on-panel","expect":{"tray.panel":true,"tray.visible":true,"tray.samplingShown":true},"captureFlyout":"panel-light"},
+    {"control":{"trayPress":true,"trayFlyout":"panel"},"wait":150},
+    {"control":{"trayPress":true,"trayFlyout":"panel"},"wait":900,"inspect":"layout","label":"motion-on-quick-reopen","expect":{"tray.panel":true,"tray.visible":true}},
     {"control":{"trayFlyout":"close"},"wait":700,"inspect":"layout","label":"motion-on-closed","expect":{"tray.visible":false,"tray.samplingShown":false}}
   ]
 }

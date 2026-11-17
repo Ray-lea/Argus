@@ -21,6 +21,16 @@ impl Desktop {
         // The tray's flyouts, opened where the shell would put them but never
         // activated: "card", "panel", "warm" to make their window ahead of
         // use, or anything else to close them.
+        // The right button going down on the tray icon, before a right
+        // click (`trayFlyout: "panel"`) that follows it.
+        if control["trayPress"].as_bool() == Some(true) {
+            crate::shell::mark_right_press();
+        }
+        // The pointer resting on the tray icon ("rest") or leaving it
+        // ("leave"), as the shell reports it: the hover card waits first.
+        if let Some(hover) = control["trayHover"].as_str() {
+            crate::shell::tray_hover(&self.host, hover == "rest");
+        }
         if let Some(flyout) = control.get("trayFlyout") {
             let anchor = json!(crate::shell::sample_anchor());
             match flyout.as_str() {

@@ -75,7 +75,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线、胶囊与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，在替身任务栏上打开任务栏监控的面板（测试控制 `taskbarPanel`，不取得前台）并捕获深浅主题下的画面，经面板的选项切换样式与读数并核对勾选状态，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。
 
-[`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
+[`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开、关闭后 150 ms 内再次右键单击仍能打开，指针停留时悬停卡片先等待再打开、停留不足即离开时不打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
 
 [`process-visibility.json`](../../tools/window-probe/steps/process-visibility.json) 注入含 Windows 组件、普通进程及无所属进程连接的样本，核对三种进程视图、连接筛选、设置页规则编辑与小窗口布局。模拟快照实例的 `formValues` 设置已打开表单的输入，随后通过实际键盘路径保存或取消；`inspectLayout.visibility` 输出开关状态与列表中的 PID。
 
@@ -125,6 +125,9 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `desktopMonitor`、`taskbarMonitor` | 经组件页使用的 `set_desktop_monitor`、`set_taskbar_monitor` 修改监控设置，如 `{ "enabled": true }`、`{ "metrics": ["cpu", "network"] }`、`{ "opacity": 70 }`；模拟快照下同样执行，只改变测试实例自身的设置与窗口 |
 | `desktopMonitorMenu` | `topmost`、`locked` 或 `hide`：如同在桌面监控的右键菜单中选择该项 |
 | `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
+| `trayHover` | `rest` 或 `leave`：如同 Shell 报告指针停留在托盘图标上或离开，经宿主的同一计时打开或取消悬停卡片（假定托盘位置） |
+| `trayPress` | `true`：记下右键在托盘图标上按下的时刻，与同一步中随后的 `trayFlyout: "panel"` 组成一次右键单击：面板在按下时打开（或因按下而关闭）则关闭，否则打开 |
+| `taskbarPanel` | `open`：在替身任务栏的任务栏监控上方打开其面板，不取得前台；`close` 关闭；`style:<样式>`、`reading:<读数>`、`settings` 或 `hide`：如同在面板中单击对应的控件 |
 
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
 
