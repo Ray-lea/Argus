@@ -879,9 +879,14 @@ pub fn taskbar_preview(
             *painter = taskbar_draw::Painter::new(font);
         }
         let painter = painter.as_ref()?;
-        let height = (40. * scale).round() as i32;
+        // Laid out as on Windows 11's 48 px taskbar, then cut to its
+        // middle 40 px, where every style's readings lie.
+        let height = (48. * scale).round() as i32;
         let layout = taskbar_draw::lay_out(groups, height, scale, style, painter, None);
-        let mut pixels = painter.paint(&layout, light, false, scale)?;
+        let pixels = painter.paint(&layout, light, false, scale)?;
+        let cut = (4. * scale).round() as i32;
+        let row = layout.width as usize * 4;
+        let mut pixels = pixels[cut as usize * row..(height - cut) as usize * row].to_vec();
         let [red, green, blue, _] = taskbar_color(light).to_le_bytes();
         for pixel in pixels.as_chunks_mut::<4>().0 {
             let clear = 1. - f32::from(pixel[3]) / 255.;
@@ -890,7 +895,7 @@ pub fn taskbar_preview(
             }
             pixel[3] = 255;
         }
-        Some((layout.width as u32, layout.height as u32, pixels))
+        Some((layout.width as u32, (height - 2 * cut) as u32, pixels))
     })
 }
 /// The taskbar monitor's window on screen, physical pixels (left, top,

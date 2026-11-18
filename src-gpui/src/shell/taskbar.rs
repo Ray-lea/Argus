@@ -659,7 +659,7 @@ impl Worker {
             return;
         };
         let scale = unsafe { GetDpiForWindow(host) }.max(96) as f32 / 96.;
-        let font = super::taskbar_draw::font_size(scale);
+        let font = super::taskbar_draw::font_size(super::taskbar_draw::size_scale(height, scale));
         if self
             .painter
             .as_ref()

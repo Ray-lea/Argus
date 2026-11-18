@@ -1,5 +1,5 @@
 //! What the taskbar monitor shows, drawn into premultiplied BGRA for a
-//! layered window, in one of three styles (`TaskbarStyle`):
+//! layered window, in one of four styles (`TaskbarStyle`):
 //!
 //! - labels: short readings in columns of two rows (one on a taskbar too low
 //!   for two), each a name on the left and its value on the right;
@@ -9,8 +9,12 @@
 //!   device's colour before its name and value;
 //! - figures: a small name in its device's colour over a large figure.
 //!
-//! Every value keeps the room of the widest it may get (`Cell::widest`), so
-//! that changing values neither move the readings nor resize the window.
+//! On the taskbar a value keeps the room of the widest it took within the
+//! last minute (`Reserve`), so that changing values seldom move the
+//! readings or resize the window, without the room of a value it hardly
+//! ever takes; a curve's tile, and every value laid out without a reserve
+//! (the panel's previews), keep the room of the widest it may get
+//! (`Cell::widest`). The sizes follow the taskbar's height (`size_scale`).
 //! Curves, capsules and figures need two rows of text; a lower taskbar
 //! shows labels.
 //!
@@ -174,11 +178,20 @@ pub(crate) struct Layout {
     pub font: i32,
 }
 
-/// The labels' text size at `scale`, pixels: the interface's own
-/// (`resources/theme.json` `fontSize`). Two rows of it fit a 48 px taskbar;
-/// at the clock's 12 px the readings were harder to make out.
+/// The labels' text size, pixels, at `scale` as `size_scale` gives it:
+/// 15 px on Windows 11's 48 px taskbar, where two rows of it fill the
+/// height but its margins; 13 px, the interface's own, on Windows 10's
+/// 40 px one. At the clock's 12 px the readings were hard to make out.
 pub(crate) fn font_size(scale: f32) -> i32 {
-    (13. * scale).round().max(8.) as i32
+    (15. * scale).round().max(8.) as i32
+}
+
+/// How large the readings are set on a taskbar `height` pixels high at
+/// `scale`: the styles' sizes are for Windows 11's 48 px taskbar, and
+/// follow a lower or higher one within bounds, so that they fill its
+/// height rather than leave it empty around small text.
+pub(crate) fn size_scale(height: i32, scale: f32) -> f32 {
+    scale * (height as f32 / (48. * scale)).clamp(0.85, 1.25)
 }
 
 /// A value's figure and its unit: "12.4" and " MB/s", the unit drawn
@@ -304,9 +317,26 @@ impl Reserve {
     }
 }
 
+/// The room for a value that is `width` wide and may get `widest` wide:
+/// the room it took lately, kept in `reserve` under `key` when given one,
+/// its widest without.
+fn held(
+    reserve: &mut Option<(&mut Reserve, Instant)>,
+    key: String,
+    width: i32,
+    widest: i32,
+) -> i32 {
+    match reserve.as_mut() {
+        Some((reserve, now)) => reserve.room(key, width, *now),
+        None => width.max(widest),
+    }
+}
+
 /// Lays out `groups` in `style` in a window `height` pixels high at
-/// `scale`; capsules keep their recent room in `reserve` when given one,
-/// at the time given with it, and the room of their widest values without.
+/// `scale`, its sizes following the height (`size_scale`); labels,
+/// capsules and figures keep their recent room in `reserve` when given
+/// one, at the time given with it, and the room of their widest values
+/// without.
 pub(crate) fn lay_out(
     groups: &[Group],
     height: i32,
@@ -315,35 +345,41 @@ pub(crate) fn lay_out(
     fonts: &impl Fonts,
     reserve: Option<(&mut Reserve, Instant)>,
 ) -> Layout {
-    let px = |logical: f32| (logical * scale).round() as i32;
-    let style = if height < px(36.) {
+    let style = if height < (36. * scale).round() as i32 {
         Style::Labels
     } else {
         style
     };
+    let scale = size_scale(height, scale);
     let mut layout = Layout {
         height,
         font: font_size(scale),
         ..Layout::default()
     };
     layout.width = match style {
-        Style::Labels => labels(&mut layout, groups, scale, fonts),
+        Style::Labels => labels(&mut layout, groups, scale, fonts, reserve),
         Style::Curves => curves(&mut layout, groups, scale, fonts),
         Style::Capsules => capsules(&mut layout, groups, scale, fonts, reserve),
-        Style::Figures => figures(&mut layout, groups, scale, fonts),
+        Style::Figures => figures(&mut layout, groups, scale, fonts, reserve),
     };
     layout
 }
 
 /// Labels: names and values in columns of two rows; the layout's width.
-fn labels(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts) -> i32 {
+fn labels(
+    layout: &mut Layout,
+    groups: &[Group],
+    scale: f32,
+    fonts: &impl Fonts,
+    mut reserve: Option<(&mut Reserve, Instant)>,
+) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
     let (font, height) = (layout.font, layout.height);
     let line = (font as f32 * 4. / 3.).round() as i32;
     let rows = if height >= 2 * line + px(4.) { 2 } else { 1 };
     // The capitals' middle on the row's middle.
     let baseline = ((line as f32 + fonts.cap(font)) / 2.).round() as i32;
-    let (pad, inner, gap) = (px(8.), px(6.), px(14.));
+    let (pad, inner, gap) = (px(8.), px(7.), px(12.));
     let mut x = pad;
     let columns = columns(groups, rows);
     for (index, column) in columns.iter().enumerate() {
@@ -362,8 +398,14 @@ fn labels(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
             .iter()
             .zip(&names)
             .zip(&values)
-            .map(|((cell, name), value)| {
-                let room = (*value).max(fonts.width(&cell.widest, font, true));
+            .enumerate()
+            .map(|(row, ((cell, name), value))| {
+                let room = held(
+                    &mut reserve,
+                    format!("labels:{rows}:{index}:{row}:{}", cell.label),
+                    *value,
+                    fonts.width(&cell.widest, font, true),
+                );
                 if cell.label.is_empty() {
                     room
                 } else {
@@ -406,11 +448,11 @@ fn labels(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
 /// pair of rates in two rows over theirs. The layout's width.
 fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
-    let (small, body) = (px(11.), px(12.));
-    let tall = px(38.).min(layout.height);
+    let (small, body) = (px(12.), px(14.));
+    let tall = px(40.).min(layout.height);
     let top = (layout.height - tall) / 2;
     let bottom = top + tall;
-    let (pad, inside, gap) = (px(8.), px(8.), px(6.));
+    let (pad, inside, gap) = (px(8.), px(9.), px(6.));
     let mut x = pad;
     for group in groups.iter().filter(|group| !group.cells.is_empty()) {
         if !layout.tiles.is_empty() {
@@ -431,8 +473,8 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
                     body,
                     small,
                 ));
-                let width = inside + name + px(8.) + room + inside;
-                let baseline = top + px(13.);
+                let width = inside + name + px(9.) + room + inside;
+                let baseline = top + px(15.);
                 layout.runs.push(Run {
                     text: cell.label.clone(),
                     x: x + inside,
@@ -452,7 +494,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
                     small,
                     value_paint(cell),
                 );
-                (width, top + px(18.))
+                (width, top + px(20.))
             }
             cells => {
                 let marks = cells
@@ -474,7 +516,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
                     .unwrap_or(0);
                 let width = inside + marks + px(6.) + room + inside;
                 for (row, cell) in cells.iter().take(2).enumerate() {
-                    let baseline = top + [px(11.), px(23.)][row];
+                    let baseline = top + [px(13.), px(26.)][row];
                     layout.runs.push(Run {
                         text: cell.label.clone(),
                         x: x + inside,
@@ -495,7 +537,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
                         value_paint(cell),
                     );
                 }
-                (width, top + px(26.))
+                (width, top + px(29.))
             }
         };
         layout.tiles.push(Tile {
@@ -521,17 +563,18 @@ fn capsules(
     mut reserve: Option<(&mut Reserve, Instant)>,
 ) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
-    let (name_size, value_size, unit) = (px(11.), px(12.), px(10.));
-    let tall = px(24.).min(layout.height - px(4.));
+    let (name_size, value_size, unit) = (px(13.), px(14.), px(12.));
+    let tall = px(30.).min(layout.height - px(4.));
     let y = (layout.height - tall) / 2;
     let baseline = y + ((tall as f32 + fonts.cap(value_size)) / 2.).round() as i32;
-    let (pad, inside, dot, gap) = (px(8.), px(7.), px(6.), px(4.));
+    let (pad, inside, dot, gap) = (px(8.), px(9.), px(7.), px(5.));
     let mut room = |key: String, cell: &Cell| {
-        let width = figure_width(fonts, &cell.value, value_size, unit);
-        match reserve.as_mut() {
-            Some((reserve, now)) => reserve.room(key, width, *now),
-            None => width.max(figure_width(fonts, &cell.widest, value_size, unit)),
-        }
+        held(
+            &mut reserve,
+            key,
+            figure_width(fonts, &cell.value, value_size, unit),
+            figure_width(fonts, &cell.widest, value_size, unit),
+        )
     };
     let mut x = pad;
     for (index, group) in groups.iter().enumerate() {
@@ -547,7 +590,7 @@ fn capsules(
         let dot_at = match group.cells.as_slice() {
             [cell] => {
                 let centre = [x as f32 + dot as f32 / 2., y as f32 + tall as f32 / 2.];
-                x += dot + px(4.);
+                x += dot + px(5.);
                 layout.runs.push(Run {
                     text: cell.label.clone(),
                     x,
@@ -557,7 +600,7 @@ fn capsules(
                     paint: Paint::Ink,
                     shade: Shade::Name,
                 });
-                x += fonts.width(&cell.label, name_size, false) + px(4.);
+                x += fonts.width(&cell.label, name_size, false) + px(5.);
                 // The value right after its name, as rates follow their
                 // arrows: room held for a wider one lies after it.
                 figure_from(
@@ -576,7 +619,7 @@ fn capsules(
             cells => {
                 for (row, cell) in cells.iter().enumerate() {
                     if row > 0 {
-                        x += px(7.);
+                        x += px(8.);
                     }
                     layout.runs.push(Run {
                         text: cell.label.clone(),
@@ -587,7 +630,7 @@ fn capsules(
                         paint: Paint::Tone(group.tone),
                         shade: Shade::Full,
                     });
-                    x += fonts.width(&cell.label, name_size, true) + px(3.);
+                    x += fonts.width(&cell.label, name_size, true) + px(4.);
                     // The rate right after its arrow; room for a wider one
                     // follows it, so the next arrow keeps its place.
                     figure_from(
@@ -620,33 +663,43 @@ fn capsules(
 }
 
 /// Figures: a small name in its device's colour over a large figure, both
-/// from the column's left edge; a pair of rates in two rows. The layout's
+/// from the column's left edge; a pair of rates in two rows. Each column
+/// keeps the room its values took lately, as capsules do. The layout's
 /// width.
-fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts) -> i32 {
+fn figures(
+    layout: &mut Layout,
+    groups: &[Group],
+    scale: f32,
+    fonts: &impl Fonts,
+    mut reserve: Option<(&mut Reserve, Instant)>,
+) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
-    let (name_size, large, unit, body) = (px(10.), px(16.), px(10.), px(11.));
+    let (name_size, large, unit, body) = (px(12.), px(20.), px(12.), px(14.));
     let middle = layout.height / 2;
-    let (pad, gap) = (px(8.), px(8.));
+    let (pad, gap) = (px(8.), px(9.));
     let mut x = pad;
     let mut any = false;
-    for group in groups.iter().filter(|group| !group.cells.is_empty()) {
+    for (index, group) in groups.iter().enumerate() {
+        if group.cells.is_empty() {
+            continue;
+        }
         if any {
             x += gap;
         }
         any = true;
         match group.cells.as_slice() {
             [cell] => {
-                let room = figure_width(fonts, &cell.widest, large, unit).max(figure_width(
-                    fonts,
-                    &cell.value,
-                    large,
-                    unit,
-                ));
+                let room = held(
+                    &mut reserve,
+                    format!("figures:{index}:0:{}", cell.label),
+                    figure_width(fonts, &cell.value, large, unit),
+                    figure_width(fonts, &cell.widest, large, unit),
+                );
                 let width = fonts.width(&cell.label, name_size, false).max(room);
                 layout.runs.push(Run {
                     text: cell.label.clone(),
                     x,
-                    baseline: middle - px(7.),
+                    baseline: middle - px(5.),
                     size: name_size,
                     value: false,
                     paint: if cell.high {
@@ -663,7 +716,7 @@ fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts
                     fonts,
                     &cell.value,
                     x,
-                    middle + px(13.),
+                    middle + px(14.),
                     large,
                     unit,
                     value_paint(cell),
@@ -678,19 +731,20 @@ fn figures(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts
                     .unwrap_or(0);
                 let room = cells
                     .iter()
-                    .map(|cell| {
-                        figure_width(fonts, &cell.widest, body, unit).max(figure_width(
-                            fonts,
-                            &cell.value,
-                            body,
-                            unit,
-                        ))
+                    .enumerate()
+                    .map(|(row, cell)| {
+                        held(
+                            &mut reserve,
+                            format!("figures:{index}:{row}:{}", cell.label),
+                            figure_width(fonts, &cell.value, body, unit),
+                            figure_width(fonts, &cell.widest, body, unit),
+                        )
                     })
                     .max()
                     .unwrap_or(0);
                 let width = marks + px(4.) + room;
                 for (row, cell) in cells.iter().take(2).enumerate() {
-                    let baseline = middle + [-px(4.), px(13.)][row];
+                    let baseline = middle + [-px(3.), px(14.)][row];
                     layout.runs.push(Run {
                         text: cell.label.clone(),
                         x,
@@ -1409,7 +1463,8 @@ impl IDWriteTextRenderer_Impl for Renderer_Impl {
 #[cfg(test)]
 mod tests {
     use super::{
-        Cell, Fonts, Group, Paint, Painter, Run, Shade, Tone, columns, font_size, lay_out, split,
+        Cell, Fonts, Group, Paint, Painter, Run, Shade, Tone, columns, font_size, lay_out,
+        size_scale, split,
     };
     use crate::settings::TaskbarStyle as Style;
 
@@ -1495,26 +1550,51 @@ mod tests {
     fn labels_keep_the_width_of_their_widest_value_and_rows_centre() {
         let groups = vec![single("CPU", "1%"), single("MEM", "45%")];
         let layout = lay_out(&groups, 48, 1., Style::Labels, &Even, None);
-        // Padding 8, name 30, gap 6, the widest value "100%" 40, padding 8.
-        assert_eq!(layout.width, 8 + 30 + 6 + 40 + 8);
-        assert_eq!(layout.font, 13);
+        // Padding 8, name 30, gap 7, the widest value "100%" 40, padding 8.
+        assert_eq!(layout.width, 8 + 30 + 7 + 40 + 8);
+        assert_eq!(layout.font, 15);
         assert!(layout.tiles.is_empty());
-        // Two rows of 17 px in the middle of 48, the capitals centred.
+        // Two rows of 20 px in the middle of 48, the capitals centred.
         let shown = values(&layout.runs);
-        assert_eq!((shown[0].x, shown[0].baseline), (8 + 76 - 20, 7 + 13));
-        assert_eq!((shown[1].x, shown[1].baseline), (8 + 76 - 30, 24 + 13));
+        assert_eq!((shown[0].x, shown[0].baseline), (8 + 77 - 20, 4 + 15));
+        assert_eq!((shown[1].x, shown[1].baseline), (8 + 77 - 30, 24 + 15));
         // The same readings with other values keep the size.
         let busier = vec![single("CPU", "100%"), single("MEM", "99%")];
         assert_eq!(
             lay_out(&busier, 48, 1., Style::Labels, &Even, None).width,
             layout.width
         );
-        // A taskbar too low for two rows sets them side by side.
+        // On the taskbar a column keeps only the room its values took
+        // lately: "45%" 30, not the widest "100%".
+        let mut reserve = super::Reserve::default();
+        let held = lay_out(
+            &groups,
+            48,
+            1.,
+            Style::Labels,
+            &Even,
+            Some((&mut reserve, std::time::Instant::now())),
+        );
+        assert_eq!(held.width, layout.width - 10);
+        // A taskbar too low for two rows sets them side by side, everything
+        // smaller: 13 px text, padding 7, gap 6, 10 between columns.
         let low = lay_out(&groups, 30, 1., Style::Labels, &Even, None);
-        assert_eq!(low.width, 8 + 76 + 14 + 76 + 8);
+        assert_eq!(low.font, 13);
+        assert_eq!(low.width, 7 + 76 + 10 + 76 + 7);
         assert!(low.runs.iter().all(|run| run.baseline == 6 + 13));
-        // At 150 % everything grows with the scale.
-        assert_eq!(font_size(1.5), 20);
+        // Windows 10's 40 px taskbar still takes two rows of 13 px.
+        let lower = lay_out(&groups, 40, 1., Style::Labels, &Even, None);
+        assert_eq!(lower.font, 13);
+        assert_eq!(
+            values(&lower.runs)[1].baseline - values(&lower.runs)[0].baseline,
+            17
+        );
+        // At 150 % everything grows with the scale, and a taller taskbar
+        // grows it too, within bounds.
+        assert_eq!(font_size(1.5), 23);
+        assert_eq!(size_scale(72, 1.5), 1.5);
+        assert_eq!(size_scale(56, 1.), 56. / 48.);
+        assert_eq!(size_scale(100, 1.), 1.25);
     }
 
     #[test]
@@ -1523,18 +1603,18 @@ mod tests {
         let layout = lay_out(&groups, 48, 1., Style::Curves, &Even, None);
         assert_eq!(layout.tiles.len(), 2);
         // Name 30 and the widest figure "100" with its unit "%", 40, inside
-        // 8 px either side and 8 apart; tiles 38 px high in the middle.
-        assert_eq!(layout.tiles[0].rect, [8, 5, 8 + 94, 43]);
-        assert_eq!(layout.tiles[0].curve, [9, 23, 101, 42]);
+        // 9 px either side and 9 apart; tiles 40 px high in the middle.
+        assert_eq!(layout.tiles[0].rect, [8, 4, 8 + 97, 44]);
+        assert_eq!(layout.tiles[0].curve, [9, 24, 104, 43]);
         assert_eq!(layout.tiles[0].paint, Paint::Tone(Tone::Cpu));
         assert_eq!(layout.tiles[0].history, [0.2, 0.6, 0.4]);
         // A pair of rates: its marks, then the widest "999.9 MB/s".
-        assert_eq!(layout.tiles[1].rect, [108, 5, 108 + 132, 43]);
-        assert_eq!(layout.tiles[1].curve[1], 5 + 26);
-        assert_eq!(layout.width, 240 + 8);
+        assert_eq!(layout.tiles[1].rect, [111, 4, 111 + 134, 44]);
+        assert_eq!(layout.tiles[1].curve[1], 4 + 29);
+        assert_eq!(layout.width, 245 + 8);
         // The unit is smaller and quieter than its figure.
         let unit = layout.runs.iter().find(|run| run.text == "%").unwrap();
-        assert_eq!((unit.size, unit.shade), (11, Shade::Unit));
+        assert_eq!((unit.size, unit.shade), (12, Shade::Unit));
         // Other values keep the tiles where they are; a high one turns the
         // tile's curve amber.
         let mut busier = vec![single("CPU", "100%"), rates("999.9 MB/s", "0 KB/s")];
@@ -1555,16 +1635,31 @@ mod tests {
     fn figures_set_a_large_figure_under_a_name_in_its_colour() {
         let layout = lay_out(&[single("CPU", "41%")], 48, 1., Style::Figures, &Even, None);
         let name = &layout.runs[0];
-        assert_eq!((name.size, name.baseline), (10, 24 - 7));
+        assert_eq!((name.size, name.baseline), (12, 24 - 5));
         assert_eq!(name.paint, Paint::Tone(Tone::Cpu));
         let figure = values(&layout.runs)[0];
         assert_eq!(
             (figure.text.as_str(), figure.size, figure.baseline),
-            ("41", 16, 24 + 13)
+            ("41", 20, 24 + 14)
         );
         // The figure starts under its name.
         assert_eq!(figure.x, name.x);
         assert_eq!(layout.width, 8 + 40 + 8);
+        // On the taskbar a column keeps only the room its values took
+        // lately: "41%" 30, not the widest "100%".
+        let mut reserve = super::Reserve::default();
+        let now = std::time::Instant::now();
+        let held = lay_out(
+            &[single("CPU", "41%"), single("GPU", "7%")],
+            48,
+            1.,
+            Style::Figures,
+            &Even,
+            Some((&mut reserve, now)),
+        );
+        // Padding 8, "41%" 30, gap 9, the name "GPU" 30 over "7%" 20,
+        // padding 8.
+        assert_eq!(held.width, 8 + 30 + 9 + 30 + 8);
         // A taskbar too low for two rows shows labels instead.
         let low = lay_out(&[single("CPU", "41%")], 30, 1., Style::Figures, &Even, None);
         assert!(low.runs.iter().all(|run| run.size == 13));
@@ -1575,18 +1670,18 @@ mod tests {
         let groups = vec![single("CPU", "1%"), rates("1 KB/s", "2 KB/s")];
         let layout = lay_out(&groups, 48, 1., Style::Capsules, &Even, None);
         assert_eq!(layout.pills.len(), 2);
-        // 24 px high in the middle of 48. Inside 7, a dot of 6 and 4, the
-        // name 30 and 4, the widest "100%" 40, inside 7: 98.
-        assert_eq!(layout.pills[0].rect, [8, 12, 8 + 98, 36]);
-        assert_eq!(layout.pills[0].dot, Some(([18., 24.], 3.)));
+        // 30 px high in the middle of 48. Inside 9, a dot of 7 and 5, the
+        // name 30 and 5, the widest "100%" 40, inside 9: 105.
+        assert_eq!(layout.pills[0].rect, [8, 9, 8 + 105, 39]);
+        assert_eq!(layout.pills[0].dot, Some(([20.5, 24.], 3.5)));
         assert_eq!(layout.pills[0].paint, Paint::Tone(Tone::Cpu));
         let (name, value) = (&layout.runs[0], values(&layout.runs)[0]);
-        assert_eq!(value.x, name.x + 30 + 4);
-        // Rates share one: each arrow 10 and 3 before the widest
-        // "999.9 MB/s" 100, 7 between them.
+        assert_eq!(value.x, name.x + 30 + 5);
+        // Rates share one: each arrow 10 and 4 before the widest
+        // "999.9 MB/s" 100, 8 between them.
         assert_eq!(
             layout.pills[1].rect,
-            [110, 12, 110 + 7 + 113 + 7 + 113 + 7, 36]
+            [118, 9, 118 + 9 + 114 + 8 + 114 + 9, 39]
         );
         assert!(layout.pills[1].dot.is_none());
         // Other values keep the capsules where they are.
@@ -1614,10 +1709,10 @@ mod tests {
             );
             layout.pills[0].rect[2] - layout.pills[0].rect[0]
         };
-        // Only as wide as the value: inside 7, dot 6 and 4, name 30 and 4,
-        // "1%" 20, inside 7.
+        // Only as wide as the value: inside 9, dot 7 and 5, name 30 and 5,
+        // "1%" 20, inside 9.
         let narrow = width("1%", 0);
-        assert_eq!(narrow, 78);
+        assert_eq!(narrow, 85);
         // A wider value widens it at once…
         assert_eq!(width("100%", 5), narrow + 20);
         // …and its room holds for a minute after it.
@@ -1682,7 +1777,8 @@ mod tests {
     /// Readings as the taskbar shows them, for looking at the text and the
     /// styles (`ARGUS_TASKBAR_SAMPLES=<png path> cargo test -p argus --lib
     /// taskbar_samples -- --ignored`): each style on a dark and a light
-    /// taskbar at 100 %, and beside it the same four times as large.
+    /// taskbar at 100 %, Windows 11's 48 px high and then Windows 10's
+    /// 40 px, and beside it the same four times as large.
     #[test]
     #[ignore]
     fn taskbar_samples() {
@@ -1738,15 +1834,18 @@ mod tests {
             ),
             network,
         ];
-        let painter = Painter::new(13).unwrap();
+        let painter = Painter::new(15).unwrap();
         let mut strips = Vec::new();
-        for style in [
-            Style::Labels,
-            Style::Curves,
-            Style::Capsules,
-            Style::Figures,
-        ] {
-            let layout = lay_out(&groups, 48, 1., style, &painter, None);
+        for (height, style) in [48, 40].into_iter().flat_map(|height| {
+            [
+                Style::Labels,
+                Style::Curves,
+                Style::Capsules,
+                Style::Figures,
+            ]
+            .map(|style| (height, style))
+        }) {
+            let layout = lay_out(&groups, height, 1., style, &painter, None);
             for (light, background) in [(false, [28u8, 28, 30]), (true, [238, 238, 240])] {
                 let image = painter.paint(&layout, light, false, 1.).unwrap();
                 strips.push((layout.width, layout.height, image, background));
