@@ -958,9 +958,13 @@ pub(in crate::frontend) struct Monitors {
     /// its way: per monitor's settings key, its command and the latest
     /// choice, sent once that change has come back.
     queued: Vec<(&'static str, &'static str, Vec<String>)>,
-    /// The taskbar monitor's look in each style, for its panel, and what
-    /// they were drawn for (`preview_key`).
-    previews: Option<(u64, Vec<Option<Arc<RenderImage>>>)>,
+    /// The taskbar monitor's look in each style, for its panel and the
+    /// components page, and what they were drawn for: the latest first, at
+    /// most two (the panel's display and the main window's may differ in
+    /// scale).
+    previews: Vec<(u64, Vec<Option<Arc<RenderImage>>>)>,
+    /// The previews the components page last showed in the main window.
+    page_previews: Vec<Option<Arc<RenderImage>>>,
 }
 
 pub(in crate::frontend) struct DeskMonitor {
@@ -1419,10 +1423,12 @@ impl Desktop {
         }
     }
 
-    /// What the taskbar monitor's panel shows. The previews are drawn again
-    /// only when what they show changed: the first two readings, the
-    /// taskbar's colours and the display's scale, not their values.
-    pub(in crate::frontend) fn taskbar_panel(&mut self, scale: f32) -> TaskbarPanel {
+    /// The taskbar monitor's look in each style (`TASKBAR_STYLES`) at
+    /// `scale`, where it could be drawn, and the taskbar's colour under it.
+    /// They are drawn again only when what they show changed: the first two
+    /// readings, the taskbar's colours and the display's scale, not their
+    /// values.
+    fn taskbar_previews(&mut self, scale: f32) -> (Vec<Option<Arc<RenderImage>>>, Hsla) {
         let monitor: TaskbarMonitor = self.monitor_settings("taskbarMonitor");
         let light = crate::shell::taskbar_light();
         let mut shown = monitor.metrics.iter().take(2).cloned().collect::<Vec<_>>();
@@ -1437,47 +1443,76 @@ impl Desktop {
             light,
             scale.to_bits(),
         ));
-        if self
-            .monitors
-            .previews
-            .as_ref()
-            .is_none_or(|(drawn, _)| *drawn != key)
-        {
-            let groups = taskbar_groups(
-                &gauges(&self.snapshot, &shown, self.bits()),
-                Some(&self.timeline),
-            );
-            let previews = TASKBAR_STYLES
-                .iter()
-                .map(|style| {
-                    let style = TaskbarStyle::from(style.to_string());
-                    let (width, height, pixels) =
-                        crate::shell::taskbar_preview(&groups, style, light, scale)?;
-                    let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
-                    Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
-                })
-                .collect();
-            self.monitors.previews = Some((key, previews));
+        let cache = &mut self.monitors.previews;
+        match cache.iter().position(|(drawn, _)| *drawn == key) {
+            Some(index) => {
+                let entry = cache.remove(index);
+                cache.insert(0, entry);
+            }
+            None => {
+                let groups = taskbar_groups(
+                    &gauges(&self.snapshot, &shown, self.bits()),
+                    Some(&self.timeline),
+                );
+                let previews = TASKBAR_STYLES
+                    .iter()
+                    .map(|style| {
+                        let style = TaskbarStyle::from(style.to_string());
+                        let (width, height, pixels) =
+                            crate::shell::taskbar_preview(&groups, style, light, scale)?;
+                        let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
+                        Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
+                    })
+                    .collect();
+                let cache = &mut self.monitors.previews;
+                cache.insert(0, (key, previews));
+                cache.truncate(2);
+            }
         }
         let [red, green, blue, _] = crate::shell::taskbar_color(light).to_le_bytes();
+        let ground = Rgba {
+            r: f32::from(red) / 255.,
+            g: f32::from(green) / 255.,
+            b: f32::from(blue) / 255.,
+            a: 1.,
+        };
+        (self.monitors.previews[0].1.clone(), ground.into())
+    }
+
+    /// What the taskbar monitor's panel shows.
+    pub(in crate::frontend) fn taskbar_panel(&mut self, scale: f32) -> TaskbarPanel {
+        let (previews, ground) = self.taskbar_previews(scale);
         TaskbarPanel {
-            style: String::from(monitor.style),
-            previews: self
-                .monitors
-                .previews
-                .as_ref()
-                .map(|(_, previews)| previews.clone())
-                .unwrap_or_default(),
-            ground: Rgba {
-                r: f32::from(red) / 255.,
-                g: f32::from(green) / 255.,
-                b: f32::from(blue) / 255.,
-                a: 1.,
-            }
-            .into(),
+            style: String::from(
+                self.monitor_settings::<TaskbarMonitor>("taskbarMonitor")
+                    .style,
+            ),
+            previews,
+            ground,
             scale,
             kinds: self.taskbar_panel_kinds(),
         }
+    }
+
+    /// The previews for the components page in the main window, and the
+    /// taskbar's colour under them; those it no longer shows leave the
+    /// window's atlas.
+    pub(in crate::frontend) fn page_previews(
+        &mut self,
+        window: &mut Window,
+    ) -> (Vec<Option<Arc<RenderImage>>>, Hsla) {
+        let (previews, ground) = self.taskbar_previews(window.scale_factor());
+        let old = std::mem::replace(&mut self.monitors.page_previews, previews.clone());
+        for image in old.into_iter().flatten() {
+            if !previews
+                .iter()
+                .flatten()
+                .any(|new| Arc::ptr_eq(new, &image))
+            {
+                let _ = window.drop_image(image);
+            }
+        }
+        (previews, ground)
     }
 
     /// A control of the taskbar monitor's panel, as if used, by the key the

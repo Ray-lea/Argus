@@ -97,6 +97,13 @@ const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
 /// planned ones.
 pub(in crate::frontend) const SECTIONS: [&str; 4] = ["tray", "desktop", "taskbar", "planned"];
 
+/// The height of a style's preview: the taskbar's, as the previews are cut.
+const STYLE_PREVIEW: f32 = 40.;
+/// The least width of a style card in a row of four; with less room the
+/// cards go two by two.
+const STYLE_CARD: f32 = 150.;
+const STYLE_GAP: f32 = 6.;
+
 /// The taskbar monitor's styles, as saved, in the order offered.
 pub(in crate::frontend) const TASKBAR_STYLES: [&str; 4] =
     ["labels", "curves", "capsules", "figures"];
@@ -861,22 +868,8 @@ impl Desktop {
                 .collect(),
             cx,
         );
-        let style = text(&settings["taskbarMonitor"], "style");
-        let style = self.segments(
-            "setting-taskbarStyle",
-            TASKBAR_STYLES
-                .iter()
-                .map(|value| {
-                    (
-                        label(&format!("components.taskbar.style.{value}")),
-                        None,
-                        Action::Invoke(command.into(), json!({ "style": value })),
-                        style == *value || (style.is_empty() && *value == "labels"),
-                    )
-                })
-                .collect(),
-            cx,
-        );
+        let style = text(&settings["taskbarMonitor"], "style").to_owned();
+        let style = self.style_card(&style, window, cx);
         vec![
             self.setting_text(
                 "taskbarMonitor",
@@ -892,13 +885,7 @@ impl Desktop {
                 &monitor.metrics,
                 cx,
             ),
-            self.setting_text(
-                "taskbarStyle",
-                "PulseIcon",
-                "components.taskbar.style.title",
-                "components.taskbar.style.desc",
-                vec![style],
-            ),
+            style,
             self.setting_text(
                 "taskbarPlace",
                 "FitWidthIcon",
@@ -907,6 +894,156 @@ impl Desktop {
                 vec![place],
             ),
         ]
+    }
+
+    /// The taskbar monitor's styles as its panel offers them: a card each
+    /// with the monitor's look in it on the taskbar's colour and its name
+    /// beside a radio mark; a click chooses one. Four in a row where the
+    /// card has the room, else two by two: the cards go in pairs, and the
+    /// second pair wraps.
+    fn style_card(
+        &mut self,
+        chosen: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let (previews, ground) = self.page_previews(window);
+        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
+        let mut cards = TASKBAR_STYLES
+            .iter()
+            .enumerate()
+            .map(|(index, style)| {
+                let style: &'static str = style;
+                let on = chosen == style || (chosen.is_empty() && index == 0);
+                let name = label(&format!("components.taskbar.style.{style}"));
+                let anchor = SharedString::from(format!("taskbarStyle-{style}"));
+                let mark = div()
+                    .size(px(14.))
+                    .flex_shrink_0()
+                    .rounded_full()
+                    .border_1()
+                    .border_color(if on { p.accent } else { p.stroke_strong })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(on, |mark| {
+                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
+                    });
+                // Scaled down to fit the card, never up, and on whole pixels
+                // at its own size.
+                let preview = previews.get(index).cloned().flatten().map(|image| {
+                    canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            let scale = window.scale_factor();
+                            let size = image.size(0);
+                            let width = u32::from(size.width) as f32 / scale;
+                            let height = u32::from(size.height) as f32 / scale;
+                            let fit = (f32::from(bounds.size.width) / width)
+                                .min(f32::from(bounds.size.height) / height)
+                                .min(1.);
+                            let size = gpui_kit::size(px(width * fit), px(height * fit));
+                            let origin = bounds.center() - point(size.width / 2., size.height / 2.);
+                            let at = Bounds::new(
+                                point(window.pixel_snap(origin.x), window.pixel_snap(origin.y)),
+                                size,
+                            );
+                            let _ = window.paint_image(at, at, Corners::default(), image, 0, false);
+                        },
+                    )
+                    .size_full()
+                });
+                Button::new(anchor.clone())
+                    .relative()
+                    .flex_1()
+                    .min_w_0()
+                    .flex_col()
+                    .items_stretch()
+                    .justify_start()
+                    .gap(px(6.))
+                    .p(px(4.))
+                    .rounded(px(7.))
+                    .border_1()
+                    .border_color(if on { p.accent } else { p.stroke_strong })
+                    .when(on, |card| card.bg(p.accent.opacity(0.08)))
+                    .hover(move |card| card.bg(if on { p.accent.opacity(0.12) } else { p.hover }))
+                    .active(move |card| card.bg(p.press))
+                    .role(Role::RadioButton)
+                    .aria_toggled(if on { Toggled::True } else { Toggled::False })
+                    .accessibility_label(name.clone())
+                    .child(
+                        div()
+                            .h(px(STYLE_PREVIEW))
+                            .rounded(px(4.))
+                            .bg(ground)
+                            .overflow_hidden()
+                            .children(preview),
+                    )
+                    .child(
+                        div()
+                            .h(px(20.))
+                            .px(px(2.))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(theme::font(13.))
+                            .text_color(p.ink)
+                            .child(mark)
+                            .child(div().min_w_0().truncate().child(name)),
+                    )
+                    // Where tests take hold of it.
+                    .when(test, |card| {
+                        let anchors = anchors.clone();
+                        card.child(
+                            canvas(
+                                move |bounds, _, _| {
+                                    anchors.borrow_mut().insert(anchor.clone(), bounds);
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                    })
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.taskbar_choice(TaskbarChoice::Style(style), window, cx);
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+        let second = cards.split_off(2);
+        let pair = |cards: Vec<AnyElement>| {
+            div()
+                .flex()
+                .gap(px(STYLE_GAP))
+                .flex_grow(1.)
+                .flex_basis(px(2. * STYLE_CARD + STYLE_GAP))
+                .min_w_0()
+                .children(cards)
+        };
+        let desc = div()
+            .child(label("components.taskbar.style.desc"))
+            .child(
+                div()
+                    .mt(px(10.))
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(STYLE_GAP))
+                    .child(pair(cards))
+                    .child(pair(second)),
+            )
+            .into_any_element();
+        self.setting(
+            "taskbarStyle",
+            self.glyph("PulseIcon"),
+            label("components.taskbar.style.title"),
+            Some(desc),
+            None,
+            Vec::new(),
+        )
     }
 
     /// Where Settings points to the tray's settings on this page.

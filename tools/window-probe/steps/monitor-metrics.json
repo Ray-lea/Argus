@@ -39,6 +39,12 @@
       "monitors.desktop.rows.8.metric":"network@nic:Intel(R) Wi-Fi 6E AX211 160MHz|WLAN"
     }},
     {"captureWindow":{"name":"desktop-devices","class":"Zed::Window","title":"桌面监控"}},
-    {"control":{"theme":"light"},"wait":900,"capture":"metrics-light"}
+    {"control":{"theme":"light"},"wait":900,"capture":"metrics-light"},
+    {"note":"the taskbar monitor's styles: a card each with its look, a click chooses one; four in a row, or two by two with less room"},
+    {"control":{"theme":"dark","clickAnchor":"components-nav-planned"},"wait":900,"capture":"styles-dark"},
+    {"control":{"clickAnchor":"taskbarStyle-curves"},"wait":700,"inspect":"layout","label":"style-chosen","expect":{"monitors.taskbarStyle":"curves"},"capture":"styles-chosen-dark"},
+    {"control":{"theme":"light","pointerOutside":true},"wait":900,"capture":"styles-light"},
+    {"probe":"size 700 760","wait":700},
+    {"control":{"wheel":{"x":350,"y":400,"lines":-200}},"wait":900,"capture":"styles-narrow-light"}
   ]
 }
