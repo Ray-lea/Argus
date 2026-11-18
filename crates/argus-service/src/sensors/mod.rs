@@ -325,6 +325,7 @@ impl SensorClient {
                 .as_ref()
                 .and_then(|s| s.package_watts);
         }
+        snapshot.hardware.supplement_cpu_clocks();
         if let Some(frame) = &mut snapshot.hardware.cpu_sensors {
             use argus_core::hardware::CpuMetricKind;
             for (target, kind) in [
@@ -586,14 +587,22 @@ mod tests {
     }
 
     #[test]
-    fn enrich_preserves_windows_power_and_keeps_zero_sensor_readings() {
-        use argus_core::hardware::{CpuCoreSensors, CpuMetricKind, CpuSensorSource};
+    fn enrich_fills_missing_clocks_and_power_and_keeps_zero_sensor_readings() {
+        use argus_core::hardware::{CpuCoreSensors, CpuMetricKind, CpuSensorSource, CpuThread};
         let mut client =
             SensorClient::with_reader(|| CpuSensors::unavailable(SensorState::ServiceUnavailable));
         let mut frame = CpuSensors {
             state: SensorState::Ready,
             package_watts: Some(101.0),
-            cores: vec![CpuCoreSensors::default()],
+            cores: vec![
+                CpuCoreSensors::default(),
+                CpuCoreSensors {
+                    core: 1,
+                    processor: 1,
+                    clock_mhz: Some(2500.),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         };
         frame.metric(CpuMetricKind::CoresWatts, Some(0.0), CpuSensorSource::Msr);
@@ -610,10 +619,21 @@ mod tests {
             process_network: false,
         };
         snapshot.hardware.power.package = Some(99.0);
-        snapshot.hardware.core_mhz = vec![4200];
-        std::sync::Arc::make_mut(&mut snapshot.hardware.cpu).threads =
-            vec![argus_core::hardware::CpuThread::default()];
+        snapshot.hardware.core_mhz = vec![4200, 0];
+        let cpu = Arc::make_mut(&mut snapshot.hardware.cpu);
+        cpu.cores = 2;
+        cpu.logical = 2;
+        cpu.threads = vec![
+            CpuThread::default(),
+            CpuThread {
+                core: 1,
+                processor: 1,
+                ..Default::default()
+            },
+        ];
         client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        assert_eq!(snapshot.hardware.core_mhz, [4200, 2500]);
+        assert_eq!(snapshot.hardware.cpu_mhz, Some(3350));
         assert_eq!(snapshot.hardware.power.package, Some(99.0));
         assert_eq!(snapshot.hardware.power.cores, Some(0.0));
         assert_eq!(snapshot.hardware.power.memory, Some(2.5));

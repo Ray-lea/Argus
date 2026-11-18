@@ -53,7 +53,7 @@ pub struct Hardware {
     pub cpu: Arc<CpuInfo>,
     /// Overall clock in MHz; direct Windows readings take priority.
     pub cpu_mhz: Option<u32>,
-    /// Per logical processor, MHz; empty when Windows does not publish it.
+    /// In CPU thread order, MHz; zero marks an unavailable logical processor.
     pub core_mhz: Vec<u32>,
     /// Logical-thread idle-state residency reported by Windows, not hardware C6/C10.
     pub cpu_idle: Vec<CpuIdle>,
@@ -177,10 +177,12 @@ impl HardwareTracker {
         self.gpus.forget();
     }
     pub fn new() -> Self {
-        let cpu = startup_phase("hardware.cpu-info", cpu::cpu_info);
+        let cpu = Arc::new(startup_phase("hardware.cpu-info", cpu::cpu_info));
         let mut t = Self {
-            sensors: startup_phase("hardware.cpu-sensors", || sensors::Sensors::new(&cpu)),
-            cpu: Arc::new(cpu),
+            sensors: startup_phase("hardware.cpu-sensors", || {
+                sensors::Sensors::new(cpu.clone())
+            }),
+            cpu,
             memory: Arc::new(startup_phase("hardware.memory-info", memory::memory_info)),
             disks: startup_phase("hardware.disks", disk::DiskTracker::new),
             nics: net::NicTracker::new(),
@@ -194,9 +196,8 @@ impl HardwareTracker {
     pub fn sample(&mut self) -> Hardware {
         use windows::Win32::System::Threading::{ALL_PROCESSOR_GROUPS, GetActiveProcessorCount};
         if unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) } != self.cpu.logical {
-            let cpu = cpu::cpu_info();
-            self.sensors = sensors::Sensors::new(&cpu);
-            self.cpu = Arc::new(cpu);
+            self.cpu = Arc::new(cpu::cpu_info());
+            self.sensors = sensors::Sensors::new(self.cpu.clone());
         }
         let sensed = crate::diagnostics::sample_phase("cpu-counters", || {
             self.sensors

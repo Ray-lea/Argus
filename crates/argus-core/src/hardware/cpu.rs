@@ -1,13 +1,17 @@
 //! Processor identity and topology (clock speeds are in sensors.rs).
 
 use serde::Serialize;
+use windows::Win32::System::Power::{
+    CallNtPowerInformation, PROCESSOR_POWER_INFORMATION, PowerInformationInternal,
+    ProcessorInformation, ProcessorInformationEx,
+};
 use windows::Win32::System::SystemInformation::{
     GROUP_AFFINITY, GetLogicalProcessorInformationEx, RelationAll, RelationCache,
     RelationProcessorCore, RelationProcessorPackage, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::Threading::{
-    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, IsProcessorFeaturePresent,
-    PF_VIRT_FIRMWARE_ENABLED,
+    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount,
+    IsProcessorFeaturePresent, PF_VIRT_FIRMWARE_ENABLED,
 };
 use windows::core::{PCWSTR, w};
 
@@ -135,7 +139,7 @@ pub fn cpu_info() -> CpuInfo {
         ..Default::default()
     };
     identify(&mut info);
-    let (base, source) = base_frequency(info.logical);
+    let (base, source) = base_frequency();
     info.base_mhz = base;
     info.base_source = source;
 
@@ -248,49 +252,109 @@ pub fn cpu_info() -> CpuInfo {
     info
 }
 
-fn base_frequency(logical: u32) -> (u32, Option<&'static str>) {
+fn base_frequency() -> (u32, Option<&'static str>) {
     use std::arch::x86_64::__cpuid;
     let cpuid = (__cpuid(0).eax >= 0x16).then(|| __cpuid(0x16).eax & 0xffff);
     if let Some(mhz) = cpuid.filter(|v| (100..=12000).contains(v)) {
         return (mhz, Some("cpuid"));
     }
-    // ~MHz is often the invariant TSC/reference frequency (2688 MHz on
-    // i5-13500HX). Neither the base clock nor performance scaling uses it.
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct PowerInfo {
-        number: u32,
-        max_mhz: u32,
-        current_mhz: u32,
-        limit_mhz: u32,
-        max_idle: u32,
-        idle: u32,
+    match processor_power_info(0)
+        .and_then(|info| info.first().map(|p| p.MaxMhz))
+        .filter(|mhz| (100..=12000).contains(mhz))
+    {
+        Some(mhz) => (mhz, Some("windows")),
+        None => (0, None),
     }
-    #[link(name = "PowrProf")]
-    unsafe extern "system" {
-        fn CallNtPowerInformation(
-            level: u32,
-            input: *const std::ffi::c_void,
-            input_len: u32,
-            output: *mut std::ffi::c_void,
-            output_len: u32,
-        ) -> u32;
+}
+
+fn processor_power_info(group: u16) -> Option<Vec<PROCESSOR_POWER_INFORMATION>> {
+    let count = unsafe { GetActiveProcessorCount(group) };
+    if !(1..=64).contains(&count) {
+        return None;
     }
-    let mut info = vec![PowerInfo::default(); logical.clamp(1, 4096) as usize];
-    let status = unsafe {
-        CallNtPowerInformation(
-            11,
-            std::ptr::null(),
-            0,
-            info.as_mut_ptr().cast(),
-            std::mem::size_of_val(info.as_slice()) as u32,
+    let (level, input, len) = if unsafe { GetActiveProcessorGroupCount() } == 1 {
+        (ProcessorInformation, None, 0)
+    } else {
+        (
+            ProcessorInformationEx,
+            Some(std::ptr::from_ref(&group).cast()),
+            size_of::<u16>() as u32,
         )
     };
-    if status == 0 && (100..=12000).contains(&info[0].max_mhz) {
-        (info[0].max_mhz, Some("windows"))
-    } else {
-        (0, None)
+    let mut info = vec![PROCESSOR_POWER_INFORMATION::default(); count as usize];
+    let status = unsafe {
+        CallNtPowerInformation(
+            level,
+            input,
+            len,
+            Some(info.as_mut_ptr().cast()),
+            size_of_val(info.as_slice()) as u32,
+        )
+    };
+    status.is_ok().then_some(info)
+}
+
+/// The nominal MHz of this processor's Windows performance domain.
+fn branded_frequency(thread: &CpuThread) -> Option<u32> {
+    // PowerInternalProcessorBrandedFrequency, version 1. The processor-specific
+    // request includes a PROCESSOR_NUMBER after the two header fields.
+    #[repr(C)]
+    struct Request {
+        kind: u32,
+        version: u32,
+        group: u16,
+        processor: u8,
+        reserved: u8,
     }
+    let request = Request {
+        kind: 43,
+        version: 1,
+        group: thread.group,
+        processor: thread.processor,
+        reserved: 0,
+    };
+    let mut reply = [1u32, 0]; // Version, NominalFrequency (MHz).
+    let status = unsafe {
+        CallNtPowerInformation(
+            PowerInformationInternal,
+            Some(std::ptr::from_ref(&request).cast()),
+            size_of_val(&request) as u32,
+            Some(reply.as_mut_ptr().cast()),
+            size_of_val(&reply) as u32,
+        )
+    };
+    (status.is_ok() && reply[0] == 1 && (100..=12000).contains(&reply[1])).then_some(reply[1])
+}
+
+fn specified_mhz(
+    info: &PROCESSOR_POWER_INFORMATION,
+    processor: u8,
+    system_index: usize,
+) -> Option<u32> {
+    let number = info.Number as usize;
+    ((number == usize::from(processor) || number == system_index)
+        && (100..=12000).contains(&info.MaxMhz))
+    .then_some(info.MaxMhz)
+}
+
+pub(super) fn nominal_frequencies(
+    threads: &[CpuThread],
+    package_mhz: Option<u32>,
+) -> Vec<Option<u32>> {
+    let mut frequencies = Vec::with_capacity(threads.len());
+    for group in threads.chunk_by(|a, b| a.group == b.group) {
+        let power = std::cell::LazyCell::new(|| processor_power_info(group[0].group));
+        for (index, thread) in group.iter().enumerate() {
+            // The legacy power query returns one array per group. Match the
+            // indexed record before using MaxMhz; CurrentMhz is a requested P-state.
+            let mhz = branded_frequency(thread).or_else(|| {
+                let info = power.as_ref()?.get(index)?;
+                specified_mhz(info, thread.processor, frequencies.len())
+            });
+            frequencies.push(mhz.or(package_mhz));
+        }
+    }
+    frequencies
 }
 
 fn identify(info: &mut CpuInfo) {
@@ -418,6 +482,23 @@ fn identify(info: &mut CpuInfo) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_nominal_mhz_uses_the_matching_processors_specified_frequency() {
+        let mut info = PROCESSOR_POWER_INFORMATION {
+            Number: 35,
+            MaxMhz: 2400,
+            CurrentMhz: 800,
+            MhzLimit: 1800,
+            ..Default::default()
+        };
+        assert_eq!(specified_mhz(&info, 3, 35), Some(2400));
+        assert_eq!(specified_mhz(&info, 2, 34), None);
+        info.Number = 3;
+        assert_eq!(specified_mhz(&info, 3, 35), Some(2400));
+        info.MaxMhz = 0;
+        assert_eq!(specified_mhz(&info, 3, 35), None);
+    }
 
     /// `(cores, efficiency class, served by an L3)` runs, counted by kind.
     fn kinds(intel: bool, runs: &[(usize, u8, bool)]) -> (usize, usize, usize) {
