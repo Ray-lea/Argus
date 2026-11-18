@@ -11,8 +11,10 @@ const NAV_RIGHT: f32 = 12.;
 const NAV_GAP: f32 = 10.;
 const DOT: f32 = 6.;
 const GAP: f32 = 32.;
-/// The column of cards beside the list.
+/// The column of cards beside the list: this wide while the page has the
+/// room, then wider by half of the room beyond, up to `WIDEST`.
 const CONTENT: f32 = 780.;
+const WIDEST: f32 = 960.;
 /// The page's width at most that leaves no room for a list of the shortest
 /// names.
 const NARROW: f32 = 900.;
@@ -154,12 +156,19 @@ impl SectionRail {
 }
 
 impl Desktop {
-    /// The section marked in the settings' and the components' lists (test
-    /// only).
+    /// The section marked in the settings' and the components' lists, and
+    /// the left and the width of each page's cards as last drawn (test only).
     pub(in crate::frontend) fn section_rail_state(&self) -> Value {
+        let anchors = self.ui.anchors.borrow();
+        let cards = |page: &str| {
+            anchors
+                .get(format!("{page}-cards").as_str())
+                .map(|bounds| [f32::from(bounds.left()), f32::from(bounds.size.width)])
+        };
         json!({
             "settings": super::settings::SECTIONS.get(self.settings_rail.current),
             "components": super::components::SECTIONS.get(self.components_rail.current),
+            "cards": { "settings": cards("settings"), "components": cards("components") },
         })
     }
 
@@ -208,20 +217,59 @@ impl Desktop {
             width.max(f32::from(text.ceil()) + controls + dot)
         });
         // Only whether the list fits beside the cards follows the measured
-        // width; the column itself is centred and capped by layout, so that
-        // it follows the window in the frame it is resized in (laid out from
-        // a measurement, every step of a slow resize drew one frame at the
-        // previous width and the text wrapped back and forth).
+        // width; the column itself is sized by layout, so that it follows the
+        // window in the frame it is resized in (laid out from a measurement,
+        // every step of a slow resize drew one frame at the previous width
+        // and the text wrapped back and forth).
         let threshold = NARROW + (rail_width - MIN_RAIL);
         let narrow = width <= threshold;
-        let layout = rail_width + GAP + CONTENT;
+        let least = rail_width + GAP + CONTENT;
         let lead = if narrow { 0. } else { rail_width + GAP };
-        // One column of the page's width at most `layout`, 4 px in from its
-        // sides and centred: the sections, and the list over them.
-        let column = || div().w_full().max_w(px(layout));
-        let sections = sections
-            .into_iter()
-            .map(|section| column().flex_shrink_0().pl(px(lead)).child(section));
+        let most = if narrow { least } else { lead + WIDEST };
+        // A row 4 px in from the page's sides holding one column: the page's
+        // width up to `least`, then half of the room beyond, up to `most`;
+        // the margins either side share the rest, so that it stays centred.
+        // The sections, and the list over them.
+        let margin = || div().flex_grow(0.5).flex_basis(px(0.));
+        let framed = |column: Div| {
+            div()
+                .w_full()
+                .flex()
+                .child(margin())
+                .child(
+                    column
+                        .flex_grow(1.)
+                        .flex_basis(px(least))
+                        .min_w_0()
+                        .max_w(px(most)),
+                )
+                .child(margin())
+        };
+        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
+        let sections = sections.into_iter().enumerate().map(|(index, section)| {
+            // Where tests read the cards' column: the first section's.
+            let section = if test && index == 0 {
+                let anchors = anchors.clone();
+                let anchor = SharedString::from(format!("{page}-cards"));
+                div()
+                    .relative()
+                    .child(section)
+                    .child(
+                        canvas(
+                            move |bounds, _, _| {
+                                anchors.borrow_mut().insert(anchor.clone(), bounds);
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                    .into_any_element()
+            } else {
+                section
+            };
+            framed(div().pl(px(lead)).child(section)).flex_shrink_0()
+        });
         let body = div()
             .id(SharedString::from(format!("{page}-content")))
             .size_full()
@@ -252,7 +300,6 @@ impl Desktop {
             window,
             cx,
         );
-        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
         let list = div()
             .absolute()
             .top(px(4.))
@@ -338,9 +385,7 @@ impl Desktop {
             .inset_0()
             .pl(px(4.))
             .pr(px(4. + scrollbar::SIZE))
-            .flex()
-            .justify_center()
-            .child(column().relative().child(list));
+            .child(framed(div().relative().child(list)));
         let owner = cx.entity().downgrade();
         div()
             .size_full()

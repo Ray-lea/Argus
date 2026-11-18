@@ -11,6 +11,8 @@
     {"control":{"theme":"light","pointerOutside":true},"wait":900,"capture":"components-light"},
     {"control":{"page":"settings","settingsSection":"rules"},"wait":900,"inspect":"layout","label":"settings","expect":{"sections.settings":"rules"},"capture":"settings-rules-light"},
     {"control":{"clickAnchor":"settings-nav-language"},"wait":700,"inspect":"layout","label":"settings-picked","expect":{"sections.settings":"language"}},
-    {"control":{"page":"components","theme":"dark"},"probe":"size 820 600","wait":900,"capture":"components-narrow-dark"}
+    {"probe":"size 1700 900","wait":900,"inspect":"layout","label":"settings-wide","expect":{"sections.cards.settings.1":960},"capture":"settings-wide-light"},
+    {"control":{"page":"components"},"wait":900,"inspect":"layout","label":"components-wide","expect":{"sections.cards.components.1":960}},
+    {"control":{"theme":"dark"},"probe":"size 820 600","wait":900,"capture":"components-narrow-dark"}
   ]
 }
