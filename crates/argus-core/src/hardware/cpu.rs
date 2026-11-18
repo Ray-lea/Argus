@@ -12,8 +12,8 @@ use windows::Win32::System::SystemInformation::{
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::Threading::{
-    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount,
-    IsProcessorFeaturePresent, PF_VIRT_FIRMWARE_ENABLED,
+    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount, GetCurrentThread,
+    IsProcessorFeaturePresent, PF_VIRT_FIRMWARE_ENABLED, SetThreadGroupAffinity,
 };
 use windows::core::{PCWSTR, w};
 
@@ -37,9 +37,9 @@ pub struct CpuInfo {
     pub(crate) hybrid: bool,
     pub sockets: u32,
     pub cores: u32,
-    /// Hybrid CPUs only: cores in the highest efficiency class.
+    /// Physical performance cores when more than one core type is present.
     pub performance_cores: u32,
-    /// Hybrid CPUs only: the other cores, less the low-power ones.
+    /// Physical efficiency cores, excluding the low-power ones, on hybrid CPUs.
     pub efficiency_cores: u32,
     /// Intel LP E-cores (`core_kinds`).
     pub low_power_cores: u32,
@@ -80,9 +80,8 @@ enum CoreKind {
 /// it. Windows ranks Intel's E-cores and LP E-cores in one efficiency class.
 /// Intel tells them apart by the L3 (CPUID.1A core type Atom, no CPUID.4
 /// level 3 cache, given for Meteor Lake): LP E-cores stand outside the cache
-/// the other cores share. The cache topology Windows reports carries the same
-/// answer without running CPUID on every processor. Other vendors' compact
-/// cores keep an L3 of their own and remain efficiency cores.
+/// the other cores share. The cache topology Windows reports gives us that L3
+/// membership. Other vendors' compact cores remain efficiency cores.
 fn core_kinds(intel: bool, classes: &[u8], l3: &[bool]) -> Vec<CoreKind> {
     let top = classes.iter().copied().max().unwrap_or(0);
     // The L3 tells cores apart only where it serves the performance cores.
@@ -105,7 +104,102 @@ fn core_kinds(intel: bool, classes: &[u8], l3: &[bool]) -> Vec<CoreKind> {
         .collect()
 }
 
+/// Called on a short-lived worker so changing its processor group leaves the
+/// caller's affinity intact, including a default affinity spanning groups.
+fn intel_core_type(thread: &CpuThread) -> Option<u8> {
+    use std::arch::x86_64::{__cpuid, __cpuid_count};
+    let affinity = GROUP_AFFINITY {
+        Group: thread.group,
+        Mask: 1usize << thread.processor,
+        ..Default::default()
+    };
+    if let Err(error) = unsafe { SetThreadGroupAffinity(GetCurrentThread(), &affinity, None) }.ok()
+    {
+        crate::diagnostics::windows_failure("cpu.topology.affinity", &error);
+        return None;
+    }
+    (__cpuid(0).eax >= 0x1a).then(|| (__cpuid_count(0x1a, 0).eax >> 24) as u8)
+}
+
+fn intel_core_classes(
+    cores: usize,
+    threads: &[CpuThread],
+    mut read_type: impl FnMut(&CpuThread) -> Option<u8> + Send,
+) -> Option<Vec<u8>> {
+    std::thread::scope(|scope| {
+        let worker = std::thread::Builder::new()
+            .spawn_scoped(scope, move || {
+                let mut classes = vec![None; cores];
+                for thread in threads {
+                    let class = &mut classes[thread.core as usize];
+                    if class.is_none() {
+                        // Siblings share a core type. If one cannot be read,
+                        // the next sibling can still supply the physical core.
+                        *class = match read_type(thread) {
+                            Some(0x40) => Some(1), // Intel Core
+                            Some(0x20) => Some(0), // Intel Atom
+                            _ => None,
+                        };
+                    }
+                }
+                // Never treat an unreadable core as either P or E.
+                classes.into_iter().collect()
+            })
+            .inspect_err(|e| {
+                crate::diagnostics::warn("cpu.topology.worker", crate::diagnostics::io(e))
+            })
+            .ok()?;
+        worker.join().ok()?
+    })
+}
+
 impl CpuInfo {
+    fn classify_cores(
+        &mut self,
+        mut classes: Vec<u8>,
+        l3: &[bool],
+        read_type: impl FnMut(&CpuThread) -> Option<u8> + Send,
+    ) {
+        let intel = self.vendor == "GenuineIntel";
+        let min = classes.iter().copied().min().unwrap_or(0);
+        let max = classes.iter().copied().max().unwrap_or(0);
+        let source = if intel && self.hybrid && classes.len() > 1 && min == max {
+            match intel_core_classes(classes.len(), &self.threads, read_type) {
+                Some(detected) => {
+                    classes = detected;
+                    "CPUID.1A"
+                }
+                None => "Windows (CPUID.1A incomplete)",
+            }
+        } else {
+            "Windows"
+        };
+        let kinds = core_kinds(intel, &classes, l3);
+        let count = |kind| kinds.iter().filter(|k| **k == kind).count() as u32;
+        self.efficiency_cores = count(CoreKind::Efficient);
+        self.low_power_cores = count(CoreKind::LowPower);
+        self.performance_cores = if self.efficiency_cores + self.low_power_cores > 0 {
+            count(CoreKind::Performance)
+        } else {
+            0
+        };
+        for thread in &mut self.threads {
+            let kind = kinds[thread.core as usize];
+            thread.efficient = kind != CoreKind::Performance;
+            thread.low_power = kind == CoreKind::LowPower;
+        }
+        log::info!(
+            target: "argus_diagnostics",
+            "cpu topology: {} physical, {} logical; windows_efficiency={min}..{max}; cpuid_hybrid={}; source={source}; hybrid cores: P={}, E={}, LP-E={}",
+            self.cores,
+            self.logical,
+            self.hybrid,
+            self.performance_cores,
+            self.efficiency_cores,
+            self.low_power_cores,
+        );
+    }
+
     pub fn thread_index(&self, group: u16, processor: u8) -> Option<usize> {
         self.threads
             .binary_search_by_key(&(group, processor), |t| (t.group, t.processor))
@@ -182,8 +276,6 @@ pub fn cpu_info() -> CpuInfo {
     }
 
     let mut core_classes = Vec::new();
-    // (group, processor, core)
-    let mut members: Vec<(u16, u8, u32)> = Vec::new();
     // (group, mask) of the processors each L3 cache serves
     let mut l3_masks: Vec<(u16, usize)> = Vec::new();
     let mut numa_masks = BTreeMap::<(u32, u16), usize>::new();
@@ -216,7 +308,12 @@ pub fn cpu_info() -> CpuInfo {
                 for m in masks {
                     for bit in 0..usize::BITS as usize {
                         if m.Mask & (1usize << bit) != 0 {
-                            members.push((m.Group, bit as u8, core));
+                            info.threads.push(CpuThread {
+                                group: m.Group,
+                                processor: bit as u8,
+                                core,
+                                ..Default::default()
+                            });
                         }
                     }
                 }
@@ -255,36 +352,17 @@ pub fn cpu_info() -> CpuInfo {
     }
 
     let mut served = vec![false; core_classes.len()];
-    for (group, processor, core) in &members {
+    for thread in &info.threads {
         if l3_masks
             .iter()
-            .any(|(g, mask)| g == group && mask & (1usize << processor) != 0)
+            .any(|(g, mask)| *g == thread.group && mask & (1usize << thread.processor) != 0)
         {
-            served[*core as usize] = true;
+            served[thread.core as usize] = true;
         }
     }
-    let kinds = core_kinds(info.vendor == "GenuineIntel", &core_classes, &served);
-    let count = |kind| kinds.iter().filter(|k| **k == kind).count() as u32;
-    // Not hybrid: every core is in the top class, and no kind is counted.
-    if kinds.iter().any(|kind| *kind != CoreKind::Performance) {
-        info.performance_cores = count(CoreKind::Performance);
-        info.efficiency_cores = count(CoreKind::Efficient);
-        info.low_power_cores = count(CoreKind::LowPower);
-    }
-    members.sort_unstable_by_key(|m| (m.0, m.1));
-    info.threads = members
-        .into_iter()
-        .map(|(group, processor, core)| {
-            let kind = kinds[core as usize];
-            CpuThread {
-                group,
-                processor,
-                core,
-                efficient: kind != CoreKind::Performance,
-                low_power: kind == CoreKind::LowPower,
-            }
-        })
-        .collect();
+    info.classify_cores(core_classes, &served, intel_core_type);
+    info.threads
+        .sort_unstable_by_key(|t| (t.group, t.processor));
     info.index_numa_threads(numa_masks);
     info
 }
@@ -601,6 +679,102 @@ mod tests {
         // Another vendor's compact cores are not Intel's LP E-cores.
         assert_eq!(kinds(false, &[(4, 1, true), (8, 0, false)]), (4, 8, 0));
         assert_eq!(kinds(false, &[(4, 1, true), (8, 0, true)]), (4, 8, 0));
+    }
+
+    fn counts(cpu: &CpuInfo) -> (u32, u32, u32) {
+        (
+            cpu.performance_cores,
+            cpu.efficiency_cores,
+            cpu.low_power_cores,
+        )
+    }
+
+    #[test]
+    fn uniform_windows_class_recovers_six_p_and_eight_e_cores_and_their_threads() {
+        // The 13600KF's 14 cores / 20 threads, with overlapping processor
+        // numbers in two groups so a group-blind lookup cannot pass.
+        let threads = (0..12)
+            .map(|p| (1, p, 8 + u32::from(p / 2)))
+            .chain((0..8).map(|p| (0, p, u32::from(p))))
+            .map(|(group, processor, core)| CpuThread {
+                group,
+                processor,
+                core,
+                ..Default::default()
+            })
+            .collect();
+        let mut cpu = CpuInfo {
+            vendor: "GenuineIntel".into(),
+            hybrid: true,
+            cores: 14,
+            logical: 20,
+            threads,
+            ..Default::default()
+        };
+        let mut reads = 0;
+        cpu.classify_cores(vec![0; 14], &[true; 14], |t| {
+            reads += 1;
+            match (t.group, t.processor) {
+                (1, 0) => None, // The other SMT sibling is accessible.
+                (1, _) => Some(0x40),
+                (0, _) => Some(0x20),
+                _ => unreachable!(),
+            }
+        });
+        assert_eq!(reads, 15);
+        assert_eq!(counts(&cpu), (6, 8, 0));
+        assert!(
+            cpu.threads
+                .iter()
+                .all(|t| t.efficient == (t.group == 0) && !t.low_power)
+        );
+    }
+
+    #[test]
+    fn cpuid_fallback_requires_complete_known_types_and_preserves_l3_classification() {
+        let mut cpu = CpuInfo {
+            vendor: "GenuineIntel".into(),
+            hybrid: true,
+            threads: (0..3)
+                .map(|processor| CpuThread {
+                    processor,
+                    core: u32::from(processor),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let l3 = [true, true, false];
+        for types in [
+            [Some(0x40), Some(0x20), None],
+            [Some(0x40), Some(0x20), Some(0x30)],
+            [Some(0x40); 3],
+            [Some(0x20); 3],
+        ] {
+            cpu.classify_cores(vec![7; 3], &l3, |t| types[t.processor as usize]);
+            assert_eq!(counts(&cpu), (0, 0, 0));
+            assert!(cpu.threads.iter().all(|t| !t.efficient && !t.low_power));
+        }
+        cpu.classify_cores(vec![7; 3], &l3, |t| {
+            Some(if t.processor == 0 { 0x40 } else { 0x20 })
+        });
+        assert_eq!(counts(&cpu), (1, 1, 1));
+        assert!(cpu.threads[2].efficient && cpu.threads[2].low_power);
+        // Distinct Windows classes already carry the answer.
+        let mut reads = 0;
+        let mut unused = |_: &CpuThread| {
+            reads += 1;
+            None
+        };
+        cpu.classify_cores(vec![3, 3, 2], &l3, &mut unused);
+        assert_eq!(counts(&cpu), (2, 0, 1));
+        for (vendor, hybrid) in [("AuthenticAMD", true), ("GenuineIntel", false)] {
+            cpu.vendor = vendor.into();
+            cpu.hybrid = hybrid;
+            cpu.classify_cores(vec![0; 3], &l3, &mut unused);
+            assert!(cpu.threads.iter().all(|t| !t.efficient && !t.low_power));
+        }
+        assert_eq!(reads, 0);
     }
 
     #[test]

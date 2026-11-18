@@ -89,7 +89,9 @@ Windows 10 22H2 的 `Processor Information` 提供第 33、34 号计数器，其
 
 打开 PCW 查询失败时，可使用 PDH 的具名直接读数。缺失项还可按逻辑处理器的标称频率和 `% Processor Performance` 换算。标称 MHz 来自 `PowerInternalProcessorBrandedFrequency` 或 `PROCESSOR_POWER_INFORMATION.MaxMhz`，单路同类核心还可使用 CPU 基准速度。采样通过 `PDH_FMT_NOCAP100` 保留睿频比例。所有换算基准一致时可使用系统总百分比，基准不同时对完整的逻辑处理器 MHz 读数求均值。[phnt 性能域查询结构](https://github.com/winsiderss/systeminformer/blob/952a0e7a4efb45b5e1acc4c733916684a7803406/phnt/include/ntpoapi.h#L3052-L3085) · [Windows 处理器电源信息](https://learn.microsoft.com/en-us/windows/win32/power/processor-power-information-str)
 
-混合架构由拓扑类别及 [CPUID Hybrid 标志](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)共同识别。Windows 把 Intel 的能效核与低功耗能效核（LP E-core）归入同一效率类别，两者按三级缓存区分：低功耗能效核不在其余核心共享的三级缓存之内。这与 Intel 针对 Meteor Lake 给出的[判断方法](https://community.intel.com/t/detecting-lp-e-cores-on-meteor-lake-in-software/121766)（CPUID.1A 的核心类型为 Atom 且 CPUID.4 没有三级缓存）使用同一依据，改为读取 `GetLogicalProcessorInformationEx` 的缓存拓扑，无需把线程逐一绑到各处理器执行 CPUID；仅用于 Intel 处理器，其他厂商的紧凑核心保持为能效核。
+核心类型优先取自 `GetLogicalProcessorInformationEx` 的 `EfficiencyClass`。若 Windows 仅报告一种类别，而 Intel 处理器带有 Hybrid 标志，采集器在枚举拓扑时用独立线程按处理器组绑定到每个物理核心，读取 `CPUID.1A.0:EAX[31:24]`。其中 `0x40` 对应性能核，`0x20` 对应能效核。全部物理核心的类型均已识别时才采用这组结果，同核的逻辑处理器共用类型。[Intel 混合架构开发指南](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)
+
+Intel 的能效核与低功耗能效核（LP E-core）可属于同一效率类别。采集器使用 Windows 报告的三级缓存拓扑，在性能核有三级缓存时，将三级缓存覆盖范围之外的 Intel 能效核标为低功耗能效核。该判断沿用 Intel 对 Meteor Lake 的说明，其他厂商的紧凑核心按能效核显示。[Intel 对 LP E-core 的说明](https://community.intel.com/t/detecting-lp-e-cores-on-meteor-lake-in-software/121766)
 
 周期采样的设备句柄通过 [CM_Register_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_register_notification) 注册移除事件。弹出回调等待当前查询或重开操作完成，关闭句柄后返回成功；取消弹出只更新状态，由采样线程重新打开设备并重置计数基线。通知注销在拥有句柄的线程执行，等待回调退出后释放上下文，遵循 [CM_Unregister_Notification](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_unregister_notification) 的生命周期要求。
 
