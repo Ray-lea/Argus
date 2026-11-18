@@ -1,5 +1,6 @@
 //! The desktop monitor's window, as the system sees it: never activated by
-//! a click, dragged by any point unless locked, a double click showing
+//! a click, dragged by any point unless locked and never past its
+//! display's work area, a double click showing
 //! Argus and a right click opening its menu; above other windows or among
 //! them, translucent or not, and passing clicks through when asked. The
 //! interface draws its content (`frontend::monitors`).
@@ -9,15 +10,15 @@
 //! pointer goes, and the menu runs its own message loop outside GPUI's event
 //! handling, as the tray's menu does.
 use super::{HOST, show_main, wide};
-use crate::settings::{DesktopMonitor, SettingsStore};
+use crate::settings::{DeskLayout, DeskStyle, DesktopMonitor, SettingsStore};
 use argus_core::tr;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::{
-    ClientToScreen, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY, MONITORINFO,
-    MonitorFromPoint, MonitorFromRect,
+    ClientToScreen, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL,
+    MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint, MonitorFromRect, MonitorFromWindow,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetDoubleClickTime, ReleaseCapture, SetCapture};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
@@ -105,7 +106,17 @@ unsafe extern "system" fn procedure(
                 let (tx, ty) = drag_threshold();
                 if press.moved || dx.abs() >= tx || dy.abs() >= ty {
                     press.moved = true;
-                    move_client(hwnd, press.origin.x + dx, press.origin.y + dy);
+                    // Inside the work area of the display under the pointer.
+                    let mut client = RECT::default();
+                    let _ = unsafe { GetClientRect(hwnd, &mut client) };
+                    let (x, y) = inside(
+                        press.origin.x + dx,
+                        press.origin.y + dy,
+                        client.right,
+                        client.bottom,
+                        work_area(now.x, now.y),
+                    );
+                    move_client(hwnd, x, y);
                 }
                 return LRESULT(0);
             }
@@ -186,9 +197,42 @@ fn menu(hwnd: HWND) {
             return;
         };
         let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
+        // How it looks: a panel in one of its styles, or a strip.
+        let Ok(looks) = CreatePopupMenu() else {
+            let _ = DestroyMenu(menu);
+            return;
+        };
+        let look_items = [
+            (10, tr!("components.desktop.menu.list"), MF_STRING),
+            (11, tr!("components.desktop.menu.curves"), MF_STRING),
+            (12, tr!("components.desktop.menu.gauges"), MF_STRING),
+            (0, String::new(), MF_SEPARATOR),
+            (13, tr!("components.desktop.menu.strip"), MF_STRING),
+        ];
+        let look_texts: Vec<Vec<u16>> = look_items.iter().map(|(_, text, _)| wide(text)).collect();
+        for ((id, _, flags), text) in look_items.iter().zip(&look_texts) {
+            let text = if *flags == MF_SEPARATOR {
+                PCWSTR::null()
+            } else {
+                PCWSTR(text.as_ptr())
+            };
+            let _ = AppendMenuW(looks, *flags, *id, text);
+        }
+        let chosen = match (monitor.layout, monitor.style) {
+            (DeskLayout::Strip, _) => 13,
+            (DeskLayout::Panel, DeskStyle::List) => 10,
+            (DeskLayout::Panel, DeskStyle::Curves) => 11,
+            (DeskLayout::Panel, DeskStyle::Gauges) => 12,
+        };
+        let _ = CheckMenuRadioItem(looks, 10, 13, chosen, MF_BYCOMMAND.0);
         let items = [
             (1, tr!("components.desktop.menu.open"), MF_STRING),
             (0, String::new(), MF_SEPARATOR),
+            (
+                looks.0 as usize,
+                tr!("components.desktop.menu.look"),
+                MF_POPUP,
+            ),
             (
                 2,
                 tr!("components.desktop.menu.topmost"),
@@ -234,6 +278,10 @@ fn menu(hwnd: HWND) {
             3 => "locked",
             4 => "settings",
             5 => "hide",
+            10 => "look:list",
+            11 => "look:curves",
+            12 => "look:gauges",
+            13 => "look:strip",
             _ => return,
         };
         emit(serde_json::json!({ "menu": item }));
@@ -262,6 +310,74 @@ pub fn origin(position: Option<[i32; 2]>, width: i32, height: i32, margin: i32) 
     };
     let _ = unsafe { GetMonitorInfoW(monitor, &mut info) };
     (info.rcWork.right - width - margin, info.rcWork.top + margin)
+}
+
+/// The work area of the display nearest (x, y), physical pixels.
+fn work_area(x: i32, y: i32) -> RECT {
+    let monitor = unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST) };
+    monitor_work(monitor)
+}
+
+/// A display's work area, physical pixels.
+fn monitor_work(monitor: windows::Win32::Graphics::Gdi::HMONITOR) -> RECT {
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let _ = unsafe { GetMonitorInfoW(monitor, &mut info) };
+    info.rcWork
+}
+
+/// The width of the work area of the display at `at`, or the primary
+/// display's, physical pixels.
+pub fn work_width(at: Option<(i32, i32)>) -> i32 {
+    let work = match at {
+        Some((x, y)) => work_area(x, y),
+        None => {
+            monitor_work(unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) })
+        }
+    };
+    work.right - work.left
+}
+
+/// A client area of `width` × `height` at (x, y) moved the least to lie
+/// inside `work`; at its top-left corner when it is larger.
+pub fn inside(x: i32, y: i32, width: i32, height: i32, work: RECT) -> (i32, i32) {
+    (
+        x.min(work.right - width).max(work.left),
+        y.min(work.bottom - height).max(work.top),
+    )
+}
+
+/// Where a window at (x, y) goes as its client area turns from
+/// `old_width` wide to `width` × `height`: it keeps its right edge when
+/// its middle is on the right half of its display, its left edge
+/// otherwise, and stays inside that display's work area.
+pub fn resized(x: i32, y: i32, old_width: i32, width: i32, height: i32) -> (i32, i32) {
+    let work = work_area(x + old_width / 2, y);
+    inside(kept(x, old_width, width, work), y, width, height, work)
+}
+
+/// The left edge of a window `old_width` wide at `x` that turns `width`
+/// wide, its right edge kept on the right half of `work`.
+pub fn kept(x: i32, old_width: i32, width: i32, work: RECT) -> i32 {
+    if x + old_width / 2 > work.left + (work.right - work.left) / 2 {
+        x + old_width - width
+    } else {
+        x
+    }
+}
+
+/// The window's client area lies inside its display's work area.
+pub fn on_screen(hwnd: HWND) -> bool {
+    let work = monitor_work(unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) });
+    let origin = client_origin(hwnd);
+    let mut client = RECT::default();
+    let _ = unsafe { GetClientRect(hwnd, &mut client) };
+    origin.x >= work.left
+        && origin.y >= work.top
+        && origin.x + client.right <= work.right
+        && origin.y + client.bottom <= work.bottom
 }
 
 /// Gives the window a client area of `width` × `height` at (x, y) and the
@@ -316,4 +432,43 @@ pub fn show(hwnd: HWND, monitor: &DesktopMonitor, x: i32, y: i32, width: i32, he
 pub fn position(hwnd: HWND) -> (i32, i32) {
     let origin = client_origin(hwnd);
     (origin.x, origin.y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{inside, kept};
+    use windows::Win32::Foundation::RECT;
+
+    const WORK: RECT = RECT {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1032,
+    };
+
+    #[test]
+    fn the_monitor_stays_inside_the_work_area() {
+        assert_eq!(inside(100, 100, 264, 300, WORK), (100, 100));
+        // Past each edge, back to it.
+        assert_eq!(inside(-40, -10, 264, 300, WORK), (0, 0));
+        assert_eq!(inside(1800, 900, 264, 300, WORK), (1656, 732));
+        // Larger than the work area: its top-left corner shows.
+        assert_eq!(inside(50, 50, 2400, 300, WORK), (0, 50));
+        // On another display, left of the primary one.
+        let left = RECT {
+            left: -1280,
+            top: 0,
+            right: 0,
+            bottom: 984,
+        };
+        assert_eq!(inside(-100, 20, 264, 300, left), (-264, 20));
+    }
+
+    #[test]
+    fn a_resized_monitor_keeps_its_nearer_edge() {
+        // On the right half its right edge stays; on the left, its left.
+        assert_eq!(kept(1632, 264, 600, WORK), 1296);
+        assert_eq!(kept(24, 264, 600, WORK), 24);
+        assert_eq!(kept(1296, 600, 264, WORK), 1632);
+    }
 }

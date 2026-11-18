@@ -1,0 +1,14 @@
+{
+  "window": [1100, 900],
+  "steps": [
+    {"control":{"page":"components"},"wait":700},
+    {"control":{"desktopMonitor":{"enabled":true,"layout":"panel","style":"curves","grouping":"cards","metrics":["cpu","cpuTemperature","memory","memoryUsed","gpu","gpuMemory","disk","network"]}},"wait":12000},
+    {"inspect":"layout","label":"curves","expect":{"monitors.desktop.style":"curves","monitors.desktop.onScreen":true}},
+    {"captureWindow":{"name":"curves-live-dark","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"desktopMonitor":{"grouping":"stripes"}},"wait":1500,"captureWindow":{"name":"curves-live-stripes-dark","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"theme":"light"},"wait":1500,"captureWindow":{"name":"curves-live-stripes-light","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"desktopMonitor":{"style":"list","grouping":"cards"}},"wait":1500,"captureWindow":{"name":"list-live-light","class":"Zed::Window","title":"桌面监控"}},
+    {"control":{"desktopMonitor":{"enabled":false}},"wait":900},
+    {"inspect":"layout","label":"off","expect":{"monitors.desktop":null}}
+  ]
+}

@@ -321,6 +321,74 @@ fn lenient_metrics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Reading
 /// The window opacities the desktop monitor offers, percent.
 pub const MONITOR_OPACITIES: [u8; 5] = [100, 90, 80, 70, 60];
 
+/// Settings stored by name: a name this version does not know reads as the
+/// default.
+macro_rules! named {
+    ($(#[$meta:meta])* $name:ident { $($(#[$variant_meta:meta])* $variant:ident = $text:literal),+ $(,)? }) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+        #[serde(from = "String", into = "String")]
+        pub enum $name {
+            $($(#[$variant_meta])* $variant),+
+        }
+
+        impl From<String> for $name {
+            fn from(name: String) -> Self {
+                match name.as_str() {
+                    $($text => $name::$variant,)+
+                    _ => $name::default(),
+                }
+            }
+        }
+
+        impl From<$name> for String {
+            fn from(value: $name) -> Self {
+                match value {
+                    $($name::$variant => $text,)+
+                }
+                .into()
+            }
+        }
+    };
+}
+
+named! {
+    /// How the desktop monitor lays its readings out.
+    DeskLayout {
+        /// A panel of groups, one device's readings to a group.
+        #[default]
+        Panel = "panel",
+        /// One line along a screen edge, wrapping between groups where the
+        /// display is too narrow.
+        Strip = "strip",
+    }
+}
+
+named! {
+    /// How the desktop monitor's panel shows a group.
+    DeskStyle {
+        /// Names, bars and values.
+        #[default]
+        List = "list",
+        /// Names and values beside the group's recent curve.
+        Curves = "curves",
+        /// A tile a group, a ring for its first reading.
+        Gauges = "gauges",
+    }
+}
+
+named! {
+    /// How the panel's list and curves set one group apart from the next.
+    DeskGrouping {
+        #[default]
+        Cards = "cards",
+        /// A strip in the device's colour before each group.
+        Stripes = "stripes",
+        /// A line between groups.
+        Rules = "rules",
+    }
+}
+
 /// The desktop monitor: a small window of live readings that stays on the
 /// desktop outside the main window.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -330,6 +398,9 @@ pub struct DesktopMonitor {
     /// What it shows, in this order.
     #[serde(deserialize_with = "lenient_metrics")]
     pub metrics: Vec<Reading>,
+    pub layout: DeskLayout,
+    pub style: DeskStyle,
+    pub grouping: DeskGrouping,
     /// It stays above other windows.
     pub topmost: bool,
     /// It cannot be dragged.
@@ -357,6 +428,9 @@ impl Default for DesktopMonitor {
             ]
             .map(Reading::from)
             .to_vec(),
+            layout: DeskLayout::default(),
+            style: DeskStyle::default(),
+            grouping: DeskGrouping::default(),
             topmost: true,
             locked: false,
             click_through: false,
@@ -877,6 +951,37 @@ mod tests {
         let unknown: Settings =
             serde_json::from_str(r#"{"taskbarMonitor": {"style": "neon"}}"#).unwrap();
         assert_eq!(unknown.taskbar_monitor.style, TaskbarStyle::Labels);
+        // The desktop monitor's look: a panel of cards in a list unless
+        // saved otherwise; names it does not know read as those.
+        assert_eq!(
+            (
+                newer.desktop_monitor.layout,
+                newer.desktop_monitor.style,
+                newer.desktop_monitor.grouping
+            ),
+            (DeskLayout::Panel, DeskStyle::List, DeskGrouping::Cards)
+        );
+        let look: Settings = serde_json::from_str(
+            r#"{"desktopMonitor": {"layout": "strip", "style": "gauges", "grouping": "rules"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                look.desktop_monitor.layout,
+                look.desktop_monitor.style,
+                look.desktop_monitor.grouping
+            ),
+            (DeskLayout::Strip, DeskStyle::Gauges, DeskGrouping::Rules)
+        );
+        let strange: Settings = serde_json::from_str(
+            r#"{"desktopMonitor": {"layout": "ring", "style": "3d", "grouping": "boxes"}}"#,
+        )
+        .unwrap();
+        assert_eq!(strange.desktop_monitor, DesktopMonitor::default());
+        assert_eq!(
+            serde_json::to_value(&look.desktop_monitor).unwrap()["grouping"],
+            "rules"
+        );
         // A monitor that does not read at all keeps the other settings.
         let mut edited: Settings = serde_json::from_str(
             r#"{"desktopMonitor": {"opacity": "half"}, "taskbarMonitor": 3, "closeToTray": false}"#,
@@ -897,6 +1002,9 @@ mod tests {
             desktop_monitor: DesktopMonitor {
                 enabled: true,
                 metrics: Metric::ALL.map(Reading::from).to_vec(),
+                layout: DeskLayout::Strip,
+                style: DeskStyle::Curves,
+                grouping: DeskGrouping::Stripes,
                 topmost: false,
                 locked: true,
                 click_through: true,

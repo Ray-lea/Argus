@@ -7,16 +7,20 @@
 use super::pages::components::{TASKBAR_STYLES, TaskbarChoice};
 use super::pages::performance::rail;
 use super::*;
-use crate::settings::{DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle};
+use crate::settings::{
+    DeskLayout, DeskStyle, DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle,
+};
 use crate::shell::{TaskbarCell, TaskbarGroup, TaskbarTone};
+use desk::{Curve, Drawn};
 use windows::Win32::Foundation::HWND;
+
+mod desk;
 
 /// From this percent or temperature (°C) a reading turns amber, as on the
 /// tray icon.
 const HIGH: f64 = 80.;
-/// The desktop monitor's width, logical pixels.
-const WIDTH: f32 = 248.;
-/// How far inside the work area's top-right corner it first opens.
+/// How far inside the work area's top-right corner it first opens, and
+/// what a strip leaves free at either side of its display.
 const MARGIN: f32 = 24.;
 /// Off every display: where the window is laid out before it first shows.
 const AWAY: i32 = -32000;
@@ -297,6 +301,8 @@ pub(in crate::frontend) struct Gauge {
     pub high: bool,
     /// Where its recent values are kept, for a curve.
     pub trend: Option<Trend>,
+    /// A pair's two rates kept apart, for the desktop monitor's two curves.
+    pub pair: Option<[Trend; 2]>,
 }
 
 /// The graphics card the GPU readings without a device follow: the one
@@ -713,6 +719,20 @@ pub(in crate::frontend) fn gauges(
                 }),
                 Metric::Uptime => None,
             };
+            let apart = |list: &[&Value], kind: &str, fields: [&str; 2]| {
+                Some(fields.map(|field| {
+                    Trend::new(
+                        list.iter().map(|device| of(device, field, kind)).collect(),
+                        Combine::Sum,
+                        Scale::Peak(RATE_FLOOR),
+                    )
+                }))
+            };
+            let pair = match metric {
+                Metric::Disk => apart(&disk_list, "disks", ["read", "write"]),
+                Metric::Network => apart(&nic_list, "nics", ["rx", "tx"]),
+                _ => None,
+            };
             Gauge {
                 reading: reading.clone(),
                 name,
@@ -722,6 +742,7 @@ pub(in crate::frontend) fn gauges(
                 bar: shown.bar,
                 high: shown.high,
                 trend,
+                pair,
             }
         })
         .collect()
@@ -778,6 +799,41 @@ const CURVE: usize = 40;
 /// `trend`'s last values, 0–1 and oldest first; an unknown one repeats the
 /// one before it. Empty when the timeline keeps none of its series.
 fn history(timeline: &model::Timeline, trend: &Trend) -> Vec<f32> {
+    history_of(timeline, trend, CURVE)
+}
+
+/// `trend`'s last `count` values, as `history`.
+fn history_of(timeline: &model::Timeline, trend: &Trend, count: usize) -> Vec<f32> {
+    let values = combined(timeline, trend, count);
+    span(&values, trend.scale).map_or_else(Vec::new, |span| scaled(&values, span))
+}
+
+/// The last `count` values of a pair's two rates, 0–1 on one scale, so
+/// that the curves compare.
+fn pair_history(timeline: &model::Timeline, pair: &[Trend; 2], count: usize) -> Vec<Vec<f32>> {
+    let [one, two] = pair
+        .each_ref()
+        .map(|trend| combined(timeline, trend, count));
+    let both = one.iter().chain(&two).copied().collect::<Vec<_>>();
+    match span(&both, pair[0].scale) {
+        Some(span) => vec![scaled(&one, span), scaled(&two, span)],
+        None => Vec::new(),
+    }
+}
+
+/// What the desktop monitor's curve for `gauge` shows: its recent values,
+/// a pair's two rates apart.
+fn desk_curve(timeline: &model::Timeline, gauge: &Gauge) -> Curve {
+    match (&gauge.pair, &gauge.trend) {
+        (Some(pair), _) => pair_history(timeline, pair, desk::CURVE_SAMPLES),
+        (None, Some(trend)) => vec![history_of(timeline, trend, desk::CURVE_SAMPLES)],
+        (None, None) => Vec::new(),
+    }
+}
+
+/// `trend`'s series added up or the largest taken at each of the last
+/// `count` samples, oldest first; none where none is known.
+fn combined(timeline: &model::Timeline, trend: &Trend, count: usize) -> Vec<Option<f64>> {
     // Newest first, so that series of different lengths line up at the end.
     let series = trend
         .keys
@@ -786,7 +842,7 @@ fn history(timeline: &model::Timeline, trend: &Trend) -> Vec<f32> {
         .map(|list| {
             list.iter()
                 .rev()
-                .take(CURVE)
+                .take(count)
                 .map(|(_, value)| *value)
                 .collect::<Vec<_>>()
         })
@@ -804,14 +860,19 @@ fn history(timeline: &model::Timeline, trend: &Trend) -> Vec<f32> {
         })
         .collect::<Vec<_>>();
     values.reverse();
+    values
+}
+
+/// Where 0 and 1 of a curve of `values` lie on `scale`; none when they
+/// cannot be told.
+fn span(values: &[Option<f64>], scale: Scale) -> Option<(f64, f64)> {
     let known = values.iter().flatten().copied();
     let (low, high) = known
         .clone()
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(low, high), v| {
             (low.min(v), high.max(v))
         });
-    // Where 0 and 1 of the curve lie.
-    let (bottom, top) = match trend.scale {
+    let (bottom, top) = match scale {
         Scale::Percent => (0., 100.),
         Scale::Of(total) => (0., total),
         Scale::Peak(floor) => (0., known.fold(floor, f64::max)),
@@ -822,9 +883,12 @@ fn history(timeline: &model::Timeline, trend: &Trend) -> Vec<f32> {
         }
         Scale::Span => (low - 1., low + 1.),
     };
-    if top.is_nan() || bottom.is_nan() || top <= bottom {
-        return Vec::new();
-    }
+    (!top.is_nan() && !bottom.is_nan() && top > bottom).then_some((bottom, top))
+}
+
+/// `values` from `bottom` (0) to `top` (1); an unknown one repeats the one
+/// before it.
+fn scaled(values: &[Option<f64>], (bottom, top): (f64, f64)) -> Vec<f32> {
     let mut last = None;
     values
         .iter()
@@ -969,13 +1033,15 @@ pub(in crate::frontend) struct Monitors {
 
 pub(in crate::frontend) struct DeskMonitor {
     gauges: Vec<Gauge>,
+    /// The readings' recent values, by gauge, while it shows curves.
+    curves: Vec<Curve>,
     settings: DesktopMonitor,
     hwnd: HWND,
-    /// The content's height as last laid out, logical pixels.
-    measured: Rc<Cell<f32>>,
-    /// The height and scale the window was last given; none until it first
+    /// The content's size as last laid out, logical pixels.
+    measured: Rc<Cell<(f32, f32)>>,
+    /// The size and scale the window was last given; none until it first
     /// showed.
-    placed: Option<(f32, f32)>,
+    placed: Option<(f32, f32, f32)>,
 }
 
 fn hwnd_of(window: &Window) -> HWND {
@@ -987,7 +1053,12 @@ fn hwnd_of(window: &Window) -> HWND {
 }
 
 impl DeskMonitor {
-    fn new(settings: DesktopMonitor, gauges: Vec<Gauge>, window: &mut Window) -> Self {
+    fn new(
+        settings: DesktopMonitor,
+        gauges: Vec<Gauge>,
+        curves: Vec<Curve>,
+        window: &mut Window,
+    ) -> Self {
         let hwnd = hwnd_of(window);
         unsafe {
             use windows::Win32::Graphics::Dwm::{
@@ -1004,9 +1075,10 @@ impl DeskMonitor {
         crate::shell::desk::install(hwnd);
         Self {
             gauges,
+            curves,
             settings,
             hwnd,
-            measured: Rc::new(Cell::new(0.)),
+            measured: Rc::new(Cell::new((0., 0.))),
             placed: None,
         }
     }
@@ -1015,128 +1087,89 @@ impl DeskMonitor {
         &mut self,
         settings: DesktopMonitor,
         gauges: Vec<Gauge>,
+        curves: Vec<Curve>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let restyled = settings != self.settings;
+        let look = |s: &DesktopMonitor| (s.layout, s.style, s.grouping);
+        let relooked = look(&settings) != look(&self.settings);
         self.settings = settings;
-        if gauges != self.gauges {
+        if relooked || gauges != self.gauges || curves != self.curves {
             self.gauges = gauges;
+            self.curves = curves;
             cx.notify();
         }
-        if restyled && let Some((height, _)) = self.placed {
-            self.place(height, window, cx);
+        if restyled && let Some((width, height, _)) = self.placed {
+            self.place(width, height, window, cx);
         }
     }
 
-    fn set_gauges(&mut self, gauges: Vec<Gauge>, cx: &mut Context<Self>) {
-        if gauges != self.gauges {
+    fn set_gauges(&mut self, gauges: Vec<Gauge>, curves: Vec<Curve>, cx: &mut Context<Self>) {
+        if gauges != self.gauges || curves != self.curves {
             self.gauges = gauges;
+            self.curves = curves;
             cx.notify();
         }
     }
 
-    /// Gives the window `height` logical pixels where it is (or where it
-    /// opens, the first time) and its settings.
-    fn place(&mut self, height: f32, window: &mut Window, cx: &mut Context<Self>) {
+    /// Gives the window `width` × `height` logical pixels and its settings:
+    /// where it opens the first time; later where it is, keeping its right
+    /// edge when it sits on the right half of its display; always inside
+    /// that display's work area.
+    fn place(&mut self, width: f32, height: f32, window: &mut Window, cx: &mut Context<Self>) {
         let scale = window.scale_factor();
-        let (width, tall) = (
-            (WIDTH * scale).round() as i32,
+        let (wide, tall) = (
+            (width * scale).round() as i32,
             (height * scale).round() as i32,
         );
         let (x, y) = match self.placed {
-            Some(_) => crate::shell::desk::position(self.hwnd),
-            None => crate::shell::desk::origin(
-                self.settings.position,
-                width,
-                tall,
-                (MARGIN * scale).round() as i32,
-            ),
+            Some((before, _, at)) => {
+                let (x, y) = crate::shell::desk::position(self.hwnd);
+                crate::shell::desk::resized(x, y, (before * at).round() as i32, wide, tall)
+            }
+            None => {
+                let (x, y) = crate::shell::desk::origin(
+                    self.settings.position,
+                    wide,
+                    tall,
+                    (MARGIN * scale).round() as i32,
+                );
+                crate::shell::desk::resized(x, y, wide, wide, tall)
+            }
         };
-        crate::shell::desk::show(self.hwnd, &self.settings, x, y, width, tall);
-        self.placed = Some((height, scale));
+        crate::shell::desk::show(self.hwnd, &self.settings, x, y, wide, tall);
+        self.placed = Some((width, height, scale));
         crate::shell::set_desktop_monitor_shown(true);
         window.bounds_changed(cx);
         window.refresh();
     }
 
-    /// The content was laid out: the window follows its height, and its
+    /// The content was laid out: the window follows its size, and its
     /// scale when it moved to another display.
     fn settle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let measured = self.measured.get();
-        if measured <= 0. {
+        let (width, height) = self.measured.get();
+        if width <= 0. || height <= 0. {
             return;
         }
         let scale = window.scale_factor();
-        if self.placed.is_none_or(|(height, placed)| {
-            (height - measured).abs() > 0.5 || (placed - scale).abs() > 0.001
+        if self.placed.is_none_or(|(placed_width, placed_height, at)| {
+            (placed_width - width).abs() > 0.5
+                || (placed_height - height).abs() > 0.5
+                || (at - scale).abs() > 0.001
         }) {
-            self.place(measured, window, cx);
+            self.place(width, height, window, cx);
         }
     }
 
-    fn row(&self, gauge: &Gauge, p: Palette) -> AnyElement {
-        let name = div()
-            .flex_1()
-            .min_w_0()
-            .truncate()
-            .text_color(p.muted)
-            .child(gauge.name.clone());
-        match gauge.parts.as_slice() {
-            [part] => {
-                let color = if gauge.high {
-                    p.heat
-                } else {
-                    metric_color(gauge.reading.metric, p)
-                };
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(5.))
-                    .child(
-                        div().flex().items_center().gap(px(8.)).child(name).child(
-                            div()
-                                .flex_shrink_0()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(if gauge.high { p.heat } else { p.ink })
-                                .child(part.text.clone()),
-                        ),
-                    )
-                    .when(gauge.bar, |row| {
-                        row.child(
-                            div().h(px(4.)).rounded(px(2.)).bg(p.stroke_strong).child(
-                                div()
-                                    .h_full()
-                                    .w(relative(gauge.fraction.unwrap_or(0.) as f32))
-                                    .rounded(px(2.))
-                                    .bg(color),
-                            ),
-                        )
-                    })
-                    .into_any_element()
-            }
-            parts => div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(name)
-                .children(parts.iter().map(|part| {
-                    div()
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .child(div().text_color(p.muted).child(part.mark.clone()))
-                        .child(
-                            div()
-                                .min_w(theme::font(12.) * 5.2)
-                                .text_right()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(part.text.clone()),
-                        )
-                }))
-                .into_any_element(),
-        }
+    /// How wide a strip may grow, logical pixels: its display's work area
+    /// less a margin at either side.
+    fn room(&self, scale: f32) -> f32 {
+        let at = match self.placed {
+            Some(_) => Some(crate::shell::desk::position(self.hwnd)),
+            None => self.settings.position.map(|[x, y]| (x, y)),
+        };
+        (crate::shell::desk::work_width(at) as f32 / scale - 2. * MARGIN).max(200.)
     }
 }
 
@@ -1147,41 +1180,70 @@ impl Render for DeskMonitor {
         let owner = cx.entity().downgrade();
         let scale = window.scale_factor();
         let placed = self.placed;
-        let rows = self
-            .gauges
-            .iter()
-            .map(|gauge| self.row(gauge, p))
-            .collect::<Vec<_>>();
+        let settings = &self.settings;
+        // What a strip takes; a panel takes its width and its content's height.
+        let extent = Rc::new(Cell::new(None));
+        let (width, content) = match settings.layout {
+            DeskLayout::Strip => {
+                let room = self.room(scale);
+                (
+                    room,
+                    desk::strip(&self.gauges, room, extent.clone(), &p, window, cx),
+                )
+            }
+            DeskLayout::Panel => {
+                let width = desk::panel_width(settings.style);
+                let shown = Drawn {
+                    gauges: &self.gauges,
+                    curves: &self.curves,
+                    style: settings.style,
+                    grouping: settings.grouping,
+                };
+                (width, desk::panel(&shown, Some(width), &p, window, cx))
+            }
+        };
         div()
             .id("desktop-monitor")
             .role(Role::Group)
             .aria_label(label("components.desktop.title"))
+            .relative()
             .size_full()
             .overflow_hidden()
-            .bg(widgets::solid(p.flyout))
+            .bg(desk::ground(
+                settings.layout,
+                settings.style,
+                settings.grouping,
+                &p,
+                cx,
+            ))
             .text_color(p.ink)
-            .text_size(theme::font(12.))
+            .text_size(theme::font(13.))
             .line_height(theme::line_height())
             .font_features(theme::tabular())
-            .flex()
-            .flex_col()
             .child(
                 div()
-                    .relative()
-                    .flex_shrink_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(10.))
-                    .p(px(12.))
-                    .children(rows)
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w(px(width))
+                    .child(content)
                     .child(
                         canvas(
                             move |bounds, window, cx| {
-                                let height = f32::from(bounds.size.height);
-                                let moved = placed.is_none_or(|(placed, at)| {
-                                    (placed - height).abs() > 0.5 || (at - scale).abs() > 0.001
+                                let size = extent.get().unwrap_or((
+                                    f32::from(bounds.size.width),
+                                    f32::from(bounds.size.height),
+                                ));
+                                let moved = placed.is_none_or(|(width, height, at)| {
+                                    (width - size.0).abs() > 0.5
+                                        || (height - size.1).abs() > 0.5
+                                        || (at - scale).abs() > 0.001
                                 });
-                                if (measured.replace(height) - height).abs() > 0.5 || moved {
+                                let before = measured.replace(size);
+                                if (before.0 - size.0).abs() > 0.5
+                                    || (before.1 - size.1).abs() > 0.5
+                                    || moved
+                                {
                                     let owner = owner.clone();
                                     window.defer(cx, move |window, cx| {
                                         let _ =
@@ -1215,13 +1277,14 @@ impl Desktop {
         let desktop: DesktopMonitor = self.monitor_settings("desktopMonitor");
         let wanted = desktop.enabled && !desktop.metrics.is_empty();
         let gauges = gauges(&self.snapshot, &desktop.metrics, self.bits());
+        let curves = self.desk_curves(&desktop, &gauges);
         match (wanted, self.monitors.desk.clone()) {
             (true, Some(Open { window, view })) => {
                 let _ = window.update(cx, |_, window, cx| {
-                    view.update(cx, |view, cx| view.set(desktop, gauges, window, cx))
+                    view.update(cx, |view, cx| view.set(desktop, gauges, curves, window, cx))
                 });
             }
-            (true, None) => self.open_desk_monitor(desktop, gauges, cx),
+            (true, None) => self.open_desk_monitor(desktop, gauges, curves, cx),
             (false, Some(Open { window, .. })) => {
                 self.monitors.desk = None;
                 crate::shell::set_desktop_monitor_shown(false);
@@ -1234,10 +1297,24 @@ impl Desktop {
         self.refresh_tray(cx);
     }
 
+    /// The recent values the desktop monitor's curves show, by gauge; none
+    /// unless it shows curves.
+    fn desk_curves(&self, settings: &DesktopMonitor, gauges: &[Gauge]) -> Vec<Curve> {
+        if settings.layout == DeskLayout::Panel && settings.style == DeskStyle::Curves {
+            gauges
+                .iter()
+                .map(|gauge| desk_curve(&self.timeline, gauge))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
     fn open_desk_monitor(
         &mut self,
         settings: DesktopMonitor,
         gauges: Vec<Gauge>,
+        curves: Vec<Curve>,
         cx: &mut Context<Self>,
     ) {
         let options = WindowOptions {
@@ -1256,7 +1333,7 @@ impl Desktop {
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {
-            cx.new(|_| DeskMonitor::new(settings, gauges, window))
+            cx.new(|_| DeskMonitor::new(settings, gauges, curves, window))
         });
         match opened {
             Ok((window, view)) => {
@@ -1269,7 +1346,8 @@ impl Desktop {
                             &view.settings,
                             AWAY,
                             AWAY,
-                            (WIDTH * window.scale_factor()).round() as i32,
+                            (desk::panel_width(view.settings.style) * window.scale_factor()).round()
+                                as i32,
                             (120. * window.scale_factor()).round() as i32,
                         );
                         window.bounds_changed(cx);
@@ -1377,9 +1455,10 @@ impl Desktop {
     /// A new sample: the monitors that show follow it.
     pub(in crate::frontend) fn refresh_monitors(&mut self, cx: &mut Context<Self>) {
         if let Some(Open { view, .. }) = self.monitors.desk.clone() {
-            let metrics = view.read(cx).settings.metrics.clone();
-            let gauges = gauges(&self.snapshot, &metrics, self.bits());
-            view.update(cx, |view, cx| view.set_gauges(gauges, cx));
+            let settings = view.read(cx).settings.clone();
+            let gauges = gauges(&self.snapshot, &settings.metrics, self.bits());
+            let curves = self.desk_curves(&settings, &gauges);
+            view.update(cx, |view, cx| view.set_gauges(gauges, curves, cx));
         }
         self.refresh_taskbar_monitor();
     }
@@ -1399,6 +1478,10 @@ impl Desktop {
                 Some("topmost") => json!({ "topmost": !current.topmost }),
                 Some("locked") => json!({ "locked": !current.locked }),
                 Some("hide") => json!({ "enabled": false }),
+                Some("look:strip") => json!({ "layout": "strip" }),
+                Some(look) if look.starts_with("look:") => {
+                    json!({ "layout": "panel", "style": &look[5..] })
+                }
                 Some("settings") => {
                     self.open_components("desktop", window, cx);
                     crate::shell::show_main(&self.host);
@@ -1574,6 +1657,58 @@ impl Desktop {
         }
     }
 
+    /// The desktop monitor's panel in `style` for the components page: its
+    /// first two groups, as wide as it is given.
+    pub(in crate::frontend) fn desk_preview(
+        &self,
+        style: DeskStyle,
+        window: &Window,
+        cx: &App,
+    ) -> AnyElement {
+        let desktop: DesktopMonitor = self.monitor_settings("desktopMonitor");
+        let all = gauges(&self.snapshot, &desktop.metrics, self.bits());
+        let ranges = desk::groups(&all);
+        let end = ranges
+            .get(1)
+            .or(ranges.first())
+            .map_or(0, |range| range.end);
+        let shown = &all[..end];
+        let curves = if style == DeskStyle::Curves {
+            shown
+                .iter()
+                .map(|gauge| desk_curve(&self.timeline, gauge))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let p = self.palette;
+        let shown = Drawn {
+            gauges: shown,
+            curves: &curves,
+            style,
+            grouping: desktop.grouping,
+        };
+        div()
+            .w_full()
+            .rounded(px(6.))
+            .overflow_hidden()
+            .border_1()
+            .border_color(p.stroke_strong)
+            .bg(desk::ground(
+                DeskLayout::Panel,
+                style,
+                desktop.grouping,
+                &p,
+                cx,
+            ))
+            .text_color(p.ink)
+            .text_size(theme::font(13.))
+            .line_height(theme::line_height())
+            .font_features(theme::tabular())
+            .child(desk::panel(&shown, None, &p, window, cx))
+            .into_any_element()
+    }
+
     /// What the tests read of the monitors (`inspectLayout.monitors`).
     pub(in crate::frontend) fn monitors_test_state(&self, cx: &App) -> Value {
         let desk = self.monitors.desk.as_ref().map(|open| {
@@ -1583,6 +1718,13 @@ impl Desktop {
                 "visible": unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(view.hwnd).as_bool() },
                 "placed": view.placed.is_some(),
                 "position": [x, y],
+                "size": view.placed.map(|(width, height, _)| [width.round(), height.round()]),
+                "onScreen": crate::shell::desk::on_screen(view.hwnd),
+                "layout": view.settings.layout,
+                "style": view.settings.style,
+                "grouping": view.settings.grouping,
+                "groups": desk::groups(&view.gauges).len(),
+                "curves": view.curves.iter().map(Vec::len).collect::<Vec<_>>(),
                 "rows": view.gauges.iter().map(|gauge| json!({
                     "metric": gauge.reading.text(),
                     "values": gauge.parts.iter().map(|part| part.text.clone()).collect::<Vec<_>>(),

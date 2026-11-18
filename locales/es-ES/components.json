@@ -148,6 +148,26 @@
   "desktop": {
     "title": "Monitor de escritorio",
     "desc": "Muestra las lecturas elegidas en una pequeña ventana del escritorio. Arrástrela para moverla, haga doble clic para abrir Argus o clic derecho para abrir el menú. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "layout": {
+      "title": "Disposición",
+      "desc": "Un panel muestra las lecturas agrupadas por dispositivo, una debajo de otra; una franja las muestra todas en una fila junto a un borde de la pantalla y salta de línea entre grupos si es demasiado ancha.",
+      "panel": "Panel",
+      "strip": "Franja"
+    },
+    "style": {
+      "title": "Estilo",
+      "desc": "Vista previa de cada estilo del panel con las lecturas elegidas; haga clic en uno para usarlo.",
+      "list": "Lista",
+      "curves": "Curvas",
+      "gauges": "Indicadores"
+    },
+    "grouping": {
+      "title": "Agrupación",
+      "desc": "Cómo los estilos Lista y Curvas separan las lecturas de cada dispositivo.",
+      "cards": "Tarjetas",
+      "stripes": "Franjas de color",
+      "rules": "Divisores"
+    },
     "topmost": {
       "title": "Siempre visible",
       "desc": "Se muestra por encima de las demás ventanas."
@@ -169,7 +189,12 @@
       "topmost": "Siempre visible",
       "locked": "Bloquear posición",
       "settings": "Configuración de componentes…",
-      "hide": "Desactivar el monitor de escritorio"
+      "hide": "Desactivar el monitor de escritorio",
+      "look": "Disposición",
+      "list": "Panel de lista",
+      "curves": "Panel de curvas",
+      "gauges": "Panel de indicadores",
+      "strip": "Franja"
     }
   },
   "taskbar": {

@@ -148,6 +148,26 @@
   "desktop": {
     "title": "Desktop monitor",
     "desc": "Shows the chosen readings in a small window on the desktop. Drag to move it, double-click to open Argus, and right-click to open the menu. While it is shown, Argus samples at the “Refresh rate”.",
+    "layout": {
+      "title": "Layout",
+      "desc": "A panel shows the readings grouped by device, one group under another; a strip puts them all in one row along a screen edge and wraps between groups when too wide.",
+      "panel": "Panel",
+      "strip": "Strip"
+    },
+    "style": {
+      "title": "Style",
+      "desc": "Previews each panel style with the readings chosen; click one to use it.",
+      "list": "List",
+      "curves": "Curves",
+      "gauges": "Gauges"
+    },
+    "grouping": {
+      "title": "Grouping",
+      "desc": "How the List and Curves styles set each device’s readings apart.",
+      "cards": "Cards",
+      "stripes": "Color strips",
+      "rules": "Dividers"
+    },
     "topmost": {
       "title": "Always on top",
       "desc": "Stays above other windows."
@@ -169,7 +189,12 @@
       "topmost": "Always on top",
       "locked": "Lock position",
       "settings": "Component settings…",
-      "hide": "Turn off desktop monitor"
+      "hide": "Turn off desktop monitor",
+      "look": "Layout",
+      "list": "List panel",
+      "curves": "Curves panel",
+      "gauges": "Gauges panel",
+      "strip": "Strip"
     }
   },
   "taskbar": {

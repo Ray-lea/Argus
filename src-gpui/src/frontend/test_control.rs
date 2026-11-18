@@ -67,10 +67,9 @@ impl Desktop {
         }
         // An item of the desktop monitor's menu, as if chosen: the ones
         // that change its settings.
-        if let Some(item) = control["desktopMonitorMenu"]
-            .as_str()
-            .filter(|item| matches!(*item, "topmost" | "locked" | "hide"))
-        {
+        if let Some(item) = control["desktopMonitorMenu"].as_str().filter(|item| {
+            matches!(*item, "topmost" | "locked" | "hide") || item.starts_with("look:")
+        }) {
             self.desktop_monitor_event(&json!({ "menu": item }), window, cx);
         }
         // The taskbar monitor's panel, opened over the monitor on its

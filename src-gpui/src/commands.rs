@@ -21,8 +21,9 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, Language, MONITOR_OPACITIES, Reading, SettingsStore, SettingsView,
-    TaskbarPlace, TaskbarStyle, Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
+    BACKGROUND_INTERVALS, DeskGrouping, DeskLayout, DeskStyle, Language, MONITOR_OPACITIES,
+    Reading, SettingsStore, SettingsView, TaskbarPlace, TaskbarStyle, Theme, TrayIcon, TrayMenu,
+    UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -584,6 +585,9 @@ pub fn set_desktop_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
     metrics: Option<Vec<Reading>>,
+    layout: Option<DeskLayout>,
+    style: Option<DeskStyle>,
+    grouping: Option<DeskGrouping>,
     topmost: Option<bool>,
     locked: Option<bool>,
     click_through: Option<bool>,
@@ -601,6 +605,15 @@ pub fn set_desktop_monitor(
             }
             if let Some(metrics) = metrics {
                 monitor.metrics = distinct(metrics);
+            }
+            if let Some(layout) = layout {
+                monitor.layout = layout;
+            }
+            if let Some(style) = style {
+                monitor.style = style;
+            }
+            if let Some(grouping) = grouping {
+                monitor.grouping = grouping;
             }
             if let Some(topmost) = topmost {
                 monitor.topmost = topmost;

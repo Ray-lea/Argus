@@ -9,7 +9,9 @@ use crate::frontend::monitors::{
     absent_name, arrange, device_kind, devices, main_gpu_key, metric_color, metric_key,
 };
 use crate::frontend::widgets::Tone;
-use crate::settings::{DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor};
+use crate::settings::{
+    DeskLayout, DeskStyle, DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor,
+};
 
 /// A component of the page: its key (`components.*` texts), its icon and
 /// whether it is available yet. Settings of a component that ships go in a
@@ -103,6 +105,9 @@ const STYLE_PREVIEW: f32 = 40.;
 /// cards go two by two.
 const STYLE_CARD: f32 = 150.;
 const STYLE_GAP: f32 = 6.;
+/// The height of a desktop monitor style's preview: its first group and a
+/// part of the next.
+const DESK_PREVIEW: f32 = 128.;
 
 /// The taskbar monitor's styles, as saved, in the order offered.
 pub(in crate::frontend) const TASKBAR_STYLES: [&str; 4] =
@@ -788,7 +793,46 @@ impl Desktop {
             },
             cx,
         );
-        vec![
+        let choices = |key: &str, values: &[&str], chosen: &str| {
+            values
+                .iter()
+                .map(|value| {
+                    (
+                        label(&format!("components.desktop.{key}.{value}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ key: value })),
+                        *value == chosen,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let layout = self.segments(
+            "setting-desktopLayout",
+            choices("layout", &["panel", "strip"], &String::from(monitor.layout)),
+            cx,
+        );
+        let panel = monitor.layout == DeskLayout::Panel;
+        let style = panel.then(|| self.desk_style_card(monitor.style, window, cx));
+        // Gauges are tiles: set apart already.
+        let grouping = (panel && monitor.style != DeskStyle::Gauges).then(|| {
+            let segments = self.segments(
+                "setting-desktopGrouping",
+                choices(
+                    "grouping",
+                    &["cards", "stripes", "rules"],
+                    &String::from(monitor.grouping),
+                ),
+                cx,
+            );
+            self.setting_text(
+                "desktopGrouping",
+                "AppsIcon",
+                "components.desktop.grouping.title",
+                "components.desktop.grouping.desc",
+                vec![segments],
+            )
+        });
+        let mut cards = vec![
             self.setting_text(
                 "desktopMonitor",
                 "ComputerIcon",
@@ -803,6 +847,17 @@ impl Desktop {
                 &monitor.metrics,
                 cx,
             ),
+            self.setting_text(
+                "desktopLayout",
+                "PanelIcon",
+                "components.desktop.layout.title",
+                "components.desktop.layout.desc",
+                vec![layout],
+            ),
+        ];
+        cards.extend(style);
+        cards.extend(grouping);
+        cards.extend([
             self.setting_text(
                 "desktopTopmost",
                 "PinIcon",
@@ -831,7 +886,142 @@ impl Desktop {
                 "components.desktop.opacity.desc",
                 vec![opacity],
             ),
-        ]
+        ]);
+        cards
+    }
+
+    /// The desktop monitor's panel styles: a card each with the panel's
+    /// first two groups in that style, as wide as the card, and its name
+    /// beside a radio mark; a click chooses one.
+    fn desk_style_card(
+        &mut self,
+        chosen: DeskStyle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
+        let cards = [DeskStyle::List, DeskStyle::Curves, DeskStyle::Gauges]
+            .into_iter()
+            .map(|style| {
+                let on = style == chosen;
+                let key = String::from(style);
+                let name = label(&format!("components.desktop.style.{key}"));
+                let anchor = SharedString::from(format!("desktopStyle-{key}"));
+                let mark = div()
+                    .size(px(14.))
+                    .flex_shrink_0()
+                    .rounded_full()
+                    .border_1()
+                    .border_color(if on { p.accent } else { p.stroke_strong })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(on, |mark| {
+                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
+                    });
+                Button::new(anchor.clone())
+                    .relative()
+                    .flex_1()
+                    .min_w(px(180.))
+                    .flex_col()
+                    .items_stretch()
+                    .justify_start()
+                    .gap(px(6.))
+                    .p(px(4.))
+                    .rounded(px(7.))
+                    .border_1()
+                    .border_color(if on { p.accent } else { p.stroke_strong })
+                    .when(on, |card| card.bg(p.accent.opacity(0.08)))
+                    .hover(move |card| card.bg(if on { p.accent.opacity(0.12) } else { p.hover }))
+                    .active(move |card| card.bg(p.press))
+                    .role(Role::RadioButton)
+                    .aria_toggled(if on { Toggled::True } else { Toggled::False })
+                    .accessibility_label(name.clone())
+                    .child(
+                        div()
+                            .h(px(DESK_PREVIEW))
+                            .rounded(px(4.))
+                            .bg(p.layer)
+                            .overflow_hidden()
+                            .p(px(8.))
+                            .child(self.desk_preview(style, window, cx)),
+                    )
+                    .child(
+                        div()
+                            .h(px(20.))
+                            .px(px(2.))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(theme::font(13.))
+                            .text_color(p.ink)
+                            .child(mark)
+                            .child(div().min_w_0().truncate().child(name)),
+                    )
+                    // Where tests take hold of it.
+                    .when(test, |card| {
+                        let anchors = anchors.clone();
+                        card.child(
+                            canvas(
+                                move |bounds, _, _| {
+                                    anchors.borrow_mut().insert(anchor.clone(), bounds);
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                    })
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.desk_look(json!({ "style": String::from(style) }), window, cx);
+                    }))
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+        let desc = div()
+            .child(label("components.desktop.style.desc"))
+            .child(
+                div()
+                    .mt(px(10.))
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(STYLE_GAP))
+                    .children(cards),
+            )
+            .into_any_element();
+        self.setting(
+            "desktopStyle",
+            self.glyph("ThemeIcon"),
+            label("components.desktop.style.title"),
+            Some(desc),
+            None,
+            Vec::new(),
+        )
+    }
+
+    /// A change to the desktop monitor's look: shown at once, on this page
+    /// and by the monitor, and saved.
+    pub(in crate::frontend) fn desk_look(
+        &mut self,
+        change: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(monitor) = self
+            .data
+            .get_mut("settings")
+            .and_then(|settings| settings.get_mut("desktopMonitor"))
+            && let (Some(monitor), Some(change)) = (monitor.as_object_mut(), change.as_object())
+        {
+            for (key, value) in change {
+                monitor.insert(key.clone(), value.clone());
+            }
+        }
+        self.request("set_desktop_monitor", change, Some("settings"), window, cx);
+        self.sync_monitors(cx);
+        cx.notify();
     }
 
     /// The taskbar monitor: on or off, its metrics and where it sits.

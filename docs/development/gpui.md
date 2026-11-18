@@ -75,7 +75,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
 
-[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线、胶囊与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，在替身任务栏上打开任务栏监控的面板（测试控制 `taskbarPanel`，不取得前台）并捕获深浅主题下的画面，经面板的选项切换样式与读数并核对勾选状态，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。最后单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。
+[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线、胶囊与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，在替身任务栏上打开任务栏监控的面板（测试控制 `taskbarPanel`，不取得前台）并捕获深浅主题下的画面，经面板的选项切换样式与读数并核对勾选状态，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。最后单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。[`desk-looks.json`](../../tools/window-probe/steps/desk-looks.json) 以全部读数逐一捕获桌面监控的列表（卡片、色条、分隔线）、曲线、仪表与横条，经右键菜单的测试控制切换样式，单击组件页的样式卡片（锚点 `desktopStyle-<样式>`）并核对保存的样式，捕获深浅主题下的组件页与各样式，最后把保存的位置设在屏幕右下角之外，核对窗口仍在工作区内；`inspectLayout.monitors.desktop` 另输出显示方式、样式、分组、组数、各读数的曲线条数、窗口尺寸与 `onScreen`。模拟快照没有历史采样，曲线用 [`desk-live.json`](../../tools/window-probe/steps/desk-live.json) 以 `--live` 运行查看。
 
 [`section-rail.json`](../../tools/window-probe/steps/section-rail.json) 检查组件页与设置页左侧的分组列表：单击分组跳转、滚轮滚动后标记跟随、从托盘设置入口打开时回到托盘分组，核对宽窗口下卡片列不超过 960 px，并捕获深浅主题与窄窗口（不显示列表）的画面。`inspectLayout.sections` 记录两页列表当前标出的分组，`sections.cards` 为两页卡片列最近一次绘制的左边与宽度；分组的测试锚点为 `<页面>-nav-<分组>`，如 `components-nav-taskbar`。
 
@@ -127,7 +127,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |
 | `desktopMonitor`、`taskbarMonitor` | 经组件页使用的 `set_desktop_monitor`、`set_taskbar_monitor` 修改监控设置，如 `{ "enabled": true }`、`{ "metrics": ["cpu", "network"] }`、`{ "opacity": 70 }`；模拟快照下同样执行，只改变测试实例自身的设置与窗口 |
-| `desktopMonitorMenu` | `topmost`、`locked` 或 `hide`：如同在桌面监控的右键菜单中选择该项 |
+| `desktopMonitorMenu` | `topmost`、`locked`、`hide` 或 `look:list` / `look:curves` / `look:gauges` / `look:strip`：如同在桌面监控的右键菜单中选择该项 |
 | `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
 | `trayHover` | `rest` 或 `leave`：如同 Shell 报告指针停留在托盘图标上或离开，经宿主的同一计时打开或取消悬停卡片（假定托盘位置） |
 | `trayPress` | `true`：记下右键在托盘图标上按下的时刻，与同一步中随后的 `trayFlyout: "panel"` 组成一次右键单击：面板在按下时打开（或因按下而关闭）则关闭，否则打开 |

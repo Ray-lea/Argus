@@ -148,6 +148,26 @@
   "desktop": {
     "title": "Moniteur de bureau",
     "desc": "Affiche les mesures choisies dans une petite fenêtre sur le bureau. Faites-la glisser pour la déplacer, double-cliquez pour ouvrir Argus et cliquez avec le bouton droit pour ouvrir le menu. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "layout": {
+      "title": "Disposition",
+      "desc": "Un panneau affiche les mesures regroupées par appareil, les unes sous les autres ; une bande les place toutes sur une ligne au bord de l’écran et passe à la ligne entre les groupes si elle est trop large.",
+      "panel": "Panneau",
+      "strip": "Bande"
+    },
+    "style": {
+      "title": "Style",
+      "desc": "Aperçu de chaque style du panneau avec les mesures choisies ; cliquez sur un style pour l’utiliser.",
+      "list": "Liste",
+      "curves": "Courbes",
+      "gauges": "Jauges"
+    },
+    "grouping": {
+      "title": "Regroupement",
+      "desc": "Façon dont les styles Liste et Courbes séparent les mesures de chaque appareil.",
+      "cards": "Cartes",
+      "stripes": "Bandes de couleur",
+      "rules": "Séparateurs"
+    },
     "topmost": {
       "title": "Toujours au premier plan",
       "desc": "S’affiche au-dessus des autres fenêtres."
@@ -169,7 +189,12 @@
       "topmost": "Toujours au premier plan",
       "locked": "Verrouiller la position",
       "settings": "Paramètres des composants…",
-      "hide": "Désactiver le moniteur de bureau"
+      "hide": "Désactiver le moniteur de bureau",
+      "look": "Disposition",
+      "list": "Panneau en liste",
+      "curves": "Panneau de courbes",
+      "gauges": "Panneau de jauges",
+      "strip": "Bande"
     }
   },
   "taskbar": {

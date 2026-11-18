@@ -148,6 +148,26 @@
   "desktop": {
     "title": "Desktopanzeige",
     "desc": "Zeigt die ausgewählten Werte in einem kleinen Fenster auf dem Desktop. Ziehen verschiebt das Fenster, ein Doppelklick öffnet Argus, ein Rechtsklick das Menü. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "layout": {
+      "title": "Darstellung",
+      "desc": "Ein Bereich zeigt die Werte nach Gerät gruppiert untereinander; eine Leiste zeigt alle Werte in einer Zeile am Bildschirmrand und bricht zwischen Gruppen um, wenn sie zu breit wird.",
+      "panel": "Bereich",
+      "strip": "Leiste"
+    },
+    "style": {
+      "title": "Stil",
+      "desc": "Vorschau jedes Bereichsstils mit den gewählten Werten; zum Wechseln einen Stil anklicken.",
+      "list": "Liste",
+      "curves": "Kurven",
+      "gauges": "Anzeigen"
+    },
+    "grouping": {
+      "title": "Gruppierung",
+      "desc": "Wie die Stile „Liste“ und „Kurven“ die Werte der einzelnen Geräte voneinander abheben.",
+      "cards": "Karten",
+      "stripes": "Farbstreifen",
+      "rules": "Trennlinien"
+    },
     "topmost": {
       "title": "Immer im Vordergrund",
       "desc": "Bleibt über anderen Fenstern."
@@ -169,7 +189,12 @@
       "topmost": "Immer im Vordergrund",
       "locked": "Position sperren",
       "settings": "Komponenteneinstellungen…",
-      "hide": "Desktopanzeige ausschalten"
+      "hide": "Desktopanzeige ausschalten",
+      "look": "Darstellung",
+      "list": "Bereich: Liste",
+      "curves": "Bereich: Kurven",
+      "gauges": "Bereich: Anzeigen",
+      "strip": "Leiste"
     }
   },
   "taskbar": {
