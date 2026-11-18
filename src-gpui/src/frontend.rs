@@ -267,11 +267,11 @@ struct Desktop {
     core_grid_size: Rc<Cell<Size<Pixels>>>,
     /// The columns the logical processors' grid was last arranged in.
     core_columns: Cell<usize>,
-    settings_scroll: ScrollHandle,
-    components_scroll: ScrollHandle,
+    /// The settings' and the components' sections and the lists of them.
+    settings_rail: pages::section_rail::SectionRail,
+    components_rail: pages::section_rail::SectionRail,
     about_scroll: ScrollHandle,
     device_scroll: ScrollHandle,
-    settings_target: Option<usize>,
     page: String,
     page_epoch: u64,
     /// Where the last page change came from: -1, 0 (start-up) or 1.
@@ -403,7 +403,6 @@ struct Desktop {
     history_metric: String,
     history_cursor: Option<i64>,
     history_hover: Option<i64>,
-    settings_section: String,
     /// The tray's open flyouts (`tray`).
     tray: tray::Flyouts,
     /// The desktop monitor's window (`monitors`).
@@ -467,11 +466,10 @@ impl Desktop {
             grid_bounds: RefCell::new(HashMap::new()),
             core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
             core_columns: Cell::new(0),
-            settings_scroll: ScrollHandle::new(),
-            components_scroll: ScrollHandle::new(),
+            settings_rail: Default::default(),
+            components_rail: Default::default(),
             about_scroll: ScrollHandle::new(),
             device_scroll: ScrollHandle::new(),
-            settings_target: None,
             // A start opens the chosen page, wherever the last run ended; an
             // update's relaunch returns to the page it left (`page`, kept
             // as pages change). Later tray restores follow `trayPage`.
@@ -585,7 +583,6 @@ impl Desktop {
             history_metric: "cpu".into(),
             history_cursor: None,
             history_hover: None,
-            settings_section: "language".into(),
             tray: tray::Flyouts::default(),
             monitors: monitors::Monitors::default(),
             ui_scale: appearance::SCALE.load(&prefs),

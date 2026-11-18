@@ -1,12 +1,12 @@
 //! Settings: cards grouped into sections, with a list of the sections on the
-//! left that follows the scroll.
+//! left that follows the scroll (`section_rail`).
+use super::section_rail::RailEntry;
 use super::*;
 use crate::frontend::recorder::{self, Effect, Mods, Verdict};
 use crate::frontend::recorder::{hotkey_error_text, issue_text};
 use crate::frontend::widgets::{
     ButtonExt, Field, HotkeyMessage, HotkeyMode, ToastKind, Tone, service_connected, service_state,
 };
-use gpui_kit::base::ElementExt;
 
 pub(super) const SECTIONS: [&str; 8] = [
     "language",
@@ -31,14 +31,6 @@ fn section_icon(section: &str) -> &'static str {
         _ => "InfoIcon",
     }
 }
-const MIN_RAIL: f32 = 180.;
-const NAV_LEFT: f32 = 14.;
-const NAV_RIGHT: f32 = 12.;
-const NAV_GAP: f32 = 10.;
-const UPDATE_DOT: f32 = 6.;
-const GAP: f32 = 32.;
-const CONTENT: f32 = 780.;
-const NARROW: f32 = 900.;
 const RULE_PRIORITIES: [&str; 6] = [
     "realtime",
     "high",
@@ -747,93 +739,6 @@ impl Desktop {
         self.request("rule_stats", json!({}), Some("ruleStats"), window, cx);
     }
 
-    /// Moves the section list's mark with the scroll, unless a section was
-    /// just picked; plays a picked section's smooth scroll.
-    fn follow_settings_scroll(&mut self, window: &mut Window, cx: &App) {
-        let handle = &self.settings_scroll;
-        let container = handle.bounds();
-        if let Some(index) = self.settings_target.take() {
-            // Wait for one layout after the request: the page may be arriving,
-            // or its text may have reflowed (a language change) since the last.
-            let fresh = std::mem::replace(&mut self.ui.settings_jump_wait, false);
-            self.settings_section = SECTIONS[index].into();
-            self.ui.settings_picked = true;
-            match handle.bounds_for_item(index) {
-                Some(child) if fresh && container.size.height > px(0.) => {
-                    let target = (container.top() - child.top())
-                        .max(-handle.max_offset().y)
-                        .min(px(0.));
-                    handle.set_offset(point(px(0.), target));
-                    self.ui.settings_scroll = None;
-                    self.ui.settings_picked = true;
-                    self.settings_section = SECTIONS[index].into();
-                }
-                _ => {
-                    self.settings_target = Some(index);
-                    self.ui.settings_jump_wait = true;
-                    window.request_animation_frame();
-                }
-            }
-        }
-        if let Some((from, to, start)) = self.ui.settings_scroll {
-            let t = (start.elapsed().as_secs_f32() / 0.3).min(1.);
-            let y = from
-                + (to - from)
-                    * if cx.reduce_motion() {
-                        1.
-                    } else {
-                        theme::ease_out(t)
-                    };
-            handle.set_offset(point(px(0.), y));
-            if t >= 1. || cx.reduce_motion() {
-                self.ui.settings_scroll = None;
-            } else {
-                window.request_animation_frame();
-            }
-        }
-        if self.ui.settings_picked || container.size.height <= px(0.) {
-            return;
-        }
-        let h = f32::from(container.size.height);
-        let y = -f32::from(handle.offset().y);
-        let max = f32::from(handle.max_offset().y);
-        let start = (y / (h / 2.)).min(1.);
-        let end = (1. - (max - y) / (h / 2.)).max(0.);
-        let line = h * (0.1 + 0.25 * start + 0.6 * end);
-        let mut current = 0;
-        for index in 0..SECTIONS.len() {
-            if let Some(child) = handle.bounds_for_item(index)
-                && f32::from(child.top() - container.top()) - y <= line
-            {
-                current = index;
-            }
-        }
-        if y >= max - 4. && max > 0. {
-            current = SECTIONS.len() - 1;
-        }
-        self.settings_section = SECTIONS[current].into();
-    }
-
-    /// Scrolls smoothly to a section picked in the list; it stays marked
-    /// until the page is scrolled by hand.
-    fn jump_to_section(&mut self, index: usize, cx: &App) {
-        self.settings_section = SECTIONS[index].into();
-        self.ui.settings_picked = true;
-        let handle = &self.settings_scroll;
-        let Some(child) = handle.bounds_for_item(index) else {
-            return;
-        };
-        let container = handle.bounds();
-        let target = (container.top() - child.top())
-            .max(-handle.max_offset().y)
-            .min(px(0.));
-        if cx.reduce_motion() {
-            handle.set_offset(point(px(0.), target));
-        } else {
-            self.ui.settings_scroll = Some((handle.offset().y, target, Instant::now()));
-        }
-    }
-
     /// Opens Settings at a card, pointing it out.
     pub(in crate::frontend) fn locate_setting(
         &mut self,
@@ -848,9 +753,7 @@ impl Desktop {
         }
         // The tray's settings are on the Components page, in its first section.
         if section == "components" {
-            if self.page != "components" {
-                self.act(Action::Page("components".into()), window, cx);
-            }
+            self.open_components("tray", window, cx);
         } else {
             self.preference("settingsSection", json!(section), window, cx);
         }
@@ -886,221 +789,35 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let settings = self.data["settings"].clone();
-        if !SECTIONS.contains(&self.settings_section.as_str()) {
-            self.settings_section = SECTIONS[0].into();
-        }
-        self.follow_settings_scroll(window, cx);
         if self.ui.located.is_some() || self.ui.focus_rule.is_some() {
             window.request_animation_frame();
         }
-        let p = self.palette;
-        let width = f32::from(self.ui.settings_width.get());
-        let width = if width > 0. {
-            width
-        } else {
-            f32::from(window.viewport_size().width) - 24.
-        };
-        // The gutter is kept (`scrollbar-gutter: stable`): the container query
-        // and the centring see the width beside it.
-        let width = width - scrollbar::SIZE;
-        let names = SECTIONS.map(|section| label(&format!("settings.sections.{section}")));
-        let controls = NAV_LEFT + f32::from(window.rem_size()) + NAV_GAP + NAV_RIGHT;
-        let rail_width = names
-            .iter()
-            .zip(SECTIONS)
-            .fold(MIN_RAIL, |width, (name, section)| {
-                let text = theme::text_width(name, theme::font(13.), window, cx);
-                let dot = if section == "update" {
-                    NAV_GAP + UPDATE_DOT
-                } else {
-                    0.
-                };
-                width.max(f32::from(text.ceil()) + controls + dot)
-            });
-        // Only whether the list of sections fits beside the cards follows the
-        // measured width; the column itself is centred and capped by layout,
-        // so that it follows the window in the frame it is resized in (laid
-        // out from a measurement, every step of a slow resize drew one frame
-        // at the previous width and the text wrapped back and forth).
-        let threshold = NARROW + (rail_width - MIN_RAIL);
-        let narrow = width <= threshold;
-        let layout = rail_width + GAP + CONTENT;
-        let lead = if narrow { 0. } else { rail_width + GAP };
-        // One column of the page's width at most `layout`, 4 px in from its
-        // sides and centred: the sections, and the list over them.
-        let column = || div().w_full().max_w(px(layout));
         let sections = SECTIONS
             .into_iter()
             .enumerate()
             .map(|(index, section)| {
-                column()
-                    .flex_shrink_0()
-                    .pl(px(lead))
-                    .child(self.settings_section_view(index, section, &settings, window, cx))
+                self.settings_section_view(index, section, &settings, window, cx)
             })
-            .collect::<Vec<_>>();
-        let body = div()
-            .id("settings-content")
-            .size_full()
-            .overflow_y_scroll()
-            .track_scroll(&self.settings_scroll)
-            .flex()
-            .flex_col()
-            .items_center()
-            .pl(px(4.))
-            .pr(px(4. + scrollbar::SIZE))
-            .pt(px(4.))
-            .pb(px(32.))
-            .children(sections)
-            .on_scroll(cx.listener(|this, _, _, _| this.ui.settings_picked = false))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, _| this.ui.settings_picked = false),
-            );
-        let body = body.child(scrollbar::scrollbar(
-            "settings-scrollbar",
-            &self.settings_scroll,
-            p.dark,
-        ));
-        let selected = SECTIONS
-            .iter()
-            .position(|s| *s == self.settings_section)
-            .unwrap_or(0);
-        let mark = gpui_kit::base::motion::transition(
-            "settings-nav-mark",
-            selected as f32 * 38.,
-            theme::fluent(250, theme::ease_move),
-            window,
-            cx,
-        );
+            .collect();
         let pending_update = self.data.get("updates").is_some_and(|s| {
             matches!(text(s, "state"), "ready" | "available") && s["version"].is_string()
         });
-        let (test, anchors) = (self.options.test, self.ui.anchors.clone());
-        let rail = div()
-            .absolute()
-            .top(px(4.))
-            .left_0()
-            .w(px(rail_width))
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .top(px(mark))
-                    .h(px(36.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(p.stroke)
-                    .bg(p.layer_strong)
-                    .child(
-                        div()
-                            .absolute()
-                            .left_0()
-                            .top(px(8.))
-                            .w(px(3.))
-                            .h(px(18.))
-                            .rounded(px(2.))
-                            .bg(p.accent),
-                    ),
-            )
-            .children(SECTIONS.into_iter().zip(names).enumerate().map(
-                |(index, (section, name))| {
-                    let current = index == selected;
-                    let control = SharedString::from(format!("settings-nav-{section}"));
-                    gpui_kit::base::Button::new(control.clone())
-                        .relative()
-                        .h(px(36.))
-                        .pl(px(NAV_LEFT))
-                        .pr(px(NAV_RIGHT))
-                        .gap(px(NAV_GAP))
-                        .line_height(theme::line_height())
-                        .justify_start()
-                        .rounded(px(6.))
-                        .text_color(if current { p.ink } else { p.muted })
-                        .when(!current, |b| {
-                            b.hover(move |s| s.bg(p.hover).text_color(p.ink))
-                        })
-                        .role(Role::Tab)
-                        .accessibility_label(name.clone())
-                        .child(self.moving_icon(&control, section_icon(section), None, None))
-                        // Only an entry that changes under the pointer draws again for it.
-                        .when(!current, |b| b.child(self.icon_probe(&control)))
-                        .child(div().whitespace_nowrap().child(name))
-                        .when(section == "update" && pending_update, |b| {
-                            b.child(
-                                div()
-                                    .ml_auto()
-                                    .size(px(UPDATE_DOT))
-                                    .rounded_full()
-                                    .bg(p.accent),
-                            )
-                        })
-                        // Where tests take hold of it.
-                        .when(test, |b| {
-                            let anchors = anchors.clone();
-                            b.child(
-                                canvas(
-                                    move |bounds, _, _| {
-                                        anchors.borrow_mut().insert(
-                                            format!("settings-nav-{section}").into(),
-                                            bounds,
-                                        );
-                                    },
-                                    |_, _, _, _| {},
-                                )
-                                .absolute()
-                                .inset_0(),
-                            )
-                        })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.jump_to_section(index, cx);
-                            cx.notify();
-                        }))
-                        // The list lies over the cards: a press here is not one in
-                        // them, which would hand the mark back to the scroll before
-                        // the click and send it down to the last section first.
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                },
-            ));
-        // Over the scrolled column, in the same place as its sections.
-        let rail = div()
-            .absolute()
-            .inset_0()
-            .pl(px(4.))
-            .pr(px(4. + scrollbar::SIZE))
-            .flex()
-            .justify_center()
-            .child(column().relative().child(rail));
-        let measured = self.ui.settings_width.clone();
-        let owner = cx.entity().downgrade();
-        div()
-            .size_full()
-            .min_h_0()
-            .px(px(12.))
-            .child(
-                div()
-                    .relative()
-                    .size_full()
-                    .on_prepaint(move |bounds, window, cx| {
-                        let width = bounds.size.width;
-                        if measured.replace(width) == width {
-                            return;
-                        }
-                        // Drawn again only when the list moves in or out.
-                        if (f32::from(width) - scrollbar::SIZE <= threshold) != narrow {
-                            window.defer(cx, move |_, cx| {
-                                let _ = owner.update(cx, |_, cx| cx.notify());
-                            });
-                        }
-                    })
-                    .child(body)
-                    .when(!narrow, |d| d.child(rail)),
-            )
-            .into_any_element()
+        let entries = SECTIONS
+            .map(|section| RailEntry {
+                key: section,
+                name: label(&format!("settings.sections.{section}")),
+                icon: section_icon(section),
+                dot: (section == "update").then_some(pending_update),
+            })
+            .into();
+        self.section_page(
+            "settings",
+            |this| &mut this.settings_rail,
+            entries,
+            sections,
+            window,
+            cx,
+        )
     }
 
     fn settings_section_view(

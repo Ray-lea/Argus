@@ -641,7 +641,7 @@ impl Flyout {
             let _ = handle.update(cx, |_, window, cx| {
                 let _ = desktop.update(cx, |desktop, cx| match ask {
                     Ask::Pause => desktop.act(Action::Pause, window, cx),
-                    Ask::Settings => desktop.act(Action::Page("components".into()), window, cx),
+                    Ask::Settings => desktop.open_components("tray", window, cx),
                     Ask::Device(device) => desktop.act(Action::Device(device), window, cx),
                     Ask::Reveal(pid, create_time) => desktop.preference(
                         "revealProcess",

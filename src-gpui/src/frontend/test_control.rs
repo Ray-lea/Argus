@@ -711,7 +711,7 @@ impl Desktop {
                 "performanceCardHeight":self.perf_card_chrome.get().map(|chrome| f32::from(window.viewport_size().height - chrome)),
                 "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
-                "settingsScrollY":f32::from(self.settings_scroll.max_offset().y),"settingsTop":self.settings_scroll.top_item()});
+                "settingsScrollY":f32::from(self.settings_rail.scroll.max_offset().y),"settingsTop":self.settings_rail.scroll.top_item(),"sections":self.section_rail_state()});
             layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
             layout["watchAction"] = json!(self.data.get("watchLastAction"));
             println!("{layout}");

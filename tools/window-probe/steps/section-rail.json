@@ -1,0 +1,16 @@
+{
+  "window": [1200, 760],
+  "steps": [
+    {"control":{"page":"components","pointerOutside":true},"wait":700,"inspect":"layout","label":"components-top","expect":{"sections.components":"tray"},"capture":"components-top-dark"},
+    {"control":{"clickAnchor":"components-nav-taskbar"},"wait":700,"inspect":"layout","label":"picked","expect":{"sections.components":"taskbar"}},
+    {"control":{"pointerOutside":true},"wait":300,"capture":"components-taskbar-dark"},
+    {"control":{"clickAnchor":"components-nav-planned"},"wait":700,"inspect":"layout","label":"picked-last","expect":{"sections.components":"planned"},"capture":"components-planned-dark"},
+    {"control":{"wheel":{"x":800,"y":400,"lines":150}},"wait":700,"inspect":"layout","label":"wheel-up","expect":{"sections.components":"tray"}},
+    {"control":{"wheel":{"x":800,"y":400,"lines":-10}},"wait":700,"inspect":"layout","label":"wheel-down","expect":{"sections.components":"desktop"},"capture":"components-scrolled-dark"},
+    {"control":{"locate":{"section":"components","item":"trayInterval"}},"wait":900,"inspect":"layout","label":"located","expect":{"sections.components":"tray"},"capture":"components-located-dark"},
+    {"control":{"theme":"light","pointerOutside":true},"wait":900,"capture":"components-light"},
+    {"control":{"page":"settings","settingsSection":"rules"},"wait":900,"inspect":"layout","label":"settings","expect":{"sections.settings":"rules"},"capture":"settings-rules-light"},
+    {"control":{"clickAnchor":"settings-nav-language"},"wait":700,"inspect":"layout","label":"settings-picked","expect":{"sections.settings":"language"}},
+    {"control":{"page":"components","theme":"dark"},"probe":"size 820 600","wait":900,"capture":"components-narrow-dark"}
+  ]
+}

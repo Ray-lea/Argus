@@ -114,11 +114,6 @@ pub(in crate::frontend) struct UiState {
     pub modal_seq: u64,
     /// Dialogs that wait for the onboarding to close.
     pub queued: Vec<(String, Value)>,
-    /// Settings page: measured width, the clicked section and smooth scrolling.
-    pub settings_width: Rc<Cell<Pixels>>,
-    pub settings_picked: bool,
-    pub settings_jump_wait: bool,
-    pub settings_scroll: Option<(Pixels, Pixels, Instant)>,
     pub located: Option<(String, Instant)>,
     pub focus_rule: Option<(String, Instant)>,
     /// Cards running an action, and the errors they show.

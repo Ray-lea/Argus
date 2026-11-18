@@ -5,6 +5,7 @@ mod details;
 mod history;
 pub(in crate::frontend) mod performance;
 mod process_watch;
+pub(in crate::frontend) mod section_rail;
 mod settings;
 mod vitals;
 use super::*;
@@ -667,10 +668,12 @@ impl Desktop {
                 return;
             }
             "settingsSection" => {
-                self.settings_section = value.as_str().unwrap_or("language").into();
-                self.settings_target = settings::SECTIONS
+                if let Some(index) = settings::SECTIONS
                     .iter()
-                    .position(|section| *section == self.settings_section);
+                    .position(|section| Some(*section) == value.as_str())
+                {
+                    self.settings_rail.open_at(index);
+                }
                 if self.page != "settings" {
                     self.act(Action::Page("settings".into()), window, cx);
                 }

@@ -1,7 +1,9 @@
 //! Components: the parts of Argus that stay on the desktop outside its
 //! window: the tray, the desktop monitor, the taskbar monitor and, as it
 //! arrives, the island. Each available component has a section of its
-//! settings; a planned one is listed with what it will be.
+//! settings; a planned one is listed with what it will be. A list of the
+//! sections on the left follows the scroll (`section_rail`).
+use super::section_rail::RailEntry;
 use super::*;
 use crate::frontend::monitors::{
     absent_name, arrange, device_kind, devices, main_gpu_key, metric_color, metric_key,
@@ -91,8 +93,9 @@ const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
     ("other", &[Metric::Battery, Metric::Uptime]),
 ];
 
-/// The column of cards, as wide as the settings' cards.
-const CONTENT: f32 = 780.;
+/// The page's sections, in order: one per available component, then the
+/// planned ones.
+pub(in crate::frontend) const SECTIONS: [&str; 4] = ["tray", "desktop", "taskbar", "planned"];
 
 /// The taskbar monitor's styles, as saved, in the order offered.
 pub(in crate::frontend) const TASKBAR_STYLES: [&str; 4] =
@@ -174,7 +177,7 @@ impl Desktop {
                 )
             })
             .collect::<Vec<_>>();
-        let section = |first: bool, key: &str, cards: Vec<AnyElement>| {
+        let section = |key: &str, cards: Vec<AnyElement>| {
             div()
                 .id(SharedString::from(format!("components-{key}")))
                 .w_full()
@@ -184,7 +187,7 @@ impl Desktop {
                 .gap(px(4.))
                 .child(
                     div()
-                        .mt(px(if first { 6. } else { 28. }))
+                        .mt(px(if key == SECTIONS[0] { 6. } else { 28. }))
                         .mb(px(6.))
                         .text_size(theme::font(14.))
                         .font_weight(theme::LABEL_WEIGHT)
@@ -192,41 +195,50 @@ impl Desktop {
                         .child(label(&format!("components.sections.{key}"))),
                 )
                 .children(cards)
+                .into_any_element()
         };
-        let body = div()
-            .id("components-content")
-            .size_full()
-            .overflow_y_scroll()
-            .track_scroll(&self.components_scroll)
-            .flex()
-            .flex_col()
-            .items_center()
-            .pl(px(4.))
-            .pr(px(4. + scrollbar::SIZE))
-            .pt(px(4.))
-            .pb(px(32.))
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(CONTENT))
-                    .flex()
-                    .flex_col()
-                    .child(section(true, "tray", tray))
-                    .child(section(false, "desktop", desktop))
-                    .child(section(false, "taskbar", taskbar))
-                    .child(section(false, "planned", planned)),
-            )
-            .child(scrollbar::scrollbar(
-                "components-scrollbar",
-                &self.components_scroll,
-                p.dark,
-            ));
-        div()
-            .size_full()
-            .min_h_0()
-            .px(px(12.))
-            .child(body)
-            .into_any_element()
+        let sections = vec![
+            section("tray", tray),
+            section("desktop", desktop),
+            section("taskbar", taskbar),
+            section("planned", planned),
+        ];
+        let entries = SECTIONS
+            .map(|key| RailEntry {
+                key,
+                name: label(&format!("components.sections.{key}")),
+                icon: COMPONENTS
+                    .iter()
+                    .find(|component| component.key == key)
+                    .map_or("ComponentsIcon", |component| component.glyph),
+                dot: None,
+            })
+            .into();
+        self.section_page(
+            "components",
+            |this| &mut this.components_rail,
+            entries,
+            sections,
+            window,
+            cx,
+        )
+    }
+
+    /// Opens the page at a section (`SECTIONS`), as the tray's and the
+    /// monitors' settings entries do.
+    pub(in crate::frontend) fn open_components(
+        &mut self,
+        section: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(index) = SECTIONS.iter().position(|key| *key == section) {
+            self.components_rail.open_at(index);
+        }
+        if self.page != "components" {
+            self.act(Action::Page("components".into()), window, cx);
+        }
+        cx.notify();
     }
 
     /// The tray's look, its hover card, what a right click opens, and how
@@ -922,7 +934,7 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{COMPONENTS, METRIC_GROUPS};
+    use super::{COMPONENTS, METRIC_GROUPS, SECTIONS};
     use crate::settings::Metric;
 
     #[test]
@@ -946,5 +958,16 @@ mod tests {
                 ("island", false)
             ]
         );
+    }
+
+    #[test]
+    fn each_available_component_has_a_section_before_the_planned_ones() {
+        let available = COMPONENTS
+            .iter()
+            .filter(|component| component.available)
+            .map(|component| component.key)
+            .chain(["planned"])
+            .collect::<Vec<_>>();
+        assert_eq!(available, SECTIONS);
     }
 }

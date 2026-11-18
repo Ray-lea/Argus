@@ -1396,7 +1396,7 @@ impl Desktop {
                 Some("locked") => json!({ "locked": !current.locked }),
                 Some("hide") => json!({ "enabled": false }),
                 Some("settings") => {
-                    self.act(Action::Page("components".into()), window, cx);
+                    self.open_components("desktop", window, cx);
                     crate::shell::show_main(&self.host);
                     return;
                 }
@@ -1526,7 +1526,7 @@ impl Desktop {
                 self.choose_metrics("taskbarMonitor", command, next, window, cx)
             }
             TaskbarChoice::Settings => {
-                self.act(Action::Page("components".into()), window, cx);
+                self.open_components("taskbar", window, cx);
                 crate::shell::show_main(&self.host);
             }
             TaskbarChoice::Hide => self.request(
