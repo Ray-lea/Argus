@@ -3,6 +3,7 @@
 //! GPUs and batteries.
 
 mod battery;
+mod clock;
 mod cpu;
 mod disk;
 pub mod disk_details;
@@ -152,7 +153,7 @@ impl Hardware {
 
 pub(crate) struct HardwareTracker {
     cpu: Arc<CpuInfo>,
-    sensors: Option<sensors::Sensors>,
+    sensors: sensors::Sensors,
     memory: Arc<MemoryInfo>,
     disks: disk::DiskTracker,
     nics: net::NicTracker,
@@ -199,12 +200,7 @@ impl HardwareTracker {
             self.cpu = Arc::new(cpu::cpu_info());
             self.sensors = sensors::Sensors::new(self.cpu.clone());
         }
-        let sensed = crate::diagnostics::sample_phase("cpu-counters", || {
-            self.sensors
-                .as_mut()
-                .map(|s| s.sample())
-                .unwrap_or_default()
-        });
+        let sensed = crate::diagnostics::sample_phase("cpu-counters", || self.sensors.sample());
         let mut hardware = Hardware {
             cpu: self.cpu.clone(),
             cpu_mhz: sensed.cpu_mhz,

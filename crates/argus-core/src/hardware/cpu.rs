@@ -1,13 +1,15 @@
 //! Processor identity and topology (clock speeds are in sensors.rs).
 
 use serde::Serialize;
+use std::collections::BTreeMap;
 use windows::Win32::System::Power::{
     CallNtPowerInformation, PROCESSOR_POWER_INFORMATION, PowerInformationInternal,
     ProcessorInformation, ProcessorInformationEx,
 };
 use windows::Win32::System::SystemInformation::{
-    GROUP_AFFINITY, GetLogicalProcessorInformationEx, RelationAll, RelationCache,
-    RelationProcessorCore, RelationProcessorPackage, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    GROUP_AFFINITY, GetLogicalProcessorInformationEx, RelationAll, RelationCache, RelationNumaNode,
+    RelationNumaNodeEx, RelationProcessorCore, RelationProcessorPackage,
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::Threading::{
     ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount,
@@ -49,6 +51,9 @@ pub struct CpuInfo {
     pub virtualization: bool,
     /// Dense logical-processor order, sorted by (group, processor).
     pub threads: Vec<CpuThread>,
+    /// Processor Information instance names use a NUMA node and an index within it.
+    #[serde(skip)]
+    pub(super) counter_threads: BTreeMap<u32, Vec<Option<usize>>>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize)]
@@ -106,6 +111,25 @@ impl CpuInfo {
             .binary_search_by_key(&(group, processor), |t| (t.group, t.processor))
             .ok()
     }
+
+    pub(super) fn counter_index(&self, name: &str) -> Option<usize> {
+        let (node, index) = name.split_once(',')?;
+        self.counter_threads
+            .get(&node.parse().ok()?)?
+            .get(index.parse::<usize>().ok()?)?
+            .as_ref()
+            .copied()
+    }
+
+    fn index_numa_threads(&mut self, masks: BTreeMap<(u32, u16), usize>) {
+        for ((node, group), mut mask) in masks {
+            while mask != 0 {
+                let index = self.thread_index(group, mask.trailing_zeros() as u8);
+                self.counter_threads.entry(node).or_default().push(index);
+                mask &= mask - 1;
+            }
+        }
+    }
 }
 
 const CPU_KEY: PCWSTR = w!(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
@@ -162,15 +186,23 @@ pub fn cpu_info() -> CpuInfo {
     let mut members: Vec<(u16, u8, u32)> = Vec::new();
     // (group, mask) of the processors each L3 cache serves
     let mut l3_masks: Vec<(u16, usize)> = Vec::new();
+    let mut numa_masks = BTreeMap::<(u32, u16), usize>::new();
     let mut offset = 0usize;
     while offset < len as usize {
         // SAFETY: records are laid out back to back, each `Size` bytes long.
         let rec = unsafe {
             &*(buf.as_ptr().add(offset) as *const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)
         };
-        if rec.Size == 0 {
+        if rec.Size == 0 || rec.Size as usize > len as usize - offset {
             break;
         }
+        // GroupCount was reserved (zero) on systems reporting one mask per
+        // cache or NUMA node. Bound the variable array by this record.
+        let masks_in_record = |start: *const GROUP_AFFINITY, groups: u16| {
+            let end = std::ptr::from_ref(rec) as usize + rec.Size as usize;
+            let room = end.saturating_sub(start as usize) / size_of::<GROUP_AFFINITY>();
+            unsafe { std::slice::from_raw_parts(start, usize::from(groups.max(1)).min(room)) }
+        };
         match rec.Relationship {
             r if r == RelationProcessorCore => {
                 let p = unsafe { &rec.Anonymous.Processor };
@@ -190,6 +222,15 @@ pub fn cpu_info() -> CpuInfo {
                 }
             }
             r if r == RelationProcessorPackage => info.sockets += 1,
+            r if r == RelationNumaNode || r == RelationNumaNodeEx => {
+                let node = unsafe { &rec.Anonymous.NumaNode };
+                for mask in masks_in_record(
+                    unsafe { node.Anonymous.GroupMasks.as_ptr() },
+                    node.GroupCount,
+                ) {
+                    *numa_masks.entry((node.NodeNumber, mask.Group)).or_default() |= mask.Mask;
+                }
+            }
             r if r == RelationCache => {
                 let cache = unsafe { &rec.Anonymous.Cache };
                 let size = cache.CacheSize as u64;
@@ -200,15 +241,10 @@ pub fn cpu_info() -> CpuInfo {
                     _ => {}
                 }
                 if cache.Level == 3 {
-                    // GroupCount was reserved (zero) before caches could span
-                    // groups: one mask then. Never read past the record.
-                    let masks = unsafe { cache.Anonymous.GroupMasks.as_ptr() };
-                    let end = std::ptr::from_ref(rec) as usize + rec.Size as usize;
-                    let room =
-                        end.saturating_sub(masks as usize) / std::mem::size_of::<GROUP_AFFINITY>();
-                    let count = usize::from(cache.GroupCount.max(1)).min(room);
-                    // SAFETY: `count` entries lie inside this record.
-                    for m in unsafe { std::slice::from_raw_parts(masks, count) } {
+                    for m in masks_in_record(
+                        unsafe { cache.Anonymous.GroupMasks.as_ptr() },
+                        cache.GroupCount,
+                    ) {
                         l3_masks.push((m.Group, m.Mask));
                     }
                 }
@@ -249,6 +285,7 @@ pub fn cpu_info() -> CpuInfo {
             }
         })
         .collect();
+    info.index_numa_threads(numa_masks);
     info
 }
 
@@ -482,6 +519,27 @@ fn identify(info: &mut CpuInfo) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numa_counter_indices_span_groups_and_preserve_missing_members() {
+        let mut cpu = CpuInfo {
+            threads: [(0, 2), (0, 6), (1, 0), (1, 4)]
+                .map(|(group, processor)| CpuThread {
+                    group,
+                    processor,
+                    ..Default::default()
+                })
+                .to_vec(),
+            ..Default::default()
+        };
+        cpu.index_numa_threads([((7, 0), 0b1010100), ((7, 1), 0b10000), ((3, 1), 1)].into());
+        assert_eq!(cpu.counter_index("7,0"), Some(0));
+        assert_eq!(cpu.counter_index("7,1"), None);
+        assert_eq!(cpu.counter_index("7,2"), Some(1));
+        assert_eq!(cpu.counter_index("7,3"), Some(3));
+        assert_eq!(cpu.counter_index("3,0"), Some(2));
+        assert_eq!(cpu.counter_index("7,_Total"), None);
+    }
 
     #[test]
     fn legacy_nominal_mhz_uses_the_matching_processors_specified_frequency() {

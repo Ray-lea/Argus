@@ -68,7 +68,8 @@
 | 模块 | 职责 |
 |---|---|
 | `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心，是性能核、能效核还是低功耗能效核）、缓存、虚拟化 |
-| `sensors.rs` | 在标准权限下通过 PDH 批量读取 CPU 频率、ACPI 温度和可用功耗计数。优先采用 `Actual Frequency`，缺失项按相应逻辑处理器的标称频率和 `% Processor Performance` 换算。内核传感器已启用时，可用物理核心时钟补齐对应线程。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
+| `clock.rs` | 在标准权限下通过 Windows PCW 读取 CPU 整体和各逻辑处理器的原始频率计数。按实例配对连续样本，处理 32 位基数回绕及实例替换 |
+| `sensors.rs` | 合并 CPU 频率读数，使用 PDH 采集 ACPI 温度、空闲驻留时间和功耗。PCW 与 PDH 查询独立。已启用内核传感器时，可用物理核心时钟补齐对应线程。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间。温度只向 NVMe、SATA 与 ATA 总线上的磁盘查询 |
@@ -84,7 +85,9 @@
 
 CPU 虚拟化状态优先使用 Windows 的可用标志；Hyper-V 或 VBS 占用虚拟化扩展时，结合 `Hv#1` 接口的 `CreatePartitions` 权限识别宿主。普通虚拟机客体继续按其可用的虚拟化扩展判断。权限位定义见 [Hyper-V 分区权限](https://learn.microsoft.com/en-us/virtualization/hyper-v-on-windows/tlfs/datatypes/hv_partition_privilege_mask)。
 
-CPU 频率换算按处理器组和组内编号缓存 Windows 报告的性能域标称 MHz（`PowerInternalProcessorBrandedFrequency`）。旧系统可取对应处理器的 `PROCESSOR_POWER_INFORMATION.MaxMhz`，单路同类核心还可使用 CPU 基准速度。采样通过 `PDH_FMT_NOCAP100` 保留睿频比例。所有逻辑处理器的换算基准一致时可使用系统总百分比，基准不同时对完整的逻辑处理器 MHz 读数求均值。接口见 [phnt 性能域查询结构](https://github.com/winsiderss/systeminformer/blob/952a0e7a4efb45b5e1acc4c733916684a7803406/phnt/include/ntpoapi.h#L3052-L3085)与 [Windows 处理器电源信息](https://learn.microsoft.com/en-us/windows/win32/power/processor-power-information-str)。
+Windows 10 22H2 的 `Processor Information` 提供第 33、34 号计数器，其英文名称目录缺少 `Actual Frequency`。该版本的任务管理器按编号查询 PCW，取两次采样的 `Δ33 / Δ34` 得到 MHz。Argus 使用相同来源和算法，优先采用 `_Total` 的整体读数。逻辑处理器实例名中的两个数字分别为 NUMA 节点编号和节点内序号，通过缓存的节点亲和掩码映射到核心拓扑。[Windows PCW 机制](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/kernel-mode-performance-monitoring) · [Windows NUMA 拓扑接口](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlogicalprocessorinformationex)
+
+打开 PCW 查询失败时，可使用 PDH 的具名直接读数。缺失项还可按逻辑处理器的标称频率和 `% Processor Performance` 换算。标称 MHz 来自 `PowerInternalProcessorBrandedFrequency` 或 `PROCESSOR_POWER_INFORMATION.MaxMhz`，单路同类核心还可使用 CPU 基准速度。采样通过 `PDH_FMT_NOCAP100` 保留睿频比例。所有换算基准一致时可使用系统总百分比，基准不同时对完整的逻辑处理器 MHz 读数求均值。[phnt 性能域查询结构](https://github.com/winsiderss/systeminformer/blob/952a0e7a4efb45b5e1acc4c733916684a7803406/phnt/include/ntpoapi.h#L3052-L3085) · [Windows 处理器电源信息](https://learn.microsoft.com/en-us/windows/win32/power/processor-power-information-str)
 
 混合架构由拓扑类别及 [CPUID Hybrid 标志](https://www.intel.com/content/www/us/en/developer/articles/guide/12th-gen-intel-core-processor-gamedev-guide.html)共同识别。Windows 把 Intel 的能效核与低功耗能效核（LP E-core）归入同一效率类别，两者按三级缓存区分：低功耗能效核不在其余核心共享的三级缓存之内。这与 Intel 针对 Meteor Lake 给出的[判断方法](https://community.intel.com/t/detecting-lp-e-cores-on-meteor-lake-in-software/121766)（CPUID.1A 的核心类型为 Atom 且 CPUID.4 没有三级缓存）使用同一依据，改为读取 `GetLogicalProcessorInformationEx` 的缓存拓扑，无需把线程逐一绑到各处理器执行 CPUID；仅用于 Intel 处理器，其他厂商的紧凑核心保持为能效核。
 
