@@ -588,6 +588,10 @@
       "raplMsr": "Intel RAPL MSR · 內顯"
     }
   },
+  "npu": {
+    "utilizationChart": "使用率 %",
+    "utilization": "使用率"
+  },
   "battery": {
     "title": "電池",
     "titleNumbered": "電池 {id}",

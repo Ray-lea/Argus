@@ -115,10 +115,10 @@ impl VendorGpu {
     }
 }
 
-struct Library(HMODULE);
+pub(super) struct Library(HMODULE);
 
 impl Library {
-    fn load(name: PCWSTR) -> Option<Self> {
+    pub(super) fn load(name: PCWSTR) -> Option<Self> {
         unsafe { LoadLibraryExW(name, None, LOAD_LIBRARY_SEARCH_SYSTEM32) }
             .ok()
             .map(Self)
@@ -126,7 +126,7 @@ impl Library {
 
     /// Keeps the DLL in the process until it exits, whatever `FreeLibrary`
     /// does later, for libraries that leave callbacks registered behind them.
-    fn pin(&self) {
+    pub(super) fn pin(&self) {
         let mut module = HMODULE::default();
         unsafe {
             let _ = GetModuleHandleExW(
@@ -137,7 +137,7 @@ impl Library {
         }
     }
 
-    unsafe fn export<F: Copy>(&self, name: PCSTR) -> Option<F> {
+    pub(super) unsafe fn export<F: Copy>(&self, name: PCSTR) -> Option<F> {
         let function = unsafe { GetProcAddress(self.0, name) }?;
         assert_eq!(size_of::<F>(), size_of_val(&function));
         Some(unsafe { std::mem::transmute_copy(&function) })

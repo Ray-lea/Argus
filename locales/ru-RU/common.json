@@ -33,6 +33,7 @@
     "disk": "Диск",
     "network": "Сеть",
     "gpu": "GPU",
+    "npu": "NPU",
     "battery": "Батарея",
     "temperature": "Температура"
   },

@@ -33,6 +33,7 @@
     "disk": "磁碟",
     "network": "網路",
     "gpu": "GPU",
+    "npu": "NPU",
     "battery": "電池",
     "temperature": "溫度"
   },

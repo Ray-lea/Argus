@@ -618,6 +618,10 @@
       "raplMsr": "Intel RAPL MSR · встроенный GPU"
     }
   },
+  "npu": {
+    "utilizationChart": "Загрузка, %",
+    "utilization": "Загрузка"
+  },
   "battery": {
     "title": "Батарея",
     "titleNumbered": "Батарея {id}",

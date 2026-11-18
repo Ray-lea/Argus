@@ -95,6 +95,9 @@ fn main() {
         }
         println!("    => util {:.1}%", g.util);
     }
+    for npu in &hw.npus {
+        println!("NPU {}", serde_json::to_string(npu).expect("NPU telemetry"));
+    }
     for b in &hw.batteries {
         println!("BAT {:?}", b.info);
         println!(

@@ -11,6 +11,7 @@ mod gpu;
 mod kernel_sensors;
 mod memory;
 mod net;
+mod npu;
 mod nvml;
 mod query;
 mod registry;
@@ -38,6 +39,7 @@ pub use kernel_sensors::{
 };
 pub use memory::MemoryInfo;
 pub use net::{NicInfo, NicStats};
+pub use npu::NpuStats;
 pub use sensors::{CpuIdle, CpuPower, ThermalZone};
 pub use vendor_gpu::GpuPowerSource;
 
@@ -45,7 +47,8 @@ pub use vendor_gpu::GpuPowerSource;
 /// `GpuProcessTracker::new` takes them. For diagnostics; the collector reuses
 /// its own adapter list.
 pub fn gpu_adapters() -> GpuAdapters {
-    gpu::GpuTracker::new_with_vendor(false).adapters()
+    let npus = npu::NpuTracker::new();
+    gpu::GpuTracker::new_with_vendor(false, &npus.luids()).adapters()
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -66,6 +69,7 @@ pub struct Hardware {
     pub disks: Vec<DiskStats>,
     pub nics: Vec<NicStats>,
     pub gpus: Vec<GpuStats>,
+    pub npus: Vec<NpuStats>,
     pub batteries: Vec<BatteryStats>,
 }
 
@@ -158,6 +162,7 @@ pub(crate) struct HardwareTracker {
     disks: disk::DiskTracker,
     nics: net::NicTracker,
     gpus: gpu::GpuTracker,
+    npus: npu::NpuTracker,
     batteries: battery::BatteryTracker,
 }
 
@@ -170,7 +175,9 @@ impl HardwareTracker {
     }
     /// Enumerates the GPUs again; see `GpuTracker::refresh`.
     pub(crate) fn refresh_gpus(&mut self, unknown: &HashSet<u64>) {
-        self.gpus.refresh(unknown);
+        self.npus.refresh();
+        let npu_luids = self.npus.luids();
+        self.gpus.refresh(unknown, &npu_luids);
     }
     /// Drops the listed GPUs, as if their LUIDs had changed.
     #[cfg(test)]
@@ -179,6 +186,8 @@ impl HardwareTracker {
     }
     pub fn new() -> Self {
         let cpu = Arc::new(startup_phase("hardware.cpu-info", cpu::cpu_info));
+        let npus = startup_phase("hardware.npus", npu::NpuTracker::new);
+        let npu_luids = npus.luids();
         let mut t = Self {
             sensors: startup_phase("hardware.cpu-sensors", || {
                 sensors::Sensors::new(cpu.clone())
@@ -187,7 +196,8 @@ impl HardwareTracker {
             memory: Arc::new(startup_phase("hardware.memory-info", memory::memory_info)),
             disks: startup_phase("hardware.disks", disk::DiskTracker::new),
             nics: net::NicTracker::new(),
-            gpus: startup_phase("hardware.gpus", gpu::GpuTracker::new),
+            gpus: startup_phase("hardware.gpus", || gpu::GpuTracker::new(&npu_luids)),
+            npus,
             batteries: startup_phase("hardware.batteries", battery::BatteryTracker::new),
         };
         startup_phase("hardware.prime", || t.sample()); // establish baselines for rates
@@ -218,6 +228,9 @@ impl HardwareTracker {
             }),
             gpus: crate::diagnostics::sample_phase("gpu", || {
                 startup_phase("hardware.gpu-sample", || self.gpus.sample())
+            }),
+            npus: crate::diagnostics::sample_phase("npu", || {
+                startup_phase("hardware.npu-sample", || self.npus.sample())
             }),
             batteries: crate::diagnostics::sample_phase("battery", || {
                 startup_phase("hardware.battery-sample", || self.batteries.sample())
