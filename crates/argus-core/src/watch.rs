@@ -164,6 +164,27 @@ pub struct WatchRecorder {
 }
 
 impl WatchRecorder {
+    pub fn suspend(mut self) -> impl FnOnce(PathBuf) -> Result<Self, WatchError> {
+        self.file = None;
+        let program = self
+            .program_watch
+            .take()
+            .map(program::ProgramWatch::suspend);
+        move |dir| {
+            if let Some(resume) = program {
+                self.program_watch = Some(resume(&dir)?);
+            } else if self.handle.is_some() {
+                self.file = Some(
+                    OpenOptions::new()
+                        .append(true)
+                        .open(dir.join(FILE_NAME))
+                        .map_err(|_| WatchError::Storage)?,
+                );
+            }
+            self.dir = dir;
+            Ok(self)
+        }
+    }
     pub fn storage_bytes(dir: &std::path::Path) -> u64 {
         [FILE_NAME, store::FILE_NAME]
             .iter()

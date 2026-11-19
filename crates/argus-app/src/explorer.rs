@@ -128,7 +128,7 @@ fn shell_pid() -> u32 {
     pid
 }
 
-fn system_explorer() -> Result<String, RestartError> {
+pub fn system_explorer() -> Result<String, RestartError> {
     let mut buffer = [0u16; 32768];
     let len = unsafe { GetWindowsDirectoryW(Some(&mut buffer)) } as usize;
     if len == 0 || len >= buffer.len() {

@@ -4,6 +4,10 @@
 //! average finite samples independently; CPU peak is their maximum. Process
 //! working set, dedicated GPU memory, threads and handles are frame maxima.
 //!
+//! Sealed days use ARGH v5. The minute packets keep independent system and
+//! process blocks, the observed intervals, and exact gap evidence. See the
+//! minute module for the reader and atomic writer.
+//!
 //! # Version 4
 //!
 //! `YYYY-MM-DD.hist` begins with `ARGH\x04`. Each record is a u8 tag, u32
@@ -28,7 +32,7 @@
 //!   at the next frame. A new record is written on device arrival or removal.
 //!
 //! `YYYY-MM-DD.proc` contains byte ranges committed by tag 6. Each entry has a
-//! ULEB128 identity index, flags u8, nonzero CPU/GPU f32 (bits 0/1), working
+//! ULEB128 identity index (bit 16 omits network, bit 17 omits threads and handles), flags u8, nonzero CPU/GPU f32 (bits 0/1), working
 //! set, I/O rate, network rate, threads and handles, then optional disk read,
 //! disk write, GPU memory and power (bits 2..5). Bit 6 stores nonzero power as
 //! f32. A present zero power has no payload. Bit 7 adds a four-rate mask and
@@ -90,8 +94,12 @@ use crate::collector::Snapshot;
 
 /// Length of one frame.
 pub const FRAME_MS: i64 = 5_000;
-/// Days of history kept.
-pub const KEEP_DAYS: i64 = 7;
+mod options;
+pub use options::*;
+mod maintenance;
+pub use maintenance::{maintain, maintain_until, move_records, validate_directory};
+mod minute;
+use minute::{MINUTE_MAGIC, MINUTE_MS, Minute};
 
 const MAGIC: &[u8; 5] = b"ARGH\x04";
 const MAGIC_V3: &[u8; 5] = b"ARGH\x03";
@@ -107,7 +115,7 @@ const MAX_FILE_BYTES: usize = 128 << 20;
 const MAX_METADATA_BYTES: usize = 16 << 10;
 const MAX_CHANNELS: usize = 512;
 const MAX_INSTANCES: usize = 65_536;
-const MAX_FRAME_ROWS: usize = 4096;
+const MAX_FRAME_ROWS: usize = MAX_INSTANCES;
 // Ten minutes at the sampler's shortest supported cadence (250 ms), inclusive.
 const MAX_RECENT: usize = 2401;
 const MAX_FRAMES: usize = 100_000;
@@ -172,6 +180,38 @@ pub struct HistoryUsage {
     pub first: Option<i64>,
     pub days: usize,
     pub breakdown: Breakdown,
+    pub limit: HistoryLimit,
+    pub estimate: HistoryEstimate,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEstimate {
+    pub bytes_per_day: u64,
+}
+#[derive(Clone, Copy, Default, Serialize, serde::Deserialize)]
+struct Measurement {
+    recording: Recording,
+    frames: u64,
+    bytes: u64,
+}
+impl Measurement {
+    fn save(&self, dir: &Path, day: i64) {
+        if self.frames > 0 {
+            let path = day_path(dir, day).with_extension("measure");
+            if let Err(e) = serde_json::to_vec(self)
+                .map_err(io::Error::other)
+                .and_then(|b| fs::write(&path, b))
+            {
+                crate::diagnostics::file_failure("history size measurement", &path, &e);
+            }
+        }
+    }
+    fn add(&mut self, recording: Recording, bytes: u64) {
+        self.recording = recording;
+        self.frames = self.frames.saturating_add(1);
+        self.bytes = self.bytes.saturating_add(bytes);
+    }
 }
 
 /// One frame: the system and the processes that stood out at that moment.
@@ -243,10 +283,18 @@ pub struct HistoryRecorder {
     boot: Option<i64>,
     clock_is_live: bool,
     stopped: bool,
-    selection: Selection,
+    recording: Recording,
+    pending_recording: Option<Recording>,
+    measurement: Measurement,
 }
 
 impl HistoryRecorder {
+    pub fn active_day(&self) -> Option<i64> {
+        self.file.as_ref().map(|f| f.day)
+    }
+    pub fn configure(&mut self, recording: Recording) {
+        self.pending_recording = (self.recording != recording).then_some(recording);
+    }
     pub fn directory(&self) -> &Path {
         &self.dir
     }
@@ -264,7 +312,9 @@ impl HistoryRecorder {
             boot: None,
             clock_is_live: false,
             stopped: false,
-            selection: Selection::default(),
+            recording: Recording::default(),
+            pending_recording: None,
+            measurement: Measurement::default(),
             dir,
             file: None,
             window: Window::default(),
@@ -274,6 +324,7 @@ impl HistoryRecorder {
     /// Deletes everything recorded so far, the frame in progress included;
     /// recording carries on into a new file.
     pub fn clear(&mut self) -> io::Result<()> {
+        self.measurement = Measurement::default();
         // Close the day file before deleting it.
         self.file = None;
         self.window = Window::default();
@@ -286,8 +337,19 @@ impl HistoryRecorder {
 
     /// Adds a sample; writes the previous frame once a sample of the next one arrives.
     pub fn record(&mut self, s: &Snapshot) {
-        if self.stopped {
+        // The on-disk name uses exactly four Gregorian year digits.
+        if self.stopped || !(-719_528..2_932_897).contains(&s.timestamp.div_euclid(DAY_MS)) {
             return;
+        }
+        let changed = self.pending_recording.take();
+        if let Some(recording) = changed {
+            self.window.interval = s
+                .timestamp
+                .saturating_sub(self.window.last)
+                .clamp(1, FRAME_MS);
+            self.flush_window();
+            self.recording = recording;
+            self.measurement = Measurement::default();
         }
         let slot = align(s.timestamp, 0, FRAME_MS);
         if self.window.samples > 0 && slot != align(self.window.start, 0, FRAME_MS) {
@@ -296,7 +358,7 @@ impl HistoryRecorder {
             }
             self.flush_window();
         }
-        let first_sample = self.live.samples.is_empty();
+        let first_sample = changed.is_some() || self.live.samples.is_empty();
         let boot = *self
             .boot
             .get_or_insert_with(|| s.timestamp.saturating_sub(s.system.uptime_ms as i64));
@@ -320,7 +382,7 @@ impl HistoryRecorder {
         {
             self.catalog = Catalog::default();
         }
-        let values = readings(&mut self.catalog, s);
+        let values = readings(&mut self.catalog, s, self.recording.groups);
         let interval = self
             .live
             .samples
@@ -359,7 +421,7 @@ impl HistoryRecorder {
         }
         w.interval = interval;
         w.last = s.timestamp;
-        w.samples += 1;
+        w.samples = w.samples.saturating_add(1);
         w.values.resize(values.len(), Mean::default());
         w.present.resize(values.len(), false);
         for (i, &v) in values.iter().enumerate() {
@@ -423,27 +485,31 @@ impl HistoryRecorder {
                 acc.create_time = p.create_time;
             }
             if p.stale || p.sample_reused || p.counters_pending {
-                acc.missing += 1;
+                acc.missing = acc.missing.saturating_add(1);
                 continue;
             }
             acc.measured = true;
-            if let Some(v) = p.disk_read {
+            if let Some(v) = p.disk_read.filter(|_| self.recording.groups.process_disk) {
                 acc.disk_read.add(v as f64);
             }
-            if let Some(v) = p.disk_write {
+            if let Some(v) = p.disk_write.filter(|_| self.recording.groups.process_disk) {
                 acc.disk_write.add(v as f64);
             }
             if let Some(v) = p.power {
                 acc.power.add(v as f64);
             }
-            acc.gpu_mem = acc.gpu_mem.max(p.gpu_dedicated);
-            acc.threads = acc.threads.max(p.threads);
-            acc.handles = acc.handles.max(p.handles);
+            if self.recording.groups.process_gpu {
+                acc.gpu_mem = acc.gpu_mem.max(p.gpu_dedicated);
+                acc.threads = acc.threads.max(p.threads);
+                acc.handles = acc.handles.max(p.handles);
+            }
             acc.cpu += p.cpu as f64;
             acc.mem = acc.mem.max(p.private_ws);
             acc.io += p.io_read as f64 + p.io_write as f64 + p.io_other as f64;
             acc.gpu += p.gpu as f64;
-            acc.net += p.net_sent as f64 + p.net_received as f64;
+            if self.recording.groups.process_network {
+                acc.net += p.net_sent as f64 + p.net_received as f64;
+            }
         }
     }
 
@@ -452,9 +518,11 @@ impl HistoryRecorder {
         if self.file.as_ref().is_some_and(|f| f.day == day) {
             return Ok(());
         }
-        self.file = None;
+        if let Some(old) = self.file.take() {
+            self.measurement.save(&self.dir, old.day);
+            self.measurement = Measurement::default();
+        }
         fs::create_dir_all(&self.dir)?;
-        prune(&self.dir, day);
         let mut file = open_day(&self.dir, day)?;
         forget(&self.dir);
         if file.v4.is_some() {
@@ -544,6 +612,9 @@ impl HistoryRecorder {
             }
             entries
         });
+        if let Some(file) = &self.file {
+            self.measurement.save(&self.dir, file.day);
+        }
         self.shared = SharedLive::default();
         self.live = Live::default();
         self.file = None;
@@ -551,45 +622,36 @@ impl HistoryRecorder {
     fn write(&mut self, w: &Window) -> io::Result<()> {
         self.open(w.start, w.boot, w.awake)?;
         let file = self.file.as_mut().ok_or_else(invalid)?;
-        let mut procs: Vec<&ProcAcc> = w.procs.values().filter(|p| p.measured).collect();
-        let mut picked: Vec<&ProcAcc> = Vec::new();
-        let mut take = |key: &dyn Fn(&ProcAcc) -> f64, count: usize, floor: f64| {
-            let order = |a: &&ProcAcc, b: &&ProcAcc| {
-                key(b)
-                    .total_cmp(&key(a))
-                    .then_with(|| a.pid.cmp(&b.pid))
-                    .then_with(|| a.create_time.cmp(&b.create_time))
-            };
-            let n = count.min(procs.len());
-            if n < procs.len() {
-                procs.select_nth_unstable_by(n, order);
-            }
-            let leaders = &mut procs[..n];
-            leaders.sort_unstable_by(order);
-            for p in leaders.iter().filter(|p| key(p) > floor) {
-                if !picked.iter().any(|q| std::ptr::eq(*q, *p)) {
-                    picked.push(*p);
+        let picked = select(
+            w.procs.values().filter(|p| p.measured).collect(),
+            self.recording.processes,
+            |p, metric| {
+                let n = p.divisor(w.samples);
+                match metric {
+                    0 => p.cpu / n,
+                    1 => p.mem as f64,
+                    2 => p.io / n,
+                    3 => p.gpu / n,
+                    4 => p.net / n,
+                    _ => {
+                        p.disk_read.get().unwrap_or_default()
+                            + p.disk_write.get().unwrap_or_default()
+                    }
                 }
-            }
-        };
-        let scale = self.selection.multiplier;
-        take(&|p| p.cpu / p.divisor(w.samples), 6 * scale, 0.5);
-        take(&|p| p.mem as f64, 6 * scale, 0.0);
-        take(&|p| p.io / p.divisor(w.samples), 3 * scale, 0.0);
-        take(&|p| p.gpu / p.divisor(w.samples), 3 * scale, 0.5);
-        take(&|p| p.net / p.divisor(w.samples), 3 * scale, 0.0);
-
-        take(
-            &|p| p.disk_read.get().unwrap_or_default() + p.disk_write.get().unwrap_or_default(),
-            3 * scale,
-            0.,
+            },
+            |p| (p.pid, p.create_time),
         );
-        if self.selection.all {
-            procs.truncate(MAX_FRAME_ROWS);
-            picked = procs;
-        }
         if let Some(writer) = &mut file.v4 {
-            return writer.frame(&mut file.out, &self.catalog, w, &picked);
+            let size = writer.frame(
+                &mut file.out,
+                &self.catalog,
+                w,
+                &picked,
+                self.recording.groups,
+            )?;
+            self.measurement.add(self.recording, size);
+            self.live.measurement = self.measurement;
+            return Ok(());
         }
         let old = legacy_point(w.start, |key| {
             self.catalog
@@ -656,17 +718,40 @@ impl Drop for HistoryRecorder {
         self.stop(false);
     }
 }
-struct Selection {
-    multiplier: usize,
-    all: bool,
-}
-impl Default for Selection {
-    fn default() -> Self {
-        Self {
-            multiplier: 1,
-            all: false,
+/// Each resource contributes its busiest distinct instances. An unknown/pending
+/// observation is removed by the caller before ranking.
+fn select<T: Copy>(
+    mut rows: Vec<T>,
+    cap: u32,
+    score: impl Fn(T, usize) -> f64,
+    identity: impl Fn(T) -> (u32, i64),
+) -> Vec<T> {
+    if cap == 0 {
+        return rows;
+    }
+    let mut picked = Vec::new();
+    let scale = if cap == 40 { 2 } else { 1 };
+    for (metric, (quota, floor)) in [(5, 0.5), (5, 0.), (3, 0.), (2, 0.5), (2, 0.), (3, 0.)]
+        .into_iter()
+        .enumerate()
+    {
+        let order = |a: &T, b: &T| {
+            score(*b, metric)
+                .total_cmp(&score(*a, metric))
+                .then_with(|| identity(*a).cmp(&identity(*b)))
+        };
+        let n = rows.len().min(quota * scale);
+        if n < rows.len() {
+            rows.select_nth_unstable_by(n, order);
+        }
+        rows[..n].sort_unstable_by(order);
+        for &p in &rows[..n] {
+            if score(p, metric) > floor && !picked.iter().any(|&q| identity(q) == identity(p)) {
+                picked.push(p);
+            }
         }
     }
+    picked
 }
 fn truncate_utf8(s: &str, max: usize) -> &[u8] {
     let mut end = s.len().min(max);
@@ -707,7 +792,9 @@ fn owned_day(name: &OsStr) -> Option<i64> {
         day_number(
             text.strip_suffix(".proc")
                 .or_else(|| text.strip_suffix(".roll"))
-                .or_else(|| text.strip_suffix(".idx"))?,
+                .or_else(|| text.strip_suffix(".idx"))
+                .or_else(|| text.strip_suffix(".measure"))
+                .or_else(|| text.strip_suffix(".merge-tmp"))?,
         )
     })
 }
@@ -743,29 +830,6 @@ fn day_number(name: &str) -> Option<i64> {
     (day_name(day) == name).then_some(day)
 }
 
-/// Deletes day files older than the retention window.
-fn prune(dir: &Path, today: i64) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        if owned_day(&entry.file_name()).is_some_and(|d| d <= today - KEEP_DAYS)
-            && let Err(error) = fs::remove_file(entry.path())
-        {
-            crate::diagnostics::file_failure("history retention cleanup", &entry.path(), &error);
-        }
-    }
-}
-
-/// Deletes day files that have aged out. Recording does this whenever it
-/// starts a new file; this is for when history is not being recorded.
-pub fn prune_expired(dir: &Path) {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as i64);
-    prune(dir, now.div_euclid(DAY_MS));
-}
-
 /// Deletes every day file in the folder. Nothing may be recording into it
 /// (`HistoryRecorder::clear` closes its file first).
 pub fn clear(dir: &Path) -> io::Result<()> {
@@ -775,6 +839,7 @@ pub fn clear(dir: &Path) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     };
+    let _lease = maintenance::directory_lease(dir)?;
     for entry in entries {
         let entry = entry?;
         if owned_day(&entry.file_name()).is_some() {
@@ -833,6 +898,9 @@ fn days(dir: &Path) -> Vec<i64> {
 /// `buckets` points; empty buckets are left out, so gaps (Argus not running)
 /// stay gaps. The CPU peak is the highest of the bucket.
 pub fn legacy_series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<HistoryPoint> {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     if to <= from || !(1..=MAX_POINTS).contains(&buckets) {
         return Vec::new();
     }
@@ -856,12 +924,13 @@ pub fn legacy_series(dir: &Path, from: i64, to: i64, buckets: usize) -> Vec<Hist
     }
     let mut acc = vec![Acc::default(); buckets];
     let span = to.abs_diff(from) as f64;
-    visit_days(dir, from, to, false, |d| {
+    visit_days(dir, align(from, 0, MINUTE_MS), to, false, |d| {
         for i in d.range.clone() {
             let Some(row) = d.row(i) else { continue };
             let p = legacy_point(row.ts(), |k| finite(row.get(*d.idx.catalog.by_key.get(k)?)));
-            if p.ts >= from && p.ts <= to {
-                let i = ((p.ts.abs_diff(from) as f64 / span) * buckets as f64) as usize;
+            if (p.ts >= from || (row.span() == MINUTE_MS && p.ts + MINUTE_MS > from)) && p.ts <= to
+            {
+                let i = ((p.ts.max(from).abs_diff(from) as f64 / span) * buckets as f64) as usize;
                 let a = &mut acc[i.min(buckets - 1)];
                 if a.n == 0 {
                     a.frame_ts = p.ts;
@@ -983,7 +1052,7 @@ fn hardware_id(identity: &str) -> String {
     });
     format!("{hash:016x}")
 }
-fn readings(catalog: &mut Catalog, s: &Snapshot) -> Vec<f64> {
+fn readings(catalog: &mut Catalog, s: &Snapshot, groups: RecordGroups) -> Vec<f64> {
     let sys = &s.system;
     let hw = &s.hardware;
     let sensors = hw.cpu_sensors.as_ref();
@@ -994,6 +1063,9 @@ fn readings(catalog: &mut Catalog, s: &Snapshot) -> Vec<f64> {
                    label: &str,
                    device: Option<&str>,
                    value: Option<f64>| {
+        if !groups.includes(key) {
+            return;
+        }
         // Leave room for the system totals registered after disk, NIC and GPU readings.
         if device.is_some()
             && catalog.rows.len() >= MAX_CHANNELS - 32
@@ -1240,7 +1312,7 @@ impl Mean {
     fn add(&mut self, v: f64) {
         if v.is_finite() {
             self.sum += v;
-            self.n += 1;
+            self.n = self.n.saturating_add(1);
         }
     }
     fn get(self) -> Option<f64> {
@@ -1258,6 +1330,7 @@ struct Sample {
 }
 #[derive(Clone, Default)]
 struct Live {
+    measurement: Measurement,
     evicted: bool,
     previous: Option<Stamp>,
     first: Option<Stamp>,
@@ -1409,6 +1482,7 @@ struct Writer4 {
     presence: Vec<u8>,
     system: SystemRoll,
     roll: Roll,
+    roll_network: bool,
     roll_file: BufWriter<File>,
     proc: BufWriter<File>,
     pos: u64,
@@ -1467,8 +1541,11 @@ impl Writer4 {
         catalog: &Catalog,
         w: &Window,
         picked: &[&ProcAcc],
-    ) -> io::Result<()> {
+        groups: RecordGroups,
+    ) -> io::Result<u64> {
         let mut metadata = Vec::new();
+        let mut summary_bytes = 0;
+        let index_before = self.checkpoints.as_ref().map_or(0, |c| c.written);
         if self.system.count > 0
             && self.system.start.div_euclid(ROLL_MS) != w.start.div_euclid(ROLL_MS)
         {
@@ -1507,12 +1584,15 @@ impl Writer4 {
             };
         }
         if self.roll.recorded > 0
-            && self.roll.first.div_euclid(PROCESS_ROLL_MS) != w.start.div_euclid(PROCESS_ROLL_MS)
+            && (self.roll_network != groups.process_network
+                || self.roll.first.div_euclid(PROCESS_ROLL_MS)
+                    != w.start.div_euclid(PROCESS_ROLL_MS))
         {
-            self.roll.write(&mut self.roll_file)?;
+            summary_bytes = self.roll.write(&mut self.roll_file)?;
         }
         if self.roll.recorded == 0 {
             self.roll.first = w.start;
+            self.roll_network = groups.process_network;
         }
         let mut rows = Vec::new();
         for p in picked {
@@ -1538,7 +1618,10 @@ impl Writer4 {
                 }
             };
             let n = p.divisor(w.samples);
-            var(&mut rows, id.into());
+            let encoded_id = id as u64
+                + MAX_INSTANCES as u64
+                    * (u64::from(!groups.process_network) | (u64::from(!groups.process_gpu) << 1));
+            var(&mut rows, encoded_id);
             let vals = [(p.cpu / n) as f32, (p.gpu / n) as f32];
             let mut rates = [
                 (p.io, n),
@@ -1571,13 +1654,13 @@ impl Writer4 {
                 }
             }
             put_memory(&mut rows, p.mem);
-            for v in [
-                rates[0].0 as u64,
-                rates[1].0 as u64,
-                p.threads as u64,
-                p.handles as u64,
-            ] {
-                var(&mut rows, v);
+            var(&mut rows, rates[0].0 as u64);
+            if groups.process_network {
+                var(&mut rows, rates[1].0 as u64);
+            }
+            if groups.process_gpu {
+                var(&mut rows, u64::from(p.threads));
+                var(&mut rows, u64::from(p.handles));
             }
             for &(value, count) in &rates[2..] {
                 if count > 0. {
@@ -1648,7 +1731,11 @@ impl Writer4 {
                 .or_default()
                 .merge(Totals::observation(m, w.start, w.span()))
         });
-        Ok(())
+        let index_bytes = self
+            .checkpoints
+            .as_ref()
+            .map_or(0, |c| c.written.saturating_sub(index_before));
+        Ok((metadata.len() + rows.len()) as u64 + index_bytes + summary_bytes)
     }
 }
 impl Drop for Writer4 {
@@ -1679,7 +1766,12 @@ fn decode_rows(mut raw: &[u8], mut visit: impl FnMut(usize, Metrics)) -> Option<
         if count > MAX_FRAME_ROWS {
             return None;
         }
-        let id = usize::try_from(take_var(&mut raw)?).ok()?;
+        let encoded = usize::try_from(take_var(&mut raw)?).ok()?;
+        let omitted = encoded / MAX_INSTANCES;
+        if omitted > 3 {
+            return None;
+        }
+        let id = encoded % MAX_INSTANCES;
         let (&flags, tail) = raw.split_first()?;
         raw = tail;
         if flags & 64 != 0 && flags & 32 == 0 {
@@ -1694,9 +1786,20 @@ fn decode_rows(mut raw: &[u8], mut visit: impl FnMut(usize, Metrics)) -> Option<
         let gpu = if flags & 2 != 0 { float(&mut raw)? } else { 0. };
         let mem = take_memory(&mut raw)?;
         let io = take_var(&mut raw)?;
-        let net = take_var(&mut raw)?;
-        let threads = Some(u32::try_from(take_var(&mut raw)?).ok()?);
-        let handles = Some(u32::try_from(take_var(&mut raw)?).ok()?);
+        let net = if omitted & 1 == 0 {
+            take_var(&mut raw)? as f64
+        } else {
+            f64::NAN
+        };
+        let mut count = || {
+            if omitted & 2 != 0 {
+                Some(None)
+            } else {
+                Some(Some(u32::try_from(take_var(&mut raw)?).ok()?))
+            }
+        };
+        let threads = count()?;
+        let handles = count()?;
         let mut opt = |flag| -> Option<Option<u64>> {
             if flags & flag != 0 {
                 Some(Some(take_var(&mut raw)?))
@@ -1718,7 +1821,7 @@ fn decode_rows(mut raw: &[u8], mut visit: impl FnMut(usize, Metrics)) -> Option<
         };
         let mut rates = [
             Some(io as f64),
-            Some(net as f64),
+            Some(net),
             disk_read.map(|v| v as f64),
             disk_write.map(|v| v as f64),
         ];
@@ -1852,7 +1955,7 @@ const OLD_KEYS: [(&str, &str, &str); 9] = [
     ("battery", "percent", "battery"),
     ("batteryRate", "milliwatts", "battery"),
 ];
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Serialize, serde::Deserialize)]
 struct Stamp {
     ts: i64,
     span: i64,
@@ -1911,8 +2014,15 @@ struct Index {
     proc_end: u64,
     process_bytes: u64,
     headers: Vec<[u8; FRAME_HEAD]>,
+    edges: Option<[Stamp; 2]>,
 }
 impl Index {
+    fn gap_start(&self) -> Option<Stamp> {
+        self.edges.map(|e| e[0]).or(self.first)
+    }
+    fn gap_end(&self) -> Option<Stamp> {
+        self.edges.map(|e| e[1]).or(self.last)
+    }
     fn stamp(&mut self, s: Stamp, at: usize) {
         if let Some(prev) = self.last
             && let Some(g) = gap(prev, s)
@@ -1959,6 +2069,8 @@ impl Index {
         let capped = match tag {
             CHANNEL => p.len() > MAX_METADATA_BYTES || self.labels.len() >= MAX_FRAMES,
             INSTANCE => p.len() > MAX_METADATA_BYTES || self.ids.len() >= MAX_INSTANCES,
+            minute::MINUTE if self.version == 5 => self.frames.len() >= 1440,
+            minute::GAP if self.version == 5 => self.gaps.len() >= MAX_FRAMES,
             V4_FRAME => self.frames.len() >= MAX_FRAMES,
             PRESENCE => self.masks.len() >= MAX_FRAMES,
             _ => false,
@@ -2020,7 +2132,44 @@ impl Index {
                     self.summaries.push(r);
                 }
             }
-            V4_FRAME if !checkpoint => {
+            minute::MINUTE if self.version == 5 => {
+                let minute = Minute::parse(p, self.day)?;
+                if self.last.is_some_and(|s| s.ts >= minute.ts) {
+                    return None;
+                }
+                let stamp = Stamp {
+                    ts: minute.ts,
+                    span: MINUTE_MS,
+                    ..Default::default()
+                };
+                self.first.get_or_insert(stamp);
+                self.last = Some(stamp);
+                self.frames
+                    .push((stamp.ts.rem_euclid(DAY_MS) as u32, at as u32));
+                self.process_bytes += minute.process_bytes();
+            }
+            minute::EDGES if self.version == 5 && p.len() <= 512 => {
+                let edges: [Stamp; 2] = serde_json::from_slice(p).ok()?;
+                if edges[1].ts < edges[0].ts
+                    || edges.iter().any(|s| {
+                        s.ts.div_euclid(DAY_MS) != self.day
+                            || !(1..=FRAME_MS).contains(&s.span)
+                            || s.stop > 3
+                    })
+                {
+                    return None;
+                }
+                self.edges = Some(edges);
+            }
+            minute::SEALED if self.version == 5 && p == minute::SEAL => (),
+            minute::GAP if self.version == 5 => {
+                let g = minute::parse_gap(p, self.day)?;
+                if self.gaps.last().is_some_and(|prev| prev.to > g.from) {
+                    return None;
+                }
+                self.gaps.push(g);
+            }
+            V4_FRAME if self.version != 5 && !checkpoint => {
                 let f = Stored::parse(p)?;
                 let end = f.offset.checked_add(f.len as u64)?;
                 if f.offset != self.proc_end
@@ -2118,7 +2267,9 @@ fn open_writable(path: &Path) -> io::Result<File> {
     if let Some(file) = test_files::open(path, true) {
         return file;
     }
+    use std::os::windows::fs::OpenOptionsExt;
     let file = OpenOptions::new()
+        .share_mode(1) // One writer per file. Readers remain available throughout recording.
         .create(true)
         .read(true)
         .write(true)
@@ -2178,6 +2329,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
             presence: Vec::new(),
             system: SystemRoll::default(),
             roll: Roll::default(),
+            roll_network: true,
             roll_file: BufWriter::new(roll_file),
             proc: BufWriter::new(proc),
             pos: idx.proc_end,
@@ -2269,7 +2421,8 @@ fn index(path: &Path) -> Option<Arc<Index>> {
     if data.valid == 0 {
         let mut magic = [0; 5];
         f.read_exact(&mut magic).ok()?;
-        if &magic != MAGIC && &magic != MAGIC_V3 && &magic != LEGACY_MAGIC {
+        if &magic != MAGIC && &magic != MAGIC_V3 && &magic != LEGACY_MAGIC && &magic != MINUTE_MAGIC
+        {
             return None;
         }
         data.day = day_of(path.file_name()?)?;
@@ -2279,7 +2432,7 @@ fn index(path: &Path) -> Option<Arc<Index>> {
             data.load_checkpoints(path, len);
         }
     }
-    if data.version == 4 {
+    if data.version >= 4 {
         f.seek(SeekFrom::Start(data.valid as u64)).ok()?;
         let mut tail = Vec::new();
         history_read(
@@ -2402,7 +2555,7 @@ impl DayRead {
         }
         let base = idx.frames.get(first)?.1 as usize;
         let end = idx.frames.get(last).map_or(idx.valid, |e| e.1 as usize);
-        let bytes = if idx.version == 4 || processes {
+        let bytes = if idx.version >= 4 || processes {
             read_slice(path, base as u64, end.checked_sub(base)?)?
         } else {
             Vec::new()
@@ -2461,7 +2614,17 @@ impl DayRead {
             .all(|(id, _)| *id < self.idx.ids.len())
             .then_some(rows)
     }
+    fn minute(&self, i: usize) -> Option<Minute<'_>> {
+        let (tag, p) = next_packet(self.bytes(i)?)?;
+        let m = Minute::parse(p, self.idx.day)?;
+        (tag == minute::MINUTE && m.ts.rem_euclid(DAY_MS) == i64::from(self.idx.frames.get(i)?.0))
+            .then_some(m)
+    }
     fn row(&self, i: usize) -> Option<Reading<'_>> {
+        if self.idx.version == 5 {
+            let m = self.minute(i)?;
+            return Some(Reading::Minute(m.ts, m.bands(self.idx.catalog.rows.len())?));
+        }
         if self.idx.version == 4 {
             Some(Reading::New(self.stored(i)?, &self.idx.catalog))
         } else {
@@ -2469,6 +2632,12 @@ impl DayRead {
         }
     }
     fn processes(&self, i: usize) -> Vec<FrameProcess> {
+        if self.idx.version == 5 {
+            return self
+                .minute(i)
+                .map(|m| m.processes(&self.idx))
+                .unwrap_or_default();
+        }
         if self.idx.version == 4 {
             self.stored(i)
                 .and_then(|f| self.metrics(&f))
@@ -2497,24 +2666,36 @@ impl DayRead {
     }
 }
 enum Reading<'a> {
+    Minute(i64, Vec<Band>),
     New(Stored<'a>, &'a Catalog),
     Old(&'a [u8; FRAME_HEAD]),
 }
 impl Reading<'_> {
     fn ts(&self) -> i64 {
         match self {
+            Self::Minute(ts, _) => *ts,
             Self::New(f, _) => f.ts,
             Self::Old(b) => i64::from_le_bytes(*b.first_chunk().unwrap_or(&[0; 8])),
         }
     }
     fn span(&self) -> i64 {
         match self {
+            Self::Minute(_, _) => MINUTE_MS,
             Self::New(f, _) => f.span,
             Self::Old(_) => FRAME_MS,
         }
     }
     fn get(&self, i: usize) -> f64 {
         match self {
+            Self::Minute(_, bands) => bands.get(i).map_or(f64::NEG_INFINITY, |b| {
+                if b.n > 0 {
+                    b.sum / f64::from(b.n)
+                } else if b.low == f64::NEG_INFINITY {
+                    f64::NEG_INFINITY
+                } else {
+                    f64::NAN
+                }
+            }),
             Self::New(f, c) => f.value(i, c),
             Self::Old(b) => match i {
                 0..=2 | 7..=8 => {
@@ -2550,6 +2731,9 @@ fn visit_days(dir: &Path, from: i64, to: i64, processes: bool, mut visit: impl F
     }
 }
 pub fn frame(dir: &Path, ts: i64) -> Option<HistoryFrame> {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     let mut best = None;
     let mut distance = 60_001;
     visit_days(
@@ -2593,6 +2777,9 @@ pub fn moment(dir: &Path, ts: i64) -> Option<HistoryMoment> {
     })
 }
 pub fn range(dir: &Path) -> Option<(i64, i64)> {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     let days = days(dir);
     let edge = |day: &i64| index(&day_path(dir, *day));
     Some((
@@ -2603,33 +2790,86 @@ pub fn range(dir: &Path) -> Option<(i64, i64)> {
     ))
 }
 pub fn usage(dir: &Path) -> HistoryUsage {
-    let mut u = HistoryUsage::default();
+    usage_with(dir, HistoryOptions::default())
+}
+pub fn usage_with(dir: &Path, options: HistoryOptions) -> HistoryUsage {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    let mut measurement = live(dir).measurement;
+    let live_match = measurement.frames > 0 && measurement.recording == options.recording;
+    let mut u = HistoryUsage {
+        limit: options.limit,
+        ..Default::default()
+    };
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries
+            .flatten()
+            .filter(|e| owned_day(&e.file_name()).is_some())
+        {
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            let counter = if matches!(
+                entry.path().extension().and_then(OsStr::to_str),
+                Some("proc" | "roll")
+            ) {
+                &mut u.breakdown.processes
+            } else {
+                &mut u.breakdown.system
+            };
+            *counter = counter.saturating_add(meta.len());
+        }
+    }
     for day in days(dir) {
         let path = day_path(dir, day);
-        let bytes = metadata(&path).map_or(0, |m| m.len());
         let Some(idx) = index(&path) else { continue };
-        let proc = if idx.version == 4 {
-            metadata(path.with_extension("proc"))
-                .map_or(0, |m| m.len())
-                .saturating_add(metadata(path.with_extension("roll")).map_or(0, |m| m.len()))
-        } else {
-            0
-        };
+        let bytes = metadata(&path).map_or(0, |m| m.len());
+        let embedded = idx.process_bytes.min(bytes);
+        u.breakdown.system = u.breakdown.system.saturating_sub(embedded);
+        u.breakdown.processes = u.breakdown.processes.saturating_add(embedded);
         u.days += 1;
-        u.breakdown.processes = u
-            .breakdown
-            .processes
-            .saturating_add(proc)
-            .saturating_add(idx.process_bytes);
-        u.breakdown.system = u
-            .breakdown
-            .system
-            .saturating_add(bytes.saturating_sub(idx.process_bytes))
-            .saturating_add(metadata(path.with_extension("idx")).map_or(0, |m| m.len()));
         if u.first.is_none() {
             u.first = idx.first.map(|s| s.ts);
         }
+        if live_match || idx.frames.is_empty() {
+            continue;
+        }
+
+        let measure_path = path.with_extension("measure");
+        let saved = metadata(&measure_path)
+            .ok()
+            .and_then(|m| usize::try_from(m.len()).ok())
+            .filter(|len| (1..=1024).contains(len))
+            .and_then(|len| read_slice(&measure_path, 0, len))
+            .and_then(|b| serde_json::from_slice::<Measurement>(&b).ok())
+            .filter(|m| m.frames > 0 && m.bytes > 0);
+        let candidate = saved.or_else(|| {
+            (idx.version != 5).then(|| Measurement {
+                recording: Recording::default(),
+                frames: idx.frames.len() as u64,
+                bytes: ["idx", "proc", "roll"].iter().fold(bytes, |sum, ext| {
+                    sum.saturating_add(metadata(path.with_extension(ext)).map_or(0, |m| m.len()))
+                }),
+            })
+        });
+        if let Some(candidate) = candidate
+            && (candidate.recording == options.recording
+                || measurement.frames == 0
+                || measurement.recording != options.recording)
+        {
+            measurement = candidate;
+        }
     }
+    let baseline = options.recording.fallback_frame_bytes() as f64;
+    let frame_bytes = if measurement.frames == 0 {
+        baseline
+    } else {
+        measurement.bytes as f64 / measurement.frames as f64 * baseline
+            / measurement.recording.fallback_frame_bytes() as f64
+    };
+    u.estimate.bytes_per_day = (frame_bytes * 17_280.).round() as u64;
     u.breakdown.watch = crate::watch::WatchRecorder::storage_bytes(dir);
     u.bytes = u
         .breakdown
@@ -2647,6 +2887,9 @@ pub struct Column {
 }
 #[derive(Debug, Default, Serialize)]
 pub struct HistorySeries {
+    /// UTC midnight of each sealed day contributing to this query, independent of bucket width.
+    #[serde(rename = "mergedDays")]
+    pub merged_days: Vec<i64>,
     pub bucket: i64,
     pub ts: Vec<i64>,
     pub span: Vec<i64>,
@@ -2725,7 +2968,11 @@ impl Bucket {
         out.peak.push(self.peak);
         for (b, col) in self.bands.into_iter().zip(out.series.values_mut()) {
             col.mean.push((b.n > 0).then(|| b.sum / f64::from(b.n)));
-            if out.bucket >= 10_000 {
+            if out.bucket >= 10_000 || self.span >= MINUTE_MS || !col.low.is_empty() {
+                if col.low.len() + 1 < col.mean.len() {
+                    col.low.resize(col.mean.len() - 1, None);
+                    col.high.resize(col.mean.len() - 1, None);
+                }
                 col.low.push(finite(b.low));
                 col.high.push(finite(b.high));
             }
@@ -2743,7 +2990,7 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
         all[..first]
             .iter()
             .rev()
-            .find_map(|&d| index(&day_path(dir, d))?.last)
+            .find_map(|&d| index(&day_path(dir, d))?.gap_end())
     };
     let mut prev = None;
     let mut out = Vec::new();
@@ -2756,14 +3003,14 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
         let Some(idx) = index(&day_path(dir, day)) else {
             continue;
         };
-        if let Some(s) = idx.first {
+        if let Some(s) = idx.gap_start() {
             if prev.is_none() && s.ts >= from {
                 prev = older();
             }
             if let Some(g) = crossing(prev, Some(s)) {
                 out.push(g);
             }
-            prev = idx.last;
+            prev = idx.gap_end();
         }
         let begin = idx.gaps.partition_point(|g| g.to < from);
         out.extend(
@@ -2776,7 +3023,7 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
     if let Some(a) = prev.or_else(older).filter(|s| s.ts + s.span <= to) {
         let next = all[end..]
             .iter()
-            .find_map(|&d| index(&day_path(dir, d))?.first);
+            .find_map(|&d| index(&day_path(dir, d))?.gap_start());
         let session = live(dir).first.filter(|s| s.ts > a.ts);
         let next = session
             .filter(|s| next.is_none_or(|b| s.ts < b.ts))
@@ -2801,6 +3048,9 @@ pub fn series(
     origin: i64,
     keys: &[String],
 ) -> HistorySeries {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     if keys.len() > MAX_CHANNELS || keys.iter().any(|k| k.len() > MAX_METADATA_BYTES) {
         return HistorySeries {
             bucket,
@@ -2877,9 +3127,17 @@ pub fn series(
         {
             let path = day_path(dir, day);
             let Some(idx) = index(&path) else { continue };
-            let range = idx.range(day, first, limit);
+            let first_ts = if idx.version == 5 && bucket < MINUTE_MS {
+                align(first, 0, MINUTE_MS)
+            } else {
+                first
+            };
+            let range = idx.range(day, first_ts, limit);
             if range.is_empty() {
                 continue;
+            }
+            if idx.version == 5 {
+                out.merged_days.push(day * DAY_MS);
             }
             let ids = indices(&idx.catalog);
             let peak = idx
@@ -2897,18 +3155,35 @@ pub fn series(
                 for i in d.range.clone() {
                     let Some(r) = d.row(i) else { continue };
                     let ts = r.ts();
-                    let raw = bucket < FRAME_MS;
-                    if raw && ts < from {
+                    let resolution = if idx.version == 5 {
+                        MINUTE_MS
+                    } else {
+                        FRAME_MS
+                    };
+                    let raw = bucket < resolution;
+                    if raw && ts < from && idx.version != 5 {
                         continue;
                     }
-                    bucket_at(
+                    let bin = bucket_at(
                         acc,
                         out,
                         if raw { ts } else { align(ts, origin, bucket) },
-                        if raw { FRAME_MS } else { bucket },
+                        if raw { resolution } else { bucket },
                         keys.len(),
-                    )
-                    .update(ts, r.get(peak), ids.iter().map(|&j| r.get(j)));
+                    );
+                    if let Reading::Minute(_, bands) = &r {
+                        bin.update(ts, r.get(peak), std::iter::empty());
+                        for (b, j) in bin.bands.iter_mut().zip(&ids) {
+                            if let Some(v) = bands.get(*j).filter(|b| b.n > 0) {
+                                b.n = b.n.saturating_add(v.n);
+                                b.sum += v.sum;
+                                b.low = b.low.min(v.low);
+                                b.high = b.high.max(v.high);
+                            }
+                        }
+                    } else {
+                        bin.update(ts, r.get(peak), ids.iter().map(|&j| r.get(j)));
+                    }
                 }
             };
             let mut cursor = range.start;
@@ -2989,6 +3264,9 @@ pub fn series(
     out
 }
 pub fn channels(dir: &Path, from: i64, to: i64) -> Vec<HistoryChannel> {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     if from > to {
         return Vec::new();
     }
@@ -3021,6 +3299,11 @@ pub fn channels(dir: &Path, from: i64, to: i64) -> Vec<HistoryChannel> {
             continue;
         };
         let start = day * DAY_MS;
+        let from = if idx.version == 5 {
+            align(from, 0, MINUTE_MS)
+        } else {
+            from
+        };
         let ts = |i: usize| start + i64::from(idx.frames[i].0);
         let first = idx
             .frames
@@ -3035,7 +3318,7 @@ pub fn channels(dir: &Path, from: i64, to: i64) -> Vec<HistoryChannel> {
         let mut observe = |j: usize, a: usize, b: usize| {
             bounds[j].get_or_insert((ts(a), ts(a))).1 = ts(b);
         };
-        if idx.version == 4 {
+        if idx.version >= 4 {
             for (m, (begin, mask)) in idx.masks.iter().enumerate() {
                 let a = first.max(*begin);
                 let b = end.min(idx.masks.get(m + 1).map_or(end, |e| e.0));
@@ -3116,7 +3399,7 @@ pub struct TableProcess {
     pub cpu_max: f64,
     pub mem: u64,
     pub io: u64,
-    pub net: u64,
+    pub net: Option<u64>,
     pub disk: Option<u64>,
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
@@ -3142,6 +3425,7 @@ struct Totals {
     mem_sum: f64,
     io: f64,
     net: f64,
+    net_ms: i64,
     read: Option<f64>,
     write: Option<f64>,
     disk: f64,
@@ -3166,6 +3450,7 @@ impl Totals {
             mem_sum: m.mem as f64 * ms,
             io: m.io * ms,
             net: m.net * ms,
+            net_ms: if m.net.is_finite() { span } else { 0 },
             read: m.disk_read.map(|v| v * ms),
             write: m.disk_write.map(|v| v * ms),
             disk: m
@@ -3198,7 +3483,14 @@ impl Totals {
         self.mem = self.mem.max(b.mem);
         self.mem_sum += b.mem_sum;
         self.io += b.io;
-        self.net += b.net;
+        self.net_ms += b.net_ms;
+        if b.net.is_finite() {
+            self.net = if self.net.is_finite() {
+                self.net + b.net
+            } else {
+                b.net
+            };
+        }
         for (sum, v) in [(&mut self.read, b.read), (&mut self.write, b.write)] {
             if let Some(v) = v {
                 *sum.get_or_insert(0.) += v;
@@ -3216,7 +3508,8 @@ impl Totals {
         match key {
             "mem" => (self.mem_sum, self.seen),
             "disk" => (self.disk, self.disk_ms),
-            "net" => (self.net, self.seen),
+            "net" if self.net.is_nan() => (0., 0),
+            "net" => (self.net, self.net_ms),
             "gpu" => (self.gpu, self.seen),
             _ => (self.cpu, self.seen),
         }
@@ -3270,7 +3563,8 @@ impl Totals {
             *raw = r;
             Some(f64::from_le_bytes(v.try_into().ok()?))
         };
-        Some(Self {
+        let mut totals = Self {
+            net_ms: 0,
             first,
             last,
             seen,
@@ -3285,12 +3579,19 @@ impl Totals {
             cpu_max: finite(f()?)?,
             mem_sum: finite(f()?)?,
             io: finite(f()?)?,
-            net: finite(f()?)?,
+            net: f()?,
             read: finite(f()?),
             write: finite(f()?),
             disk: finite(f()?)?,
             power: finite(f()?)?,
-        })
+        };
+        if totals.net.is_infinite() {
+            return None;
+        }
+        if totals.net.is_finite() {
+            totals.net_ms = seen;
+        }
+        Some(totals)
     }
 }
 const ROLL_MS: i64 = 900_000;
@@ -3346,9 +3647,9 @@ impl Roll {
         }
         Some(())
     }
-    fn write(&mut self, out: &mut impl Write) -> io::Result<()> {
+    fn write(&mut self, out: &mut impl Write) -> io::Result<u64> {
         if self.recorded == 0 {
-            return Ok(());
+            return Ok(0);
         }
         let mut p = Vec::new();
         for v in [self.first, self.end, self.recorded] {
@@ -3362,7 +3663,7 @@ impl Roll {
         out.flush()?;
         self.recorded = 0;
         self.rows.clear();
-        Ok(())
+        Ok((5 + p.len()) as u64)
     }
 }
 struct TableQuery<'a> {
@@ -3386,6 +3687,15 @@ impl TableQuery<'_> {
         (((i128::from(ts) - i128::from(self.from)) * self.points as i128
             / (i128::from(self.to) - i128::from(self.from))) as usize)
             .min(self.points.saturating_sub(1))
+    }
+    fn bin_end(&self, bin: usize, finish: i64) -> i64 {
+        if self.points == 0 {
+            return finish;
+        }
+        let delta = i128::from(self.to) - i128::from(self.from);
+        let bound = i128::from(self.from)
+            + (delta * (bin as i128 + 1) + self.points as i128 - 1) / self.points as i128;
+        finish.min(bound as i64)
     }
     fn add(&mut self, id: &Identity, t: Totals, bin: usize) {
         if self.exhausted {
@@ -3424,11 +3734,16 @@ impl TableQuery<'_> {
         if end <= start {
             return;
         }
+        let resolution = if idx.version == 5 {
+            MINUTE_MS
+        } else {
+            FRAME_MS
+        };
         let Some(d) = DayRead::open(
             path,
             day,
             idx,
-            start.saturating_sub(FRAME_MS - 1),
+            start.saturating_sub(resolution - 1),
             end - 1,
             true,
         ) else {
@@ -3437,6 +3752,12 @@ impl TableQuery<'_> {
         for i in d.range.clone() {
             if self.exhausted {
                 return;
+            }
+            if d.idx.version == 5 {
+                if let Some(m) = d.minute(i) {
+                    m.table(self, &d.idx, start, end);
+                }
+                continue;
             }
             let Some(r) = d.row(i) else { continue };
             let ts = r.ts();
@@ -3447,20 +3768,12 @@ impl TableQuery<'_> {
             }
             let rows = match &r {
                 Reading::New(f, _) => d.metrics(f).unwrap_or_default(),
-                Reading::Old(_) => Vec::new(),
+                Reading::Old(_) | Reading::Minute(_, _) => Vec::new(),
             };
             self.recorded += finish - a;
             while a < finish {
                 let bin = self.bin(a);
-                let next = if self.points == 0 {
-                    finish
-                } else {
-                    let delta = i128::from(self.to) - i128::from(self.from);
-                    let bound = i128::from(self.from)
-                        + (delta * (bin as i128 + 1) + self.points as i128 - 1)
-                            / self.points as i128;
-                    finish.min(bound as i64)
-                };
+                let next = self.bin_end(bin, finish);
                 let span = next - a;
                 match &r {
                     Reading::New(_, _) => {
@@ -3468,6 +3781,7 @@ impl TableQuery<'_> {
                             self.add(&d.idx.ids[j], Totals::observation(m, ts, span), bin);
                         }
                     }
+                    Reading::Minute(_, _) => (),
                     Reading::Old(_) => {
                         for p in d.processes(i) {
                             let id = Identity {
@@ -3536,6 +3850,9 @@ impl TableQuery<'_> {
 /// CPU and GPU are time-weighted over all recorded time. An omitted instance
 /// contributes zero. Trends average only its observed intervals; absent bins are null.
 pub fn table(dir: &Path, from: i64, to: i64, trend_key: &str, trend_points: usize) -> HistoryTable {
+    let _read = maintenance::PUBLICATION
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     if from >= to || trend_points > MAX_POINTS {
         return HistoryTable::default();
     }
@@ -3588,7 +3905,7 @@ pub fn table(dir: &Path, from: i64, to: i64, trend_key: &str, trend_points: usiz
                 cpu_max: t.cpu_max,
                 mem: t.mem,
                 io: bytes(t.io),
-                net: bytes(t.net),
+                net: finite(t.net).map(bytes),
                 disk: (t.disk_ms > 0).then(|| bytes(t.disk)),
                 disk_read: t.read.map(bytes),
                 disk_write: t.write.map(bytes),
@@ -3794,6 +4111,7 @@ impl AddressRun {
     }
 }
 struct Checkpoints {
+    written: u64,
     out: BufWriter<File>,
     base: usize,
     end: usize,
@@ -3808,6 +4126,7 @@ impl Checkpoints {
         // Rebuild the optional index from the primary's verified record boundaries.
         // A same-size edited index may end in the middle of a primary packet.
         let mut cp = Self {
+            written: 0,
             out: BufWriter::new(file),
             base: 5,
             end: 5,
@@ -3880,6 +4199,7 @@ impl Checkpoints {
         body.extend((self.end as u32).to_le_bytes());
         body.append(&mut self.pending);
         packet(&mut self.out, 1, &body)?;
+        self.written += (body.len() + 5) as u64;
         self.out.flush()?;
         self.base = self.end;
         Ok(())
@@ -4033,6 +4353,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     mod damage;
+    mod retention;
     use super::*;
     use crate::hardware::Hardware;
     use crate::process::ProcessRow;
@@ -4509,7 +4830,9 @@ mod tests {
         assert!(usage(&dir).bytes > 0);
         rec.clear().unwrap();
         assert!(days(&dir).is_empty());
-        assert_eq!(usage(&dir), HistoryUsage::default());
+        let cleared = usage(&dir);
+        assert_eq!((cleared.days, cleared.bytes, cleared.first), (0, 0, None));
+        assert!(cleared.estimate.bytes_per_day > 0);
         for i in 20..31 {
             rec.record(&snapshot(
                 base + i * 1000,
@@ -4743,7 +5066,7 @@ mod tests {
         assert_eq!(p.power, Some(0.5));
         assert_eq!(
             (p.io, p.disk_read, p.disk_write, p.disk, p.net),
-            (600, Some(450), Some(200), Some(500), 75)
+            (600, Some(450), Some(200), Some(500), Some(75))
         );
         assert_eq!(p.gpu_mem, Some(4096));
         assert_eq!(p.trend, [Some(20.), Some(20.), Some(20.), None, None]);
@@ -4857,7 +5180,7 @@ mod tests {
         );
         assert_eq!(p.gpu_mem, Some(4097));
         let q = table(&dir, base, base + FRAME_MS, "net", 1);
-        assert_eq!((q.processes[0].io, q.processes[0].net), (1, 3));
+        assert_eq!((q.processes[0].io, q.processes[0].net), (1, Some(3)));
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
@@ -4907,7 +5230,21 @@ mod tests {
         for day in [20_729, 20_730, 20_736] {
             fs::write(day_path(&dir, day), MAGIC).unwrap();
         }
-        prune(&dir, 20_737);
+        maintenance::maintain_at(
+            &dir,
+            HistoryOptions {
+                limit: HistoryLimit {
+                    days: Some(7),
+                    bytes: None,
+                },
+                detail: HistoryDetail::Full,
+                ..Default::default()
+            },
+            20_737,
+            20_737,
+            || false,
+        )
+        .unwrap();
         assert_eq!(days(&dir), vec![20_736]);
         let _ = fs::remove_dir_all(&dir);
     }

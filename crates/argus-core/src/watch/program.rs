@@ -55,6 +55,39 @@ impl ProgramWatch {
         })
     }
 
+    /// Keep process handles and selection across a history-folder transaction.
+    /// Only the storage handle has to close for a cross-volume transfer.
+    pub(super) fn suspend(self) -> impl FnOnce(&Path) -> Result<Self, WatchError> {
+        let Self {
+            store,
+            handles,
+            seen,
+            unconfirmed,
+            selected,
+            before,
+            run_offset,
+            active,
+            state,
+            last,
+            last_ts,
+        } = self;
+        drop(store);
+        move |dir| {
+            Ok(Self {
+                store: Store::open(&dir.join(store::FILE_NAME), super::now_ms())?,
+                handles,
+                seen,
+                unconfirmed,
+                selected,
+                before,
+                run_offset,
+                active,
+                state,
+                last,
+                last_ts,
+            })
+        }
+    }
     pub fn open(dir: &Path) -> Result<Self, WatchError> {
         let store = Store::open(&dir.join(store::FILE_NAME), super::now_ms())?;
         // Restarting Argus never silently resumes an observation.

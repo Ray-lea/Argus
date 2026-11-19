@@ -780,7 +780,7 @@ pub fn rule_stats(state: State<'_, AppState>) -> HashMap<String, RuleStats> {
 
 /// Unix ms of the first and last recorded frame.
 pub fn history_range(dir: State<'_, HistoryDir>) -> Option<(i64, i64)> {
-    history::range(&dir.0)
+    history::range(&dir.read())
 }
 
 pub fn history_series(
@@ -789,7 +789,7 @@ pub fn history_series(
     to: i64,
     buckets: usize,
 ) -> Vec<HistoryPoint> {
-    history::legacy_series(&dir.0, from, to, buckets.min(4096))
+    history::legacy_series(&dir.read(), from, to, buckets.min(4096))
 }
 
 pub fn history_points(
@@ -800,17 +800,17 @@ pub fn history_points(
     origin: i64,
     keys: Vec<String>,
 ) -> history::HistorySeries {
-    history::series(&dir.0, from, to, bucket, origin, &keys)
+    history::series(&dir.read(), from, to, bucket, origin, &keys)
 }
 pub fn history_channels(
     dir: State<'_, HistoryDir>,
     from: i64,
     to: i64,
 ) -> Vec<history::HistoryChannel> {
-    history::channels(&dir.0, from, to)
+    history::channels(&dir.read(), from, to)
 }
 pub fn history_frame(dir: State<'_, HistoryDir>, ts: i64) -> Option<history::HistoryFrame> {
-    history::frame(&dir.0, ts)
+    history::frame(&dir.read(), ts)
 }
 pub fn history_table(
     dir: State<'_, HistoryDir>,
@@ -822,14 +822,17 @@ pub fn history_table(
     if points > 4096 || !matches!(trend.as_str(), "cpu" | "mem" | "disk" | "net" | "gpu") {
         return Err(tr!("app.invalidRequest"));
     }
-    Ok(history::table(&dir.0, from, to, &trend, points))
+    Ok(history::table(&dir.read(), from, to, &trend, points))
 }
 pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMoment> {
-    history::moment(&dir.0, ts)
+    history::moment(&dir.read(), ts)
 }
 
-pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
-    history::usage(&dir.0)
+pub fn history_usage(
+    dir: State<'_, HistoryDir>,
+    settings: State<'_, SettingsStore>,
+) -> HistoryUsage {
+    history::usage_with(&dir.read(), settings.get().history_options())
 }
 
 /// Explicit observation runs on the sampler, where its file and instance handle live.
@@ -839,10 +842,9 @@ pub fn watch_process(
     action: argus_core::watch::WatchAction,
 ) -> Result<Option<argus_core::watch::WatchView>, String> {
     use argus_core::watch::WatchError;
+    let path = dir.read();
     let (tx, rx) = std::sync::mpsc::channel();
-    state
-        .sampler
-        .send(Control::Watch(dir.0.clone(), action, tx));
+    state.sampler.send(Control::Watch(path.clone(), action, tx));
     let result = rx
         .recv_timeout(std::time::Duration::from_secs(5))
         .map_err(|_| tr!("history.watch.error.unavailable"))?;
@@ -865,13 +867,131 @@ pub fn set_history_enabled(
     dir: State<'_, HistoryDir>,
     enabled: bool,
 ) -> Result<SettingsView, String> {
+    let path = dir.write();
     app.state::<SettingsStore>()
         .update(|s| s.history = enabled)
         .map_err(|e| e.to_string())?;
     state.sampler.send(Control::SetHistoryDir(
-        (enabled && dir.1).then(|| dir.0.clone()),
+        (enabled && dir.recording_allowed).then(|| path.clone()),
     ));
     Ok(settings_view(&app))
+}
+
+pub fn set_history_options(
+    app: crate::native_runtime::Host,
+    options: crate::settings::HistoryOptionsPatch,
+) -> Result<SettingsView, String> {
+    if !options.valid() {
+        return Err(tr!("app.invalidRequest"));
+    }
+    let dir = app.state::<HistoryDir>();
+    let path = dir.write();
+    let saved = app
+        .state::<SettingsStore>()
+        .update(|s| options.apply(s))
+        .map_err(|_| tr!("history.error.save"))?;
+    if dir.recording_allowed {
+        app.state::<AppState>()
+            .sampler
+            .send(Control::SetHistoryOptions(
+                path.clone(),
+                saved.history_options(),
+            ));
+    }
+    Ok(settings_view(&app))
+}
+
+fn resume_history(
+    state: &AppState,
+    path: &std::path::Path,
+    saved: &crate::settings::Settings,
+    keep_observation: bool,
+) {
+    state.sampler.send(Control::SetHistoryOptions(
+        path.into(),
+        saved.history_options(),
+    ));
+    state
+        .sampler
+        .send(Control::SetHistoryDir(saved.history.then(|| path.into())));
+    state.sampler.send(Control::ResumeWatch {
+        dir: path.into(),
+        keep_observation,
+    });
+}
+fn pause_history(
+    state: &AppState,
+    path: &std::path::Path,
+    saved: &crate::settings::Settings,
+) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    state.sampler.send(Control::PauseHistory(tx));
+    if rx.recv_timeout(Duration::from_secs(30)).is_err() {
+        // FIFO order restores recording even if the stalled sampler handles the pause later.
+        resume_history(state, path, saved, true);
+        return Err(tr!("host.samplerStalled"));
+    }
+    Ok(())
+}
+
+pub fn history_move(
+    app: crate::native_runtime::Host,
+    dir: String,
+    move_records: bool,
+) -> Result<SettingsView, String> {
+    let location = app.state::<HistoryDir>();
+    let mut current = location.write();
+    let store = app.state::<SettingsStore>();
+    let saved = store.get();
+    let requested = (!dir.is_empty()).then(|| std::path::PathBuf::from(dir));
+    let destination = match &requested {
+        Some(path) => path.clone(),
+        None => location.default.clone(),
+    };
+    if destination == *current && requested.is_none() {
+        store
+            .update(|s| s.history_dir = None)
+            .map_err(|_| tr!("history.error.save"))?;
+        return Ok(settings_view(&app));
+    }
+    history::validate_directory(&current, &destination).map_err(|e| {
+        argus_core::diagnostics::file_failure("history validate directory", &destination, &e);
+        tr!("history.error.directory")
+    })?;
+    let state = app.state::<AppState>();
+    if location.recording_allowed {
+        pause_history(&state, &current, &saved)?;
+    }
+    let mut save_failed = false;
+    let save = || {
+        store
+            .update(|s| s.history_dir = requested)
+            .inspect_err(|_| save_failed = true)
+    };
+    let result = if move_records {
+        history::move_records(&current, &destination, save)
+    } else {
+        save()
+    };
+    if result.is_ok() {
+        *current = destination;
+    }
+    if location.recording_allowed {
+        resume_history(&state, &current, &saved, move_records || result.is_err());
+    }
+    result.map_err(|e| {
+        argus_core::diagnostics::file_failure("history move", &current, &e);
+        if save_failed {
+            tr!("history.error.save")
+        } else {
+            tr!("history.error.move")
+        }
+    })?;
+    Ok(settings_view(&app))
+}
+
+pub fn history_open_dir(dir: State<'_, HistoryDir>) -> Result<(), String> {
+    open_folder(&dir.read()).map_err(|_| tr!("history.error.open"))
 }
 
 static SENSOR_CHANGE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -914,19 +1034,25 @@ pub fn set_kernel_sensors(
 }
 
 /// Deletes all recorded history.
-pub fn clear_history(state: State<'_, AppState>, dir: State<'_, HistoryDir>) -> Result<(), String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    state.sampler.send(Control::ClearHistory(dir.0.clone(), tx));
-    match rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(result) => result.map_err(|e| {
-            argus_core::diagnostics::file_failure("history clear", &dir.0, &e);
-            e.to_string()
-        }),
-        Err(error) => {
-            argus_core::diagnostics::warn("history clear", format!("sampler_reply={error:?}"));
-            Err(tr!("host.samplerStalled"))
-        }
+pub fn clear_history(app: crate::native_runtime::Host) -> Result<(), String> {
+    let dir = app.state::<HistoryDir>();
+    let path = dir.write();
+    let state = app.state::<AppState>();
+    let saved = app.state::<SettingsStore>().get();
+    if dir.recording_allowed {
+        pause_history(&state, &path, &saved)?;
     }
+    let result = history::clear(&path).and_then(|()| {
+        argus_core::watch::WatchRecorder::delete_saved(&path)
+            .map_err(|_| std::io::Error::other("observation cleanup failed"))
+    });
+    if dir.recording_allowed {
+        resume_history(&state, &path, &saved, false);
+    }
+    result.map_err(|e| {
+        argus_core::diagnostics::file_failure("history clear", &path, &e);
+        tr!("history.error.clear")
+    })
 }
 
 pub fn quit(app: crate::native_runtime::Host) {
@@ -1090,12 +1216,20 @@ pub fn open_log_dir(app: crate::native_runtime::Host) -> Result<(), String> {
         .app_log_dir()
         .map_err(|e| e.to_string())?
         .join("diagnostics");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer.exe")
-        .arg(&dir)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    open_folder(&dir)
+}
+
+fn open_folder(dir: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let explorer = argus_app::explorer::system_explorer().map_err(|_| tr!("host.fileMissing"))?;
+    let quote = argus_app::tasks::quote;
+    let command = format!(
+        "{} {}",
+        quote(&explorer),
+        quote(dir.to_str().ok_or_else(|| tr!("host.fileMissing"))?)
+    );
+    argus_app::tasks::launch(0, command, false)
+        .map_err(|e| std::io::Error::from_raw_os_error(e.code as i32).to_string())
 }
 
 // ---- Services -----------------------------------------------------------------
@@ -1281,7 +1415,12 @@ mod tests {
             std::env::temp_dir().join(format!("argus-history-dispatch-{}", std::process::id()));
         std::fs::create_dir(&dir).unwrap();
         let host = Host::new("dev.argus.taskmanager.test.history-dispatch".into());
-        host.manage(HistoryDir(dir.clone(), true));
+        host.manage(HistoryDir {
+            path: std::sync::RwLock::new(dir.clone()),
+            default: dir.clone(),
+            recording_allowed: true,
+        });
+        host.manage(SettingsStore::load(dir.join("settings.json")));
         let mut rec = history::HistoryRecorder::new(dir.clone());
         for n in 0..10 {
             rec.record(&argus_core::Snapshot {
@@ -1346,6 +1485,147 @@ mod tests {
         assert_eq!(usage["days"], 1);
         assert_eq!(usage["breakdown"]["watch"], 0);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn history_settings_move_clear_and_reset_through_sampler_and_dispatch() {
+        use crate::{dispatch::invoke, native_runtime::Host};
+        use serde_json::json;
+        use std::sync::{Arc, RwLock, mpsc};
+        let root = std::env::temp_dir().join(format!(
+            "argus-history-host-{:?}",
+            unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap()
+        ));
+        let default = root.join("default");
+        let other = root.join("other");
+        std::fs::create_dir_all(&default).unwrap();
+        let store = SettingsStore::load(root.join("settings.json"));
+        let host = Host::new("dev.argus.taskmanager.test.history-options".into());
+        let meta = argus_core::MetaStore::new();
+        let rules = Arc::new(argus_service::RuleRunner::spawn(false));
+        let sampler = crate::sampler::Sampler::spawn(
+            {
+                let meta = meta.clone();
+                move || argus_core::Collector::new(meta)
+            },
+            rules.clone(),
+        );
+        let (tx, rx) = mpsc::channel();
+        sampler.send(Control::Subscribe(argus_app::channel::Channel::new(
+            move |s: argus_core::Snapshot| {
+                tx.send(
+                    s.processes
+                        .iter()
+                        .find(|p| p.pid == std::process::id())
+                        .map(|p| p.create_time),
+                )?;
+                Ok(())
+            },
+        )));
+        host.manage(AppState {
+            meta,
+            rules,
+            sampler,
+            elevated: false,
+            task_manager_start: false,
+            services: Default::default(),
+        });
+        host.manage(crate::hotkey::HotkeyState::default());
+        host.manage(HistoryDir {
+            path: RwLock::new(default.clone()),
+            default: default.clone(),
+            recording_allowed: true,
+        });
+        host.manage(store);
+        let ask = |name, args| invoke(&host, name, args).unwrap();
+        ask("set_history_enabled", json!({"enabled":true}));
+        let v = ask(
+            "set_history_options",
+            json!({"options":{"keepDays":null,"keepBytes":null,"record":{"cpuExtra":false},"processes":40}}),
+        );
+        assert_eq!(v["historyProcesses"], 40);
+        assert_eq!(v["historyRecord"]["cpuExtra"], false);
+        assert!(v["historyDir"].is_null() && v["historyKeepDays"].is_null());
+        assert!(
+            invoke(
+                &host,
+                "set_history_options",
+                json!({"options":{"processes":2}})
+            )
+            .is_err()
+        );
+        let sample = || rx.recv_timeout(Duration::from_secs(25)).unwrap();
+        sample();
+        let created = sample().unwrap();
+        ask(
+            "watch_process",
+            json!({"action":{"op":"startProgram","pid":std::process::id(),"createTime":created,"name":"test"}}),
+        );
+        std::fs::create_dir_all(&other).unwrap();
+        let existing = std::fs::read_dir(&default)
+            .unwrap()
+            .flatten()
+            .find(|f| f.path().extension().is_some_and(|ext| ext == "hist"))
+            .unwrap()
+            .file_name();
+        std::fs::write(other.join(&existing), b"existing").unwrap();
+        assert!(
+            invoke(
+                &host,
+                "history_move",
+                json!({"dir":other,"moveRecords":true})
+            )
+            .is_err()
+        );
+        assert!(host.state::<SettingsStore>().get().history_dir.is_none());
+        assert_eq!(
+            ask("watch_process", json!({"action":{"op":"status"}}))["liveRuns"],
+            1
+        );
+        assert_eq!(std::fs::read(other.join(&existing)).unwrap(), b"existing");
+        std::fs::remove_file(other.join(existing)).unwrap();
+        // The move barrier flushes the just-observed frame and closes its writer.
+        let v = ask("history_move", json!({"dir":other,"moveRecords":true}));
+        assert_eq!(v["historyDir"], json!(other));
+        assert_eq!(
+            ask("watch_process", json!({"action":{"op":"status"}}))["liveRuns"],
+            1
+        );
+        assert!(other.join("program-watch.v1.bin").is_file());
+        assert_eq!(std::fs::read_dir(&default).unwrap().count(), 0);
+        let range = ask("history_range", json!({}));
+        let frame = ask("history_frame", json!({"ts":range[1]}));
+        assert!(frame["system"].get("cpuKernel").is_none());
+        assert!(frame["system"]["cpu"].is_number());
+        let usage = ask("history_usage", json!({}));
+        assert_eq!(usage["limit"], json!({"days":null,"bytes":null}));
+        assert!(usage["estimate"]["bytesPerDay"].as_u64().unwrap() > 0);
+        assert!(
+            invoke(
+                &host,
+                "history_move",
+                json!({"dir":other.join("child"),"moveRecords":true})
+            )
+            .is_err()
+        );
+        ask("set_history_enabled", json!({"enabled":false}));
+        let v = ask("history_reset_dir", json!({"moveRecords":false}));
+        assert!(v["historyDir"].is_null());
+        assert!(ask("history_range", json!({})).is_null());
+        ask("history_move", json!({"dir":other,"moveRecords":false}));
+        assert!(ask("history_range", json!({})).is_array());
+        assert!(ask("clear_history", json!({})).is_null());
+        assert_eq!(ask("history_usage", json!({}))["bytes"], 0);
+        let expired = other.join("2001-01-01.hist");
+        std::fs::write(&expired, b"ARGH\x04").unwrap();
+        ask("set_history_options", json!({"options":{"keepDays":1}}));
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while expired.exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!expired.exists());
+        host.state::<AppState>().sampler.shutdown();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     fn denied() -> Result<(), ActionError> {

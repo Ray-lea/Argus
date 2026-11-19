@@ -306,17 +306,70 @@ impl Random {
 }
 
 #[test]
+fn a_corrupt_process_frame_never_replaces_the_source_day() {
+    let dir = temp_dir("merge-invalid");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    let [main, rows, ..] = v4_files(&dir);
+    let mut invalid_main = MAGIC.to_vec();
+    let duplicated = [rows.as_slice(), rows.as_slice()].concat();
+    packets(&main, 5, |_, tag, p| {
+        let mut payload = p.to_vec();
+        if tag == V4_FRAME {
+            payload[28..32].copy_from_slice(&(duplicated.len() as u32).to_le_bytes());
+        }
+        packet(&mut invalid_main, tag, &payload).unwrap();
+        true
+    });
+    fs::write(&path, &invalid_main).unwrap();
+    fs::write(path.with_extension("proc"), &duplicated).unwrap();
+    assert!(minute::merge(&dir, DAY, 20).is_err());
+    assert_eq!(fs::read(&path).unwrap(), invalid_main);
+    assert_eq!(fs::read(path.with_extension("proc")).unwrap(), duplicated);
+    assert!(!path.with_extension("merge-tmp").exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn merged_legacy_frames_keep_identity_and_cover_a_minute_boundary() {
+    for (magic, entry, created) in [
+        (LEGACY_MAGIC, ENTRY, None),
+        (MAGIC_V3, ENTRY_V3, Some(123_i64)),
+    ] {
+        let dir = temp_dir(&format!("merge-legacy-{}", magic[4]));
+        fs::create_dir_all(&dir).unwrap();
+        let mut bytes = legacy(magic, entry);
+        let ts = TS + 58_000;
+        let head = 11;
+        bytes[head..head + 8].copy_from_slice(&ts.to_le_bytes());
+        if let Some(created) = created {
+            let at = head + FRAME_HEAD + ENTRY;
+            bytes[at..at + 8].copy_from_slice(&created.to_le_bytes());
+        }
+        fs::write(day_path(&dir, DAY), bytes).unwrap();
+        minute::merge(&dir, DAY, 0).unwrap();
+        assert_eq!(frame(&dir, TS).unwrap().processes[0].create_time, created);
+        assert_eq!(
+            table(&dir, TS + 59_000, TS + 61_000, "cpu", 0).recorded,
+            2000
+        );
+        assert_eq!(legacy_series(&dir, TS + 61_000, TS + 62_000, 2).len(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
 fn damaged_files_through_queries_and_reopen() {
     let disk_only = std::env::var("ARGUS_HISTORY_TEST_REAL_FILES").is_ok_and(|v| v == "1");
     std::thread::scope(|scope| {
-        for kind in 0usize..6 {
+        for kind in 0usize..7 {
             for lane in 0..2 {
                 scope.spawn(move || {
                     let dir = temp_dir(&format!("damage-{kind}-{lane}"));
                     fs::create_dir_all(&dir).unwrap();
                     let path = day_path(&dir, DAY);
                     let mut files = v4_files(&dir);
-                    let which = kind.saturating_sub(2);
+                    let which = if kind == 6 { 0 } else { kind.saturating_sub(2) };
                     if kind < 2 {
                         files[0] = if kind == 0 {
                             legacy(LEGACY_MAGIC, ENTRY)
@@ -325,6 +378,13 @@ fn damaged_files_through_queries_and_reopen() {
                         };
                     }
                     let paths = ["hist", "proc", "idx", "roll"].map(|ext| path.with_extension(ext));
+                    if kind == 6 {
+                        for (p, b) in paths.iter().zip(&files) {
+                            fs::write(p, b).unwrap();
+                        }
+                        minute::merge(&dir, DAY, 20).unwrap();
+                        files = [fs::read(&path).unwrap(), Vec::new(), Vec::new(), Vec::new()];
+                    }
                     let mut rng = Random(0x4217_05bf + (kind * 2 + lane) as u64);
                     for case in (lane..2048).step_by(2) {
                         // The first ten cases per lane use real files. The full corpus

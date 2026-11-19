@@ -1,5 +1,5 @@
 //! Measures live recording and optionally replays real snapshots into 30 full UTC days.
-//! cargo +stable-x86_64-pc-windows-msvc run -p argus-core --example history --release -- 60 [--month]
+//! cargo +stable-x86_64-pc-windows-msvc run -p argus-core --example history --release -- 60 [--month | --merge-day]
 use argus_core::{
     Collector, MetaStore, Snapshot,
     history::{self, FRAME_MS, HistoryRecorder},
@@ -26,11 +26,15 @@ fn measure<T>(run: impl Fn() -> T) -> T {
     );
     last.unwrap()
 }
-fn month(root: &Path, mut snapshots: Vec<Snapshot>) -> io::Result<()> {
+fn replay(root: &Path, mut snapshots: Vec<Snapshot>, merge_day: bool) -> io::Result<()> {
     use argus_core::hardware::{BatteryInfo, BatteryStats, CpuFanReading, CpuSensors};
-    let base = snapshots[0].timestamp.div_euclid(DAY) * DAY - 30 * DAY;
+    let Some(first) = snapshots.first() else {
+        return Err(io::Error::other("no replay samples"));
+    };
+    let day_count = if merge_day { 1 } else { 30 };
+    let base = first.timestamp.div_euclid(DAY) * DAY - 30 * DAY;
     // Make optional readings measurable on desktops without batteries or service sensors.
-    // Disjoint leaders exercise all six selection lists and the full 24-row union.
+    // Disjoint leaders exercise all six resource rankings.
     for s in &mut snapshots {
         s.hardware.cpu_sensors = Some(CpuSensors {
             core_voltage: Some(1.1),
@@ -91,11 +95,11 @@ fn month(root: &Path, mut snapshots: Vec<Snapshot>) -> io::Result<()> {
     fs::create_dir(&dir)?;
     std::thread::scope(|scope| -> io::Result<()> {
         let mut jobs = Vec::new();
-        for lane in 0..4 {
+        for lane in 0..4.min(day_count) {
             let dir = &dir;
             let mut samples = snapshots.clone();
             jobs.push(scope.spawn(move || -> io::Result<()> {
-                for day in (lane..30).step_by(4) {
+                for day in (lane..day_count).step_by(4) {
                     let work = dir.join(format!("day-{day}"));
                     fs::create_dir(&work)?;
                     let mut rec = HistoryRecorder::new(work.clone());
@@ -117,10 +121,54 @@ fn month(root: &Path, mut snapshots: Vec<Snapshot>) -> io::Result<()> {
             }));
         }
         for job in jobs {
-            job.join().unwrap()?;
+            job.join()
+                .map_err(|_| io::Error::other("replay worker stopped"))??;
         }
         Ok(())
     })?;
+    if merge_day {
+        use windows::Win32::System::Threading::{
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
+        };
+        let raw = history::usage(&dir).bytes;
+        unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL) }
+            .map_err(io::Error::other)?;
+        for trial in 1..=3 {
+            let copy = root.join(format!("merge-{trial}"));
+            fs::create_dir(&copy)?;
+            for entry in fs::read_dir(&dir)? {
+                let entry = entry?;
+                fs::copy(entry.path(), copy.join(entry.file_name()))?;
+            }
+            let start = Instant::now();
+            history::maintain(
+                &copy,
+                history::HistoryOptions {
+                    limit: history::HistoryLimit {
+                        days: None,
+                        bytes: None,
+                    },
+                    ..Default::default()
+                },
+                i64::MIN,
+            )?;
+            let elapsed = start.elapsed();
+            let merged = history::usage(&copy).bytes;
+            let points = history::series(&copy, base, base + DAY - 1, 5000, 0, &["cpu".into()]);
+            if points.span.len() != 1440 || points.span.iter().any(|&s| s != 60000) {
+                return Err(io::Error::other("incomplete minute replay"));
+            }
+            println!(
+                "merge: 17280 frames -> {} minutes, {} -> {} bytes, {:.3}% retained, {:.3} ms/day",
+                points.span.len(),
+                raw,
+                merged,
+                100. * merged as f64 / raw as f64,
+                elapsed.as_secs_f64() * 1000.
+            );
+        }
+        return Ok(());
+    }
     let end = base + 30 * DAY;
     let keys = [
         "cpu",
@@ -173,7 +221,7 @@ fn main() -> io::Result<()> {
         .max(1);
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .map_err(io::Error::other)?
         .as_nanos();
     let root = std::env::temp_dir().join(format!("argus-history-{}-{stamp}", std::process::id()));
     fs::create_dir(&root)?;
@@ -211,6 +259,9 @@ fn main() -> io::Result<()> {
         if snaps.len() < 12 && times.len() > 1 {
             snaps.push(s);
         }
+    }
+    if times.is_empty() {
+        return Err(io::Error::other("no snapshots collected"));
     }
     times.sort_by(f64::total_cmp);
     println!(
@@ -260,14 +311,15 @@ fn main() -> io::Result<()> {
     measure(|| history::series(&dir, last - 5000, last, 1000, 0, &keys));
     drop(rec);
     let u = history::usage(&dir);
-    let r = history::range(&dir).unwrap();
+    let r = history::range(&dir).ok_or_else(|| io::Error::other("no recorded frames"))?;
     let n = r.1.div_euclid(FRAME_MS) - r.0.div_euclid(FRAME_MS) + 1;
     println!(
         "live: {n} frames, {} bytes including dictionaries, pending frame and summaries",
         u.bytes
     );
-    if std::env::args().any(|a| a == "--month") && !snaps.is_empty() {
-        month(&root, snaps)?;
+    let merge_day = std::env::args().any(|a| a == "--merge-day");
+    if merge_day || std::env::args().any(|a| a == "--month") {
+        replay(&root, snaps, merge_day)?;
     }
     fs::remove_dir_all(root)
 }
