@@ -1911,7 +1911,7 @@ pub(in crate::frontend) struct TestPower {
 }
 
 const fn smooth_chart_policy(window_active: bool, conserving_power: bool, occluded: bool) -> bool {
-    window_active && !conserving_power && !occluded
+    !occluded && (window_active || !conserving_power)
 }
 
 const fn effective_chart_mode(configured: motion::Mode, smooth_allowed: bool) -> motion::Mode {
@@ -2170,11 +2170,16 @@ mod tests {
         assert_eq!(runs[1].len(), 1);
     }
     #[test]
-    fn smooth_scroll_requires_active_unoccluded_ac_window_and_restores_configured_mode() {
+    fn chart_motion_follows_the_preference_when_watched_and_saves_power_in_background() {
+        for active in [false, true] {
+            for conserving in [false, true] {
+                assert!(!smooth_chart_policy(active, conserving, true));
+            }
+        }
         assert!(smooth_chart_policy(true, false, false));
-        assert!(!smooth_chart_policy(false, false, false));
-        assert!(!smooth_chart_policy(true, true, false));
-        assert!(!smooth_chart_policy(true, false, true));
+        assert!(smooth_chart_policy(true, true, false));
+        assert!(smooth_chart_policy(false, false, false));
+        assert!(!smooth_chart_policy(false, true, false));
 
         for mode in [
             motion::Mode::Fluid,
