@@ -21,7 +21,7 @@ use serde::Serialize;
 use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
-    BACKGROUND_INTERVALS, DeskGrouping, DeskLayout, DeskStyle, Language, MONITOR_OPACITIES,
+    BACKGROUND_INTERVALS, DeskGrouping, DeskLayout, DeskStyle, Language, MONITOR_OPACITIES, Metric,
     Reading, SettingsStore, SettingsView, TaskbarPlace, TaskbarStyle, Theme, TrayIcon, TrayMenu,
     UpdateChannel, UpdateRoute,
 };
@@ -570,12 +570,13 @@ pub fn set_tray(
     Ok(settings_view(&app))
 }
 
-/// A monitor's readings as asked for: each once, in the order given.
-fn distinct(metrics: Vec<Reading>) -> Vec<Reading> {
-    let mut kept = Vec::with_capacity(metrics.len());
-    for metric in metrics {
-        if !kept.contains(&metric) {
-            kept.push(metric);
+/// A monitor's readings or metrics as asked for: each once, in the order
+/// given.
+fn distinct<T: PartialEq>(items: Vec<T>) -> Vec<T> {
+    let mut kept = Vec::with_capacity(items.len());
+    for item in items {
+        if !kept.contains(&item) {
+            kept.push(item);
         }
     }
     kept
@@ -589,6 +590,7 @@ pub fn set_desktop_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
     metrics: Option<Vec<Reading>>,
+    order: Option<Vec<Metric>>,
     layout: Option<DeskLayout>,
     style: Option<DeskStyle>,
     grouping: Option<DeskGrouping>,
@@ -609,6 +611,9 @@ pub fn set_desktop_monitor(
             }
             if let Some(metrics) = metrics {
                 monitor.metrics = distinct(metrics);
+            }
+            if let Some(order) = order {
+                monitor.order = distinct(order);
             }
             if let Some(layout) = layout {
                 monitor.layout = layout;
@@ -645,6 +650,7 @@ pub fn set_taskbar_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
     metrics: Option<Vec<Reading>>,
+    order: Option<Vec<Metric>>,
     place: Option<TaskbarPlace>,
     style: Option<TaskbarStyle>,
 ) -> Result<SettingsView, String> {
@@ -657,6 +663,9 @@ pub fn set_taskbar_monitor(
             }
             if let Some(metrics) = metrics {
                 monitor.metrics = distinct(metrics);
+            }
+            if let Some(order) = order {
+                monitor.order = distinct(order);
             }
             if let Some(place) = place {
                 monitor.place = place;

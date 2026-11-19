@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Mesures affichées",
-    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous. Avec plusieurs GPU, disques ou adaptateurs réseau, elles peuvent être choisies pour chaque périphérique. Sans périphérique choisi, les mesures GPU proviennent du GPU doté du plus de mémoire dédiée, les débits disque et réseau sont des totaux, et le temps d’activité et la température disque indiquent la valeur la plus élevée parmi les disques.",
+    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous, modifiable en faisant glisser une catégorie ou une mesure. Avec plusieurs GPU, disques ou adaptateurs réseau, elles peuvent être choisies pour chaque périphérique. Sans périphérique choisi, les mesures GPU proviennent du GPU doté du plus de mémoire dédiée, les débits disque et réseau sont des totaux, et le temps d’activité et la température disque indiquent la valeur la plus élevée parmi les disques.",
     "group": {
       "cpu": "CPU",
       "memory": "Mémoire",

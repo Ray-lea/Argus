@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Angezeigte Werte",
-    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge. Bei mehreren GPUs, Datenträgern oder Netzwerkadaptern lassen sie sich für jedes Gerät einzeln auswählen. Ohne ausgewähltes Gerät stammen GPU-Werte von der GPU mit dem meisten dedizierten Speicher, Datenträger- und Netzwerkdatenraten sind Summen, und aktive Zeit und Temperatur zeigen den höchsten Wert aller Datenträger.",
+    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge, die sich durch Ziehen einer Kategorie oder eines Werts ändern lässt. Bei mehreren GPUs, Datenträgern oder Netzwerkadaptern lassen sie sich für jedes Gerät einzeln auswählen. Ohne ausgewähltes Gerät stammen GPU-Werte von der GPU mit dem meisten dedizierten Speicher, Datenträger- und Netzwerkdatenraten sind Summen, und aktive Zeit und Temperatur zeigen den höchsten Wert aller Datenträger.",
     "group": {
       "cpu": "CPU",
       "memory": "Speicher",

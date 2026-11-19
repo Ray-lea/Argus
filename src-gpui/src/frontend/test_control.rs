@@ -88,6 +88,21 @@ impl Desktop {
             ),
             None => {}
         }
+        // A drag in that panel, from one part to another ([list, part,
+        // item] each, then a fraction of the second's height); with a
+        // fixture only, as other presses.
+        if self.options.fixture.is_some()
+            && let Some(drag) = control.get("taskbarPanelDrag")
+        {
+            fn part(at: &Value) -> [&str; 3] {
+                [0, 1, 2].map(|index| at[index].as_str().unwrap_or(""))
+            }
+            let fraction = drag[2].as_f64().unwrap_or(0.5) as f32;
+            assert!(
+                self.drag_in_taskbar_panel(part(&drag[0]), part(&drag[1]), fraction, cx),
+                "no taskbar panel parts for {drag}"
+            );
+        }
         if self.options.fixture.is_some()
             && let Some(restored) = control.get("restored")
         {

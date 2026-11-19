@@ -1,0 +1,84 @@
+{
+  "window": [1100, 900],
+  "steps": [
+    {"note":"the components page: the readings in blocks by kind, each card's icon beside its title"},
+    {"control":{"page":"components"},"wait":700},
+    {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900,"capture":"order-before-dark"},
+    {"note":"a block held by its grip: it rises under the pointer, its place stays tinted and the blocks it passed make room"},
+    {"control":{"pointer":{"at":"desktopMetrics-grip-gpu","event":"down"}},"wait":100},
+    {"control":{"pointer":{"event":"move","dy":-30}},"wait":100},
+    {"control":{"pointer":{"event":"move","dy":-90}},"wait":600,"capture":"order-block-held-dark"},
+    {"control":{"pointer":{"event":"up","dy":-90}},"wait":900},
+    {"inspect":"layout","label":"gpu-up","expect":{
+      "monitors.kinds.desktop.0":"cpu",
+      "monitors.kinds.desktop.1":"gpu",
+      "monitors.kinds.desktop.2":"memory",
+      "monitors.desktop.rows.0.metric":"cpu",
+      "monitors.desktop.rows.1.metric":"gpu",
+      "monitors.desktop.rows.2.metric":"memory"
+    }},
+    {"note":"the disks dragged above the CPU: the monitor shows them first"},
+    {"control":{"dragAnchor":["desktopMetrics-grip-disk","desktopMetrics-block-cpu",-0.5]},"wait":900},
+    {"inspect":"layout","label":"disk-first","expect":{
+      "monitors.kinds.desktop.0":"disk",
+      "monitors.kinds.desktop.1":"cpu",
+      "monitors.desktop.rows.0.metric":"disk",
+      "monitors.desktop.rows.1.metric":"cpu"
+    }},
+    {"note":"a reading dragged within its block: the CPU's power before its load"},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuPower"},"wait":900},
+    {"control":{"pointer":{"at":"desktopMetrics-cpu-cpuPower","event":"down"}},"wait":100},
+    {"control":{"pointer":{"event":"move","dx":-40}},"wait":100},
+    {"control":{"pointer":{"event":"move","dx":-380,"dy":-30}},"wait":600,"capture":"order-option-held-dark"},
+    {"control":{"pointer":{"event":"up","dx":-380,"dy":-30}},"wait":900,"capture":"order-after-dark"},
+    {"inspect":"layout","label":"power-first","expect":{
+      "monitors.desktop.rows.0.metric":"disk",
+      "monitors.desktop.rows.1.metric":"cpuPower",
+      "monitors.desktop.rows.2.metric":"cpu"
+    }},
+    {"captureWindow":{"name":"desktop-arranged-dark","class":"Zed::Window","title":"桌面监控"}},
+    {"note":"a click on an option still checks it; it does not move"},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"},"wait":900},
+    {"inspect":"layout","label":"clicked","expect":{
+      "monitors.desktop.rows.1.metric":"cpuPower",
+      "monitors.desktop.rows.2.metric":"cpu",
+      "monitors.desktop.rows.3.metric":"cpuTemperature"
+    }},
+    {"note":"the taskbar monitor's panel: kinds dragged by their names, readings by themselves"},
+    {"control":{"taskbarMonitor":{"enabled":true}},"wait":1500},
+    {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"panel-before-dark"},
+    {"control":{"taskbarPanelDrag":[["kinds","name","network"],["kinds","","cpu"],-0.5]},"wait":900},
+    {"inspect":"layout","label":"panel-network-first","expect":{
+      "tray.monitor":true,
+      "monitors.kinds.taskbar.0":"network",
+      "monitors.taskbarPanel.0.kind":"network",
+      "monitors.taskbarPanel.1.kind":"cpu",
+      "monitors.taskbarMetrics.0":"network",
+      "monitors.taskbarMetrics.1":"cpu"
+    }},
+    {"control":{"taskbarPanelDrag":[["chips/memory","0","memoryUsed"],["chips/memory","0","memory"],0.5]},"wait":900,"captureFlyout":"panel-after-dark"},
+    {"inspect":"layout","label":"panel-memory-used-first","expect":{
+      "monitors.taskbarPanel.2.kind":"memory",
+      "monitors.taskbarPanel.2.devices.0.options.0.key":"memoryUsed",
+      "monitors.taskbarPanel.2.devices.0.options.1.key":"memory"
+    }},
+    {"captureWindow":{"name":"taskbar-arranged-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarPanel":"kinds:cpu,memory,network"},"wait":900},
+    {"inspect":"layout","label":"panel-control","expect":{
+      "monitors.kinds.taskbar.0":"cpu",
+      "monitors.kinds.taskbar.1":"memory",
+      "monitors.kinds.taskbar.2":"network",
+      "monitors.taskbarMetrics.0":"cpu",
+      "monitors.taskbarMetrics.1":"memory"
+    }},
+    {"control":{"taskbarPanel":"close"},"wait":700},
+    {"control":{"theme":"light"},"wait":900},
+    {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"panel-light"},
+    {"control":{"taskbarPanel":"close"},"wait":700},
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900,"capture":"order-light"},
+    {"control":{"clickAnchor":"components-nav-taskbar","pointerOutside":true},"wait":900,"capture":"taskbar-cards-light"},
+    {"control":{"desktopMonitorMenu":"hide"},"wait":900},
+    {"control":{"taskbarMonitor":{"enabled":false}},"wait":900}
+  ]
+}

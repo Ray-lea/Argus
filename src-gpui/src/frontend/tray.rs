@@ -211,6 +211,9 @@ pub(in crate::frontend) struct Flyout {
     /// kinds shows the options of.
     monitor: TaskbarPanel,
     tabs: HashMap<&'static str, usize>,
+    /// A kind of reading or a reading of the taskbar monitor's panel being
+    /// dragged to another place.
+    order: super::reorder::Reorder,
     desktop: WeakEntity<Desktop>,
     desktop_window: AnyWindowHandle,
     host: Host,
@@ -331,6 +334,7 @@ impl Flyout {
             readings: Readings::default(),
             monitor: TaskbarPanel::default(),
             tabs: HashMap::new(),
+            order: Default::default(),
             desktop,
             desktop_window,
             host,
@@ -487,6 +491,8 @@ impl Flyout {
 
     /// Fades out and hides the window.
     pub(in crate::frontend) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A drag the panel had begun ends with it, arranging nothing.
+        self.order.drop_lift();
         if matches!(
             self.phase,
             Phase::Placing | Phase::Entering(_) | Phase::Shown
@@ -1120,7 +1126,7 @@ impl Render for Flyout {
         let content = match self.kind {
             Kind::Card => self.card(p),
             Kind::Panel => self.panel(p, cx),
-            Kind::Monitor => self.monitor_panel(p, cx),
+            Kind::Monitor => self.monitor_panel(p, window, cx),
         };
         let name = if self.kind == Kind::Monitor {
             label("components.taskbar.title")
@@ -1520,6 +1526,67 @@ impl Desktop {
             return;
         };
         self.open_tray(Kind::Card, anchor, window, cx);
+    }
+
+    /// A test's drag in the taskbar monitor's panel (`taskbarPanelDrag`):
+    /// pressed at the middle of one part the drag knows (list, part, item:
+    /// `Flyout::item_bounds`), moved in eight steps to a fraction of
+    /// another's height and let go, as a pointer would. False when either
+    /// part is not drawn.
+    pub(in crate::frontend) fn drag_in_taskbar_panel(
+        &mut self,
+        from: [&str; 3],
+        to: [&str; 3],
+        fraction: f32,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(open) = self.tray.open.clone() else {
+            return false;
+        };
+        let flyout = open.flyout.read(cx);
+        let (Some(from), Some(to)) = (
+            flyout.item_bounds(from[0], from[1], from[2]),
+            flyout.item_bounds(to[0], to[1], to[2]),
+        ) else {
+            return false;
+        };
+        let start = from.center();
+        let end = point(to.center().x, to.top() + to.size.height * fraction);
+        let moved = |position, pressed_button| {
+            PlatformInput::MouseMove(MouseMoveEvent {
+                position,
+                pressed_button,
+                ..Default::default()
+            })
+        };
+        let mut inputs = vec![
+            moved(start, None),
+            PlatformInput::MouseDown(MouseDownEvent {
+                position: start,
+                button: MouseButton::Left,
+                click_count: 1,
+                ..Default::default()
+            }),
+        ];
+        for step in 1..=8 {
+            let t = step as f32 / 8.;
+            inputs.push(moved(start + (end - start) * t, Some(MouseButton::Left)));
+        }
+        inputs.push(PlatformInput::MouseUp(MouseUpEvent {
+            position: end,
+            button: MouseButton::Left,
+            click_count: 1,
+            ..Default::default()
+        }));
+        let _ = open.window.update(cx, move |_, window, cx| {
+            window.defer(cx, move |window, cx| {
+                for input in inputs {
+                    window.dispatch_event(input, cx);
+                }
+            });
+            window.refresh();
+        });
+        true
     }
 
     /// A new sample, an update or a pause: a flyout that shows follows.

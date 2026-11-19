@@ -180,9 +180,9 @@ impl Desktop {
                     self.data.insert("settings".into(), value.clone());
                 }
                 // The monitors follow their settings wherever those changed,
-                // with metrics chosen meanwhile still shown and sent next.
+                // with changes made meanwhile still shown and sent next.
                 if settings {
-                    self.send_queued_metrics(window, cx);
+                    self.send_queued_monitor_changes(window, cx);
                     self.sync_monitors(cx);
                 }
                 self.command_completed(&pending.command, &value, window, cx);
@@ -196,7 +196,7 @@ impl Desktop {
             }
             Err(error) => {
                 if pending.cache.as_deref() == Some("settings") {
-                    self.send_queued_metrics(window, cx);
+                    self.send_queued_monitor_changes(window, cx);
                 }
                 let message = error
                     .as_str()

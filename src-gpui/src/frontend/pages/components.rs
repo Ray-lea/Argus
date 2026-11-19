@@ -6,8 +6,11 @@
 use super::section_rail::RailEntry;
 use super::*;
 use crate::frontend::monitors::{
-    absent_name, arrange, device_kind, devices, main_gpu_key, metric_color, metric_key,
+    Kind, absent_name, arrange, arranged, device_kind, devices, main_gpu_key, metric_color,
+    metric_key, with_kinds, with_metrics,
 };
+use crate::frontend::reorder::{Flow, Lift, Lifted, Unseen};
+use crate::frontend::shift;
 use crate::frontend::widgets::Tone;
 use crate::settings::{
     DeskLayout, DeskStyle, DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor,
@@ -47,6 +50,18 @@ pub(in crate::frontend) const COMPONENTS: [Component; 4] = [
 
 /// The width of the device names beside the options.
 const NAME_COLUMN: f32 = 240.;
+/// An option to check, and the space between options across and down.
+const OPTION: f32 = 32.;
+const OPTION_GAP: f32 = 4.;
+const OPTION_LINE_GAP: f32 = 2.;
+/// What a block of options reaches past the table on either side: its grip
+/// in the column of the card's icon on the left, room for its outline on
+/// the right.
+const BLOCK_START: f32 = 36.;
+const BLOCK_END: f32 = 8.;
+/// The space above and below a block's rows: a line between two blocks
+/// sits in the middle of twice this.
+const BLOCK_PAD: f32 = 8.;
 
 /// A row of options: a device, the default one of its kind, or the CPU, the
 /// memory and the rest.
@@ -62,38 +77,6 @@ struct OptionRow {
     alias: Option<String>,
     metrics: Vec<Metric>,
 }
-
-/// The metrics on offer, a section of rows per kind of device, in the order of
-/// `Metric::ALL`.
-const METRIC_GROUPS: [(&str, &[Metric]); 6] = [
-    (
-        "cpu",
-        &[
-            Metric::Cpu,
-            Metric::CpuTemperature,
-            Metric::CpuClock,
-            Metric::CpuPower,
-        ],
-    ),
-    ("memory", &[Metric::Memory, Metric::MemoryUsed]),
-    (
-        "gpu",
-        &[
-            Metric::Gpu,
-            Metric::GpuTemperature,
-            Metric::GpuMemory,
-            Metric::GpuClock,
-            Metric::GpuPower,
-            Metric::GpuFan,
-        ],
-    ),
-    (
-        "disk",
-        &[Metric::Disk, Metric::DiskActive, Metric::DiskTemperature],
-    ),
-    ("network", &[Metric::Network]),
-    ("other", &[Metric::Battery, Metric::Uptime]),
-];
 
 /// The page's sections, in order: one per available component, then the
 /// planned ones.
@@ -119,6 +102,10 @@ pub(in crate::frontend) enum TaskbarChoice {
     Style(&'static str),
     /// The readings with one added or taken away, as saved.
     Readings(Vec<String>),
+    /// The kinds of reading in another order, by key (`monitors::KINDS`).
+    Kinds(Vec<String>),
+    /// A kind's metrics in another order, by name (`metric_key`).
+    Metrics(Vec<String>),
     /// The components page in the window.
     Settings,
     Hide,
@@ -135,6 +122,9 @@ pub(in crate::frontend) struct PanelKind {
     pub tone: Hsla,
     /// One with no tab, or a tab per device of several.
     pub devices: Vec<PanelDevice>,
+    /// Its options are its metrics, which can be dragged into another
+    /// order, rather than a device each (network adapters).
+    pub sortable: bool,
 }
 
 /// A device's options, or all of a kind's when it has no tabs.
@@ -152,6 +142,8 @@ pub(in crate::frontend) struct PanelDevice {
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::frontend) struct PanelOption {
     pub key: String,
+    /// Its metric's name (`metric_key`), what it is dragged by.
+    pub metric: &'static str,
     pub text: String,
     pub tip: String,
     pub on: bool,
@@ -357,8 +349,8 @@ impl Desktop {
     /// adapters one row for the only device, or with several a row for the
     /// default (all of them, or the main GPU) and one for each, and a row
     /// for each device chosen before that is away now.
-    fn option_rows(&self, section: usize, chosen: &[Reading]) -> Vec<OptionRow> {
-        let (group, metrics) = METRIC_GROUPS[section];
+    fn option_rows(&self, kind: &Kind, chosen: &[Reading]) -> Vec<OptionRow> {
+        let (group, metrics) = (kind.key, kind.metrics.as_slice());
         let snapshot = &self.snapshot;
         let hardware = &snapshot["hardware"];
         let group_title = label(&format!("components.metrics.group.{group}"));
@@ -476,10 +468,12 @@ impl Desktop {
     }
 
     /// `metric` of `row`: its reading, whether it is among `chosen`, and
-    /// the readings with it added or taken away, as saved.
+    /// the readings with it added or taken away, as saved, in the order
+    /// `order` arranges.
     fn toggled(
         &self,
         chosen: &[Reading],
+        order: &[Metric],
         row: &OptionRow,
         metric: Metric,
     ) -> (Reading, bool, Vec<String>) {
@@ -501,7 +495,7 @@ impl Desktop {
         if !on {
             next.push(reading.clone());
         }
-        let next = arrange(&self.snapshot, next)
+        let next = arrange(&self.snapshot, order, next)
             .iter()
             .map(Reading::text)
             .collect::<Vec<_>>();
@@ -509,18 +503,20 @@ impl Desktop {
     }
 
     /// The readings the taskbar monitor's panel offers, as the components
-    /// page offers them: per kind, one set of options, or with several
-    /// devices of a kind a tab per device (the GPUs, the disks); network
-    /// adapters, with one reading each, are options of their own.
+    /// page offers them and in the order arranged there: per kind, one set
+    /// of options, or with several devices of a kind a tab per device (the
+    /// GPUs, the disks); network adapters, with one reading each, are
+    /// options of their own.
     pub(in crate::frontend) fn taskbar_panel_kinds(&self) -> Vec<PanelKind> {
         let monitor: TaskbarMonitor =
             serde_json::from_value(self.data["settings"]["taskbarMonitor"].clone())
                 .unwrap_or_default();
-        let chosen = &monitor.metrics;
+        let (chosen, order) = (&monitor.metrics, &monitor.order);
         let option = |row: &OptionRow, metric: Metric, text: String, tip: String| {
-            let (reading, on, readings) = self.toggled(chosen, row, metric);
+            let (reading, on, readings) = self.toggled(chosen, order, row, metric);
             PanelOption {
                 key: reading.text(),
+                metric: metric_key(metric),
                 text,
                 tip,
                 on,
@@ -530,8 +526,10 @@ impl Desktop {
         let metric_name =
             |metric: Metric| label(&format!("components.metric.{}.option", metric_key(metric)));
         let mut kinds = Vec::new();
-        for (section, (group, metrics)) in METRIC_GROUPS.iter().enumerate() {
-            let rows = self.option_rows(section, chosen);
+        for kind in arranged(order) {
+            let group = kind.key;
+            let rows = self.option_rows(&kind, chosen);
+            let sortable = !(rows.len() > 1 && rows.iter().all(|row| row.metrics.len() == 1));
             let devices = match rows.as_slice() {
                 [] => continue,
                 [row] => vec![PanelDevice {
@@ -579,16 +577,26 @@ impl Desktop {
                     [row] => row.detail.clone(),
                     _ => String::new(),
                 },
-                tone: metric_color(metrics[0], self.palette),
+                tone: metric_color(kind.metrics[0], self.palette),
                 devices,
+                sortable,
             });
         }
         kinds
     }
 
     /// What the control the tests name by `key` does: "style:curves",
-    /// "reading:<reading>" (as saved), "settings" or "hide".
+    /// "reading:<reading>" (as saved), "kinds:<kind>,<kind>…" or
+    /// "metrics:<metric>,<metric>…" (as dragged into that order),
+    /// "settings" or "hide".
     pub(in crate::frontend) fn taskbar_panel_choice(&self, key: &str) -> Option<TaskbarChoice> {
+        let list = |keys: &str| keys.split(',').map(str::to_owned).collect::<Vec<_>>();
+        if let Some(keys) = key.strip_prefix("kinds:") {
+            return Some(TaskbarChoice::Kinds(list(keys)));
+        }
+        if let Some(keys) = key.strip_prefix("metrics:") {
+            return Some(TaskbarChoice::Metrics(list(keys)));
+        }
         if let Some(style) = key.strip_prefix("style:") {
             return TASKBAR_STYLES
                 .iter()
@@ -612,40 +620,159 @@ impl Desktop {
     }
 
     /// A monitor's readings, checked in a table under its card's
-    /// description: a row per device (or for the CPU, the memory and the
-    /// rest), its name and what tells it apart on the left, its options in
-    /// fixed columns on the right, kinds of device apart. A click adds or
-    /// removes one; checking changes only its box.
+    /// description: a block per kind of reading (the CPU, the memory, the
+    /// GPUs …) with a row per device in it, its name and what tells it apart
+    /// on the left, its options in fixed columns on the right. A click adds
+    /// or removes one; checking changes only its box. A block dragged by its
+    /// grip or its names, or an option dragged, takes another place, and the
+    /// monitor shows its readings in that order (`order`, as saved).
+    #[allow(clippy::too_many_arguments)]
     fn metric_card(
         &self,
-        id: &str,
+        id: &'static str,
         settings_key: &'static str,
         command: &'static str,
         chosen: &[Reading],
+        order: &[Metric],
+        window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let option = |row: &OptionRow, metric: Metric| {
-            let (_, on, next) = self.toggled(chosen, row, metric);
-            let key = metric_key(metric);
-            let name = label(&format!("components.metric.{key}.option"));
-            let anchor = SharedString::from(format!("{id}-{}-{key}", row.id));
+        let reorder = &self.ui.readings_order;
+        let now = Instant::now();
+        let lift = reorder.lifted(id);
+        // Let go where nothing takes the drop: it ends all the same.
+        if lift.is_some() && !cx.has_active_drag() {
+            cx.defer_in(window, move |this, window, cx| {
+                this.finish_readings_drag(id, settings_key, command, window, cx)
+            });
+        }
+        if reorder.moving(now) {
+            window.request_animation_frame();
+        }
+        // The kinds, and each one's options, as the drag has arranged them.
+        let mut kinds = arranged(order);
+        if let Some(lift) = &lift {
+            if lift.list == id {
+                kinds = lift
+                    .order
+                    .iter()
+                    .filter_map(|key| kinds.iter().find(|kind| kind.key == *key).cloned())
+                    .collect();
+            } else if let Some(kind) = kinds
+                .iter_mut()
+                .find(|kind| lift.list == format!("{id}/{}", kind.key))
+            {
+                kind.metrics = metrics_named(&lift.order);
+            }
+        }
+        let kind_keys = kinds
+            .iter()
+            .map(|kind| kind.key.to_owned())
+            .collect::<Vec<_>>();
+        let desktop = cx.entity().downgrade();
+        let animate = !cx.reduce_motion();
+        let test = self.options.test;
+        // What tests take hold of.
+        let anchor = |name: String| {
             let anchors = self.ui.anchors.clone();
-            Button::new(anchor.clone())
-                .relative()
-                .when(self.options.test, |option| {
-                    option.child(
-                        canvas(
-                            move |bounds, _, _| {
-                                anchors.borrow_mut().insert(anchor.clone(), bounds);
-                            },
-                            |_, _, _, _| {},
-                        )
-                        .absolute()
-                        .inset_0(),
+            let name = SharedString::from(name);
+            canvas(
+                move |bounds, _, _| {
+                    anchors.borrow_mut().insert(name.clone(), bounds);
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        let record = |list: &str, part: &str, key: &str| {
+            canvas(reorder.recorder(list, part, key), |_, _, _, _| {})
+                .absolute()
+                .inset_0()
+        };
+        // An option as it looks: its box and its name.
+        let face = |on: bool, name: String| {
+            div()
+                .h(px(OPTION))
+                .min_w_0()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .px(px(8.))
+                .rounded(px(4.))
+                .text_size(theme::font(13.))
+                .text_color(p.ink)
+                .child(self.check_box(on, false))
+                .child(div().min_w_0().truncate().child(name))
+        };
+        let name_cell = |row: &OptionRow| {
+            div()
+                .w(px(NAME_COLUMN))
+                .flex_shrink_0()
+                .min_h(px(OPTION))
+                .flex()
+                .flex_col()
+                .justify_center()
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(theme::font(13.))
+                        .text_color(p.ink)
+                        .child(row.title.clone()),
+                )
+                .when(!row.detail.is_empty(), |cell| {
+                    cell.child(
+                        div()
+                            .truncate()
+                            .text_size(theme::font(12.))
+                            .text_color(p.muted)
+                            .child(row.detail.clone()),
                     )
                 })
-                .h(px(32.))
+        };
+        let grid = || {
+            div()
+                .flex_1()
+                .min_w_0()
+                .grid()
+                .grid_cols(3)
+                .gap_x(px(OPTION_GAP))
+                .gap_y(px(OPTION_LINE_GAP))
+        };
+        let option_name =
+            |metric: Metric| label(&format!("components.metric.{}.option", metric_key(metric)));
+        // An option to check and to drag along its row.
+        let option = |kind: &Kind, row: &OptionRow, metric: Metric| {
+            let (_, on, next) = self.toggled(chosen, order, row, metric);
+            let key = metric_key(metric);
+            let list = format!("{id}/{}", kind.key);
+            let lifted = lift
+                .as_ref()
+                .is_some_and(|lift| lift.list == list && lift.key == key);
+            let offset = reorder.offset(&list, &row.id, key, now);
+            if lifted && lift.as_ref().is_some_and(|lift| lift.part == row.id) {
+                // Its place in the row it was taken from, tinted, to drop it into.
+                return div()
+                    .relative()
+                    .h(px(OPTION))
+                    .rounded(px(4.))
+                    .bg(p.accent.opacity(0.08))
+                    .child(record(&list, &row.id, key))
+                    .into_any_element();
+            }
+            let name = option_name(metric);
+            let anchor_name = format!("{id}-{}-{key}", row.id);
+            let keys = row
+                .metrics
+                .iter()
+                .map(|metric| metric_key(*metric).to_owned())
+                .collect::<Vec<_>>();
+            let part = row.id.clone();
+            let desktop = desktop.clone();
+            let element = Button::new(SharedString::from(anchor_name.clone()))
+                .relative()
+                .h(px(OPTION))
                 .min_w_0()
                 .flex()
                 .items_center()
@@ -658,17 +785,49 @@ impl Desktop {
                 .role(Role::CheckBox)
                 .aria_toggled(if on { Toggled::True } else { Toggled::False })
                 .accessibility_label(format!("{} {name}", row.title))
-                .hover(move |style| style.bg(p.hover))
-                .active(move |style| style.bg(p.press))
+                .when(!lifted, |option| {
+                    option
+                        .hover(move |style| style.bg(p.hover))
+                        .active(move |style| style.bg(p.press))
+                })
                 .child(self.check_box(on, false))
                 .child(div().min_w_0().truncate().child(name))
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(record(&list, &row.id, key))
+                .when(test, |option| option.child(anchor(anchor_name)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, event: &MouseDownEvent, _, cx| {
+                        this.ui.readings_order.press(event.position);
+                        cx.stop_propagation();
+                    }),
+                )
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.choose_metrics(settings_key, command, next.clone(), window, cx);
                 }))
-                .into_any_element()
+                .when(row.metrics.len() > 1, |option| {
+                    option.on_drag(Lifted, move |_, _, window, cx| {
+                        let pointer = window.mouse_position();
+                        let flow = Flow::Lines {
+                            gap: OPTION_GAP,
+                            line_gap: OPTION_LINE_GAP,
+                        };
+                        let _ = desktop.update(cx, |this, cx| {
+                            this.ui.readings_order.take(
+                                &list,
+                                &part,
+                                key,
+                                flow,
+                                keys.clone(),
+                                pointer,
+                            );
+                            cx.notify();
+                        });
+                        cx.new(|_| Unseen)
+                    })
+                });
+            shift::shifted(element, offset, 1.).into_any_element()
         };
-        let row_element = |row: &OptionRow| {
+        let row_element = |kind: &Kind, row: &OptionRow| {
             let full = if row.detail.is_empty() {
                 row.title.clone()
             } else {
@@ -679,63 +838,194 @@ impl Desktop {
                 .items_start()
                 .gap(px(12.))
                 .child(
-                    div()
+                    name_cell(row)
                         .id(SharedString::from(format!("{id}-{}-name", row.id)))
-                        .w(px(NAME_COLUMN))
-                        .flex_shrink_0()
-                        .min_h(px(32.))
-                        .flex()
-                        .flex_col()
-                        .justify_center()
-                        .child(
-                            div()
-                                .truncate()
-                                .text_size(theme::font(13.))
-                                .text_color(p.ink)
-                                .child(row.title.clone()),
-                        )
-                        .when(!row.detail.is_empty(), |cell| {
-                            cell.child(
-                                div()
-                                    .truncate()
-                                    .text_size(theme::font(12.))
-                                    .text_color(p.muted)
-                                    .child(row.detail.clone()),
-                            )
-                        })
+                        .cursor_grab()
                         .tooltip(move |window, cx| widgets::tooltip(full.clone(), window, cx)),
                 )
                 .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .grid()
-                        .grid_cols(3)
-                        .gap_x(px(4.))
-                        .gap_y(px(2.))
-                        .children(row.metrics.iter().map(|metric| option(row, *metric))),
+                    grid()
+                        .relative()
+                        .child(record(&format!("{id}/{}", kind.key), &row.id, ""))
+                        .children(row.metrics.iter().map(|metric| option(kind, row, *metric))),
                 )
-                .into_any_element()
         };
-        let sections = (0..METRIC_GROUPS.len()).map(|section| {
-            let rows = self.option_rows(section, chosen);
+        // A block as it looks, taking no input: drawn under the pointer
+        // while it is dragged.
+        let block_face = |rows: &[OptionRow]| {
             div()
                 .flex()
                 .flex_col()
                 .gap(px(6.))
-                .when(section > 0, |group| {
-                    group
-                        .pt(px(8.))
-                        .mt(px(8.))
-                        .border_t_1()
-                        .border_color(p.stroke)
-                })
-                .children(rows.iter().map(row_element))
+                .children(rows.iter().map(|row| {
+                    div()
+                        .flex()
+                        .items_start()
+                        .gap(px(12.))
+                        .child(name_cell(row))
+                        .child(grid().children(row.metrics.iter().map(|metric| {
+                            let (_, on, _) = self.toggled(chosen, order, row, *metric);
+                            face(on, option_name(*metric))
+                        })))
+                }))
+        };
+        let grip = |color: Hsla| {
+            div()
+                .absolute()
+                .left_0()
+                .top(px(BLOCK_PAD))
+                .w(px(20.))
+                .h(px(OPTION))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(icon("GripIcon", color).size(px(14.)))
+        };
+        let block_lifted = lift.as_ref().filter(|lift| lift.list == id);
+        let mut raised = None;
+        let blocks = kinds
+            .iter()
+            .enumerate()
+            .map(|(index, kind)| {
+                let rows = self.option_rows(kind, chosen);
+                let lifted = block_lifted.is_some_and(|lift| lift.key == kind.key);
+                let group = SharedString::from(format!("{id}-block-{}", kind.key));
+                let block = div()
+                    .id(group.clone())
+                    .group(group.clone())
+                    .relative()
+                    .ml(px(-BLOCK_START))
+                    .mr(px(-BLOCK_END))
+                    .pl(px(BLOCK_START))
+                    .pr(px(BLOCK_END))
+                    .py(px(BLOCK_PAD))
+                    .rounded(px(6.))
+                    .child(record(id, "", kind.key))
+                    .when(test, |block| block.child(anchor(group.to_string())));
+                if lifted {
+                    // Its place, tinted, to drop it into; the block itself
+                    // rises under the pointer.
+                    if let Some((lift, body)) = block_lifted.zip(reorder.bounds(id, "", "")) {
+                        let at = lift.origin() - body.origin;
+                        raised = Some(
+                            div()
+                                .absolute()
+                                .left(at.x)
+                                .top(at.y)
+                                .w(lift.start.size.width)
+                                // Its content where the slot's is, inside its border.
+                                .pl(px(BLOCK_START - 1.))
+                                .pr(px(BLOCK_END - 1.))
+                                .py(px(BLOCK_PAD - 1.))
+                                .rounded(px(6.))
+                                .border_1()
+                                .border_color(p.accent.opacity(0.6))
+                                .bg(widgets::solid(p.flyout))
+                                .cursor_grabbing()
+                                .child(grip(p.muted).left(px(-1.)).top(px(BLOCK_PAD - 1.)))
+                                .child(block_face(&rows)),
+                        );
+                    }
+                    return block
+                        .bg(p.accent.opacity(0.08))
+                        .child(block_face(&rows).invisible())
+                        .into_any_element();
+                }
+                let keys = kind_keys.clone();
+                let key = kind.key;
+                let desktop = desktop.clone();
+                let block = block
+                    // A line between two blocks.
+                    .when(index > 0, |block| {
+                        block.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left(px(BLOCK_START))
+                                .right(px(BLOCK_END))
+                                .h(px(1.))
+                                .bg(p.stroke),
+                        )
+                    })
+                    .child(grip(p.faint).cursor_grab().when(test, |grip| {
+                        grip.child(anchor(format!("{id}-grip-{}", kind.key)))
+                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(6.))
+                            .children(rows.iter().map(|row| row_element(kind, row))),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, _, _| {
+                            this.ui.readings_order.press(event.position);
+                        }),
+                    )
+                    .on_drag(Lifted, move |_, _, window, cx| {
+                        let pointer = window.mouse_position();
+                        let _ = desktop.update(cx, |this, cx| {
+                            this.ui.readings_order.take(
+                                id,
+                                "",
+                                key,
+                                Flow::Stack { gap: 0. },
+                                keys.clone(),
+                                pointer,
+                            );
+                            cx.notify();
+                        });
+                        cx.new(|_| Unseen)
+                    });
+                shift::shifted(block, reorder.offset(id, "", kind.key, now), 1.).into_any_element()
+            })
+            .collect::<Vec<_>>();
+        // An option dragged: drawn under the pointer, over the others.
+        let raised = raised.or_else(|| {
+            let lift = lift.as_ref().filter(|lift| lift.list != id)?;
+            let body = reorder.bounds(id, "", "")?;
+            let metric = *metrics_named(std::slice::from_ref(&lift.key)).first()?;
+            let kind = kinds.iter().find(|kind| kind.metrics.contains(&metric))?;
+            let row = self
+                .option_rows(kind, chosen)
+                .into_iter()
+                .find(|row| row.id == lift.part)?;
+            let (_, on, _) = self.toggled(chosen, order, &row, metric);
+            let at = lift.origin() - body.origin;
+            Some(
+                face(on, option_name(metric))
+                    .absolute()
+                    .left(at.x)
+                    .top(at.y)
+                    .w(lift.start.size.width)
+                    .px(px(7.))
+                    .border_1()
+                    .border_color(p.accent.opacity(0.6))
+                    .bg(widgets::solid(p.flyout))
+                    .cursor_grabbing(),
+            )
         });
         let body = div()
+            .relative()
             .flex()
             .flex_col()
-            .children(sections)
+            .child(record(id, "", ""))
+            .children(blocks)
+            .children(raised)
+            // A drag of this card's blocks or options follows the pointer.
+            .on_drag_move(
+                cx.listener(move |this, event: &DragMoveEvent<Lifted>, _, cx| {
+                    let reorder = &this.ui.readings_order;
+                    if reorder.lifted(id).is_some() {
+                        reorder.follow(event.event.position, animate, Instant::now());
+                        cx.notify();
+                    }
+                }),
+            )
+            .on_drop(cx.listener(move |this, _: &Lifted, window, cx| {
+                this.finish_readings_drag(id, settings_key, command, window, cx);
+            }))
             .into_any_element();
         self.setting_with_body(
             id,
@@ -744,6 +1034,31 @@ impl Desktop {
             "components.metrics.desc",
             body,
         )
+    }
+
+    /// Lets go of a block or an option dragged on `card`: it glides into
+    /// its place, and the monitor shows its readings in the order arranged.
+    fn finish_readings_drag(
+        &mut self,
+        card: &str,
+        settings_key: &'static str,
+        command: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let reorder = &self.ui.readings_order;
+        if reorder.lifted(card).is_none() {
+            return;
+        }
+        let released = reorder.release(!cx.reduce_motion(), Instant::now());
+        if let Some(lift) = released
+            && let Some(order) = lift.moved()
+        {
+            let saved = saved_order(&self.data["settings"][settings_key]["order"]);
+            let arranged = arranged_order(&lift, card, &saved, order);
+            self.arrange_readings(settings_key, command, arranged, window, cx);
+        }
+        cx.notify();
     }
 
     /// The desktop monitor: on or off, its metrics, how it sits among the
@@ -838,6 +1153,8 @@ impl Desktop {
                 "desktopMonitor",
                 command,
                 &monitor.metrics,
+                &monitor.order,
+                window,
                 cx,
             ),
             self.setting_text(
@@ -996,19 +1313,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(monitor) = self
-            .data
-            .get_mut("settings")
-            .and_then(|settings| settings.get_mut("desktopMonitor"))
-            && let (Some(monitor), Some(change)) = (monitor.as_object_mut(), change.as_object())
-        {
-            for (key, value) in change {
-                monitor.insert(key.clone(), value.clone());
-            }
-        }
-        self.request("set_desktop_monitor", change, Some("settings"), window, cx);
-        self.sync_monitors(cx);
-        cx.notify();
+        self.change_monitor("desktopMonitor", "set_desktop_monitor", change, window, cx);
     }
 
     /// The taskbar monitor: on or off, its metrics and where it sits.
@@ -1060,6 +1365,8 @@ impl Desktop {
                 "taskbarMonitor",
                 command,
                 &monitor.metrics,
+                &monitor.order,
+                window,
                 cx,
             ),
             style,
@@ -1240,18 +1547,57 @@ impl Desktop {
     }
 }
 
+/// The metrics `keys` name (`metric_key`), in turn; names this version
+/// does not know are left out.
+pub(in crate::frontend) fn metrics_named(keys: &[String]) -> Vec<Metric> {
+    keys.iter()
+        .filter_map(|key| {
+            Metric::ALL
+                .into_iter()
+                .find(|metric| metric_key(*metric) == key.as_str())
+        })
+        .collect()
+}
+
+/// A monitor's order as saved; metrics this version does not know are
+/// left out.
+pub(in crate::frontend) fn saved_order(value: &Value) -> Vec<Metric> {
+    values(value)
+        .iter()
+        .filter_map(|name| serde_json::from_value(name.clone()).ok())
+        .collect()
+}
+
+/// `saved` (a monitor's order) as a drag on `card` arranged it: its kinds
+/// (the drag's list is the card) or one kind's metrics, in `keys`' order.
+fn arranged_order(lift: &Lift, card: &str, saved: &[Metric], keys: &[String]) -> Vec<Metric> {
+    if lift.list == card {
+        let keys = keys.iter().map(String::as_str).collect::<Vec<_>>();
+        with_kinds(saved, &keys)
+    } else {
+        with_metrics(saved, &metrics_named(keys))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{COMPONENTS, METRIC_GROUPS, SECTIONS};
+    use super::{COMPONENTS, SECTIONS, metrics_named};
+    use crate::frontend::monitors::{KINDS, metric_key};
     use crate::settings::Metric;
 
     #[test]
-    fn the_metric_rows_offer_every_metric_once_in_order() {
-        let offered = METRIC_GROUPS
+    fn the_kinds_offer_every_metric_once_in_order() {
+        let offered = KINDS
             .iter()
             .flat_map(|(_, metrics)| metrics.iter().copied())
             .collect::<Vec<_>>();
         assert_eq!(offered, Metric::ALL);
+        let names = Metric::ALL
+            .iter()
+            .map(|metric| metric_key(*metric).to_owned())
+            .chain(["fps".to_owned()])
+            .collect::<Vec<_>>();
+        assert_eq!(metrics_named(&names), Metric::ALL);
     }
 
     #[test]

@@ -318,6 +318,22 @@ fn lenient_metrics<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Reading
     Ok(readings)
 }
 
+/// An order of metrics as saved: ones this version does not know and
+/// repeats are left out, keeping the rest.
+fn lenient_order<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<Metric>, D::Error> {
+    let mut order = Vec::new();
+    if let serde_json::Value::Array(names) = serde_json::Value::deserialize(d)? {
+        for name in names {
+            if let Ok(metric) = serde_json::from_value::<Metric>(name)
+                && !order.contains(&metric)
+            {
+                order.push(metric);
+            }
+        }
+    }
+    Ok(order)
+}
+
 /// The window opacities the desktop monitor offers, percent.
 pub const MONITOR_OPACITIES: [u8; 5] = [100, 90, 80, 70, 60];
 
@@ -398,6 +414,14 @@ pub struct DesktopMonitor {
     /// What it shows, in this order.
     #[serde(deserialize_with = "lenient_metrics")]
     pub metrics: Vec<Reading>,
+    /// How the kinds of reading (CPU, memory, GPU, disk, network, the rest)
+    /// and each kind's metrics were arranged on the components page: the
+    /// kinds in the order of their first metrics here. Metrics it leaves
+    /// out go after the others of their kind, in the order offered
+    /// (`Metric::ALL`); empty, everything is in that order. `metrics`
+    /// keeps to it.
+    #[serde(deserialize_with = "lenient_order")]
+    pub order: Vec<Metric>,
     pub layout: DeskLayout,
     pub style: DeskStyle,
     pub grouping: DeskGrouping,
@@ -428,6 +452,7 @@ impl Default for DesktopMonitor {
             ]
             .map(Reading::from)
             .to_vec(),
+            order: Vec::new(),
             layout: DeskLayout::default(),
             style: DeskStyle::default(),
             grouping: DeskGrouping::default(),
@@ -520,6 +545,9 @@ pub struct TaskbarMonitor {
     /// What it shows, in this order.
     #[serde(deserialize_with = "lenient_metrics")]
     pub metrics: Vec<Reading>,
+    /// How its readings were arranged, as the desktop monitor's `order`.
+    #[serde(deserialize_with = "lenient_order")]
+    pub order: Vec<Metric>,
     pub place: TaskbarPlace,
     pub style: TaskbarStyle,
 }
@@ -531,6 +559,7 @@ impl Default for TaskbarMonitor {
             metrics: [Metric::Cpu, Metric::Memory, Metric::Network]
                 .map(Reading::from)
                 .to_vec(),
+            order: Vec::new(),
             place: TaskbarPlace::default(),
             style: TaskbarStyle::default(),
         }
@@ -940,7 +969,17 @@ mod tests {
         assert!(newer.desktop_monitor.topmost);
         assert!(newer.taskbar_monitor.enabled);
         assert!(newer.taskbar_monitor.metrics.is_empty());
+        assert!(newer.desktop_monitor.order.is_empty() && newer.taskbar_monitor.order.is_empty());
         assert_eq!(newer.taskbar_monitor.place, TaskbarPlace::Tray);
+        // An arrangement keeps the metrics it knows, each once.
+        let arranged: Settings = serde_json::from_str(
+            r#"{"taskbarMonitor": {"order": ["disk", "fps", "cpuPower", "disk", 3, "cpu"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            arranged.taskbar_monitor.order,
+            [Metric::Disk, Metric::CpuPower, Metric::Cpu]
+        );
         assert_eq!(newer.taskbar_monitor.style, TaskbarStyle::Labels);
         let styled: Settings =
             serde_json::from_str(r#"{"taskbarMonitor": {"style": "figures"}}"#).unwrap();
@@ -1002,6 +1041,7 @@ mod tests {
             desktop_monitor: DesktopMonitor {
                 enabled: true,
                 metrics: Metric::ALL.map(Reading::from).to_vec(),
+                order: vec![Metric::Disk, Metric::DiskTemperature, Metric::Cpu],
                 layout: DeskLayout::Strip,
                 style: DeskStyle::Curves,
                 grouping: DeskGrouping::Stripes,
@@ -1020,6 +1060,7 @@ mod tests {
                     )
                     .unwrap(),
                 ],
+                order: vec![Metric::Network, Metric::Memory],
                 place: TaskbarPlace::Start,
                 style: TaskbarStyle::Curves,
             },

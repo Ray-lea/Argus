@@ -104,6 +104,9 @@ pub(in crate::frontend) struct UiState {
     /// places gliding there (`flip`).
     pub order_drag: RefCell<Option<flip::Drag>>,
     pub order_flips: flip::Flips,
+    /// A kind of reading or a reading dragged on the components page, to
+    /// arrange a monitor's readings.
+    pub readings_order: reorder::Reorder,
     /// Where a test's pointer gesture began (test control `pointer`).
     pub gesture_origin: Cell<Option<Point<Pixels>>>,
     /// The table item under a new contact, retained while live rows reorder.

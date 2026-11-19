@@ -32,7 +32,7 @@
   },
   "metrics": {
     "title": "Readings shown",
-    "desc": "Chosen readings appear in the order below. With more than one GPU, disk or network adapter, readings can be chosen for each device. When no device is chosen, GPU readings come from the GPU with the most dedicated memory, disk speeds and network rates are totals, and disk active time and temperature show the highest value of all disks.",
+    "desc": "Chosen readings appear in the order below, which can be changed by dragging a category or a reading. With more than one GPU, disk or network adapter, readings can be chosen for each device. When no device is chosen, GPU readings come from the GPU with the most dedicated memory, disk speeds and network rates are totals, and disk active time and temperature show the highest value of all disks.",
     "group": {
       "cpu": "CPU",
       "memory": "Memory",

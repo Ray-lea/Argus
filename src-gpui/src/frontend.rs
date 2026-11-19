@@ -26,6 +26,7 @@ mod process_icons;
 mod recorder;
 mod regions;
 mod release_notes;
+mod reorder;
 mod scrollbar;
 mod shift;
 mod star;

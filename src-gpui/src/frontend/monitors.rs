@@ -230,25 +230,145 @@ pub(in crate::frontend) fn absent_name(key: &str) -> String {
         .map_or_else(|| key.to_owned(), |name| (*name).to_owned())
 }
 
-/// Where a metric's row sits on the components page: by device kind.
-fn section(metric: Metric) -> usize {
-    match metric {
-        Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => 0,
-        Metric::Memory | Metric::MemoryUsed => 1,
-        Metric::Battery | Metric::Uptime => 5,
-        metric => match device_kind(metric) {
-            Some("gpu") => 2,
-            Some("disk") => 3,
-            _ => 4,
-        },
-    }
+/// The kinds of reading, as the components page and the taskbar monitor's
+/// panel offer them until arranged otherwise: a block of options each, its
+/// key naming it in texts (`components.metrics.group.*`), its metrics in
+/// the order of `Metric::ALL`.
+pub(in crate::frontend) const KINDS: [(&str, &[Metric]); 6] = [
+    (
+        "cpu",
+        &[
+            Metric::Cpu,
+            Metric::CpuTemperature,
+            Metric::CpuClock,
+            Metric::CpuPower,
+        ],
+    ),
+    ("memory", &[Metric::Memory, Metric::MemoryUsed]),
+    (
+        "gpu",
+        &[
+            Metric::Gpu,
+            Metric::GpuTemperature,
+            Metric::GpuMemory,
+            Metric::GpuClock,
+            Metric::GpuPower,
+            Metric::GpuFan,
+        ],
+    ),
+    (
+        "disk",
+        &[Metric::Disk, Metric::DiskActive, Metric::DiskTemperature],
+    ),
+    ("network", &[Metric::Network]),
+    ("other", &[Metric::Battery, Metric::Uptime]),
+];
+
+/// The kind a metric is of: its place in `KINDS`.
+fn kind_of(metric: Metric) -> usize {
+    KINDS
+        .iter()
+        .position(|(_, metrics)| metrics.contains(&metric))
+        .unwrap_or(KINDS.len() - 1)
 }
 
-/// `readings` in the order the monitors show them: by device kind as the
-/// components page offers them; within a kind the default device's first,
-/// then each device's in the sample's order, those of a device that is away
-/// last; each device's metrics in the order offered.
-pub(in crate::frontend) fn arrange(snapshot: &Value, mut readings: Vec<Reading>) -> Vec<Reading> {
+/// A kind of reading as a monitor's settings arrange it: its key in
+/// `KINDS`, and its metrics in turn.
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::frontend) struct Kind {
+    pub key: &'static str,
+    pub metrics: Vec<Metric>,
+}
+
+/// The kinds of reading in the order `order` (a monitor's saved `order`)
+/// arranges them: a kind where its first metric is, its metrics in turn.
+/// Metrics `order` leaves out follow the others of their kind, and kinds it
+/// leaves out follow the others, in the order offered.
+pub(in crate::frontend) fn arranged(order: &[Metric]) -> Vec<Kind> {
+    let rank = |metric: &Metric| {
+        order.iter().position(|of| of == metric).unwrap_or_else(|| {
+            order.len() + Metric::ALL.iter().position(|of| of == metric).unwrap_or(0)
+        })
+    };
+    let mut kinds = KINDS
+        .iter()
+        .map(|(key, metrics)| {
+            let mut metrics = metrics.to_vec();
+            metrics.sort_by_key(rank);
+            Kind { key, metrics }
+        })
+        .collect::<Vec<_>>();
+    kinds.sort_by_key(|kind| kind.metrics.iter().map(rank).min());
+    kinds
+}
+
+/// `kinds` as saved: every metric, kind after kind.
+pub(in crate::frontend) fn order_of(kinds: &[Kind]) -> Vec<Metric> {
+    kinds
+        .iter()
+        .flat_map(|kind| kind.metrics.iter().copied())
+        .collect()
+}
+
+/// `order` with the kinds `keys` names in that order; a kind it leaves out
+/// keeps its place among the others.
+pub(in crate::frontend) fn with_kinds(order: &[Metric], keys: &[&str]) -> Vec<Metric> {
+    let mut kinds = arranged(order);
+    let named = kinds
+        .iter()
+        .enumerate()
+        .filter(|(_, kind)| keys.contains(&kind.key))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let mut moved = keys
+        .iter()
+        .filter_map(|key| kinds.iter().find(|kind| kind.key == *key).cloned())
+        .collect::<Vec<_>>()
+        .into_iter();
+    for index in named {
+        if let Some(kind) = moved.next() {
+            kinds[index] = kind;
+        }
+    }
+    order_of(&kinds)
+}
+
+/// `order` with `metrics`, of one kind, in that order; the kind's metrics
+/// it leaves out (a battery the computer does not have) keep their places
+/// among the others.
+pub(in crate::frontend) fn with_metrics(order: &[Metric], metrics: &[Metric]) -> Vec<Metric> {
+    let mut kinds = arranged(order);
+    let Some(kind) = metrics
+        .first()
+        .and_then(|first| kinds.iter_mut().find(|kind| kind.metrics.contains(first)))
+    else {
+        return order_of(&kinds);
+    };
+    let mut moved = metrics
+        .iter()
+        .filter(|metric| kind.metrics.contains(metric))
+        .copied()
+        .collect::<Vec<_>>()
+        .into_iter();
+    for slot in kind.metrics.iter_mut() {
+        if metrics.contains(slot)
+            && let Some(metric) = moved.next()
+        {
+            *slot = metric;
+        }
+    }
+    order_of(&kinds)
+}
+
+/// `readings` in the order the monitors show them: by kind as `order`
+/// arranges them; within a kind the default device's first, then each
+/// device's in the sample's order, those of a device that is away last;
+/// each device's metrics in the kind's order.
+pub(in crate::frontend) fn arrange(
+    snapshot: &Value,
+    order: &[Metric],
+    mut readings: Vec<Reading>,
+) -> Vec<Reading> {
     let lists = ["gpu", "disk", "network"].map(|kind| (kind, devices(snapshot, kind)));
     let rank = |reading: &Reading| match (&reading.device, device_kind(reading.metric)) {
         (Some(key), Some(kind)) => lists
@@ -258,12 +378,19 @@ pub(in crate::frontend) fn arrange(snapshot: &Value, mut readings: Vec<Reading>)
             .map_or(usize::MAX, |position| position + 1),
         _ => 0,
     };
-    let order = |metric: Metric| Metric::ALL.iter().position(|offered| *offered == metric);
+    let kinds = arranged(order);
+    let kind_rank = |metric: Metric| {
+        kinds
+            .iter()
+            .position(|kind| kind.key == KINDS[kind_of(metric)].0)
+    };
+    let metrics = order_of(&kinds);
+    let metric_rank = |metric: Metric| metrics.iter().position(|of| *of == metric);
     readings.sort_by_key(|reading| {
         (
-            section(reading.metric),
+            kind_rank(reading.metric),
             rank(reading),
-            order(reading.metric),
+            metric_rank(reading.metric),
         )
     });
     readings
@@ -1018,10 +1145,11 @@ impl PartialEq for TaskbarPanel {
 #[derive(Default)]
 pub(in crate::frontend) struct Monitors {
     desk: Option<Open>,
-    /// Metrics chosen on the components page while a settings change was on
-    /// its way: per monitor's settings key, its command and the latest
-    /// choice, sent once that change has come back.
-    queued: Vec<(&'static str, &'static str, Vec<String>)>,
+    /// Changes to a monitor made while a settings change was on its way
+    /// (readings chosen or arranged, its look): per monitor's settings key,
+    /// its command and the fields changed, the latest of each, sent once
+    /// that change has come back.
+    queued: Vec<(&'static str, &'static str, serde_json::Map<String, Value>)>,
     /// The taskbar monitor's look in each style, for its panel and the
     /// components page, and what they were drawn for: the latest first, at
     /// most two (the panel's display and the main window's may differ in
@@ -1376,9 +1504,7 @@ impl Desktop {
     }
 
     /// A monitor's metrics chosen on the components page: shown at once,
-    /// in the page and by the monitor, and saved. Settings changes go one
-    /// at a time; a choice made while one is on its way is saved after it,
-    /// the latest choice winning, so that quick clicks all count.
+    /// in the page and by the monitor, and saved (`change_monitor`).
     pub(in crate::frontend) fn choose_metrics(
         &mut self,
         key: &'static str,
@@ -1387,36 +1513,83 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(monitor) = self
+        self.change_monitor(key, command, json!({ "metrics": metrics }), window, cx);
+    }
+
+    /// A monitor's readings arranged in `order` (a kind or a reading
+    /// dragged elsewhere): its readings follow, shown at once and saved.
+    pub(in crate::frontend) fn arrange_readings(
+        &mut self,
+        key: &'static str,
+        command: &'static str,
+        order: Vec<Metric>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let readings = values(&self.data["settings"][key]["metrics"])
+            .iter()
+            .filter_map(|reading| reading.as_str().and_then(Reading::parse))
+            .collect::<Vec<_>>();
+        let readings = arrange(&self.snapshot, &order, readings)
+            .iter()
+            .map(Reading::text)
+            .collect::<Vec<_>>();
+        self.change_monitor(
+            key,
+            command,
+            json!({ "order": order, "metrics": readings }),
+            window,
+            cx,
+        );
+    }
+
+    /// A change to a monitor's settings (`key`) from the components page or
+    /// a monitor's panel: shown at once, in the page and by the monitor, and
+    /// saved. Settings changes go one at a time; a change made while one is
+    /// on its way is saved after it, the latest of each field winning, so
+    /// that quick clicks all count.
+    pub(in crate::frontend) fn change_monitor(
+        &mut self,
+        key: &'static str,
+        command: &'static str,
+        change: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Value::Object(change) = change else {
+            return;
+        };
+        if let Some(Value::Object(monitor)) = self
             .data
             .get_mut("settings")
             .and_then(|settings| settings.get_mut(key))
         {
-            monitor["metrics"] = json!(metrics);
+            monitor.extend(change.clone());
         }
-        self.monitors.queued.retain(|(queued, ..)| *queued != key);
         if self
             .pending
             .values()
             .any(|pending| pending.cache.as_deref() == Some("settings"))
         {
-            self.monitors.queued.push((key, command, metrics));
+            match self
+                .monitors
+                .queued
+                .iter_mut()
+                .find(|(queued, ..)| *queued == key)
+            {
+                Some((_, _, fields)) => fields.extend(change),
+                None => self.monitors.queued.push((key, command, change)),
+            }
         } else {
-            self.request(
-                command,
-                json!({ "metrics": metrics }),
-                Some("settings"),
-                window,
-                cx,
-            );
+            self.request(command, Value::Object(change), Some("settings"), window, cx);
         }
         self.sync_monitors(cx);
         cx.notify();
     }
 
-    /// A settings change came back: choices made meanwhile stay shown over
+    /// A settings change came back: changes made meanwhile stay shown over
     /// the settings it returned, and the next of them is sent.
-    pub(in crate::frontend) fn send_queued_metrics(
+    pub(in crate::frontend) fn send_queued_monitor_changes(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1424,23 +1597,17 @@ impl Desktop {
         if self.monitors.queued.is_empty() {
             return;
         }
-        for (key, _, metrics) in &self.monitors.queued {
-            if let Some(monitor) = self
+        for (key, _, change) in &self.monitors.queued {
+            if let Some(Value::Object(monitor)) = self
                 .data
                 .get_mut("settings")
                 .and_then(|settings| settings.get_mut(*key))
             {
-                monitor["metrics"] = json!(metrics);
+                monitor.extend(change.clone());
             }
         }
-        let (_, command, metrics) = self.monitors.queued.remove(0);
-        self.request(
-            command,
-            json!({ "metrics": metrics }),
-            Some("settings"),
-            window,
-            cx,
-        );
+        let (_, command, change) = self.monitors.queued.remove(0);
+        self.request(command, Value::Object(change), Some("settings"), window, cx);
     }
 
     /// The theme or language changed: the desktop monitor draws again, and
@@ -1613,35 +1780,30 @@ impl Desktop {
         true
     }
 
-    /// A control of the taskbar monitor's panel was used. A style shows at
-    /// once in the panel, before the settings come back.
+    /// A control of the taskbar monitor's panel was used. A style or an
+    /// order shows at once in the panel, before the settings come back.
     pub(in crate::frontend) fn taskbar_choice(
         &mut self,
         choice: TaskbarChoice,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let command = "set_taskbar_monitor";
+        let (key, command) = ("taskbarMonitor", "set_taskbar_monitor");
+        let saved = || super::pages::components::saved_order(&self.data["settings"][key]["order"]);
         match choice {
             TaskbarChoice::Style(style) => {
-                if let Some(monitor) = self
-                    .data
-                    .get_mut("settings")
-                    .and_then(|settings| settings.get_mut("taskbarMonitor"))
-                {
-                    monitor["style"] = json!(style);
-                }
-                self.request(
-                    command,
-                    json!({ "style": style }),
-                    Some("settings"),
-                    window,
-                    cx,
-                );
-                self.refresh_tray(cx);
+                self.change_monitor(key, command, json!({ "style": style }), window, cx)
             }
-            TaskbarChoice::Readings(next) => {
-                self.choose_metrics("taskbarMonitor", command, next, window, cx)
+            TaskbarChoice::Readings(next) => self.choose_metrics(key, command, next, window, cx),
+            TaskbarChoice::Kinds(kinds) => {
+                let kinds = kinds.iter().map(String::as_str).collect::<Vec<_>>();
+                let order = with_kinds(&saved(), &kinds);
+                self.arrange_readings(key, command, order, window, cx);
+            }
+            TaskbarChoice::Metrics(metrics) => {
+                let metrics = super::pages::components::metrics_named(&metrics);
+                let order = with_metrics(&saved(), &metrics);
+                self.arrange_readings(key, command, order, window, cx);
             }
             TaskbarChoice::Settings => {
                 self.open_components("taskbar", window, cx);
@@ -1736,6 +1898,12 @@ impl Desktop {
             "desktop": desk,
             "taskbar": crate::shell::taskbar_monitor_rect(),
             "taskbarStyle": self.data["settings"]["taskbarMonitor"]["style"],
+            // The kinds of reading as arranged, for each monitor.
+            "kinds": {
+                "desktop": arranged(&super::pages::components::saved_order(&self.data["settings"]["desktopMonitor"]["order"])).iter().map(|kind| kind.key).collect::<Vec<_>>(),
+                "taskbar": arranged(&super::pages::components::saved_order(&self.data["settings"]["taskbarMonitor"]["order"])).iter().map(|kind| kind.key).collect::<Vec<_>>(),
+            },
+            "taskbarMetrics": self.data["settings"]["taskbarMonitor"]["metrics"],
             "taskbarPanel": self.taskbar_panel_kinds().iter().map(|kind| json!({
                 "kind": kind.key,
                 "devices": kind.devices.iter().map(|device| json!({
@@ -1751,8 +1919,8 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::{
-        Device, Gauge, absent_name, arrange, devices, gauges, gpu_name, main_gpu, main_gpu_key,
-        taskbar_groups,
+        Device, Gauge, Kind, absent_name, arrange, arranged, devices, gauges, gpu_name, main_gpu,
+        main_gpu_key, order_of, taskbar_groups, with_kinds, with_metrics,
     };
     use crate::frontend::theme::label;
     use crate::settings::{Metric, Reading};
@@ -2030,27 +2198,96 @@ mod tests {
             metric: Metric::Disk,
             device: Some("disk:usb|Gone|1".into()),
         };
-        let arranged = arrange(
-            &snapshot,
-            vec![
-                of(Metric::Disk, &disks[1]),
-                Reading::from(Metric::Network),
-                gone.clone(),
-                of(Metric::DiskActive, &disks[0]),
-                Reading::from(Metric::Cpu),
-                Reading::from(Metric::Disk),
-            ],
-        );
+        let readings = vec![
+            of(Metric::Disk, &disks[1]),
+            Reading::from(Metric::Network),
+            gone.clone(),
+            of(Metric::DiskActive, &disks[0]),
+            Reading::from(Metric::Cpu),
+            Reading::from(Metric::Disk),
+            of(Metric::Disk, &disks[0]),
+        ];
         assert_eq!(
-            arranged,
+            arrange(&snapshot, &[], readings.clone()),
             [
                 Reading::from(Metric::Cpu),
                 Reading::from(Metric::Disk),
+                of(Metric::Disk, &disks[0]),
                 of(Metric::DiskActive, &disks[0]),
                 of(Metric::Disk, &disks[1]),
-                gone,
+                gone.clone(),
                 Reading::from(Metric::Network),
             ]
+        );
+        // Arranged: the disks first, their active time before their rates;
+        // the devices keep their order.
+        let order = with_metrics(
+            &with_kinds(&[], &["disk", "cpu"]),
+            &[Metric::DiskActive, Metric::Disk],
+        );
+        assert_eq!(
+            arrange(&snapshot, &order, readings),
+            [
+                Reading::from(Metric::Disk),
+                of(Metric::DiskActive, &disks[0]),
+                of(Metric::Disk, &disks[0]),
+                of(Metric::Disk, &disks[1]),
+                gone,
+                Reading::from(Metric::Cpu),
+                Reading::from(Metric::Network),
+            ]
+        );
+    }
+
+    #[test]
+    fn kinds_and_metrics_keep_the_order_they_were_given() {
+        let key = |kinds: &[Kind]| kinds.iter().map(|kind| kind.key).collect::<Vec<_>>();
+        // Nothing arranged: as offered.
+        assert_eq!(order_of(&arranged(&[])), Metric::ALL);
+        assert_eq!(
+            key(&arranged(&[])),
+            ["cpu", "memory", "gpu", "disk", "network", "other"]
+        );
+        // A kind goes where its first metric is; metrics left out follow
+        // the others of their kind, kinds left out the other kinds.
+        let kinds = arranged(&[Metric::Uptime, Metric::DiskTemperature, Metric::Cpu]);
+        assert_eq!(
+            key(&kinds),
+            ["other", "disk", "cpu", "memory", "gpu", "network"]
+        );
+        assert_eq!(kinds[0].metrics, [Metric::Uptime, Metric::Battery]);
+        assert_eq!(
+            kinds[1].metrics,
+            [Metric::DiskTemperature, Metric::Disk, Metric::DiskActive]
+        );
+        // Every metric once, kind by kind.
+        let order = order_of(&kinds);
+        assert_eq!(order.len(), Metric::ALL.len());
+        assert_eq!(arranged(&order), kinds);
+        // Moving kinds: those not named keep their places.
+        assert_eq!(
+            key(&arranged(&with_kinds(&order, &["gpu", "other"]))),
+            ["gpu", "disk", "cpu", "memory", "other", "network"]
+        );
+        // Moving metrics: one left out (no battery) stays where it was.
+        let cpu = with_metrics(&[], &[Metric::CpuPower, Metric::Cpu]);
+        assert_eq!(
+            arranged(&cpu)[0].metrics,
+            [
+                Metric::CpuPower,
+                Metric::CpuTemperature,
+                Metric::CpuClock,
+                Metric::Cpu
+            ]
+        );
+        let other = with_metrics(&order, &[Metric::Battery]);
+        assert_eq!(
+            arranged(&other)[0].metrics,
+            [Metric::Uptime, Metric::Battery]
+        );
+        assert_eq!(
+            arranged(&with_metrics(&order, &[Metric::Battery, Metric::Uptime]))[0].metrics,
+            [Metric::Battery, Metric::Uptime]
         );
     }
 
