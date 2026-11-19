@@ -31,7 +31,7 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         {
             crate::window_state::install(hwnd, dir.join("preferences.json"));
         }
-        crate::shell::follow_visibility(&native);
+        crate::shell::follow_visibility(&native, options.test);
         if let Ok(hwnd) = native.hwnd() {
             crate::hotkey::install_key_context(hwnd);
             file_drop::install(host, hwnd);

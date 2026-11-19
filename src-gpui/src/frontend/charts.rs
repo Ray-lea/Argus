@@ -1772,7 +1772,66 @@ impl Desktop {
         }
         self.chart_frame(plot_rc, height, &look)
     }
-    pub(in crate::frontend) fn apply_motion(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::frontend) fn window_shown(&self) -> bool {
+        self.host
+            .get_window("main")
+            .is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+    }
+    pub(in crate::frontend) fn window_occluded(&self) -> bool {
+        if let Some(power) = self.test_power {
+            return power.occluded;
+        }
+        if self.options.test {
+            return false;
+        }
+        !self.window_shown()
+            || self
+                .host
+                .get_window("main")
+                .and_then(|w| w.hwnd().ok())
+                .is_some_and(crate::activation::occluded)
+    }
+    pub(in crate::frontend) fn configured_chart_mode(&self) -> motion::Mode {
+        let system = crate::platform::system_motion();
+        let saved = self
+            .prefs
+            .get::<Option<String>>("motion.chartMode", None)
+            .or_else(|| {
+                (self.prefs.get::<Option<bool>>("motion.charts", None) == Some(false))
+                    .then(|| "off".into())
+            });
+        motion::Mode::parse(
+            saved
+                .as_deref()
+                .unwrap_or(if system { "fluid" } else { "off" }),
+        )
+    }
+    pub(in crate::frontend) fn smooth_charts_allowed(&self, window: &Window, cx: &App) -> bool {
+        if let Some(power) = self.test_power {
+            return smooth_chart_policy(power.active, power.conserving, power.occluded);
+        }
+        if self.options.test {
+            return true;
+        }
+        let conserving = argus_core::power::PowerSource::current().conserving()
+            || cx.power_mode() == gpui_kit::gpui::PowerMode::LowPower;
+        smooth_chart_policy(
+            window.is_window_active(),
+            conserving,
+            self.window_occluded(),
+        )
+    }
+    pub(in crate::frontend) fn sync_chart_power(&mut self, window: &Window, cx: &App) -> bool {
+        let next = effective_chart_mode(
+            self.configured_chart_mode(),
+            self.smooth_charts_allowed(window, cx),
+        );
+        let mut clock = self.chart_clock.borrow_mut();
+        let changed = clock.mode != next;
+        clock.mode = next;
+        changed
+    }
+    pub(in crate::frontend) fn apply_motion(&mut self, window: &Window, cx: &mut Context<Self>) {
         let system = crate::platform::system_motion();
         let motion = self
             .prefs
@@ -1789,18 +1848,7 @@ impl Desktop {
                 .get::<Option<bool>>("motion.window", None)
                 .unwrap_or(system),
         );
-        let saved = self
-            .prefs
-            .get::<Option<String>>("motion.chartMode", None)
-            .or_else(|| {
-                (self.prefs.get::<Option<bool>>("motion.charts", None) == Some(false))
-                    .then(|| "off".into())
-            });
-        self.chart_clock.borrow_mut().mode = motion::Mode::parse(
-            saved
-                .as_deref()
-                .unwrap_or(if system { "fluid" } else { "off" }),
-        );
+        let _ = self.sync_chart_power(window, cx);
         if self.options.fixture.is_some() && !self.fixture_samples {
             self.chart_clock.borrow_mut().set_paused(true);
         }
@@ -1813,9 +1861,7 @@ impl Desktop {
         let active = matches!(self.page.as_str(), "processes" | "performance")
             && self.modal.is_none()
             && (self.options.fixture.is_none() || self.fixture_samples)
-            && self.host.get_window("main").is_some_and(|w| {
-                w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
-            });
+            && self.window_shown();
         if self.chart_tick_queued
             || !active
             || !self.chart_clock.borrow().moving()
@@ -1828,6 +1874,10 @@ impl Desktop {
         window.on_next_frame(move |window, cx| {
             let _ = owner.update(cx, |this, cx| {
                 this.chart_tick_queued = false;
+                // Focus, power notifications and the UI timer update the clock outside the frame loop.
+                if !this.chart_clock.borrow().moving() || !this.window_shown() {
+                    return;
+                }
                 this.chart_frame = this.chart_frame.wrapping_add(1);
                 let mode = this.chart_clock.borrow().mode;
                 let refresh =
@@ -1850,6 +1900,25 @@ impl Desktop {
         if let Some(layer) = &self.chart_layer {
             layer.update(cx, |layer, cx| layer.advance(window, cx));
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(in crate::frontend) struct TestPower {
+    pub active: bool,
+    pub conserving: bool,
+    pub occluded: bool,
+}
+
+const fn smooth_chart_policy(window_active: bool, conserving_power: bool, occluded: bool) -> bool {
+    window_active && !conserving_power && !occluded
+}
+
+const fn effective_chart_mode(configured: motion::Mode, smooth_allowed: bool) -> motion::Mode {
+    if smooth_allowed {
+        configured
+    } else {
+        motion::Mode::Off
     }
 }
 
@@ -2020,7 +2089,10 @@ pub(in crate::frontend) fn nice_max(value: f64) -> f64 {
 }
 #[cfg(test)]
 mod tests {
-    use super::{MetricFormat, READOUT_EVERY, Series, TimePlot, nice_max, segments, smooth_run};
+    use super::{
+        MetricFormat, READOUT_EVERY, Series, TimePlot, effective_chart_mode, nice_max, segments,
+        smooth_chart_policy, smooth_run,
+    };
     use crate::frontend::motion;
     use gpui_kit::gpui::{px, rgb};
     use std::{
@@ -2096,6 +2168,23 @@ mod tests {
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0].len(), 1);
         assert_eq!(runs[1].len(), 1);
+    }
+    #[test]
+    fn smooth_scroll_requires_active_unoccluded_ac_window_and_restores_configured_mode() {
+        assert!(smooth_chart_policy(true, false, false));
+        assert!(!smooth_chart_policy(false, false, false));
+        assert!(!smooth_chart_policy(true, true, false));
+        assert!(!smooth_chart_policy(true, false, true));
+
+        for mode in [
+            motion::Mode::Fluid,
+            motion::Mode::Balanced,
+            motion::Mode::Pixel,
+            motion::Mode::Off,
+        ] {
+            assert_eq!(effective_chart_mode(mode, false), motion::Mode::Off);
+            assert_eq!(effective_chart_mode(mode, true), mode);
+        }
     }
     #[test]
     pub(in crate::frontend) fn scale_never_clips_the_observed_peak() {

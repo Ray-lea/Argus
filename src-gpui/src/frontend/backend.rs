@@ -269,6 +269,15 @@ impl Desktop {
                     self.set_control_paused(false, window, cx);
                     self.hotkey_blur(window, cx);
                 }
+                "argus-power" => {
+                    if !self.options.test {
+                        crate::shell::sync_process_power();
+                    }
+                    if self.sync_chart_power(window, cx) {
+                        changed = true;
+                        self.schedule_chart_tick(window, cx);
+                    }
+                }
                 "argus-restored" => self.restored(&event.value, window, cx),
                 "argus-hotkey-changed" => self.hotkey_changed(window, cx),
                 "argus-show-update" => self.open_dialog("update", json!({}), window, cx),
@@ -311,7 +320,8 @@ impl Desktop {
                 self.snapshot_pending = true;
                 let epoch = self.rows_epoch;
                 let locale = argus_core::i18n::locale();
-                let processes = self.page == "processes";
+                let processes =
+                    self.page == "processes" && self.window_shown() && !self.window_occluded();
                 // The list the column widths measure, now and then.
                 let measure = self.width_source(Some(tables::WIDTH_ROWS_EVERY));
                 let options = (
@@ -428,7 +438,7 @@ impl Desktop {
     /// sensor state, an open dialog, menu or drag, and a hidden window draw
     /// everything.
     pub(in crate::frontend) fn notify_snapshot(
-        &self,
+        &mut self,
         full: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -438,9 +448,11 @@ impl Desktop {
             "services" | "startup" | "network" | "components" | "about"
         ) || (self.page == "settings"
             && values(&self.data["settings"]["rules"]).is_empty());
-        let visible = self.host.get_window("main").is_some_and(|window| {
-            window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
-        });
+        let visible = self.window_shown();
+        if visible && self.window_occluded() {
+            self.occluded_dirty = true;
+            return;
+        }
         let quiet =
             !full && visible && self.modal.is_none() && self.popup.is_none() && self.drag.is_none();
         if quiet && status_only {

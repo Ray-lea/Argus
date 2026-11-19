@@ -83,6 +83,9 @@ fn synchronous_recovery_allows_window_lifecycle_on_the_receiving_thread() {
     windows.write().push(TrackedWindow {
         handle: HWND(hwnd as _).into(),
         frame_signal: Arc::new(PlatformFrameSignal::new()),
+        frame_needed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        dm_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        dm_contacts: Arc::new(std::sync::atomic::AtomicU8::new(0)),
     });
     let mut writable_in_callback = false;
     for_each_recovery_window(&windows, |window| {

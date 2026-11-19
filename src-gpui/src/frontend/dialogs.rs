@@ -1945,7 +1945,7 @@ impl Desktop {
         if self.ui.ticks.is_multiple_of(4) {
             let system = crate::platform::system_motion();
             if self.ui.system_motion.is_some_and(|before| before != system) {
-                self.apply_motion(cx);
+                self.apply_motion(window, cx);
                 changed = true;
             }
             self.ui.system_motion = Some(system);

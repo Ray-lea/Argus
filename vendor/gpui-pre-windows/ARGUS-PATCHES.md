@@ -12,7 +12,7 @@ A `WM_PAINT` for a hidden window is acknowledged with `BeginPaint`/`EndPaint` an
 
 Opt-in startup tracing brackets DirectX device creation with the reviewed `argus_startup` target. The Argus diagnostic logger persists these records before entering the next initialization stage; normal launches filter this target out.
 
-The frame-clock worker waits on a visibility-change signal while every tracked window is hidden or minimized, and skips redraw requests for individual hidden windows. Opening, restoring or closing the platform wakes that wait immediately; a generation counter preserves notifications delivered before the wait starts. Idle device-health checks run at most once per second. The visible compositor cadence is unchanged. Regression tests cover wake-before-wait, restore, shutdown and the idle health-check timeout.
+The frame-clock worker waits on a visibility and frame-demand signal while every tracked window is hidden, minimized or idle without pending frame requests or active Direct Manipulation gestures, and skips redraw requests for individual hidden or idle windows. Opening, restoring or closing the platform wakes that wait immediately; a generation counter preserves notifications delivered before the wait starts. Idle device-health checks run at most once per second. The visible compositor cadence is unchanged. Regression tests cover wake-before-wait, restore, shutdown and the idle health-check timeout.
 
 DirectX adapter initialization records numeric vendor/device IDs, the software-adapter flag, selected feature level and failure HRESULTs through the reviewed `argus::graphics` log target. These startup stages remain visible with Argus's production log filter without including raw driver descriptions or exception text.
 

@@ -302,6 +302,7 @@ impl WindowsWindowInner {
                 .callbacks
                 .request_frame
                 .set(Some(restore_from_minimized));
+            self.state.request_frame_wake();
         } else if presized {
             return Some(0);
         }
@@ -1665,6 +1666,7 @@ impl WindowsWindowInner {
         // between) is treated as a forced render so it both clears
         // `skip_draws` and bypasses the view cache.
         self.state.force_render_pending.set(true);
+        self.state.request_frame_wake();
         Some(0)
     }
 
@@ -1681,12 +1683,12 @@ impl WindowsWindowInner {
             if force_render {
                 self.state.force_render_pending.set(true);
             }
+            self.state.request_frame_wake();
             // Validate the region so a nested message pump doesn't keep
             // re-dispatching WM_PAINT for the still-invalid region in a busy
-            // loop until the in-progress draw unwinds. The vsync thread
-            // re-invalidates every window on each vsync (see
-            // `begin_vsync_thread`), so the deferred frame still gets drawn,
-            // at most one vsync late.
+            // loop until the in-progress draw unwinds. Waking the vsync thread
+            // re-invalidates this window on the next vsync so the deferred
+            // frame still gets drawn, at most one vsync late.
             unsafe { ValidateRect(Some(handle), None).ok().log_err() };
             return Some(0);
         };
@@ -1694,6 +1696,9 @@ impl WindowsWindowInner {
         // window during drawing must remain pending for the next WM_PAINT.
         unsafe { ValidateRect(Some(handle), None).ok().log_err() };
         let mut request_frame = self.state.callbacks.request_frame.take()?;
+        self.state
+            .frame_needed
+            .store(false, std::sync::atomic::Ordering::Release);
 
         self.state.direct_manipulation.update();
 

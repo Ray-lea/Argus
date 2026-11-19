@@ -267,8 +267,10 @@ fn activate(owner: usize, command: &str, elevated: bool) -> Result<(), TaskError
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
     };
-    unsafe { ShellExecuteExW(&mut info) }.map_err(|e| TaskError::win("ShellExecuteExW", e))?;
+    argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+        .map_err(|e| TaskError::win("ShellExecuteExW", e))?;
     if !info.hProcess.is_invalid() {
+        argus_core::power::clear_process_throttling(info.hProcess);
         drop(Handle(info.hProcess));
     }
     Ok(())
@@ -455,7 +457,7 @@ fn spawn_under(
     startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
     startup.lpAttributeList = attribute.pointer();
     let mut process = PROCESS_INFORMATION::default();
-    unsafe {
+    argus_core::power::with_unthrottled_launch(|| unsafe {
         CreateProcessW(
             PCWSTR(exe.as_ptr()),
             Some(PWSTR(line.as_mut_ptr())),
@@ -468,8 +470,9 @@ fn spawn_under(
             &startup.StartupInfo,
             &mut process,
         )
-    }
+    })
     .map_err(|e| TaskError::win("CreateProcessW", e))?;
+    argus_core::power::clear_process_throttling(process.hProcess);
     Ok(process)
 }
 
@@ -586,7 +589,7 @@ fn filtered_helper(owner: usize, command: &str) -> Result<(), TaskError> {
         ..Default::default()
     };
     let mut process = PROCESS_INFORMATION::default();
-    unsafe {
+    argus_core::power::with_unthrottled_launch(|| unsafe {
         CreateProcessAsUserW(
             Some(filtered.0),
             PCWSTR(exe.as_ptr()),
@@ -600,8 +603,9 @@ fn filtered_helper(owner: usize, command: &str) -> Result<(), TaskError> {
             &startup,
             &mut process,
         )
-    }
+    })
     .map_err(|e| TaskError::win("CreateProcessAsUserW", e))?;
+    argus_core::power::clear_process_throttling(process.hProcess);
     match helper_result(process)? {
         0 => Ok(()),
         HELPER_ELEVATED => Err(TaskError {

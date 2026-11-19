@@ -2375,10 +2375,15 @@ impl Window {
                         .log_err();
                 }
 
+                let mut follow_up_present = false;
+                let more_input = input_rate_tracker.borrow_mut().is_high_rate();
                 handle
                     .update(&mut cx, |_, window, _| {
+                        follow_up_present = window.needs_present.get();
                         if window.invalidator.is_dirty()
                             || !window.next_frame_callbacks.borrow().is_empty()
+                            || follow_up_present
+                            || more_input
                         {
                             window.platform_window.schedule_frame();
                         }
@@ -2396,7 +2401,11 @@ impl Window {
                 // after this frame (the window was re-invalidated mid-draw, or
                 // animations scheduled next-frame callbacks), re-arm the frame
                 // source explicitly.
-                if invalidator.is_dirty() || !next_frame_callbacks.borrow().is_empty() {
+                if invalidator.is_dirty()
+                    || !next_frame_callbacks.borrow().is_empty()
+                    || follow_up_present
+                    || more_input
+                {
                     invalidator.wake_platform();
                 }
                 #[cfg(feature = "profiler")]
@@ -6768,6 +6777,7 @@ impl Window {
         scene.animated_order = Some(scene.animated_order.map_or(order, |old| old.min(order)));
         if changed {
             self.needs_present.set(true);
+            self.invalidator.wake_platform();
         }
         true
     }

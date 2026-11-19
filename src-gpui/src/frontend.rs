@@ -390,6 +390,10 @@ struct Desktop {
     /// Since when the window has been hidden or minimized, and whether its
     /// memory was given back since (`memory.releaseHidden`).
     hidden_since: Option<(Instant, bool)>,
+    /// Samples arrived while the window was completely covered; redraw on uncover.
+    occluded_dirty: bool,
+    /// Simulated focus/battery/occlusion state for `--test` scenarios.
+    test_power: Option<charts::TestPower>,
     last_select: Option<(String, Instant)>,
     /// The lists' column filters in force, by preference (`tables::ColumnFilter`).
     filters: HashMap<&'static str, String>,
@@ -574,6 +578,8 @@ impl Desktop {
             last_poll: Instant::now() - Duration::from_secs(10),
             last_privilege: Instant::now() - Duration::from_secs(60),
             hidden_since: None,
+            occluded_dirty: false,
+            test_power: None,
             last_select: None,
             filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
@@ -672,6 +678,23 @@ impl Desktop {
             })
             .detach();
         }
+        cx.observe_window_activation(window, |this, window, cx| {
+            if !this.options.test {
+                crate::shell::sync_process_power();
+            }
+            let mode_changed = this.sync_chart_power(window, cx);
+            if this.window_shown() && !this.window_occluded() {
+                let uncovered = std::mem::take(&mut this.occluded_dirty);
+                if uncovered {
+                    this.rebuild_rows(this.holds_order(), cx);
+                }
+                if uncovered || mode_changed {
+                    cx.notify();
+                    this.schedule_chart_tick(window, cx);
+                }
+            }
+        })
+        .detach();
         let receiver = host.notifications();
         cx.spawn_in(window, async move |this, cx| {
             while receiver.recv().await.is_ok() {
@@ -694,29 +717,44 @@ impl Desktop {
                             return;
                         }
                         this.tick_ui(window, cx);
-                        if this.host.get_window("main").is_some_and(|w| {
-                            w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
-                        }) {
+                        if !this.options.test && this.ui.ticks.is_multiple_of(4) {
+                            crate::shell::sync_process_power();
+                        }
+                        if this.window_shown() {
                             this.hidden_since = None;
-                            if this.last_poll.elapsed() >= this.poll_interval() {
-                                this.last_poll = Instant::now();
-                                this.poll_page(window, cx);
-                            }
-                            this.prefetch(window, cx);
-                            // The privilege badge follows the service: it may start after Argus.
-                            if this.last_privilege.elapsed() >= Duration::from_secs(30)
-                                && !boolean(&this.data["info"], "elevated")
-                            {
-                                this.last_privilege = Instant::now();
-                                this.request(
-                                    "privileged_service_status",
-                                    json!({}),
-                                    Some("privilege"),
-                                    window,
-                                    cx,
-                                );
+                            let occluded = this.window_occluded();
+                            let mode_changed = this.sync_chart_power(window, cx);
+                            if !occluded {
+                                let uncovered = std::mem::take(&mut this.occluded_dirty);
+                                if uncovered {
+                                    this.rebuild_rows(this.holds_order(), cx);
+                                }
+                                if uncovered || mode_changed {
+                                    cx.notify();
+                                    this.schedule_chart_tick(window, cx);
+                                }
+                                if this.last_poll.elapsed() >= this.poll_interval() {
+                                    this.last_poll = Instant::now();
+                                    this.poll_page(window, cx);
+                                }
+                                this.prefetch(window, cx);
+                                // The privilege badge follows the service: it may start after Argus.
+                                if this.last_privilege.elapsed() >= Duration::from_secs(30)
+                                    && !boolean(&this.data["info"], "elevated")
+                                {
+                                    this.last_privilege = Instant::now();
+                                    this.request(
+                                        "privileged_service_status",
+                                        json!({}),
+                                        Some("privilege"),
+                                        window,
+                                        cx,
+                                    );
+                                }
                             }
                         } else {
+                            this.occluded_dirty = false;
+                            let _ = this.sync_chart_power(window, cx);
                             this.release_hidden_memory(window, cx);
                         }
                     })
@@ -744,7 +782,7 @@ impl Desktop {
             });
         }
         this.poll_page(window, cx);
-        this.apply_motion(cx);
+        this.apply_motion(window, cx);
         this
     }
 }

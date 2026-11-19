@@ -426,7 +426,7 @@ impl Desktop {
                         _ => None,
                     },
                 );
-                self.apply_motion(cx);
+                self.apply_motion(window, cx);
                 cx.notify();
                 return;
             }
@@ -439,13 +439,13 @@ impl Desktop {
                         _ => None,
                     },
                 );
-                self.apply_motion(cx);
+                self.apply_motion(window, cx);
                 cx.notify();
                 return;
             }
             "motion.chartMode" => {
                 self.prefs.set(key, value);
-                self.apply_motion(cx);
+                self.apply_motion(window, cx);
                 cx.notify();
                 return;
             }

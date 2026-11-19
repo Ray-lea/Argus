@@ -989,6 +989,24 @@ impl Desktop {
                 self.preference(key, value.clone(), window, cx);
             }
         }
+        if let Some(power) = control.get("powerState") {
+            self.test_power = power.as_object().map(|p| charts::TestPower {
+                active: p.get("active").and_then(Value::as_bool).unwrap_or(true),
+                conserving: p
+                    .get("conserving")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                occluded: p.get("occluded").and_then(Value::as_bool).unwrap_or(false),
+            });
+            let mode_changed = self.sync_chart_power(window, cx);
+            if !self.window_occluded() && std::mem::take(&mut self.occluded_dirty) {
+                self.rebuild_rows(self.holds_order(), cx);
+            }
+            if mode_changed || !self.window_occluded() {
+                cx.notify();
+                self.schedule_chart_tick(window, cx);
+            }
+        }
         if let Some(mode) = control["motion"].as_str() {
             self.preference("motion.chartMode", json!(mode), window, cx);
         }

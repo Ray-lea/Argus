@@ -6,7 +6,7 @@ use std::{
     rc::{Rc, Weak},
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
 
@@ -43,22 +43,34 @@ use gpui::*;
 struct TrackedWindow {
     handle: SafeHwnd,
     frame_signal: Arc<PlatformFrameSignal>,
+    frame_needed: Arc<AtomicBool>,
+    dm_running: Arc<AtomicBool>,
+    dm_contacts: Arc<AtomicU8>,
 }
 
-/// Visibility changes wake an idle frame clock. An epoch preserves a wake
-/// delivered between checking the window list and entering the wait.
+impl TrackedWindow {
+    #[inline]
+    fn needs_frame(&self) -> bool {
+        self.frame_needed.load(Ordering::Acquire)
+            || self.dm_running.load(Ordering::Acquire)
+            || self.dm_contacts.load(Ordering::Acquire) > 0
+    }
+}
+
+/// Visibility and frame-demand changes wake an idle frame clock. An epoch
+/// preserves a wake delivered between checking the window list and waiting.
 #[derive(Default)]
-struct FrameWake {
+pub(crate) struct FrameWake {
     epoch: Mutex<u64>,
     changed: Condvar,
 }
 
 impl FrameWake {
-    fn epoch(&self) -> u64 {
+    pub(crate) fn epoch(&self) -> u64 {
         *self.epoch.lock()
     }
 
-    fn wake(&self) {
+    pub(crate) fn wake(&self) {
         let mut epoch = self.epoch.lock();
         *epoch = epoch.wrapping_add(1);
         self.changed.notify_all();
@@ -370,6 +382,7 @@ impl WindowsPlatform {
             directx_devices: self.inner.state.directx_devices.borrow().clone().unwrap(),
             invalidate_devices: self.invalidate_devices.clone(),
             draw_coordinator: self.inner.state.draw_coordinator.clone(),
+            frame_wake: self.inner.state.frame_wake.clone(),
         }
     }
 
@@ -523,17 +536,18 @@ impl WindowsPlatform {
                     let Some(windows) = all_windows.upgrade() else {
                         break;
                     };
-                    let visible = windows.read().iter().any(|window| unsafe {
-                        IsWindowVisible(window.as_raw()).as_bool()
-                            && !IsIconic(window.as_raw()).as_bool()
+                    let active_demand = windows.read().iter().any(|window| unsafe {
+                        IsWindowVisible(window.handle.as_raw()).as_bool()
+                            && !IsIconic(window.handle.as_raw()).as_bool()
+                            && window.needs_frame()
                     });
-                    if !visible {
+                    if !active_demand {
                         for window in windows.read().iter() {
                             window.frame_signal.take();
                         }
                         drop(windows);
-                        // Keep device-loss checks bounded while idle. Restoring,
-                        // opening a window or shutting down wakes this at once.
+                        // Keep device-loss checks bounded while idle. Frame demand,
+                        // restoring, opening a window or shutting down wakes at once.
                         frame_wake.wait_since(epoch, &stop, std::time::Duration::from_secs(1));
                         continue;
                     }
@@ -542,18 +556,19 @@ impl WindowsPlatform {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
-                    for hwnd in windows.read().iter() {
+                    for window in windows.read().iter() {
                         unsafe {
-                            if !IsWindowVisible(hwnd.as_raw()).as_bool()
-                                || IsIconic(hwnd.as_raw()).as_bool()
+                            if !IsWindowVisible(window.handle.as_raw()).as_bool()
+                                || IsIconic(window.handle.as_raw()).as_bool()
+                                || !window.needs_frame()
                             {
-                                hwnd.frame_signal.take();
+                                window.frame_signal.take();
                                 continue;
                             }
                             if let Some(signal_at) = signal_at {
-                                hwnd.frame_signal.record(signal_at, signal_source);
+                                window.frame_signal.record(signal_at, signal_source);
                             }
-                            RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE)
+                            RedrawWindow(Some(window.handle.as_raw()), None, None, RDW_INVALIDATE)
                                 .ok()
                                 .log_err();
                         }
@@ -827,9 +842,13 @@ impl Platform for WindowsPlatform {
         }
         let window = WindowsWindow::new(handle, options, self.generate_creation_info())?;
         let handle = window.get_raw_handle();
+        let (dm_running, dm_contacts) = window.state.direct_manipulation.active_handles();
         self.raw_window_handles.write().push(TrackedWindow {
             handle: handle.into(),
             frame_signal: window.state.frame_signal.clone(),
+            frame_needed: window.state.frame_needed.clone(),
+            dm_running,
+            dm_contacts,
         });
         self.inner.state.frame_wake.wake();
 
@@ -1607,6 +1626,7 @@ pub(crate) struct WindowCreationInfo {
     pub(crate) invalidate_devices: Arc<AtomicBool>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
+    pub(crate) frame_wake: Arc<FrameWake>,
 }
 
 struct PlatformWindowCreateContext {

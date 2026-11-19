@@ -811,7 +811,8 @@ pub fn manage(action: &str) -> std::result::Result<ServiceStatus, String> {
         crate::util::file_stage(
             "service ShellExecuteExW (UAC)",
             &executable,
-            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+            argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+                .map_err(win),
         )
         .map_err(message)?;
         if info.hProcess == HANDLE::default() {

@@ -1250,7 +1250,9 @@ fn launch(app: &Host, ready: &Ready) -> Failure {
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
     };
-    if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
+    if let Err(e) =
+        argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+    {
         return if e.code() == ERROR_CANCELLED.to_hresult() {
             Failure::Cancelled
         } else {

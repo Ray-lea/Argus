@@ -1102,7 +1102,8 @@ fn elevate_and_prepare() -> std::result::Result<(), String> {
         };
         util::stage(
             "PawnIO ShellExecuteExW (UAC)",
-            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+            argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+                .map_err(win),
         )
         .map_err(message)?;
         if info.hProcess == HANDLE::default() {

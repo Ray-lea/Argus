@@ -171,7 +171,7 @@ impl Prepared {
         // Inherit the desktop's token, including an elevated desktop's original
         // rights. Launch Explorer directly so Argus compatibility flags do not
         // change the replacement's elevation requirements.
-        unsafe {
+        argus_core::power::with_unthrottled_launch(|| unsafe {
             CreateProcessW(
                 PCWSTR(file.as_ptr()),
                 Some(PWSTR(command.as_mut_ptr())),
@@ -187,8 +187,9 @@ impl Prepared {
                 &startup.StartupInfo,
                 &mut info,
             )
-        }
+        })
         .map_err(|e| RestartError::win(ErrorKind::Prepare, e).at(Stage::Spawn))?;
+        argus_core::power::clear_process_throttling(info.hProcess);
         let prepared = Self {
             process: Handle(info.hProcess),
             thread: Handle(info.hThread),

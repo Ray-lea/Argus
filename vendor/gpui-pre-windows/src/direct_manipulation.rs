@@ -1,5 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU8, Ordering},
+};
 
 use anyhow::Result;
 use gpui::*;
@@ -26,10 +30,17 @@ pub(crate) struct DirectManipulationHandler {
     window: HWND,
     scale_factor: Rc<Cell<f32>>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    running: Arc<AtomicBool>,
+    contact_frames: Arc<AtomicU8>,
+    frame_wake: Arc<crate::platform::FrameWake>,
 }
 
 impl DirectManipulationHandler {
-    pub fn new(window: HWND, scale_factor: f32) -> Result<Self> {
+    pub fn new(
+        window: HWND,
+        scale_factor: f32,
+        frame_wake: Arc<crate::platform::FrameWake>,
+    ) -> Result<Self> {
         unsafe {
             let manager: IDirectManipulationManager =
                 CoCreateInstance(&DirectManipulationManager, None, CLSCTX_INPROC_SERVER)?;
@@ -65,12 +76,17 @@ impl DirectManipulationHandler {
 
             let scale_factor = Rc::new(Cell::new(scale_factor));
             let pending_events = Rc::new(RefCell::new(Vec::new()));
+            let running = Arc::new(AtomicBool::new(false));
+            let contact_frames = Arc::new(AtomicU8::new(0));
 
             let event_handler: IDirectManipulationViewportEventHandler =
                 DirectManipulationEventHandler::new(
                     window,
                     Rc::clone(&scale_factor),
                     Rc::clone(&pending_events),
+                    Arc::clone(&running),
+                    Arc::clone(&contact_frames),
+                    Arc::clone(&frame_wake),
                 )
                 .into();
 
@@ -86,6 +102,9 @@ impl DirectManipulationHandler {
                 window,
                 scale_factor,
                 pending_events,
+                running,
+                contact_frames,
+                frame_wake,
             })
         }
     }
@@ -101,11 +120,20 @@ impl DirectManipulationHandler {
             if GetPointerType(pointer_id, &mut pointer_type).is_ok() && pointer_type == PT_TOUCHPAD
             {
                 self.viewport.SetContact(pointer_id).log_err();
+                self.contact_frames.store(16, Ordering::Release);
+                self.frame_wake.wake();
             }
         }
     }
 
+    pub(crate) fn active_handles(&self) -> (Arc<AtomicBool>, Arc<AtomicU8>) {
+        (Arc::clone(&self.running), Arc::clone(&self.contact_frames))
+    }
+
     pub fn update(&self) {
+        let _ = self
+            .contact_frames
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
         unsafe {
             self.update_manager.Update(None).log_err();
         }
@@ -143,6 +171,9 @@ struct DirectManipulationEventHandler {
     last_y_offset: Cell<f32>,
     scroll_phase: Cell<TouchPhase>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    running: Arc<AtomicBool>,
+    contact_frames: Arc<AtomicU8>,
+    frame_wake: Arc<crate::platform::FrameWake>,
 }
 
 impl DirectManipulationEventHandler {
@@ -150,6 +181,9 @@ impl DirectManipulationEventHandler {
         window: HWND,
         scale_factor: Rc<Cell<f32>>,
         pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+        running: Arc<AtomicBool>,
+        contact_frames: Arc<AtomicU8>,
+        frame_wake: Arc<crate::platform::FrameWake>,
     ) -> Self {
         Self {
             window,
@@ -160,6 +194,9 @@ impl DirectManipulationEventHandler {
             last_y_offset: Cell::new(0.0),
             scroll_phase: Cell::new(TouchPhase::Started),
             pending_events,
+            running,
+            contact_frames,
+            frame_wake,
         }
     }
 
@@ -219,6 +256,13 @@ impl IDirectManipulationViewportEventHandler_Impl for DirectManipulationEventHan
         if current == DIRECTMANIPULATION_RUNNING && previous == DIRECTMANIPULATION_INERTIA {
             self.end_gesture();
         }
+
+        let active = current == DIRECTMANIPULATION_RUNNING || current == DIRECTMANIPULATION_INERTIA;
+        self.running.store(active, Ordering::Release);
+        if !active {
+            self.contact_frames.store(2, Ordering::Release);
+        }
+        self.frame_wake.wake();
 
         if current == DIRECTMANIPULATION_READY {
             self.end_gesture();

@@ -65,6 +65,8 @@ pub struct WindowsWindowState {
 
     pub callbacks: Callbacks,
     pub frame_signal: Arc<PlatformFrameSignal>,
+    pub(crate) frame_needed: Arc<AtomicBool>,
+    pub(crate) frame_wake: Arc<crate::platform::FrameWake>,
     pub input_handler: Cell<Option<PlatformInputHandler>>,
     pub ime_enabled: Cell<bool>,
     pub pending_surrogate: Cell<Option<u16>>,
@@ -138,6 +140,7 @@ impl WindowsWindowState {
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
         draw_coordinator: Rc<DrawCoordinator>,
+        frame_wake: Arc<crate::platform::FrameWake>,
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
@@ -170,8 +173,9 @@ impl WindowsWindowState {
         let fullscreen = None;
         let initial_placement = None;
 
-        let direct_manipulation = DirectManipulationHandler::new(hwnd, scale_factor)
-            .context("initializing Direct Manipulation")?;
+        let direct_manipulation =
+            DirectManipulationHandler::new(hwnd, scale_factor, frame_wake.clone())
+                .context("initializing Direct Manipulation")?;
 
         Ok(Self {
             origin: Cell::new(origin),
@@ -188,6 +192,8 @@ impl WindowsWindowState {
             min_size,
             callbacks,
             frame_signal: Arc::new(PlatformFrameSignal::new()),
+            frame_needed: Arc::new(AtomicBool::new(true)),
+            frame_wake,
             input_handler: Cell::new(input_handler),
             ime_enabled: Cell::new(true),
             pending_surrogate: Cell::new(pending_surrogate),
@@ -215,6 +221,13 @@ impl WindowsWindowState {
             a11y: RefCell::new(None),
             mouse_position: Cell::new(Point::default()),
         })
+    }
+
+    #[inline]
+    pub(crate) fn request_frame_wake(&self) {
+        self.frame_needed
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.frame_wake.wake();
     }
 
     #[inline]
@@ -305,6 +318,7 @@ impl WindowsWindowInner {
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
             context.draw_coordinator.clone(),
+            context.frame_wake.clone(),
         )?;
 
         Ok(Rc::new(Self {
@@ -456,6 +470,7 @@ struct WindowCreateContext {
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
     draw_coordinator: Rc<DrawCoordinator>,
+    frame_wake: Arc<crate::platform::FrameWake>,
     parent_hwnd: Option<HWND>,
 }
 
@@ -484,6 +499,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             draw_coordinator,
+            frame_wake,
         } = creation_info;
         register_window_class(icon);
         let parent_hwnd = if params.kind == WindowKind::Dialog {
@@ -569,6 +585,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             draw_coordinator,
+            frame_wake,
             parent_hwnd,
         };
         let creation_result = unsafe {
@@ -1034,6 +1051,19 @@ impl PlatformWindow for WindowsWindow {
 
     fn is_fullscreen(&self) -> bool {
         self.state.is_fullscreen()
+    }
+
+    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
+        let frame_needed = self.state.frame_needed.clone();
+        let frame_wake = self.state.frame_wake.clone();
+        Some(Rc::new(move || {
+            frame_needed.store(true, std::sync::atomic::Ordering::Release);
+            frame_wake.wake();
+        }))
+    }
+
+    fn schedule_frame(&self) {
+        self.state.request_frame_wake();
     }
 
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {

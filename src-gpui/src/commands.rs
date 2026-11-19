@@ -390,6 +390,16 @@ pub fn set_suspended(
     result
 }
 
+fn spawn_external(command: &mut std::process::Command) -> Result<(), String> {
+    use std::os::windows::io::AsRawHandle;
+    let child = argus_core::power::with_unthrottled_launch(|| command.spawn())
+        .map_err(|e| e.to_string())?;
+    argus_core::power::clear_process_throttling(windows::Win32::Foundation::HANDLE(
+        child.as_raw_handle(),
+    ));
+    Ok(())
+}
+
 /// Opens Explorer with the file selected.
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).exists() {
@@ -397,11 +407,9 @@ pub fn reveal_in_explorer(path: String) -> Result<(), String> {
     }
     // Windows paths cannot contain `"`, so quoting is safe; explorer needs the
     // `/select,"path"` form verbatim, hence raw_arg.
-    std::process::Command::new("explorer.exe")
-        .raw_arg(format!("/select,\"{path}\""))
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    spawn_external(
+        std::process::Command::new("explorer.exe").raw_arg(format!("/select,\"{path}\"")),
+    )
 }
 
 fn settings_view(app: &crate::native_runtime::Host) -> SettingsView {
@@ -1032,11 +1040,7 @@ pub fn open_log_dir(app: crate::native_runtime::Host) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .join("diagnostics");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer.exe")
-        .arg(&dir)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    spawn_external(std::process::Command::new("explorer.exe").arg(&dir))
 }
 
 // ---- Services -----------------------------------------------------------------
@@ -1089,11 +1093,7 @@ pub fn set_service_start_type(
 
 /// Opens the Windows Services console, for what Argus does not cover.
 pub fn open_services_console() -> Result<(), String> {
-    std::process::Command::new("mmc.exe")
-        .arg("services.msc")
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    spawn_external(std::process::Command::new("mmc.exe").arg("services.msc"))
 }
 
 // ---- Startup ------------------------------------------------------------------

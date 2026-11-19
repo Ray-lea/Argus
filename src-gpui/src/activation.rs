@@ -6,7 +6,13 @@ mod pressure_tests;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
+        Graphics::{
+            Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute},
+            Gdi::{
+                CombineRgn, CreateRectRgn, CreateRectRgnIndirect, DeleteObject, GDI_REGION_TYPE,
+                GetWindowRgn, HRGN, NULLREGION, RGN_DIFF,
+            },
+        },
         System::{
             StationsAndDesktops::{EnumDesktopWindows, GetThreadDesktop},
             Threading::GetCurrentThreadId,
@@ -81,6 +87,153 @@ pub(crate) fn cloaked(hwnd: HWND) -> bool {
 /// Whether a topmost window above `hwnd` covers it.
 fn obstructed(hwnd: HWND) -> bool {
     covered_by(hwnd, true)
+}
+
+struct OwnedRegion(HRGN);
+
+impl Drop for OwnedRegion {
+    fn drop(&mut self) {
+        if !self.0.is_invalid() {
+            unsafe {
+                let _ = DeleteObject(self.0.into());
+            }
+        }
+    }
+}
+
+fn frame_bounds(hwnd: HWND) -> Option<RECT> {
+    let mut bounds = RECT::default();
+    let extended = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            (&mut bounds as *mut RECT).cast(),
+            std::mem::size_of::<RECT>() as u32,
+        )
+    };
+    if extended.is_err() && unsafe { GetWindowRect(hwnd, &mut bounds) }.is_err() {
+        return None;
+    }
+    (bounds.right > bounds.left && bounds.bottom > bounds.top).then_some(bounds)
+}
+
+#[cfg(test)]
+fn region_occluded(target: RECT, obstacles: impl IntoIterator<Item = RECT>) -> bool {
+    if target.right <= target.left || target.bottom <= target.top {
+        return true;
+    }
+    let remaining = OwnedRegion(unsafe { CreateRectRgnIndirect(&target) });
+    if remaining.0.is_invalid() {
+        return false;
+    }
+    for obstacle in obstacles {
+        if obstacle.right <= obstacle.left || obstacle.bottom <= obstacle.top {
+            continue;
+        }
+        let sub = OwnedRegion(unsafe { CreateRectRgnIndirect(&obstacle) });
+        if sub.0.is_invalid() {
+            continue;
+        }
+        if unsafe { CombineRgn(Some(remaining.0), Some(remaining.0), Some(sub.0), RGN_DIFF) }
+            == NULLREGION
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether `hwnd` is completely hidden from view: cloaked, minimized, invisible,
+/// or 100% covered by opaque top-level windows above it on the same desktop.
+pub(crate) fn occluded(hwnd: HWND) -> bool {
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || cloaked(hwnd) {
+            return true;
+        }
+    }
+    let Some(target_bounds) = frame_bounds(hwnd) else {
+        return true;
+    };
+    struct OcclusionSearch {
+        target: HWND,
+        target_bounds: RECT,
+        remaining: HRGN,
+        probe: HRGN,
+        occluded: bool,
+    }
+    unsafe extern "system" fn visit(candidate: HWND, context: LPARAM) -> BOOL {
+        let search = unsafe { &mut *(context.0 as *mut OcclusionSearch) };
+        if candidate == search.target {
+            return false.into();
+        }
+        unsafe {
+            let style = GetWindowLongPtrW(candidate, GWL_EXSTYLE) as u32;
+            if !IsWindowVisible(candidate).as_bool()
+                || IsIconic(candidate).as_bool()
+                || style & (WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0 | WS_EX_TOOLWINDOW.0) != 0
+                || GetAncestor(candidate, GA_ROOTOWNER) == search.target
+                || cloaked(candidate)
+                || GetWindowRgn(candidate, search.probe) != GDI_REGION_TYPE(0)
+            {
+                return true.into();
+            }
+            let Some(mut bounds) = frame_bounds(candidate) else {
+                return true.into();
+            };
+            // Unmaximized Windows 11 frames have rounded corners (~8 px DIP);
+            // inset slightly so exposed corners underneath still count as visible.
+            if !IsZoomed(candidate).as_bool() {
+                bounds.left += 12;
+                bounds.top += 12;
+                bounds.right -= 12;
+                bounds.bottom -= 12;
+            }
+            if bounds.right <= bounds.left
+                || bounds.bottom <= bounds.top
+                || bounds.right <= search.target_bounds.left
+                || bounds.left >= search.target_bounds.right
+                || bounds.bottom <= search.target_bounds.top
+                || bounds.top >= search.target_bounds.bottom
+            {
+                return true.into();
+            }
+            let sub = OwnedRegion(CreateRectRgnIndirect(&bounds));
+            if !sub.0.is_invalid()
+                && CombineRgn(
+                    Some(search.remaining),
+                    Some(search.remaining),
+                    Some(sub.0),
+                    RGN_DIFF,
+                ) == NULLREGION
+            {
+                search.occluded = true;
+                return false.into();
+            }
+        }
+        true.into()
+    }
+    let remaining = OwnedRegion(unsafe { CreateRectRgnIndirect(&target_bounds) });
+    let probe = OwnedRegion(unsafe { CreateRectRgn(0, 0, 0, 0) });
+    if remaining.0.is_invalid() || probe.0.is_invalid() {
+        return false;
+    }
+    let mut search = OcclusionSearch {
+        target: hwnd,
+        target_bounds,
+        remaining: remaining.0,
+        probe: probe.0,
+        occluded: false,
+    };
+    unsafe {
+        if let Ok(desktop) = GetThreadDesktop(GetCurrentThreadId()) {
+            let _ = EnumDesktopWindows(
+                Some(desktop),
+                Some(visit),
+                LPARAM((&mut search as *mut OcclusionSearch) as isize),
+            );
+        }
+    }
+    search.occluded
 }
 
 /// Whether an application's window above `hwnd` covers it: one opened
@@ -268,7 +421,7 @@ unsafe extern "system" fn procedure(
 
 #[cfg(test)]
 mod tests {
-    use super::covers;
+    use super::{covers, region_occluded};
     use windows::Win32::Foundation::RECT;
     #[test]
     fn large_obstructions_are_distinct_from_small_tooltips_and_empty_windows() {
@@ -297,5 +450,52 @@ mod tests {
             }
         ));
         assert!(!covers(RECT::default(), target));
+    }
+
+    #[test]
+    fn region_occlusion_handles_single_split_and_partial_blockers() {
+        let target = RECT {
+            left: 100,
+            top: 100,
+            right: 900,
+            bottom: 700,
+        };
+        assert!(region_occluded(
+            target,
+            [RECT {
+                left: 0,
+                top: 0,
+                right: 1920,
+                bottom: 1080
+            }]
+        ));
+        // Two side-by-side windows covering the left and right halves together.
+        assert!(region_occluded(
+            target,
+            [
+                RECT {
+                    left: 0,
+                    top: 0,
+                    right: 500,
+                    bottom: 800
+                },
+                RECT {
+                    left: 500,
+                    top: 0,
+                    right: 1000,
+                    bottom: 800
+                },
+            ]
+        ));
+        // A sliver on the right edge remains visible.
+        assert!(!region_occluded(
+            target,
+            [RECT {
+                left: 0,
+                top: 0,
+                right: 890,
+                bottom: 800
+            }]
+        ));
     }
 }

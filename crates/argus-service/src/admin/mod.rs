@@ -627,7 +627,8 @@ pub fn manage(id: &str, enable: bool) -> std::result::Result<Status, String> {
         };
         util::stage(
             "administrator ShellExecuteExW (UAC)",
-            unsafe { ShellExecuteExW(&mut info) }.map_err(win),
+            argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+                .map_err(win),
         )?;
         let child = Handle(info.hProcess);
         if unsafe { WaitForSingleObject(child.0, INFINITE) } != WAIT_OBJECT_0 {

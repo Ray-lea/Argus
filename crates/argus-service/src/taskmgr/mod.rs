@@ -1064,7 +1064,8 @@ fn elevate(exe: &Path, args: &[String]) -> std::result::Result<(), Box<Failure>>
         nShow: SW_HIDE.0,
         ..Default::default()
     };
-    unsafe { ShellExecuteExW(&mut info) }.map_err(|e| helper(e.to_string()))?;
+    argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+        .map_err(|e| helper(e.to_string()))?;
     if info.hProcess == HANDLE::default() {
         return Err(helper(tr!("taskManager.helperNotStarted")));
     }

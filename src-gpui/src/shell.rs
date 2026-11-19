@@ -24,7 +24,12 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::{Dwm::*, Gdi::*},
-        System::LibraryLoader::GetModuleHandleW,
+        System::{
+            LibraryLoader::GetModuleHandleW,
+            Power::{HPOWERNOTIFY, RegisterPowerSettingNotification},
+            SystemServices::{GUID_ACDC_POWER_SOURCE, GUID_POWER_SAVING_STATUS},
+            Threading::GetCurrentProcessId,
+        },
         UI::{Shell::*, WindowsAndMessaging::*},
     },
     core::{GUID, PCWSTR, w},
@@ -32,6 +37,8 @@ use windows::{
 static HOST: OnceLock<Host> = OnceLock::new();
 static VIEW: AtomicU8 = AtomicU8::new(WindowState::Hidden as u8);
 static HAS_SHOWN: AtomicBool = AtomicBool::new(false);
+static ISOLATED_TEST: AtomicBool = AtomicBool::new(false);
+static POWER_NOTIFICATIONS: Mutex<Vec<isize>> = Mutex::new(Vec::new());
 static AWAY: Mutex<Option<(bool, Option<Instant>)>> = Mutex::new(None);
 static UPDATE: Mutex<Option<String>> = Mutex::new(None);
 static TRAY: Mutex<Option<Arc<tray::Worker>>> = Mutex::new(None);
@@ -347,7 +354,9 @@ pub fn open_url(url: &str) -> Result<(), String> {
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
     };
-    let opened = unsafe { ShellExecuteExW(&mut info) }.map_err(|e| e.to_string());
+    let opened =
+        argus_core::power::with_unthrottled_launch(|| unsafe { ShellExecuteExW(&mut info) })
+            .map_err(|e| e.to_string());
     if com.is_ok() {
         unsafe { CoUninitialize() };
     }
@@ -487,6 +496,41 @@ fn watch_active_app() {
     }
 }
 
+/// Whether any window owned by this Argus process is currently the foreground window.
+pub fn is_foreground_process() -> bool {
+    let fg = unsafe { GetForegroundWindow() };
+    if fg.is_invalid() {
+        return false;
+    }
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(fg, Some(&mut pid)) };
+    pid != 0 && pid == unsafe { GetCurrentProcessId() }
+}
+
+/// Applies or clears self EcoQoS depending on foreground ownership and power source.
+pub fn sync_process_power() {
+    if ISOLATED_TEST.load(Ordering::Relaxed) {
+        return;
+    }
+    let throttle =
+        !is_foreground_process() && argus_core::power::PowerSource::current().conserving();
+    argus_core::power::set_self_efficiency_mode(throttle);
+}
+
+fn register_power_notifications(hwnd: HWND) {
+    let mut guards = POWER_NOTIFICATIONS.lock().unwrap();
+    if !guards.is_empty() {
+        return;
+    }
+    for guid in [&GUID_ACDC_POWER_SOURCE, &GUID_POWER_SAVING_STATUS] {
+        if let Ok(HPOWERNOTIFY(raw)) = unsafe {
+            RegisterPowerSettingNotification(HANDLE(hwnd.0), guid, DEVICE_NOTIFY_WINDOW_HANDLE)
+        } {
+            guards.push(raw);
+        }
+    }
+}
+
 unsafe extern "system" fn active_app_changed(
     _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
     _event: u32,
@@ -501,6 +545,7 @@ unsafe extern "system" fn active_app_changed(
         let root = if root.is_invalid() { window } else { root };
         ACTIVE_APP.store(root.0 as isize, Ordering::Relaxed);
     }
+    sync_process_power();
 }
 
 pub fn window_state(hwnd: HWND) -> WindowState {
@@ -565,18 +610,21 @@ fn warm_flyouts(soon: bool) {
         let _ = app.emit("argus-tray-warm", serde_json::json!({ "soon": soon }));
     }
 }
-pub fn follow_visibility(window: &NativeWindow) {
+pub fn follow_visibility(window: &NativeWindow, isolated_test: bool) {
+    ISOLATED_TEST.store(isolated_test, Ordering::Relaxed);
     let Ok(hwnd) = window.hwnd() else {
         return;
     };
     let _ = HOST.set(window.app_handle().clone());
     watch_active_app();
+    register_power_notifications(hwnd);
     unsafe {
         let _ = SetWindowSubclass(hwnd, Some(procedure), 0x415247, 0);
     }
     let state = window_state(hwnd);
     VIEW.store(state as u8, Ordering::Relaxed);
     HAS_SHOWN.store(state == WindowState::Shown, Ordering::Relaxed);
+    sync_process_power();
 }
 
 pub fn supports_mica() -> bool {
@@ -1580,13 +1628,22 @@ unsafe extern "system" fn procedure(
             return LRESULT(0);
         }
         if message == WM_SETFOCUS {
+            sync_process_power();
             app.state::<crate::AppState>()
                 .sampler
                 .send(Control::Refresh);
             crate::hotkey::retry_failed(app);
         }
         if message == WM_KILLFOCUS {
+            sync_process_power();
             let _ = app.emit("argus-blur", ());
+        }
+        if message == WM_ACTIVATE {
+            sync_process_power();
+        }
+        if message == WM_POWERBROADCAST {
+            sync_process_power();
+            let _ = app.emit("argus-power", ());
         }
         if message == WM_SETTINGCHANGE {
             apply_theme(app, app.state::<SettingsStore>().get().theme);

@@ -52,3 +52,35 @@ fn an_idle_clock_still_checks_device_health_after_its_timeout() {
         Duration::from_millis(10)
     ));
 }
+
+#[test]
+fn visible_window_without_frame_demand_stays_idle_until_requested() {
+    use super::TrackedWindow;
+    use crate::SafeHwnd;
+    use gpui::PlatformFrameSignal;
+    use std::sync::atomic::AtomicU8;
+    use windows::Win32::Foundation::HWND;
+
+    let frame_needed = Arc::new(AtomicBool::new(false));
+    let dm_running = Arc::new(AtomicBool::new(false));
+    let dm_contacts = Arc::new(AtomicU8::new(0));
+    let tracked = TrackedWindow {
+        handle: SafeHwnd::from(HWND::default()),
+        frame_signal: Arc::new(PlatformFrameSignal::new()),
+        frame_needed: frame_needed.clone(),
+        dm_running: dm_running.clone(),
+        dm_contacts: dm_contacts.clone(),
+    };
+    assert!(!tracked.needs_frame());
+
+    frame_needed.store(true, Ordering::Release);
+    assert!(tracked.needs_frame());
+    frame_needed.store(false, Ordering::Release);
+    assert!(!tracked.needs_frame());
+
+    dm_contacts.store(2, Ordering::Release);
+    assert!(tracked.needs_frame());
+    dm_contacts.store(0, Ordering::Release);
+    dm_running.store(true, Ordering::Release);
+    assert!(tracked.needs_frame());
+}
