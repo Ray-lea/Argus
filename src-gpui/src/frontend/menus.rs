@@ -893,16 +893,19 @@ impl Desktop {
             }
             let this_entry = entry(index);
             let owner = !sub && !item.children.is_empty();
-            // `:hover`, `:focus-visible` and the item whose submenu is open.
+            // `:hover`, `:focus-visible` and the item whose submenu is open;
+            // never a disabled item, which keys pass over too.
             let lit = interactive
+                && !item.disabled
                 && (popup.hovered == Some(this_entry)
                     || (popup.focus_visible && focused(index))
                     || (owner && open_owner == Some(index)));
-            // `.danger` follows `:disabled` in the stylesheet and wins over it.
-            let color = if item.danger {
-                p.danger
-            } else if item.disabled {
+            // A disabled item looks it, a dangerous one too: in red it
+            // would look as if it could be chosen.
+            let color = if item.disabled {
                 p.faint
+            } else if item.danger {
+                p.danger
             } else {
                 p.ink
             };
