@@ -239,8 +239,8 @@
   },
   "planned": {
     "state": "规划中",
-    "island": {
-      "title": "灵动岛",
+    "lookout": {
+      "title": "瞭望台",
       "desc": "在屏幕顶部以胶囊形式显示实时读数与通知。"
     }
   },

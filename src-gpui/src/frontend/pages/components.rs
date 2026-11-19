@@ -1,6 +1,6 @@
 //! Components: the parts of Argus that stay on the desktop outside its
 //! window: the tray, the desktop monitor, the taskbar monitor and, as it
-//! arrives, the island. Each available component has a section of its
+//! arrives, the lookout. Each available component has a section of its
 //! settings; a planned one is listed with what it will be. A list of the
 //! sections on the left follows the scroll (`section_rail`).
 use super::section_rail::RailEntry;
@@ -42,7 +42,7 @@ pub(in crate::frontend) const COMPONENTS: [Component; 4] = [
         available: true,
     },
     Component {
-        key: "island",
+        key: "lookout",
         glyph: "NavTopIcon",
         available: false,
     },
@@ -1684,7 +1684,7 @@ mod tests {
     }
 
     #[test]
-    fn the_tray_and_the_monitors_are_available_and_the_island_is_planned() {
+    fn the_tray_and_the_monitors_are_available_and_the_lookout_is_planned() {
         let keys = COMPONENTS.map(|component| (component.key, component.available));
         assert_eq!(
             keys,
@@ -1692,7 +1692,7 @@ mod tests {
                 ("tray", true),
                 ("desktop", true),
                 ("taskbar", true),
-                ("island", false)
+                ("lookout", false)
             ]
         );
     }

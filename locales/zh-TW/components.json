@@ -239,8 +239,8 @@
   },
   "planned": {
     "state": "規劃中",
-    "island": {
-      "title": "動態島",
+    "lookout": {
+      "title": "瞭望台",
       "desc": "在螢幕頂端以膠囊形式顯示即時讀數與通知。"
     }
   },

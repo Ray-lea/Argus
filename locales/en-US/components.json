@@ -239,8 +239,8 @@
   },
   "planned": {
     "state": "Planned",
-    "island": {
-      "title": "Dynamic island",
+    "lookout": {
+      "title": "Crow’s nest",
       "desc": "Live readings and notifications in a capsule at the top of the screen."
     }
   },
