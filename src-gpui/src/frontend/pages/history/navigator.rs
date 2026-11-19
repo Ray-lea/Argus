@@ -288,7 +288,6 @@ impl Desktop {
             .gap(px(8.))
             .child(pill)
             .child(track)
-            .child(self.history_options(cx))
             .into_any_element()
     }
 

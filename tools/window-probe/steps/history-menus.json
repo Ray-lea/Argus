@@ -1,0 +1,24 @@
+{
+  "window": [1280, 900],
+  "steps": [
+    { "control": { "page": "history", "pointerOutside": true }, "wait": 1500, "inspect": "layout", "label": "default",
+      "expect": { "history.lanes.0.reading": "cpu", "history.lanes.0.overlay": "cpuTemp" } },
+    { "control": { "clickAnchor": "history-tab-more" }, "wait": 500, "inspect": "menu", "label": "readings", "capture": "readings",
+      "expect": { "state.open": true } },
+    { "control": { "keys": ["escape"] }, "wait": 300, "inspect": "menu", "label": "readings-closed", "expect": { "state.open": false } },
+    { "control": { "clickAnchor": "history-overlay-1" }, "wait": 500, "inspect": "menu", "label": "overlay", "capture": "overlay",
+      "expect": { "state.open": true } },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+    { "control": { "clickAnchor": "history-lane-name-1" }, "wait": 500, "inspect": "menu", "label": "lane-name", "capture": "lane-name",
+      "expect": { "state.open": true } },
+    { "control": { "keys": ["down", "enter"] }, "wait": 600, "inspect": "layout", "label": "lane-changed",
+      "expect": { "history.lanes.0.reading": "cpuKernel" } },
+    { "control": { "clickAnchor": "toolbar-more" }, "wait": 500, "inspect": "menu", "label": "more", "capture": "more",
+      "expect": { "state.open": true } },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+    { "control": { "dialog": "shortcuts", "args": { "open": { "history": true, "historyMouse": true } } }, "wait": 700, "capture": "shortcuts" },
+    { "control": { "wheel": { "x": 640, "y": 450, "lines": -100 } }, "wait": 600, "capture": "shortcuts-mouse" },
+    { "control": { "theme": "light", "keys": ["escape"] }, "wait": 400 },
+    { "control": { "clickAnchor": "history-tab-more" }, "wait": 500, "capture": "readings-light" }
+  ]
+}

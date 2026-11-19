@@ -44,6 +44,12 @@ pub(in crate::frontend) enum Command {
     Mode(bool),
     /// Shows or hides a table column.
     Column(&'static str),
+    /// Shows or hides the table's trend column.
+    Trend,
+    /// The table's columns as they first were.
+    ResetColumns,
+    /// Lays a process's own curve over the lanes, or takes it off.
+    Curve(Option<String>),
     /// Opens the history settings.
     Settings,
 }
@@ -124,27 +130,19 @@ fn with_offset(text: String, ts: i64, needed: bool) -> String {
         _ => text,
     }
 }
-/// A moment, with its date unless it is today.
-fn moment_label(ts: i64, now: i64, seconds: bool) -> String {
-    if same_day(ts, now) {
-        clock(ts, seconds)
-    } else {
-        format!("{} {}", month_day(ts), clock(ts, seconds))
-    }
+/// A moment with its date: records span days, so even today's carry it.
+fn moment_label(ts: i64, seconds: bool) -> String {
+    format!("{} {}", month_day(ts), clock(ts, seconds))
 }
-/// A span of time between two moments, as short as their dates allow.
-fn range_label(from: i64, to: i64, now: i64, seconds: bool) -> String {
+/// A span of time between two moments, the date said once when they share it.
+fn range_label(from: i64, to: i64, seconds: bool) -> String {
     if same_day(from, to) {
-        format!(
-            "{}–{}",
-            moment_label(from, now, seconds),
-            clock(to, seconds)
-        )
+        format!("{}–{}", moment_label(from, seconds), clock(to, seconds))
     } else {
         format!(
             "{} – {}",
-            moment_label(from, now, seconds),
-            moment_label(to, now, seconds)
+            moment_label(from, seconds),
+            moment_label(to, seconds)
         )
     }
 }
@@ -188,6 +186,9 @@ fn duration_label(ms: i64) -> String {
         )
     }
 }
+
+/// Points in a process's curve laid over the lanes.
+const CURVE_POINTS: usize = 160;
 
 /// How often the newest readings are asked for while following: every second
 /// up to six hours on screen, every minute beyond.
@@ -514,6 +515,101 @@ impl Desktop {
     }
 
     /// The trend column follows the topmost lane's reading.
+    /// The process value that goes with a lane's reading (the tooltip ranks by it).
+    fn history_trend_of(&self, lane: &state::Lane) -> &'static str {
+        self.history_reading(&lane.reading)
+            .and_then(|reading| reading.process)
+            .unwrap_or("cpu")
+    }
+
+    /// The five processes busiest by `key` at point `index`, by name, once
+    /// their answer for that point is in.
+    fn history_tip_ranking(&self, points: &Points, index: usize, key: &str) -> Vec<(String, f64)> {
+        let point = (points.ts[index], points.span[index]);
+        let Some((asked, answer)) = &self.history.tip else {
+            return Vec::new();
+        };
+        if *asked != point {
+            return Vec::new();
+        }
+        // A range answer holds totals over the time recorded.
+        let seconds = answer["recorded"].as_f64().map(|ms| ms / 1000.);
+        let mut by_name: Vec<(String, f64)> = Vec::new();
+        for process in values(&answer["processes"]) {
+            let Some(value) = table::process_value(process, key, seconds) else {
+                continue;
+            };
+            let name = text(process, "name").to_owned();
+            match by_name
+                .iter_mut()
+                .find(|(n, _)| n.eq_ignore_ascii_case(&name))
+            {
+                Some((_, sum)) => *sum += value,
+                None => by_name.push((name, value)),
+            }
+        }
+        by_name.retain(|(_, v)| *v > 0.);
+        by_name.sort_by(|a, b| b.1.total_cmp(&a.1));
+        by_name.truncate(5);
+        by_name
+    }
+
+    /// Asks for the processes of the point under the pointer: its frame, or for
+    /// a bucket the range table over it.
+    fn history_ask_tip(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(hover) = self.history.hover else {
+            return;
+        };
+        let Some(points) = self.history.points.as_ref() else {
+            return;
+        };
+        let Some(index) = points.index_at(hover.at) else {
+            return;
+        };
+        let point = (points.ts[index], points.span[index]);
+        if self.history.tip_for == Some(point) {
+            return;
+        }
+        self.history.tip_for = Some(point);
+        let frame = points.frame[index];
+        if self.options.fixture.is_some() {
+            // A fixture holds one frame and one range table.
+            let answer = if point.1 <= FRAME {
+                self.data.get("historyFrame")
+            } else {
+                self.data.get("historyTable")
+            };
+            self.history.tip = answer.map(|answer| (point, answer.clone()));
+            return;
+        }
+        if point.1 <= FRAME {
+            let ts = if frame > 0 { frame } else { point.0 };
+            self.request(
+                "history_frame",
+                json!({"ts": ts, "tip": [point.0, point.1]}),
+                Some("historyTip"),
+                window,
+                cx,
+            );
+        } else {
+            let lane = self
+                .history
+                .lanes
+                .iter()
+                .find(|l| l.id == hover.lane)
+                .cloned();
+            let trend = lane.map_or("cpu", |lane| self.history_trend_of(&lane));
+            self.request(
+                "history_table",
+                json!({"from": point.0, "to": point.0 + point.1, "trend": trend, "points": 1,
+                    "tip": [point.0, point.1]}),
+                Some("historyTip"),
+                window,
+                cx,
+            );
+        }
+    }
+
     fn history_trend_key(&self) -> &'static str {
         self.history
             .live_lanes()
@@ -540,31 +636,94 @@ impl Desktop {
                 );
             }
             TableMode::Range => {
-                let (from, to) = self.history_table_range();
+                let range = self.history_table_range();
                 let trend = self.history_trend_key();
-                let key = (from, to, trend);
                 let moving = self.history.follow && self.history.selection.is_none();
-                let due = self.history.table_asked.is_none_or(|at| {
-                    at.elapsed() >= refresh_every(to - from).max(Duration::from_secs(10))
-                });
-                let same = self
-                    .history
-                    .table_for
-                    .is_some_and(|(a, b, t)| t == trend && (moving || (a, b) == (from, to)));
-                if same && !(moving && due) {
-                    return;
-                }
-                self.history.table_for = Some(key);
-                self.history.table_asked = Some(Instant::now());
-                self.request(
-                    "history_table",
-                    json!({"from": from, "to": to, "trend": trend, "points": table::TREND_POINTS}),
-                    Some("historyTable"),
+                self.history_ask_range(
+                    "historyTable",
+                    range,
+                    trend,
+                    table::TREND_POINTS,
+                    moving,
                     window,
                     cx,
                 );
             }
         }
+        // In moment mode the trend column still shows the window.
+        if self.history.mode == TableMode::Moment && self.history_trend_shown() {
+            let trend = self.history_trend_key();
+            let follow = self.history.follow;
+            let view = self.history.view;
+            self.history_ask_range(
+                "historyTrends",
+                view,
+                trend,
+                table::TREND_POINTS,
+                follow,
+                window,
+                cx,
+            );
+        }
+        // The process laid over the lanes: its readings for each lane's key.
+        if self.history.curve.is_some() {
+            let mut keys = self
+                .history
+                .live_lanes()
+                .filter_map(|lane| self.history_reading(&lane.reading).and_then(|r| r.process))
+                .collect::<Vec<_>>();
+            keys.sort();
+            keys.dedup();
+            let follow = self.history.follow;
+            let view = self.history.view;
+            for key in keys {
+                let cache = format!("historyCurve.{key}");
+                self.history_ask_range(&cache, view, key, CURVE_POINTS, follow, window, cx);
+            }
+        }
+    }
+
+    /// Whether the table shows its trend column (`history.trend`, on unless turned off).
+    pub(super) fn history_trend_shown(&self) -> bool {
+        self.prefs.get::<bool>("history.trend", true)
+    }
+
+    /// Asks for each process's aggregates over `range` once per range and trend,
+    /// and again every ten seconds (a minute beyond six hours) while it moves.
+    #[allow(clippy::too_many_arguments)]
+    fn history_ask_range(
+        &mut self,
+        cache: &str,
+        (from, to): (i64, i64),
+        trend: &'static str,
+        points: usize,
+        moving: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.options.fixture.is_some() {
+            return;
+        }
+        let key = (from, to, trend, points);
+        if let Some((asked, at)) = self.history.ranges_asked.get(cache) {
+            let same = asked.2 == trend
+                && asked.3 == points
+                && (moving || (asked.0, asked.1) == (from, to));
+            let due = at.elapsed() >= refresh_every(to - from).max(Duration::from_secs(10));
+            if same && !(moving && due) {
+                return;
+            }
+        }
+        self.history
+            .ranges_asked
+            .insert(cache.to_owned(), (key, Instant::now()));
+        self.request(
+            "history_table",
+            json!({"from": from, "to": to, "trend": trend, "points": points}),
+            Some(cache),
+            window,
+            cx,
+        );
     }
 
     /// A fixture run reads the page's data from its fixture, and again after
@@ -613,6 +772,23 @@ impl Desktop {
         ) && !(command == "history_range" && cache == Some("historyRange"))
         {
             return false;
+        }
+        if cache == Some("historyTip") {
+            let point = (
+                args["tip"][0].as_i64().unwrap_or(0),
+                args["tip"][1].as_i64().unwrap_or(0),
+            );
+            if self.history.tip_for == Some(point) {
+                if let Ok(answer) = result {
+                    self.history.tip = Some((point, answer.clone()));
+                }
+            } else {
+                // The pointer moved on while this was read.
+                self.history.tip_for = None;
+                self.history_ask_tip(window, cx);
+            }
+            self.history_redraw(window, cx);
+            return true;
         }
         let Ok(answer) = result else {
             // Kept as it was; asked again on the next poll.
@@ -668,9 +844,23 @@ impl Desktop {
                     self.history.frame = Some(answer.clone());
                 }
             }
-            "history_table" => {
-                self.history.table = Some(answer.clone());
-            }
+            "history_table" => match cache {
+                Some("historyTrends") => self.history.trends = Some(answer.clone()),
+                Some(curve) if curve.starts_with("historyCurve.") => {
+                    let key = args["trend"].as_str().unwrap_or("cpu");
+                    if let Some(key) = ["cpu", "mem", "disk", "net", "gpu"]
+                        .into_iter()
+                        .find(|k| *k == key)
+                    {
+                        // The answer holds no window of its own: kept with the one asked.
+                        let mut answer = answer.clone();
+                        answer["from"] = args["from"].clone();
+                        answer["to"] = args["to"].clone();
+                        self.history.curves.insert(key, answer);
+                    }
+                }
+                _ => self.history.table = Some(answer.clone()),
+            },
             "history_range" => {
                 self.history.first = answer[0].as_i64();
             }
@@ -778,6 +968,27 @@ impl Desktop {
                 };
             }
             Command::Column(key) => self.history_toggle_column(key),
+            Command::Trend => {
+                let shown = self.history_trend_shown();
+                self.prefs.set("history.trend", !shown);
+            }
+            Command::ResetColumns => {
+                let mode = if self.history.mode == TableMode::Range {
+                    "range"
+                } else {
+                    "moment"
+                };
+                self.prefs
+                    .set(&format!("history.columns.{mode}"), Value::Null);
+                self.prefs.set("history.trend", true);
+            }
+            Command::Curve(name) => {
+                self.history.curve = name;
+                self.history.curves.clear();
+                self.history
+                    .ranges_asked
+                    .retain(|cache, _| !cache.starts_with("historyCurve."));
+            }
             Command::Settings => {
                 self.act(
                     Action::Preference("settingsSection".into(), json!("data")),
@@ -803,6 +1014,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // Typing in the table's search box keeps its keys.
+        if self.history_searching(window, cx) {
+            return false;
+        }
         let clock = self.history_clock();
         match key {
             "escape" => {
@@ -936,47 +1151,18 @@ impl Desktop {
         div().flex().items_center().child(live).into_any_element()
     }
 
-    /// The chart's options, at the end of the navigator's row.
-    pub(super) fn history_options(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette;
-        let band = self.history.band;
-        div()
-            .relative()
-            .flex_shrink_0()
-            .child(
-                div()
-                    .id("history-more")
-                    .size(px(30.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(15.))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(p.hover))
-                    .child(icon("MoreIcon", p.muted).size(px(16.)))
-                    .tooltip(|window, cx| widgets::tooltip(label("history.more"), window, cx))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let items = vec![
-                            MenuItem::new(
-                                label("history.menu.band"),
-                                Action::History(Command::Band),
-                            )
-                            .checked(band),
-                            MenuItem::separator(),
-                            MenuItem::new(
-                                label("history.menu.settings"),
-                                Action::History(Command::Settings),
-                            )
-                            .icon("SettingsIcon"),
-                        ];
-                        this.open_anchored(items, "history-more", layout::Side::Above, window, cx);
-                    })),
+    /// The history page's entries in the page bar's "More" menu: how the lanes
+    /// draw, and the history settings.
+    pub(in crate::frontend) fn history_more_items(&self) -> Vec<MenuItem> {
+        vec![
+            MenuItem::new(label("history.menu.band"), Action::History(Command::Band))
+                .checked(self.history.band),
+            MenuItem::new(
+                label("history.menu.settings"),
+                Action::History(Command::Settings),
             )
-            .child(layout::anchor_probe(
-                "history-more",
-                self.ui.anchors.clone(),
-            ))
-            .into_any_element()
+            .icon("HistoryIcon"),
+        ]
     }
 
     /// The page's state for the test controls (`inspectLayout.history`).

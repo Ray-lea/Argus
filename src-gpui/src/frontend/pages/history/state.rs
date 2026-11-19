@@ -238,13 +238,26 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) points_asked: Option<Instant>,
     pub(super) overview_asked: Option<Instant>,
     pub(super) frame_at: Option<i64>,
-    pub(super) table_for: Option<(i64, i64, &'static str)>,
-    pub(super) table_asked: Option<Instant>,
     /// Table rows expanded to their instances, by name.
     pub(super) expanded: std::collections::HashSet<String>,
     /// The table's selected row (name, or name and PID).
     pub(super) selected: Option<String>,
+    /// The processes the tooltip ranks, for the point (start, span) they were asked for.
+    pub(super) tip: Option<((i64, i64), Value)>,
+    pub(super) tip_for: Option<(i64, i64)>,
+    /// Each process's trend over the window, for the table in moment mode.
+    pub(super) trends: Option<Value>,
+    /// The process drawn on the lanes as a dashed curve, by name, and its
+    /// readings over the window by trend key.
+    pub(super) curve: Option<String>,
+    pub(super) curves: std::collections::HashMap<&'static str, Value>,
+    /// What each range-table query was last sent for, and when.
+    pub(super) ranges_asked: std::collections::HashMap<String, (RangeAsked, Instant)>,
 }
+
+/// A range-table query's window and trend: from, to, the trend's reading and
+/// how many points it has.
+pub(super) type RangeAsked = (i64, i64, &'static str, usize);
 
 impl Default for HistoryState {
     fn default() -> Self {
@@ -281,10 +294,14 @@ impl Default for HistoryState {
             points_asked: None,
             overview_asked: None,
             frame_at: None,
-            table_for: None,
-            table_asked: None,
             expanded: Default::default(),
             selected: None,
+            tip: None,
+            tip_for: None,
+            trends: None,
+            curve: None,
+            curves: Default::default(),
+            ranges_asked: Default::default(),
         }
     }
 }

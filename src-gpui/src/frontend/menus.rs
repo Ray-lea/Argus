@@ -12,6 +12,18 @@ const INSET: f32 = 4.;
 const MIN_WIDTH: f32 = 220.;
 /// `.menu-sep`: a 1 px line with 4 px above and below.
 const SEPARATOR: f32 = 9.;
+/// A group's title (`.mhead`), and a note at the foot: 4 px, a line, the text.
+const HEADING: f32 = 26.;
+const NOTE: f32 = 31.;
+/// A legend's colour square, a badge before the detail, a row's second button.
+const SWATCH: f32 = 8.;
+const BADGE: f32 = 12.;
+const SIDE: f32 = 22.;
+/// A menu in columns: the room between them, and its minimum width.
+const COLUMN_GAP: f32 = 6.;
+const GRID_MIN_WIDTH: f32 = 430.;
+/// The widest a column gets: a longer label (a device's full name) is cut short.
+const COLUMN_MAX: f32 = 340.;
 /// Room kept from the window's edges.
 const MARGIN: f32 = 8.;
 /// How long after a press on a menu's control closed the menu the click
@@ -79,6 +91,8 @@ pub(super) struct Popup {
     timer: Option<Task<()>>,
     /// The control the menu drops from (`Desktop::open_anchored`).
     anchor: Option<String>,
+    /// How many columns its groups share (`Desktop::menu_columns`).
+    columns: usize,
 }
 
 impl Popup {
@@ -105,7 +119,7 @@ fn enabled(items: &[MenuItem]) -> impl Iterator<Item = usize> + '_ {
     items
         .iter()
         .enumerate()
-        .filter(|(_, item)| !item.separator && !item.disabled)
+        .filter(|(_, item)| item.takes_input())
         .map(|(index, _)| index)
 }
 
@@ -238,39 +252,161 @@ pub(super) fn fits(rows: usize, height: Pixels) -> bool {
 struct MenuLayout {
     size: Size<Pixels>,
     tops: Vec<f32>,
+    grid: Option<Grid>,
+}
+
+/// A menu whose groups share columns: what is over them (a title, a choice
+/// of none), the items of each column top to bottom, and what is under them.
+struct Grid {
+    head: usize,
+    columns: Vec<Vec<usize>>,
+    foot: usize,
+    width: f32,
+}
+
+/// An item's height: a row, a separator, a group's title or a note.
+fn item_height(item: &MenuItem) -> f32 {
+    if item.separator {
+        SEPARATOR
+    } else if item.heading || item.title {
+        HEADING
+    } else if item.note {
+        NOTE
+    } else {
+        ROW
+    }
 }
 
 /// The menu's size: as wide as its widest row
-/// (no narrower than 220 px), 30 px per item and 9 px per separator.
-fn measure(items: &[MenuItem], window: &Window, cx: &App) -> MenuLayout {
+/// (no narrower than 220 px), 30 px per item and 9 px per separator. With
+/// `columns`, its groups (each from a heading on) share that many columns,
+/// filled in order to about the same height.
+fn measure(items: &[MenuItem], columns: usize, window: &Window, cx: &App) -> MenuLayout {
     let text = theme::font(13.);
     let hint = theme::font(12.);
+    let quiet = theme::font(11.5);
     let width = |s: &str, size| f32::from(theme::text_width(s, size, window, cx).ceil());
-    let mut widest = MIN_WIDTH;
-    let mut y = 1. + INSET;
-    let mut tops = Vec::with_capacity(items.len());
-    for item in items {
-        tops.push(y);
+    let row_width = |item: &MenuItem| {
         if item.separator {
-            y += SEPARATOR;
-            continue;
+            return 0.;
+        }
+        if item.heading || item.title || item.note {
+            return GAP + width(&item.label, quiet) + GAP;
         }
         let mut row = GAP + ICON + GAP + width(&item.label, text) + GAP;
+        if item.swatch.is_some() {
+            row += SWATCH + GAP;
+        }
         if let Some(hint_text) = item.hint {
             row += GAP + width(hint_text, hint);
         }
+        if item.badge.is_some() {
+            row += GAP + BADGE;
+        }
         if let Some(detail) = &item.detail {
-            row += GAP + width(detail, hint);
+            row += if item.badge.is_some() { 4. } else { GAP } + width(detail, hint);
+        }
+        if item.side.is_some() {
+            row += GAP + SIDE - 4.;
         }
         if !item.children.is_empty() {
             row += GAP + CHEVRON;
         }
-        widest = widest.max(row + 2. * (INSET + 1.));
-        y += ROW;
+        row
+    };
+    let edge = 2. * (INSET + 1.);
+    let first = items.iter().position(|item| item.heading);
+    let grid = first.filter(|_| columns > 1).map(|first| {
+        // The foot: the notes (and a separator before them) after the groups.
+        let foot = items
+            .iter()
+            .rposition(|item| !item.note && !item.separator)
+            .map_or(first, |last| last + 1)
+            .max(first);
+        let mut blocks: Vec<Vec<usize>> = Vec::new();
+        for (index, item) in items.iter().enumerate().take(foot).skip(first) {
+            if item.heading || blocks.is_empty() {
+                blocks.push(Vec::new());
+            }
+            if let Some(block) = blocks.last_mut() {
+                block.push(index);
+            }
+        }
+        let height = |block: &[usize]| block.iter().map(|&i| item_height(&items[i])).sum::<f32>();
+        let target = blocks.iter().map(|b| height(b)).sum::<f32>() / columns as f32;
+        let mut filled: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut level = 0.;
+        for block in &blocks {
+            let tall = height(block);
+            // A group goes on to the next column once most of it would pass the target.
+            if filled.len() < columns && level > 0. && level + tall / 2. > target {
+                filled.push(Vec::new());
+                level = 0.;
+            }
+            if let Some(column) = filled.last_mut() {
+                column.extend(block);
+            }
+            level += tall;
+        }
+        let widest = |range: &mut dyn Iterator<Item = usize>| {
+            range.map(|i| row_width(&items[i])).fold(0., f32::max)
+        };
+        let column = filled
+            .iter()
+            .map(|c| widest(&mut c.iter().copied()))
+            .fold(0., f32::max)
+            .min(COLUMN_MAX);
+        let count = filled.len() as f32;
+        let inner = (GRID_MIN_WIDTH - edge)
+            .max(column * count + COLUMN_GAP * (count - 1.))
+            .max(widest(&mut (0..first)))
+            .max(widest(&mut (foot..items.len())));
+        Grid {
+            head: first,
+            columns: filled,
+            foot,
+            width: (inner - COLUMN_GAP * (count - 1.)) / count,
+        }
+    });
+    let mut tops = vec![0.; items.len()];
+    let mut y = 1. + INSET;
+    let Some(grid) = grid else {
+        let mut widest = MIN_WIDTH;
+        for (index, item) in items.iter().enumerate() {
+            tops[index] = y;
+            widest = widest.max(row_width(item) + edge);
+            y += item_height(item);
+        }
+        return MenuLayout {
+            size: size(px(widest), px(y + INSET + 1.)),
+            tops,
+            grid: None,
+        };
+    };
+    for index in 0..grid.head {
+        tops[index] = y;
+        y += item_height(&items[index]);
     }
+    let mut lowest = y;
+    for column in &grid.columns {
+        let mut at = y;
+        for &index in column {
+            tops[index] = at;
+            at += item_height(&items[index]);
+        }
+        lowest = lowest.max(at);
+    }
+    y = lowest;
+    for index in grid.foot..items.len() {
+        tops[index] = y;
+        y += item_height(&items[index]);
+    }
+    let count = grid.columns.len() as f32;
+    let width = grid.width * count + COLUMN_GAP * (count - 1.) + edge;
     MenuLayout {
-        size: size(px(widest), px(y + INSET + 1.)),
+        size: size(px(width), px(y + INSET + 1.)),
         tops,
+        grid: Some(grid),
     }
 }
 
@@ -374,6 +510,7 @@ impl Desktop {
             sub_leaving: None,
             timer: None,
             anchor: None,
+            columns: 1,
         });
         cx.set_global(Presence {
             open: true,
@@ -387,6 +524,13 @@ impl Desktop {
     pub(in crate::frontend) fn anchor_menu(&mut self, anchor: &str) {
         if let Some(popup) = &mut self.popup {
             popup.anchor = Some(anchor.to_owned());
+        }
+    }
+
+    /// Lays the open menu's groups (each from a heading on) out in `columns`.
+    pub(in crate::frontend) fn menu_columns(&mut self, columns: usize) {
+        if let Some(popup) = &mut self.popup {
+            popup.columns = columns.max(1);
         }
     }
 
@@ -601,7 +745,7 @@ impl Desktop {
         };
         let Some((owner, action, stay)) = popup
             .item(entry)
-            .filter(|item| !item.disabled && !item.separator)
+            .filter(|item| item.takes_input())
             .map(|item| (!item.children.is_empty(), item.action.clone(), item.stay))
         else {
             return;
@@ -794,7 +938,7 @@ impl Desktop {
                 gpui_kit::size(size.width * ENTER_SCALE, size.height * ENTER_SCALE)
             }
         };
-        let layout = measure(&popup.items, window, cx);
+        let layout = measure(&popup.items, popup.columns, window, cx);
         let origin = menu_origin(popup.position, placed(layout.size), viewport);
         // One closed while it was still fading in goes on fading in.
         let opacity = entered(popup.opened, reduce);
@@ -822,7 +966,7 @@ impl Desktop {
             let Some(owner) = popup.items.get(sub.owner) else {
                 continue;
             };
-            let sub_layout = measure(&owner.children, window, cx);
+            let sub_layout = measure(&owner.children, 1, window, cx);
             let sub_origin = submenu_origin(
                 origin,
                 layout.size,
@@ -882,6 +1026,9 @@ impl Desktop {
             _ => false,
         };
         let open_owner = popup.sub.as_ref().map(|sub| sub.owner);
+        let quiet = theme::font(11.5);
+        // Columns have a width of their own: a label longer than its row is cut short.
+        let truncate = layout.grid.is_some();
         let rows = items.iter().enumerate().map(|(index, item)| {
             if item.separator {
                 return div()
@@ -891,6 +1038,36 @@ impl Desktop {
                     .mx(px(-INSET))
                     .my(px(INSET))
                     .bg(p.stroke);
+            }
+            if item.heading || item.title {
+                return div()
+                    .id(("menu-heading", index))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_end()
+                    .h(px(HEADING))
+                    .px(px(GAP))
+                    .pb(px(3.))
+                    .text_size(quiet)
+                    .text_color(p.faint)
+                    .child(item.label.clone());
+            }
+            if item.note {
+                // The foot's line runs the menu's width, as a separator's does.
+                return div()
+                    .id(("menu-note", index))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .mt(px(INSET))
+                    .mx(px(-INSET))
+                    .h(px(NOTE - INSET))
+                    .px(px(GAP + INSET))
+                    .border_t_1()
+                    .border_color(p.stroke)
+                    .text_size(quiet)
+                    .text_color(p.faint)
+                    .child(item.label.clone());
             }
             let this_entry = entry(index);
             let owner = !sub && !item.children.is_empty();
@@ -937,7 +1114,28 @@ impl Desktop {
                         .size(px(ICON))
                         .when_some(glyph, |d, glyph| d.child(icon(glyph, color))),
                 )
-                .child(item.label.clone())
+                .when_some(item.swatch, |d, swatch| {
+                    d.child(
+                        div()
+                            .flex_shrink_0()
+                            .size(px(SWATCH))
+                            .rounded(px(2.))
+                            .bg(swatch),
+                    )
+                })
+                .map(|d| {
+                    if truncate {
+                        d.child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .child(item.label.clone()),
+                        )
+                    } else {
+                        d.child(item.label.clone())
+                    }
+                })
                 .when_some(item.hint, |d, hint| {
                     d.child(
                         div()
@@ -947,13 +1145,19 @@ impl Desktop {
                             .child(hint),
                     )
                 })
-                .when_some(item.detail.clone(), |d, detail| {
+                .when(item.badge.is_some() || item.detail.is_some(), |d| {
                     d.child(
                         div()
                             .ml_auto()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
                             .text_size(theme::font(12.))
                             .text_color(p.faint)
-                            .child(detail),
+                            .when_some(item.badge, |d, (glyph, tone)| {
+                                d.child(icon(glyph, tone).size(px(BADGE)))
+                            })
+                            .when_some(item.detail.clone(), |d, detail| d.child(detail)),
                     )
                 })
                 .when(owner, |d| {
@@ -962,6 +1166,34 @@ impl Desktop {
                             .when(item.detail.is_none(), |d| d.ml_auto())
                             .flex_shrink_0()
                             .child(icon("ChevronRight", p.faint).size(px(CHEVRON))),
+                    )
+                })
+                .when_some(item.side.clone(), |d, (glyph, action, name)| {
+                    let alone =
+                        item.hint.is_none() && item.detail.is_none() && item.badge.is_none();
+                    d.child(
+                        div()
+                            .id(("menu-side", index))
+                            .role(Role::Button)
+                            .aria_label(name)
+                            .flex_shrink_0()
+                            .when(alone, |d| d.ml_auto())
+                            .mr(px(-4.))
+                            .size(px(SIDE))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(5.))
+                            .when(interactive, |d| d.hover(move |s| s.bg(p.hover_strong)))
+                            .child(icon(glyph, p.muted).size(px(13.)))
+                            .when(interactive && !item.disabled, |d| {
+                                d.on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                                    // The row's own choice is not made as well.
+                                    cx.stop_propagation();
+                                    this.close_menu(window, cx);
+                                    this.act(action.clone(), window, cx);
+                                }))
+                            }),
                     )
                 })
                 .when(interactive, |d| {
@@ -979,7 +1211,7 @@ impl Desktop {
                     }))
                 })
         });
-        div()
+        let surface = div()
             .id(match part {
                 Part::Menu => "menu",
                 Part::Submenu => "submenu",
@@ -1015,8 +1247,41 @@ impl Desktop {
                         popup.timer = None;
                     }
                 }))
+            });
+        let Some(grid) = &layout.grid else {
+            return surface.children(rows);
+        };
+        // The groups side by side, under what heads them and over the foot.
+        let mut rows = rows.map(Some).collect::<Vec<_>>();
+        let mut take = |indices: &mut dyn Iterator<Item = usize>| {
+            indices
+                .filter_map(|index| rows.get_mut(index).and_then(Option::take))
+                .collect::<Vec<_>>()
+        };
+        let head = take(&mut (0..grid.head));
+        let columns = grid
+            .columns
+            .iter()
+            .map(|column| {
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_shrink_0()
+                    .w(px(grid.width))
+                    .children(take(&mut column.iter().copied()))
             })
-            .children(rows)
+            .collect::<Vec<_>>();
+        let foot = take(&mut (grid.foot..items.len()));
+        surface
+            .children(head)
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap(px(COLUMN_GAP))
+                    .children(columns),
+            )
+            .children(foot)
     }
 }
 /// Task Manager's order, highest first.
@@ -1058,6 +1323,46 @@ impl MenuItem {
     pub(super) fn stay(mut self) -> Self {
         self.stay = true;
         self
+    }
+    /// A group's title, over the items that follow it.
+    pub(super) fn heading(label: impl Into<String>) -> Self {
+        let mut item = Self::new(label, Action::CloseOverlay);
+        item.heading = true;
+        item
+    }
+    /// The menu's title, over its groups however they are laid out.
+    pub(super) fn title(label: impl Into<String>) -> Self {
+        let mut item = Self::new(label, Action::CloseOverlay);
+        item.title = true;
+        item
+    }
+    /// A quiet line at the menu's foot, such as how its rows answer the pointer.
+    pub(super) fn note(label: impl Into<String>) -> Self {
+        let mut item = Self::new(label, Action::CloseOverlay);
+        item.note = true;
+        item
+    }
+    pub(super) fn swatch(mut self, color: Hsla) -> Self {
+        self.swatch = Some(color);
+        self
+    }
+    pub(super) fn badge(mut self, icon: &'static str, color: Hsla) -> Self {
+        self.badge = Some((icon, color));
+        self
+    }
+    /// A second button at the row's end, named `name`, that does `action`.
+    pub(super) fn side(
+        mut self,
+        icon: &'static str,
+        action: Action,
+        name: impl Into<String>,
+    ) -> Self {
+        self.side = Some((icon, action, name.into()));
+        self
+    }
+    /// Whether the keyboard stops at it and a click chooses it.
+    pub(super) fn takes_input(&self) -> bool {
+        !self.separator && !self.disabled && !self.heading && !self.title && !self.note
     }
 }
 impl Desktop {

@@ -200,12 +200,22 @@ impl Reading {
         ))
     }
 
-    /// The highest sample inside point `i` when it covers several (CPU's peak).
+    /// The highest reading inside point `i` when it covers several: CPU's
+    /// highest sample, or a percentage's highest record.
     pub(super) fn peak_value(&self, points: &Points, i: usize) -> Option<f64> {
-        let key = self.peak.as_deref()?;
-        points
-            .value(key, Part::High, i)
-            .or_else(|| points.value(key, Part::Mean, i))
+        if let Some(key) = self.peak.as_deref().filter(|key| points.has(key)) {
+            return points
+                .value(key, Part::High, i)
+                .or_else(|| points.value(key, Part::Mean, i));
+        }
+        (self.unit == Unit::Percent && !self.is_pair())
+            .then(|| points.value(&self.keys[0], Part::High, i))
+            .flatten()
+    }
+
+    /// Whether the title shows a highest value beside the reading's own.
+    pub(super) fn shows_peak(&self) -> bool {
+        self.peak.is_some() || (self.unit == Unit::Percent && !self.is_pair())
     }
 
     /// What the axis spans for the points drawn in `from..=to`.

@@ -3,7 +3,8 @@
     "peak": "Máximo {value}"
   },
   "copied": {
-    "name": "nombre"
+    "name": "nombre",
+    "namePid": "nombre y PID"
   },
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
@@ -72,12 +73,19 @@
     "latest": "De vuelta a lo último",
     "paused": "Actualización en pausa"
   },
-  "more": "Más",
   "menu": {
     "band": "Mostrar el intervalo del mínimo al máximo",
     "settings": "Configuración del historial…",
     "needsService": "Requiere el servicio privilegiado",
-    "notRecorded": "Sin registros"
+    "notRecorded": "Sin registros",
+    "curve": "Mostrar la curva en el gráfico",
+    "curveOff": "Quitar la curva del gráfico",
+    "copy": "Copiar nombre y PID",
+    "none": "Ninguna",
+    "showTitle": "Mostrar en la pista actual",
+    "addTitle": "Agregar una pista",
+    "overlayTitle": "Superponer una segunda lectura (eje derecho)",
+    "foot": "Haga clic para mostrarla en esta pista; haga clic en + o arrástrela al gráfico para agregar una pista"
   },
   "group": {
     "cpu": "Procesador",
@@ -186,7 +194,9 @@
     "add": "Superponer",
     "addTitle": "Superponer una segunda lectura en el eje derecho",
     "shared": "Comparte el eje izquierdo",
-    "right": "Eje derecho"
+    "right": "Eje derecho",
+    "remove": "Quitar la superposición",
+    "change": "Cambiar la lectura superpuesta"
   },
   "unrecorded": {
     "title": "No hay registros de {name}",
@@ -214,7 +224,21 @@
     "loading": "Leyendo…",
     "modeMoment": "Momento",
     "modeRange": "Intervalo",
-    "columns": "Columnas"
+    "columns": "Columnas",
+    "chooser": {
+      "moment": "Columnas de «Momento»",
+      "range": "Columnas de «Intervalo»"
+    },
+    "trend": "Minigráficos de tendencia",
+    "resetColumns": "Restaurar columnas predeterminadas",
+    "rest": {
+      "one": "{count} proceso más",
+      "many": "{count} procesos más",
+      "other": "{count} procesos más"
+    },
+    "search": "Buscar procesos",
+    "emptyRange": "No hay procesos registrados en este intervalo",
+    "netService": "Las lecturas de red por proceso requieren el servicio privilegiado; Argus se ejecuta con permisos estándar, así que la columna «Red» no tiene registros."
   },
   "column": {
     "moment": {
@@ -247,7 +271,8 @@
       "threads": "Subprocesos",
       "handles": "Identificadores"
     },
-    "trend": "Tendencia · {name}"
+    "trend": "Tendencia · {name}",
+    "trendTitle": "Cambio en el intervalo seleccionado, con la lectura de la pista superior"
   },
   "trend": {
     "cpu": "CPU",
@@ -259,5 +284,8 @@
   "clearCursor": "Quitar el cursor (Esc)",
   "selection": {
     "zoom": "Ampliar la selección"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
   }
 }

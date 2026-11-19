@@ -922,6 +922,10 @@ impl Desktop {
             .icon("LockIcon")
             .detail(label("shell.more.fileLockDetail")),
         ];
+        if self.page == "history" {
+            items.push(MenuItem::separator());
+            items.extend(self.history_more_items());
+        }
         if self.page == "services" {
             items.push(
                 MenuItem::new(
@@ -931,11 +935,17 @@ impl Desktop {
                 .icon("ExternalIcon"),
             );
         }
+        // On the history page the chart's keys and gestures come open.
+        let open = if self.page == "history" {
+            json!({ "open": { "history": true, "historyMouse": true } })
+        } else {
+            json!({})
+        };
         items.push(MenuItem::separator());
         items.push(
             MenuItem::new(
                 label("settings.shortcuts.title"),
-                Action::Dialog("shortcuts".into(), json!({})),
+                Action::Dialog("shortcuts".into(), open),
             )
             .icon("KeyboardIcon"),
         );

@@ -3,7 +3,8 @@
     "peak": "Maximum {value}"
   },
   "copied": {
-    "name": "nom"
+    "name": "nom",
+    "namePid": "le nom et le PID"
   },
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
@@ -72,12 +73,19 @@
     "latest": "Retour au plus récent",
     "paused": "Mise à jour suspendue"
   },
-  "more": "Plus",
   "menu": {
     "band": "Afficher la plage du minimum au maximum",
     "settings": "Paramètres de l’historique…",
     "needsService": "Nécessite le service privilégié",
-    "notRecorded": "Non enregistré"
+    "notRecorded": "Non enregistré",
+    "curve": "Afficher la courbe sur le graphique",
+    "curveOff": "Retirer la courbe du graphique",
+    "copy": "Copier le nom et le PID",
+    "none": "Aucune",
+    "showTitle": "Afficher dans la piste active",
+    "addTitle": "Ajouter une piste",
+    "overlayTitle": "Superposer une deuxième mesure (axe de droite)",
+    "foot": "Cliquer pour l’afficher dans cette piste ; cliquer sur + ou la faire glisser sur le graphique pour ajouter une piste"
   },
   "group": {
     "cpu": "Processeur",
@@ -186,7 +194,9 @@
     "add": "Superposer",
     "addTitle": "Superposer une deuxième mesure sur l’axe de droite",
     "shared": "Partage l’axe de gauche",
-    "right": "Axe de droite"
+    "right": "Axe de droite",
+    "remove": "Retirer la superposition",
+    "change": "Changer la mesure superposée"
   },
   "unrecorded": {
     "title": "Aucun enregistrement de {name}",
@@ -214,7 +224,21 @@
     "loading": "Lecture…",
     "modeMoment": "Instant",
     "modeRange": "Plage",
-    "columns": "Colonnes"
+    "columns": "Colonnes",
+    "chooser": {
+      "moment": "Colonnes de « Instant »",
+      "range": "Colonnes de « Plage »"
+    },
+    "trend": "Mini-courbes de tendance",
+    "resetColumns": "Rétablir les colonnes par défaut",
+    "rest": {
+      "one": "{count} autre processus",
+      "many": "{count} autres processus",
+      "other": "{count} autres processus"
+    },
+    "search": "Rechercher des processus",
+    "emptyRange": "Aucun processus enregistré dans cette plage",
+    "netService": "Les mesures réseau par processus nécessitent le service privilégié ; Argus s’exécute avec des droits standard, la colonne « Réseau » n’a donc aucun enregistrement."
   },
   "column": {
     "moment": {
@@ -247,7 +271,8 @@
       "threads": "Threads",
       "handles": "Handles"
     },
-    "trend": "Tendance · {name}"
+    "trend": "Tendance · {name}",
+    "trendTitle": "Évolution sur la plage sélectionnée, selon la mesure de la piste du haut"
   },
   "trend": {
     "cpu": "CPU",
@@ -259,5 +284,8 @@
   "clearCursor": "Effacer le curseur (Échap)",
   "selection": {
     "zoom": "Zoomer sur la sélection"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
   }
 }

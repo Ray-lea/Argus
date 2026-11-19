@@ -3975,6 +3975,25 @@ impl Desktop {
     // ---- Keyboard shortcuts sheet ------------------------
 
     /// Keys as keycaps: chords split by " / ", keys by "+".
+    /// A pointer gesture in words, in a quieter frame than a key's.
+    fn shortcut_gesture(&self, gesture: &str) -> AnyElement {
+        let p = self.palette;
+        div()
+            .flex_shrink_0()
+            .h(px(25.))
+            .px(px(8.))
+            .flex()
+            .items_center()
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(5.))
+            .text_size(theme::font(11.))
+            .text_color(p.ink)
+            .whitespace_nowrap()
+            .child(gesture.to_owned())
+            .into_any_element()
+    }
+
     pub(in crate::frontend) fn shortcut_keys(&self, value: &str) -> AnyElement {
         let p = self.palette;
         let mut row = div().flex().flex_wrap().items_center().gap(px(6.));
@@ -3988,7 +4007,13 @@ impl Desktop {
                 );
             }
             let mut keys = div().flex().items_center().gap(px(4.)).whitespace_nowrap();
-            for (part, key) in chord.split('+').enumerate() {
+            // The plus key alone is a key, not a chord of two empty ones.
+            let parts = if chord == "+" {
+                vec![chord]
+            } else {
+                chord.split('+').collect::<Vec<_>>()
+            };
+            for (part, key) in parts.into_iter().enumerate() {
                 if part > 0 {
                     keys = keys.child(
                         div()
@@ -4168,7 +4193,7 @@ impl Desktop {
                     .child(self.shortcut_keys(&format!("Ctrl+{}", index + 1)))
             }));
         type Group<'a> = (&'a str, &'a str, &'a str, &'a [(&'a str, &'a str)]);
-        let groups: [Group; 2] = [
+        let groups: [Group; 3] = [
             (
                 "table",
                 "ProcessesIcon",
@@ -4197,6 +4222,62 @@ impl Desktop {
                     ("+ / −", "settings.shortcuts.zoom"),
                     ("0", "settings.shortcuts.zoomReset"),
                     ("Esc", "settings.shortcuts.clearCursor"),
+                ],
+            ),
+            // Gestures, named in words rather than drawn as keys.
+            (
+                "historyMouse",
+                "PointerIcon",
+                "settings.shortcuts.historyMouse",
+                &[
+                    (
+                        "settings.shortcuts.mouse.hover",
+                        "settings.shortcuts.mouse.hoverText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.click",
+                        "settings.shortcuts.mouse.clickText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.drag",
+                        "settings.shortcuts.mouse.dragText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.right",
+                        "settings.shortcuts.mouse.rightText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.pin",
+                        "settings.shortcuts.mouse.pinText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.wheel",
+                        "settings.shortcuts.mouse.wheelText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.shiftWheel",
+                        "settings.shortcuts.mouse.shiftWheelText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.double",
+                        "settings.shortcuts.mouse.doubleText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.navigator",
+                        "settings.shortcuts.mouse.navigatorText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.divider",
+                        "settings.shortcuts.mouse.dividerText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.grip",
+                        "settings.shortcuts.mouse.gripText",
+                    ),
+                    (
+                        "settings.shortcuts.mouse.reading",
+                        "settings.shortcuts.mouse.readingText",
+                    ),
                 ],
             ),
         ];
@@ -4292,7 +4373,11 @@ impl Desktop {
                                                 .text_color(p.muted)
                                                 .child(label(text_key)),
                                         )
-                                        .child(self.shortcut_keys(keys))
+                                        .child(if key == "historyMouse" {
+                                            self.shortcut_gesture(&label(keys))
+                                        } else {
+                                            self.shortcut_keys(keys)
+                                        })
                                 })),
                         )
                     }),

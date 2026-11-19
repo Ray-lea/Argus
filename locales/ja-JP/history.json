@@ -3,7 +3,8 @@
     "peak": "最大 {value}"
   },
   "copied": {
-    "name": "名前"
+    "name": "名前",
+    "namePid": "名前と PID"
   },
   "noRecordAt": "この時刻の記録はありません",
   "earliest": "最も古い記録",
@@ -72,12 +73,19 @@
     "latest": "最新に戻りました",
     "paused": "自動更新を一時停止しました"
   },
-  "more": "その他",
   "menu": {
     "band": "最小値から最大値までの範囲を表示",
     "settings": "履歴の設定…",
     "needsService": "特権サービスが必要",
-    "notRecorded": "記録なし"
+    "notRecorded": "記録なし",
+    "curve": "グラフに曲線を表示",
+    "curveOff": "グラフから曲線を外す",
+    "copy": "名前と PID をコピー",
+    "none": "重ねない",
+    "showTitle": "現在のレーンに表示",
+    "addTitle": "レーンを追加",
+    "overlayTitle": "2 つ目の読み取り値を重ねる (右の縦軸)",
+    "foot": "クリックするとこのレーンに表示、+ をクリックするかグラフにドラッグするとレーンを追加します"
   },
   "group": {
     "cpu": "プロセッサ",
@@ -178,7 +186,9 @@
     "add": "重ねる",
     "addTitle": "2 つ目の読み取り値を右側の縦軸で重ねる",
     "shared": "左の縦軸を共有",
-    "right": "右の縦軸"
+    "right": "右の縦軸",
+    "remove": "重ねるのをやめる",
+    "change": "重ねる読み取り値を変更"
   },
   "unrecorded": {
     "title": "{name} の記録はありません",
@@ -206,7 +216,17 @@
     "loading": "読み取り中…",
     "modeMoment": "この時点",
     "modeRange": "範囲",
-    "columns": "列"
+    "columns": "列",
+    "chooser": {
+      "moment": "「この時点」に表示する列",
+      "range": "「範囲」に表示する列"
+    },
+    "trend": "傾向のミニグラフ",
+    "resetColumns": "既定の列に戻す",
+    "rest": "ほか {count} 個のプロセス",
+    "search": "プロセスを検索",
+    "emptyRange": "この範囲にプロセスの記録はありません",
+    "netService": "プロセスごとのネットワークの読み取り値には特権サービスが必要です。標準の権限で実行しているため、「ネットワーク」列の記録はありません。"
   },
   "column": {
     "moment": {
@@ -239,7 +259,8 @@
       "threads": "スレッド",
       "handles": "ハンドル"
     },
-    "trend": "傾向 · {name}"
+    "trend": "傾向 · {name}",
+    "trendTitle": "選択した範囲での変化 (最上部のレーンと同じ読み取り値)"
   },
   "trend": {
     "cpu": "CPU",
@@ -251,5 +272,8 @@
   "clearCursor": "カーソルをクリア (Esc)",
   "selection": {
     "zoom": "選択範囲を拡大"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
   }
 }

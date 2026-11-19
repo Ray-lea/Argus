@@ -3,7 +3,8 @@
     "peak": "Peak {value}"
   },
   "copied": {
-    "name": "name"
+    "name": "name",
+    "namePid": "name and PID"
   },
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
@@ -72,12 +73,19 @@
     "latest": "Back to the latest",
     "paused": "Updates paused"
   },
-  "more": "More",
   "menu": {
     "band": "Show the range from lowest to highest",
     "settings": "History settings…",
     "needsService": "Needs the privileged service",
-    "notRecorded": "Not recorded"
+    "notRecorded": "Not recorded",
+    "curve": "Show curve on the chart",
+    "curveOff": "Remove curve from the chart",
+    "copy": "Copy name and PID",
+    "none": "None",
+    "showTitle": "Show in the current lane",
+    "addTitle": "Add a lane",
+    "overlayTitle": "Overlay a second reading (right axis)",
+    "foot": "Click to show in this lane; click + or drag a reading onto the chart to add a lane"
   },
   "group": {
     "cpu": "Processor",
@@ -184,7 +192,9 @@
     "add": "Overlay",
     "addTitle": "Overlay a second reading on the right axis",
     "shared": "Shares the left axis",
-    "right": "Right axis"
+    "right": "Right axis",
+    "remove": "Remove the overlay",
+    "change": "Change the overlaid reading"
   },
   "unrecorded": {
     "title": "No records of {name}",
@@ -212,7 +222,20 @@
     "loading": "Reading…",
     "modeMoment": "Moment",
     "modeRange": "Range",
-    "columns": "Columns"
+    "columns": "Columns",
+    "chooser": {
+      "moment": "Columns for “Moment”",
+      "range": "Columns for “Range”"
+    },
+    "trend": "Trend sparklines",
+    "resetColumns": "Restore default columns",
+    "rest": {
+      "one": "{count} more process",
+      "other": "{count} more processes"
+    },
+    "search": "Search processes",
+    "emptyRange": "No processes recorded in this range",
+    "netService": "Per-process network readings need the privileged service; Argus runs with standard rights, so the Network column has no records."
   },
   "column": {
     "moment": {
@@ -245,7 +268,8 @@
       "threads": "Threads",
       "handles": "Handles"
     },
-    "trend": "Trend · {name}"
+    "trend": "Trend · {name}",
+    "trendTitle": "Change over the selected range, in the reading of the top lane"
   },
   "trend": {
     "cpu": "CPU",
@@ -257,5 +281,8 @@
   "clearCursor": "Clear the cursor (Esc)",
   "selection": {
     "zoom": "Zoom to selection"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
   }
 }

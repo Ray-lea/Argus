@@ -3,7 +3,8 @@
     "peak": "最高 {value}"
   },
   "copied": {
-    "name": "名称"
+    "name": "名称",
+    "namePid": "名称与 PID"
   },
   "noRecordAt": "该时刻无记录",
   "earliest": "最早的记录",
@@ -72,12 +73,19 @@
     "latest": "已回到最新",
     "paused": "已暂停自动更新"
   },
-  "more": "更多",
   "menu": {
     "band": "显示最低到最高的范围",
     "settings": "历史记录设置…",
     "needsService": "需要特权服务",
-    "notRecorded": "暂无记录"
+    "notRecorded": "暂无记录",
+    "curve": "在图表上显示曲线",
+    "curveOff": "不在图表上显示",
+    "copy": "复制名称与 PID",
+    "none": "不叠加",
+    "showTitle": "在当前轨道显示",
+    "addTitle": "添加轨道",
+    "overlayTitle": "叠加第二个读数（右侧纵轴）",
+    "foot": "单击可在此轨道显示；单击 + 或将读数拖到图表上可新建轨道"
   },
   "group": {
     "cpu": "处理器",
@@ -178,7 +186,9 @@
     "add": "叠加",
     "addTitle": "叠加第二个读数，使用右侧纵轴",
     "shared": "共用左轴",
-    "right": "右轴"
+    "right": "右轴",
+    "remove": "取消叠加",
+    "change": "更换叠加的读数"
   },
   "unrecorded": {
     "title": "{name}暂无记录",
@@ -206,7 +216,17 @@
     "loading": "正在读取…",
     "modeMoment": "此刻",
     "modeRange": "区间",
-    "columns": "列"
+    "columns": "列",
+    "chooser": {
+      "moment": "“此刻”显示的列",
+      "range": "“区间”显示的列"
+    },
+    "trend": "趋势迷你曲线",
+    "resetColumns": "恢复默认列",
+    "rest": "其余 {count} 个进程",
+    "search": "搜索进程",
+    "emptyRange": "此范围内暂无进程记录",
+    "netService": "每进程网络读数需要特权服务；当前以标准权限运行，“网络”列暂无记录。"
   },
   "column": {
     "moment": {
@@ -239,7 +259,8 @@
       "threads": "线程",
       "handles": "句柄"
     },
-    "trend": "趋势 · {name}"
+    "trend": "趋势 · {name}",
+    "trendTitle": "所选范围内的变化，读数与最上方的轨道一致"
   },
   "trend": {
     "cpu": "CPU",
@@ -251,5 +272,8 @@
   "clearCursor": "清除游标（Esc）",
   "selection": {
     "zoom": "放大到所选"
+  },
+  "copy": {
+    "text": "{name}（PID {pids}）"
   }
 }

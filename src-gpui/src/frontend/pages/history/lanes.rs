@@ -1,6 +1,7 @@
 //! The chart card: lanes of readings, each with its title, axes and plot; the
 //! time axis under them; the cursor, selection and drop marks over them; and
 //! the navigator below.
+use super::bar::ReadingMenu;
 use super::readings::Reading;
 use super::series::{BANDED, FRAME, Part, Points, rows_for, tick_step, ticks};
 use super::state::{Drag, Drop, Hover, Lane};
@@ -229,7 +230,59 @@ impl Desktop {
                 ))),
             );
         }
+        // A process laid over the lanes: its own readings of the lane's kind, dashed.
+        if let Some(curve) = self.history_process_curve(reading) {
+            series.push(
+                charts::Series::new(String::new(), curve, self.palette.ink.opacity(0.6), format)
+                    .dashed(true)
+                    .fill(0.)
+                    .source(charts::hash_of((
+                        "history",
+                        lane.id,
+                        &reading.id,
+                        "process",
+                        &self.history.curve,
+                    ))),
+            );
+        }
         series
+    }
+
+    /// The chosen process's readings for `reading`'s kind over the window it was
+    /// asked for, its instances summed: points spread evenly across it.
+    fn history_process_curve(&self, reading: &Reading) -> Option<Vec<(f64, Option<f64>)>> {
+        let name = self.history.curve.as_deref()?;
+        let key = reading.process?;
+        let answer = if self.options.fixture.is_some() {
+            self.data.get("historyTable")?
+        } else {
+            self.history.curves.get(key)?
+        };
+        let (from, to) = (answer["from"].as_f64()?, answer["to"].as_f64()?);
+        let mut sum: Vec<Option<f64>> = Vec::new();
+        for process in values(&answer["processes"]) {
+            if !text(process, "name").eq_ignore_ascii_case(name) {
+                continue;
+            }
+            for (i, v) in values(&process["trend"]).iter().enumerate() {
+                if sum.len() <= i {
+                    sum.resize(i + 1, None);
+                }
+                if let Some(v) = v.as_f64() {
+                    sum[i] = Some(sum[i].unwrap_or(0.) + v);
+                }
+            }
+        }
+        if sum.is_empty() {
+            return None;
+        }
+        let step = (to - from) / sum.len() as f64;
+        Some(
+            sum.into_iter()
+                .enumerate()
+                .map(|(i, v)| (from + step * (i as f64 + 0.5), v))
+                .collect(),
+        )
     }
 
     /// The chart card: the lanes over the time axis, and the navigator.
@@ -638,23 +691,35 @@ impl Desktop {
                         .w(px(1.5))
                         .bg(p.accent),
                 );
-                // Over the first lane, a mark that clears the cursor.
+                // Over the first lane, the pin: pointed at, it clears the cursor.
                 if first {
+                    let mark = |name: &str| {
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icon(name, p.on_accent).size(px(12.)))
+                    };
                     plot = plot.child(
                         div()
                             .id("history-pin")
+                            .group("history-pin")
                             .absolute()
                             .top(px(2.))
                             .left(relative(f))
                             .ml(px(-9.))
                             .size(px(18.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
                             .rounded_full()
                             .bg(p.accent)
                             .cursor_pointer()
-                            .child(icon("CloseIcon", p.on_accent).size(px(12.)))
+                            .child(mark("MapPinIcon").group_hover("history-pin", |s| s.opacity(0.)))
+                            .child(
+                                mark("CloseIcon")
+                                    .opacity(0.)
+                                    .group_hover("history-pin", |s| s.opacity(1.)),
+                            )
                             .tooltip(|window, cx| {
                                 widgets::tooltip(label("history.clearCursor"), window, cx)
                             })
@@ -838,6 +903,7 @@ impl Desktop {
                         });
                     if this.history.hover != hover {
                         this.history.hover = hover;
+                        this.history_ask_tip(window, cx);
                         this.history_redraw(window, cx);
                     }
                 }),
@@ -1067,15 +1133,19 @@ impl Desktop {
             .flex()
             .items_center()
             .gap(px(3.))
-            .px(px(5.))
+            .px(px(6.))
             .h(px(20.))
-            .rounded(px(4.))
-            .text_size(theme::font(11.))
-            .text_color(p.muted)
+            .rounded(px(5.))
+            .text_size(theme::font(11.5))
+            .text_color(p.faint)
             .cursor_pointer()
-            .hover(move |s| s.bg(p.hover).text_color(p.ink))
-            .child(icon("PlusIcon", p.muted).size(px(12.)))
+            .hover(move |s| s.bg(p.hover_strong).text_color(p.ink))
+            .child(icon("PlusIcon", p.faint).size(px(12.)))
             .child(label("history.lane.add"))
+            .child(layout::anchor_probe(
+                "history-add-lane",
+                self.ui.anchors.clone(),
+            ))
             .tooltip(|window, cx| widgets::tooltip(label("history.lane.addTitle"), window, cx))
             .on_click(cx.listener(|this, _, window, cx| {
                 let exclude = this
@@ -1083,8 +1153,15 @@ impl Desktop {
                     .live_lanes()
                     .map(|lane| lane.reading.clone())
                     .collect::<Vec<_>>();
-                let items = this.history_reading_menu(None, &exclude, true, Command::AddLane);
-                this.open_popup(items, window, cx);
+                let menu = ReadingMenu {
+                    title: Some("history.menu.addTitle"),
+                    current: None,
+                    exclude: &exclude,
+                    pairs: true,
+                    none: None,
+                    add: false,
+                };
+                this.history_open_readings(menu, Command::AddLane, "history-add-lane", window, cx);
             }))
             .into_any_element()
     }
@@ -1202,14 +1279,13 @@ impl Desktop {
 
     /// The card by the pointer: when, the lane's readings then, or why nothing
     /// was recorded.
-    fn history_tip(&self, window: &Window, cx: &App) -> Option<AnyElement> {
+    fn history_tip(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let p = self.palette;
         let hover = self.history.hover?;
         if self.history.drag.is_some() {
             return None;
         }
         let points = self.history.points.as_ref()?;
-        let now = self.history_now();
         let lane = self.history.lanes.iter().find(|l| l.id == hover.lane)?;
         let mut rows: Vec<AnyElement> = Vec::new();
         let head = |time: String, kind: Option<String>| {
@@ -1234,7 +1310,7 @@ impl Desktop {
                 let gap = points.gap_at(hover.at);
                 let offsets = self.history_offsets_differ();
                 rows.push(head(
-                    with_offset(moment_label(hover.at, now, false), hover.at, offsets),
+                    with_offset(moment_label(hover.at, false), hover.at, offsets),
                     None,
                 ));
                 rows.push(
@@ -1252,7 +1328,7 @@ impl Desktop {
                 let length = points.span[index];
                 let (time, kind) = if length <= FRAME {
                     (
-                        moment_label(start, now, true),
+                        moment_label(start, true),
                         Some(label(if length < FRAME {
                             "history.tip.second"
                         } else {
@@ -1261,7 +1337,7 @@ impl Desktop {
                     )
                 } else {
                     (
-                        range_label(start, start + length, now, length < MINUTE),
+                        range_label(start, start + length, length < MINUTE),
                         Some(label("history.tip.average")),
                     )
                 };
@@ -1332,17 +1408,56 @@ impl Desktop {
                         );
                     }
                 }
+                // The processes busiest by the lane's reading then: the frame's, or
+                // the bucket's averages.
+                let key = self.history_trend_of(lane);
+                let ranked = self.history_tip_ranking(points, index, key);
+                if !ranked.is_empty() {
+                    let live = values(&self.snapshot["processes"]);
+                    let mut list = div()
+                        .mt(px(3.))
+                        .pt(px(6.))
+                        .border_t_1()
+                        .border_color(p.stroke)
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.));
+                    for (name, value) in ranked {
+                        let icon_of = live
+                            .iter()
+                            .find(|process| text(process, "name").eq_ignore_ascii_case(&name));
+                        list = list.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(self.process_icon(icon_of, 16., cx))
+                                .child(div().flex_1().min_w_0().truncate().child(name))
+                                .child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .text_color(p.muted)
+                                        .font_features(theme::tabular())
+                                        .child(table::format_process(key, value, bits)),
+                                ),
+                        );
+                    }
+                    rows.push(list.into_any_element());
+                }
             }
         }
         rows.push(
             div()
-                .pt(px(2.))
+                .mt(px(3.))
+                .pt(px(6.))
+                .border_t_1()
+                .border_color(p.stroke)
                 .text_size(theme::font(11.))
                 .text_color(p.faint)
                 .child(label("history.tip.hint"))
                 .into_any_element(),
         );
-        let _ = (window, cx);
+        let _ = window;
         Some(
             deferred(
                 anchored()
@@ -1402,7 +1517,10 @@ impl Desktop {
             .items_center()
             .gap(px(8.))
             .pl(px(if multi { 0. } else { GUTTER - 8. }).max(px(0.)))
-            .pr(px(GUTTER - 8.));
+            .pr(px(GUTTER - 8.))
+            // The active lane (of several) is the one a reading's click shows in.
+            .rounded(px(6.))
+            .when(active, |d| d.bg(p.hover));
         if multi {
             row = row.child(
                 div()
@@ -1434,9 +1552,11 @@ impl Desktop {
             || (lane.reading.clone(), p.muted),
             |r| (r.long.clone(), r.color),
         );
+        let anchor = format!("history-lane-name-{id}");
         row = row.child(
             div()
                 .id(("history-lane-name", id))
+                .relative()
                 .flex()
                 .items_center()
                 .gap(px(6.))
@@ -1445,17 +1565,22 @@ impl Desktop {
                 .rounded(px(5.))
                 .min_w_0()
                 .cursor_pointer()
-                .when(active, |d| d.bg(p.control))
-                .hover(move |s| s.bg(p.hover))
-                .child(div().size(px(8.)).rounded_full().bg(color).flex_shrink_0())
+                .hover(move |s| s.bg(p.hover_strong))
+                .child(div().size(px(8.)).rounded(px(2.)).bg(color).flex_shrink_0())
                 .child(
                     div()
                         .min_w_0()
                         .truncate()
                         .text_size(theme::font(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(p.ink)
                         .child(name),
                 )
-                .child(icon("ChevronDown", p.muted).size(px(13.)))
+                .child(icon("ChevronDown", p.faint).size(px(13.)))
+                .child(layout::anchor_probe(
+                    anchor.clone(),
+                    self.ui.anchors.clone(),
+                ))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.history.active = id;
                     let current = this
@@ -1464,11 +1589,16 @@ impl Desktop {
                         .iter()
                         .find(|l| l.id == id)
                         .map(|l| l.reading.clone());
-                    let items =
-                        this.history_reading_menu(current.as_deref(), &[], true, move |reading| {
-                            Command::Reading(id, reading)
-                        });
-                    this.open_popup(items, window, cx);
+                    let menu = ReadingMenu {
+                        title: None,
+                        current: current.as_deref(),
+                        exclude: &[],
+                        pairs: true,
+                        none: None,
+                        add: true,
+                    };
+                    let make = move |reading| Command::Reading(id, reading);
+                    this.history_open_readings(menu, make, &anchor, window, cx);
                 })),
         );
         if let Some(reading) = reading {
@@ -1539,7 +1669,7 @@ impl Desktop {
                             ),
                     );
                 }
-            } else if reading.peak.is_some() {
+            } else if reading.shows_peak() {
                 let small = theme::font(12.);
                 let peak = points.zip(read_index).and_then(|(points, index)| {
                     (points.span[index] > FRAME)
@@ -1568,6 +1698,46 @@ impl Desktop {
             if !reading.is_pair() {
                 row = row.child(self.history_overlay_chip(lane, axes, read_index, window, cx));
             }
+            // The process laid over this lane, and a way to take it off.
+            if let Some(name) = self
+                .history
+                .curve
+                .clone()
+                .filter(|_| reading.process.is_some())
+            {
+                row = row.child(
+                    div()
+                        .id(("history-curve", id))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .pl(px(8.))
+                        .pr(px(2.))
+                        .h(px(22.))
+                        .rounded(px(11.))
+                        .border_1()
+                        .border_color(p.stroke_strong)
+                        .text_size(theme::font(12.))
+                        .child(charts::swatch(p.ink.opacity(0.6), true, px(12.)))
+                        .child(div().text_color(p.muted).child(name))
+                        .child(
+                            div()
+                                .id(("history-curve-remove", id))
+                                .size(px(18.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_full()
+                                .cursor_pointer()
+                                .hover(move |s| s.bg(p.hover))
+                                .child(icon("CloseIcon", p.muted).size(px(12.)))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.history_command(Command::Curve(None), window, cx)
+                                })),
+                        ),
+                );
+            }
         }
         row = row.child(div().flex_1());
         if multi {
@@ -1593,6 +1763,8 @@ impl Desktop {
         row.into_any_element()
     }
 
+    /// The lane's second reading on the right axis, as a dashed chip that
+    /// changes it (its × takes it off), or a quiet button adding one.
     fn history_overlay_chip(
         &self,
         lane: &Lane,
@@ -1605,6 +1777,8 @@ impl Desktop {
         let id = lane.id;
         let bits = self.history_bits();
         let primary = lane.reading.clone();
+        let anchor = format!("history-overlay-{id}");
+        let probe = layout::anchor_probe(anchor.clone(), self.ui.anchors.clone());
         let Some(overlay) = lane
             .overlay
             .as_deref()
@@ -1612,88 +1786,111 @@ impl Desktop {
         else {
             return div()
                 .id(("history-overlay-add", id))
+                .relative()
                 .flex_shrink_0()
                 .flex()
                 .items_center()
-                .gap(px(3.))
-                .px(px(6.))
+                .gap(px(4.))
+                .px(px(8.))
                 .h(px(22.))
                 .rounded(px(11.))
-                .border_1()
-                .border_dashed()
-                .border_color(p.stroke_strong)
-                .text_size(theme::font(11.))
-                .text_color(p.muted)
+                .text_size(theme::font(12.))
+                .text_color(p.faint)
                 .cursor_pointer()
-                .hover(move |s| s.bg(p.hover).text_color(p.ink))
-                .child(icon("PlusIcon", p.muted).size(px(12.)))
+                .hover(move |s| s.bg(p.hover_strong).text_color(p.ink))
+                .child(icon("PlusIcon", p.faint).size(px(12.)))
                 .child(label("history.overlay.add"))
+                .child(probe)
                 .tooltip(|window, cx| {
                     widgets::tooltip(label("history.overlay.addTitle"), window, cx)
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    let items = this.history_reading_menu(
-                        None,
-                        std::slice::from_ref(&primary),
-                        false,
-                        move |reading| Command::Overlay(id, Some(reading)),
-                    );
-                    this.open_popup(items, window, cx);
+                    let menu = ReadingMenu {
+                        title: Some("history.menu.overlayTitle"),
+                        current: None,
+                        exclude: std::slice::from_ref(&primary),
+                        pairs: false,
+                        none: None,
+                        add: false,
+                    };
+                    let make = move |reading| Command::Overlay(id, Some(reading));
+                    this.history_open_readings(menu, make, &anchor, window, cx);
                 }))
                 .into_any_element();
         };
-        let value = self
-            .history
-            .points
-            .as_ref()
-            .zip(read_index)
-            .and_then(|(points, index)| overlay.value(points, index))
-            .map(|v| overlay.format(v, bits))
-            .unwrap_or_else(|| label("format.missing"));
-        let size = theme::font(12.);
-        let width = slot_width(
-            &overlay.widest_samples(bits),
-            size,
-            FontWeight::SEMIBOLD,
-            window,
-            cx,
-        );
+        let size = theme::font(12.5);
+        // Without the privileged service it has no records: it says so instead.
+        let missing = overlay.service && !overlay.recorded;
+        let reading = if missing {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .text_color(p.faint)
+                .child(label("history.menu.needsService"))
+                .child(icon("ShieldAlertIcon", p.io).size(px(12.)))
+        } else {
+            let value = self
+                .history
+                .points
+                .as_ref()
+                .zip(read_index)
+                .and_then(|(points, index)| overlay.value(points, index))
+                .map(|v| overlay.format(v, bits))
+                .unwrap_or_else(|| label("format.missing"));
+            let width = slot_width(
+                &overlay.widest_samples(bits),
+                size,
+                FontWeight::SEMIBOLD,
+                window,
+                cx,
+            );
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .min_w(width)
+                        .text_right()
+                        .text_color(p.ink)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .font_features(theme::tabular())
+                        .child(value),
+                )
+                .child(
+                    div()
+                        .text_size(theme::font(11.))
+                        .text_color(p.faint)
+                        .child(label(if axes.shared {
+                            "history.overlay.shared"
+                        } else {
+                            "history.overlay.right"
+                        })),
+                )
+        };
         let current = overlay.id.clone();
         div()
             .id(("history-overlay", id))
+            .relative()
             .flex_shrink_0()
             .flex()
             .items_center()
             .gap(px(6.))
-            .pl(px(8.))
-            .pr(px(2.))
-            .h(px(22.))
-            .rounded(px(11.))
+            .pl(px(9.))
+            .pr(px(3.))
+            .h(px(24.))
+            .rounded(px(12.))
             .border_1()
-            .border_color(overlay.color.opacity(0.5))
-            .bg(overlay.color.opacity(0.08))
+            .border_dashed()
+            .border_color(overlay.color.opacity(0.7))
             .text_size(size)
+            .text_color(p.muted)
             .cursor_pointer()
+            .hover(move |s| s.bg(p.hover))
             .child(charts::swatch(overlay.color, false, px(10.)))
-            .child(div().text_color(p.muted).child(overlay.long.clone()))
-            .child(
-                div()
-                    .min_w(width)
-                    .text_right()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .font_features(theme::tabular())
-                    .child(value),
-            )
-            .child(
-                div()
-                    .text_size(theme::font(11.))
-                    .text_color(p.faint)
-                    .child(label(if axes.shared {
-                        "history.overlay.shared"
-                    } else {
-                        "history.overlay.right"
-                    })),
-            )
+            .child(overlay.long.clone())
+            .child(reading)
             .child(
                 div()
                     .id(("history-overlay-remove", id))
@@ -1702,21 +1899,29 @@ impl Desktop {
                     .items_center()
                     .justify_center()
                     .rounded_full()
-                    .hover(move |s| s.bg(p.hover))
-                    .child(icon("CloseIcon", p.muted).size(px(12.)))
+                    .hover(move |s| s.bg(p.hover_strong))
+                    .child(icon("CloseIcon", p.faint).size(px(12.)))
+                    .tooltip(|window, cx| {
+                        widgets::tooltip(label("history.overlay.remove"), window, cx)
+                    })
                     .on_click(cx.listener(move |this, _, window, cx| {
                         cx.stop_propagation();
                         this.history_command(Command::Overlay(id, None), window, cx)
                     })),
             )
+            .child(probe)
+            .tooltip(|window, cx| widgets::tooltip(label("history.overlay.change"), window, cx))
             .on_click(cx.listener(move |this, _, window, cx| {
-                let items = this.history_reading_menu(
-                    Some(&current),
-                    std::slice::from_ref(&primary),
-                    false,
-                    move |reading| Command::Overlay(id, Some(reading)),
-                );
-                this.open_popup(items, window, cx);
+                let menu = ReadingMenu {
+                    title: Some("history.menu.overlayTitle"),
+                    current: Some(&current),
+                    exclude: std::slice::from_ref(&primary),
+                    pairs: false,
+                    none: Some(Command::Overlay(id, None)),
+                    add: false,
+                };
+                let make = move |reading| Command::Overlay(id, Some(reading));
+                this.history_open_readings(menu, make, &anchor, window, cx);
             }))
             .into_any_element()
     }

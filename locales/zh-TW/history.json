@@ -3,7 +3,8 @@
     "peak": "最高 {value}"
   },
   "copied": {
-    "name": "名稱"
+    "name": "名稱",
+    "namePid": "名稱與 PID"
   },
   "noRecordAt": "該時刻無記錄",
   "earliest": "最早的記錄",
@@ -72,12 +73,19 @@
     "latest": "已回到最新",
     "paused": "已暫停自動更新"
   },
-  "more": "更多",
   "menu": {
     "band": "顯示最低到最高的範圍",
     "settings": "歷程記錄設定…",
     "needsService": "需要特權服務",
-    "notRecorded": "暫無記錄"
+    "notRecorded": "暫無記錄",
+    "curve": "在圖表上顯示曲線",
+    "curveOff": "不在圖表上顯示",
+    "copy": "複製名稱與 PID",
+    "none": "不疊加",
+    "showTitle": "在目前軌道顯示",
+    "addTitle": "新增軌道",
+    "overlayTitle": "疊加第二個讀數（右側縱軸）",
+    "foot": "按一下可在此軌道顯示；按一下 + 或將讀數拖曳到圖表上可新增軌道"
   },
   "group": {
     "cpu": "處理器",
@@ -178,7 +186,9 @@
     "add": "疊加",
     "addTitle": "疊加第二個讀數，使用右側縱軸",
     "shared": "共用左軸",
-    "right": "右軸"
+    "right": "右軸",
+    "remove": "取消疊加",
+    "change": "變更疊加的讀數"
   },
   "unrecorded": {
     "title": "{name}暫無記錄",
@@ -206,7 +216,17 @@
     "loading": "正在讀取…",
     "modeMoment": "此刻",
     "modeRange": "區間",
-    "columns": "欄"
+    "columns": "欄",
+    "chooser": {
+      "moment": "「此刻」顯示的欄",
+      "range": "「區間」顯示的欄"
+    },
+    "trend": "趨勢迷你曲線",
+    "resetColumns": "還原預設欄",
+    "rest": "其餘 {count} 個處理程序",
+    "search": "搜尋處理程序",
+    "emptyRange": "此範圍內暫無處理程序記錄",
+    "netService": "每個處理程序的網路讀數需要特權服務；目前以標準權限執行，「網路」欄暫無記錄。"
   },
   "column": {
     "moment": {
@@ -239,7 +259,8 @@
       "threads": "執行緒",
       "handles": "控制代碼"
     },
-    "trend": "趨勢 · {name}"
+    "trend": "趨勢 · {name}",
+    "trendTitle": "所選範圍內的變化，讀數與最上方的軌道一致"
   },
   "trend": {
     "cpu": "CPU",
@@ -251,5 +272,8 @@
   "clearCursor": "清除游標（Esc）",
   "selection": {
     "zoom": "放大到選取範圍"
+  },
+  "copy": {
+    "text": "{name}（PID {pids}）"
   }
 }

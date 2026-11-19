@@ -3,7 +3,8 @@
     "peak": "Höchstens {value}"
   },
   "copied": {
-    "name": "Name"
+    "name": "Name",
+    "namePid": "Name und PID"
   },
   "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
@@ -72,12 +73,19 @@
     "latest": "Zurück bei den neuesten Werten",
     "paused": "Aktualisierung angehalten"
   },
-  "more": "Mehr",
   "menu": {
     "band": "Bereich vom niedrigsten zum höchsten Wert anzeigen",
     "settings": "Verlaufseinstellungen…",
     "needsService": "Benötigt den privilegierten Dienst",
-    "notRecorded": "Nicht aufgezeichnet"
+    "notRecorded": "Nicht aufgezeichnet",
+    "curve": "Kurve im Diagramm anzeigen",
+    "curveOff": "Kurve aus dem Diagramm entfernen",
+    "copy": "Name und PID kopieren",
+    "none": "Keiner",
+    "showTitle": "In der aktuellen Spur anzeigen",
+    "addTitle": "Spur hinzufügen",
+    "overlayTitle": "Zweiten Wert überlagern (rechte Achse)",
+    "foot": "Klicken zeigt den Wert in dieser Spur; + oder Ziehen ins Diagramm fügt eine Spur hinzu"
   },
   "group": {
     "cpu": "Prozessor",
@@ -184,7 +192,9 @@
     "add": "Überlagern",
     "addTitle": "Einen zweiten Wert auf der rechten Achse überlagern",
     "shared": "Teilt die linke Achse",
-    "right": "Rechte Achse"
+    "right": "Rechte Achse",
+    "remove": "Überlagerung entfernen",
+    "change": "Überlagerten Wert ändern"
   },
   "unrecorded": {
     "title": "Keine Aufzeichnungen für {name}",
@@ -212,7 +222,20 @@
     "loading": "Wird gelesen…",
     "modeMoment": "Zeitpunkt",
     "modeRange": "Bereich",
-    "columns": "Spalten"
+    "columns": "Spalten",
+    "chooser": {
+      "moment": "Spalten für „Zeitpunkt“",
+      "range": "Spalten für „Bereich“"
+    },
+    "trend": "Verlaufskurven",
+    "resetColumns": "Standardspalten wiederherstellen",
+    "rest": {
+      "one": "{count} weiterer Prozess",
+      "other": "{count} weitere Prozesse"
+    },
+    "search": "Prozesse suchen",
+    "emptyRange": "In diesem Bereich sind keine Prozesse aufgezeichnet",
+    "netService": "Netzwerkwerte je Prozess benötigen den privilegierten Dienst; Argus läuft mit Standardrechten, daher hat die Spalte „Netzwerk“ keine Aufzeichnungen."
   },
   "column": {
     "moment": {
@@ -245,7 +268,8 @@
       "threads": "Threads",
       "handles": "Handles"
     },
-    "trend": "Verlauf · {name}"
+    "trend": "Verlauf · {name}",
+    "trendTitle": "Verlauf im gewählten Bereich, mit dem Wert der obersten Spur"
   },
   "trend": {
     "cpu": "CPU",
@@ -257,5 +281,8 @@
   "clearCursor": "Cursor entfernen (Esc)",
   "selection": {
     "zoom": "Auf Auswahl zoomen"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
   }
 }

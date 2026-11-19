@@ -33,7 +33,7 @@
       "expect": { "history.follow": false } },
     { "control": { "keys": ["end"] }, "wait": 400, "inspect": "layout", "label": "end", "expect": { "history.follow": true } },
     { "control": { "mouse": { "type": "down", "button": "right", "x": 400, "y": 707 } }, "wait": 300, "inspect": "menu", "label": "row-menu",
-      "expect": { "state.open": true, "state.disabled.0": true } },
+      "expect": { "state.open": true, "state.disabled.0": false, "state.disabled.1": true } },
     { "control": { "keys": ["escape"] }, "wait": 200 },
     { "control": { "theme": "light" }, "wait": 600, "capture": "light" }
   ]
