@@ -215,22 +215,52 @@ impl Desktop {
         error: Option<String>,
         controls: Vec<AnyElement>,
     ) -> AnyElement {
+        self.setting_card(id, glyph, title, desc, error, controls, None)
+    }
+
+    /// A setting with a part of its own below its title and description: a
+    /// table of options, previews to choose from. The icon stays beside the
+    /// title, as on the other cards, rather than in the middle of the card's
+    /// height; the part lines up with the title.
+    pub(in crate::frontend) fn setting_with_body(
+        &self,
+        id: &str,
+        glyph: &str,
+        title: &str,
+        desc: &str,
+        body: AnyElement,
+    ) -> AnyElement {
+        self.setting_card(
+            id,
+            self.glyph(glyph),
+            label(title),
+            Some(label(desc).into_any_element()),
+            None,
+            Vec::new(),
+            Some(body),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn setting_card(
+        &self,
+        id: &str,
+        glyph: AnyElement,
+        title: impl IntoElement,
+        desc: Option<AnyElement>,
+        error: Option<String>,
+        controls: Vec<AnyElement>,
+        body: Option<AnyElement>,
+    ) -> AnyElement {
         let p = self.palette;
         let tint = self.located_tint(id);
         let (border, fill) = self.located_colors(tint);
-        div()
-            .id(SharedString::from(format!("setting-{id}")))
+        let header = div()
             .flex()
             .items_center()
             .gap(px(16.))
-            .min_h(px(68.))
-            .px(px(16.))
-            .py(px(12.))
-            .border_1()
-            .border_color(border)
-            .rounded(px(6.))
-            .bg(fill)
-            .children(self.located_ring(tint))
+            // A card is at least 68 high: this less its padding and border.
+            .min_h(px(42.))
             .child(
                 div()
                     .w(px(20.))
@@ -274,6 +304,29 @@ impl Desktop {
                         .items_center()
                         .gap(px(8.))
                         .children(controls),
+                )
+            });
+        div()
+            .id(SharedString::from(format!("setting-{id}")))
+            .flex()
+            .flex_col()
+            .px(px(16.))
+            .py(px(12.))
+            .border_1()
+            .border_color(border)
+            .rounded(px(6.))
+            .bg(fill)
+            .children(self.located_ring(tint))
+            .child(header)
+            .when_some(body, |card, body| {
+                // Under the title: past the icon and the gap beside it.
+                card.child(
+                    div()
+                        .pt(px(10.))
+                        .pl(px(36.))
+                        .text_size(theme::font(13.))
+                        .text_color(p.ink)
+                        .child(body),
                 )
             })
             .into_any_element()

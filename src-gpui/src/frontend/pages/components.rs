@@ -732,24 +732,17 @@ impl Desktop {
                 })
                 .children(rows.iter().map(row_element))
         });
-        let desc = div()
-            .child(label("components.metrics.desc"))
-            .child(
-                div()
-                    .mt(px(10.))
-                    .flex()
-                    .flex_col()
-                    .text_color(p.ink)
-                    .children(sections),
-            )
+        let body = div()
+            .flex()
+            .flex_col()
+            .children(sections)
             .into_any_element();
-        self.setting(
+        self.setting_with_body(
             id,
-            self.glyph("ListIcon"),
-            label("components.metrics.title"),
-            Some(desc),
-            None,
-            Vec::new(),
+            "ListIcon",
+            "components.metrics.title",
+            "components.metrics.desc",
+            body,
         )
     }
 
@@ -980,24 +973,18 @@ impl Desktop {
                     .into_any_element()
             })
             .collect::<Vec<_>>();
-        let desc = div()
-            .child(label("components.desktop.style.desc"))
-            .child(
-                div()
-                    .mt(px(10.))
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(STYLE_GAP))
-                    .children(cards),
-            )
+        let body = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(STYLE_GAP))
+            .children(cards)
             .into_any_element();
-        self.setting(
+        self.setting_with_body(
             "desktopStyle",
-            self.glyph("ThemeIcon"),
-            label("components.desktop.style.title"),
-            Some(desc),
-            None,
-            Vec::new(),
+            "ThemeIcon",
+            "components.desktop.style.title",
+            "components.desktop.style.desc",
+            body,
         )
     }
 
@@ -1214,25 +1201,19 @@ impl Desktop {
                 .min_w_0()
                 .children(cards)
         };
-        let desc = div()
-            .child(label("components.taskbar.style.desc"))
-            .child(
-                div()
-                    .mt(px(10.))
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(STYLE_GAP))
-                    .child(pair(cards))
-                    .child(pair(second)),
-            )
+        let body = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(STYLE_GAP))
+            .child(pair(cards))
+            .child(pair(second))
             .into_any_element();
-        self.setting(
+        self.setting_with_body(
             "taskbarStyle",
-            self.glyph("PulseIcon"),
-            label("components.taskbar.style.title"),
-            Some(desc),
-            None,
-            Vec::new(),
+            "PulseIcon",
+            "components.taskbar.style.title",
+            "components.taskbar.style.desc",
+            body,
         )
     }
 
