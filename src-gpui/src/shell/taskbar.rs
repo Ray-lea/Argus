@@ -225,11 +225,12 @@ struct Found {
     primary: bool,
 }
 
-/// The Windows 10 task buttons narrowed for the monitor: their window and
-/// its right edge before (screen pixels).
+/// The Windows 10 task buttons narrowed for the monitor: their window, its
+/// right edge before and the one it was left with (screen pixels).
 struct Squeeze {
     tasks: HWND,
     right: i32,
+    left_at: i32,
 }
 
 struct Worker {
@@ -927,16 +928,23 @@ impl Worker {
         let tasks = unsafe { FindWindowExW(Some(rebar), None, buttons, PCWSTR::null()) }.ok()?;
         let (strip, buttons) = (rect_of(rebar)?, rect_of(tasks)?);
         let gap = (4. * geometry.scale).round() as i32;
-        let right = self
+        // The shell keeps the strip clear of the tray; the monitor keeps
+        // the same space from it as on Windows 11.
+        let limit = geometry
+            .tray
+            .map_or(strip[2], |tray| strip[2].min(tray[0] - gap));
+        let kept = self
             .squeeze
             .as_ref()
             .filter(|squeeze| squeeze.tasks == tasks)
-            .map_or(buttons[2], |squeeze| squeeze.right.max(buttons[2]));
+            .map(|squeeze| (squeeze.right, squeeze.left_at));
+        let right = unsqueezed(kept, buttons[2], limit);
         let edge = right - width - gap;
         if edge <= buttons[0] {
+            self.release_squeeze();
             return None;
         }
-        if buttons[2] > edge {
+        if buttons[2] != edge {
             unsafe {
                 let _ = SetWindowPos(
                     tasks,
@@ -949,7 +957,13 @@ impl Worker {
                 );
             }
         }
-        self.squeeze = Some(Squeeze { tasks, right });
+        // Where the buttons took it, should they keep a width of their own.
+        let left_at = rect_of(tasks).map_or(edge, |buttons| buttons[2]);
+        self.squeeze = Some(Squeeze {
+            tasks,
+            right,
+            left_at,
+        });
         Some(edge + gap - geometry.bar[0])
     }
 
@@ -1096,6 +1110,19 @@ pub(crate) fn place(geometry: &Geometry, width: i32, place: TaskbarPlace) -> i32
     (end - width).max(0)
 }
 
+/// Where the Windows 10 task buttons end when not narrowed for the monitor,
+/// screen pixels, as they end `now`: the edge remembered from before while
+/// they still end where the monitor left them (`kept`: that edge, and where
+/// they were left), else where they end now, the shell having laid them
+/// out again as the tray grew or shrank. Never past `limit`.
+fn unsqueezed(kept: Option<(i32, i32)>, now: i32, limit: i32) -> i32 {
+    match kept {
+        Some((right, left_at)) if now == left_at => right,
+        _ => now,
+    }
+    .min(limit)
+}
+
 /// The shell's taskbar on the display `wanted` names (the primary
 /// display's for none), or the primary display's while that display is away
 /// or shows no taskbar of its own.
@@ -1189,8 +1216,28 @@ fn widgets_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Geometry, place};
+    use super::{Geometry, place, unsqueezed};
     use crate::settings::TaskbarPlace;
+
+    #[test]
+    fn narrowed_task_buttons_follow_the_tray_as_it_grows() {
+        // First seen: the buttons end where the shell laid them out.
+        assert_eq!(unsqueezed(None, 1800, 1830), 1800);
+        // Narrowed to 1500 for the monitor, they still end there: the edge
+        // from before holds.
+        assert_eq!(unsqueezed(Some((1800, 1500)), 1500, 1830), 1800);
+        // A tray icon came and the shell laid them out again, 24 pixels
+        // short of before: the monitor must not reach into the tray.
+        assert_eq!(unsqueezed(Some((1800, 1500)), 1776, 1806), 1776);
+        // One went, and they reach further.
+        assert_eq!(unsqueezed(Some((1800, 1500)), 1824, 1854), 1824);
+        // Buttons that kept more width than asked do not walk the edge
+        // back on every look.
+        assert_eq!(unsqueezed(Some((1800, 1530)), 1530, 1830), 1800);
+        // Never past the strip or into the tray.
+        assert_eq!(unsqueezed(None, 1800, 1790), 1790);
+        assert_eq!(unsqueezed(Some((1800, 1500)), 1500, 1790), 1790);
+    }
 
     fn geometry() -> Geometry {
         Geometry {
