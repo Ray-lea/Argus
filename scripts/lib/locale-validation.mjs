@@ -37,3 +37,16 @@ export function maySpellOne(locale) {
   // French includes zero; Russian includes 21, 31, etc. in category "one".
   return ["en-US", "de-DE", "es-ES"].includes(locale);
 }
+
+const PLURAL_FORM = /\.(?:zero|one|two|few|many|other)$/;
+/**
+ * Keys of native.json that a desktop catalog also defines. Both are looked up
+ * in one key space with native.json first (argus_core::i18n::entry), so the
+ * window would show the native text. A plural form ("x.other") meets the key
+ * it is looked up for ("x").
+ */
+export function sharedKeys(native, desktop) {
+  const root = (key) => key.replace(PLURAL_FORM, "");
+  const roots = new Set([...desktop].map(root));
+  return [...native].filter((key) => roots.has(root(key)));
+}

@@ -8,6 +8,7 @@
 // - a translation keeps the source's {placeholders} and <tags>; a locale may
 //   split a message with {count} into plural forms ({"one": …, "other": …});
 // - non-CJK translations contain no Han text except native language names;
+// - native.json and the desktop catalogs share no key;
 // - every key the Rust code looks up (tr!("…")) exists, with the same placeholders;
 // - user-facing text is not written into the code: Chinese outside comments,
 //   tests and tools/window-probe/fixtures is an error. Mark a deliberate exception with
@@ -16,7 +17,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { macroCalls } from "./lib/rust-calls.mjs";
-import { maySpellOne, textErrors } from "./lib/locale-validation.mjs";
+import { maySpellOne, sharedKeys, textErrors } from "./lib/locale-validation.mjs";
 import { installerLanguages } from "./lib/installer-locales.mjs";
 import { terminology, terminologyErrors } from "./lib/terminology.mjs";
 
@@ -173,6 +174,7 @@ const rustFiles = rustDirs.flatMap((d) => walk(join(root, d))).filter((f) => f.e
 // Rust lookups: tr!("key") and tr!("key", name = value, …).
 const native = source.get("native") ?? new Map();
 const application = new Map([...source].filter(([ns]) => ns !== "native" && ns !== "installer").flatMap(([ns, keys]) => [...keys].map(([key, value]) => [`${ns}.${key}`, value])));
+for (const key of sharedKeys(native.keys(), application.keys())) error(`locales/${SOURCE}/native.json`, `${key} is also a desktop catalog key; the window would show this text instead`);
 for (const file of rustFiles) {
   const text = readFileSync(file, "utf8");
   // Each call on its own, with only its own arguments: one nested in another's

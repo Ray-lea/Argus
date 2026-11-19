@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { markupError, maySpellOne, textErrors } from "../lib/locale-validation.mjs";
+import { markupError, maySpellOne, sharedKeys, textErrors } from "../lib/locale-validation.mjs";
 
 test("rich text requires properly nested and closed tags", () => {
   assert.equal(markupError("<link>a <u>{count}</u></link>"), null);
@@ -13,6 +13,12 @@ test("catalogs reject blank text and hidden direction or control characters", ()
   assert.ok(textErrors("first\n\nlast", "first\nQ\nlast").includes("translation marker on its own line"));
   assert.deepEqual(textErrors("source", "Français\n日本語\tРусский\u00a0"), []);
   assert.deepEqual(textErrors("", ""), []);
+});
+test("native and desktop catalogs cannot define the same key", () => {
+  // The desktop's startup.json once had a top-level "unavailable" beside native.json's startup.unavailable.
+  assert.deepEqual(sharedKeys(["startup.unavailable", "tray.quit"], ["startup.unavailable", "startup.stateUnavailable"]), ["startup.unavailable"]);
+  assert.deepEqual(sharedKeys(["host.items.other"], ["host.items"]), ["host.items.other"]);
+  assert.deepEqual(sharedKeys(["startup.changed", "startup.blocked.unavailable"], ["startup.changed.title", "startup.unavailable"]), []);
 });
 test("singular words cannot stand in for every French or Russian one count", () => {
   for (const locale of ["fr-FR", "ru-RU", "ja-JP", "zh-CN"]) assert.equal(maySpellOne(locale), false);
