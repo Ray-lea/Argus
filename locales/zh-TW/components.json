@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "使用率"
+      "option": "使用率",
+      "tag": "使用率"
     },
     "cpuTemperature": {
       "name": "CPU 溫度",
       "short": "CPU",
-      "option": "溫度"
+      "option": "溫度",
+      "tag": "溫度"
     },
     "cpuClock": {
       "name": "CPU 時脈",
       "short": "CPU",
-      "option": "時脈"
+      "option": "時脈",
+      "tag": "時脈"
     },
     "cpuPower": {
       "name": "CPU 功耗",
       "short": "CPU",
-      "option": "功耗"
+      "option": "功耗",
+      "tag": "功耗"
     },
     "memory": {
       "name": "記憶體",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "使用率"
+      "option": "使用率",
+      "tag": "使用率"
     },
     "gpuTemperature": {
       "name": "GPU 溫度",
       "short": "GPU",
-      "option": "溫度"
+      "option": "溫度",
+      "tag": "溫度"
     },
     "gpuMemory": {
       "name": "GPU 記憶體",
       "short": "VRAM",
-      "option": "記憶體"
+      "option": "記憶體",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "GPU 時脈",
       "short": "GPU",
-      "option": "時脈"
+      "option": "時脈",
+      "tag": "時脈"
     },
     "gpuPower": {
       "name": "GPU 功耗",
       "short": "GPU",
-      "option": "功耗"
+      "option": "功耗",
+      "tag": "功耗"
     },
     "gpuFan": {
       "name": "GPU 風扇",
       "short": "風扇",
-      "option": "風扇"
+      "option": "風扇",
+      "tag": "風扇"
     },
     "disk": {
       "name": "磁碟",

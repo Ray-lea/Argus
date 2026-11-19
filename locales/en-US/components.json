@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "Utilization"
+      "option": "Utilization",
+      "tag": "Load"
     },
     "cpuTemperature": {
       "name": "CPU temperature",
       "short": "CPU",
-      "option": "Temperature"
+      "option": "Temperature",
+      "tag": "Temp"
     },
     "cpuClock": {
       "name": "CPU clock",
       "short": "CPU",
-      "option": "Clock"
+      "option": "Clock",
+      "tag": "Clock"
     },
     "cpuPower": {
       "name": "CPU power",
       "short": "CPU",
-      "option": "Power"
+      "option": "Power",
+      "tag": "Power"
     },
     "memory": {
       "name": "Memory",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "Utilization"
+      "option": "Utilization",
+      "tag": "Load"
     },
     "gpuTemperature": {
       "name": "GPU temperature",
       "short": "GPU",
-      "option": "Temperature"
+      "option": "Temperature",
+      "tag": "Temp"
     },
     "gpuMemory": {
       "name": "GPU memory",
       "short": "VRAM",
-      "option": "Memory"
+      "option": "Memory",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "GPU clock",
       "short": "GPU",
-      "option": "Clock"
+      "option": "Clock",
+      "tag": "Clock"
     },
     "gpuPower": {
       "name": "GPU power",
       "short": "GPU",
-      "option": "Power"
+      "option": "Power",
+      "tag": "Power"
     },
     "gpuFan": {
       "name": "GPU fan",
       "short": "Fan",
-      "option": "Fan"
+      "option": "Fan",
+      "tag": "Fan"
     },
     "disk": {
       "name": "Disk",

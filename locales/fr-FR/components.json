@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "Utilisation"
+      "option": "Utilisation",
+      "tag": "Util."
     },
     "cpuTemperature": {
       "name": "Température CPU",
       "short": "CPU",
-      "option": "Température"
+      "option": "Température",
+      "tag": "Temp."
     },
     "cpuClock": {
       "name": "Fréquence CPU",
       "short": "CPU",
-      "option": "Fréquence"
+      "option": "Fréquence",
+      "tag": "Fréq."
     },
     "cpuPower": {
       "name": "Puissance CPU",
       "short": "CPU",
-      "option": "Puissance"
+      "option": "Puissance",
+      "tag": "Puiss."
     },
     "memory": {
       "name": "Mémoire",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "Utilisation"
+      "option": "Utilisation",
+      "tag": "Util."
     },
     "gpuTemperature": {
       "name": "Température GPU",
       "short": "GPU",
-      "option": "Température"
+      "option": "Température",
+      "tag": "Temp."
     },
     "gpuMemory": {
       "name": "Mémoire GPU",
       "short": "VRAM",
-      "option": "Mémoire"
+      "option": "Mémoire",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "Fréquence GPU",
       "short": "GPU",
-      "option": "Fréquence"
+      "option": "Fréquence",
+      "tag": "Fréq."
     },
     "gpuPower": {
       "name": "Puissance GPU",
       "short": "GPU",
-      "option": "Puissance"
+      "option": "Puissance",
+      "tag": "Puiss."
     },
     "gpuFan": {
       "name": "Ventilateur GPU",
       "short": "Vent.",
-      "option": "Ventilateur"
+      "option": "Ventilateur",
+      "tag": "Vent."
     },
     "disk": {
       "name": "Disque",

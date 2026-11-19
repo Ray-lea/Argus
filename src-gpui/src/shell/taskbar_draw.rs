@@ -39,11 +39,41 @@ use windows::core::{BOOL, HSTRING, IUnknown, Interface, Ref, implement};
 pub(crate) struct Cell {
     /// Its short name: "CPU", or an arrow for a rate.
     pub label: String,
+    /// Its parameter's name ("Temp") when it follows a reading of the same
+    /// device, which names the device; empty otherwise. It stands for
+    /// `label` where the device shows anyway: by colour, or by that
+    /// reading beside it (`Cell::tag`).
+    pub name: String,
+    /// Readings of one device in a row share this; others differ.
+    pub run: usize,
     pub value: String,
     /// The widest value it takes, so that it keeps its room.
     pub widest: String,
     /// High enough to show amber.
     pub high: bool,
+}
+
+impl Cell {
+    /// What it is called where its device's colour marks it: its
+    /// parameter's name after a reading of its device, else its short name.
+    fn tag(&self) -> &str {
+        if self.name.is_empty() {
+            &self.label
+        } else {
+            &self.name
+        }
+    }
+
+    /// What it is called in plain text after `before` (the cell above it,
+    /// or to its left in a single row): its parameter's name only next to
+    /// a reading of its device.
+    fn tag_after(&self, before: Option<&Cell>) -> &str {
+        if before.is_some_and(|before| before.run == self.run) {
+            self.tag()
+        } else {
+            &self.label
+        }
+    }
 }
 
 /// The device a reading is of, for its colour.
@@ -386,9 +416,23 @@ fn labels(
         if index > 0 {
             x += gap;
         }
-        let names = column
+        // Names are plain here: a parameter goes by its own name only
+        // under (or in one row, after) a reading of its device.
+        let tags = column
             .iter()
-            .map(|cell| fonts.width(&cell.label, font, false))
+            .enumerate()
+            .map(|(row, cell)| {
+                let before = match row {
+                    0 if rows == 1 && index > 0 => columns[index - 1].last().copied(),
+                    0 => None,
+                    row => Some(column[row - 1]),
+                };
+                cell.tag_after(before).to_owned()
+            })
+            .collect::<Vec<_>>();
+        let names = tags
+            .iter()
+            .map(|tag| fonts.width(tag, font, false))
             .collect::<Vec<_>>();
         let values = column
             .iter()
@@ -402,11 +446,11 @@ fn labels(
             .map(|(row, ((cell, name), value))| {
                 let room = held(
                     &mut reserve,
-                    format!("labels:{rows}:{index}:{row}:{}", cell.label),
+                    format!("labels:{rows}:{index}:{row}:{}", tags[row]),
                     *value,
                     fonts.width(&cell.widest, font, true),
                 );
-                if cell.label.is_empty() {
+                if tags[row].is_empty() {
                     room
                 } else {
                     name + inner + room
@@ -416,11 +460,11 @@ fn labels(
             .unwrap_or(0);
         // A lone cell sits in the middle of the column's height.
         let top = (height - column.len() as i32 * line) / 2;
-        for (row, ((cell, _), value)) in column.iter().zip(&names).zip(&values).enumerate() {
+        for (row, ((cell, tag), value)) in column.iter().zip(&tags).zip(&values).enumerate() {
             let y = top + row as i32 * line + baseline;
-            if !cell.label.is_empty() {
+            if !tag.is_empty() {
                 layout.runs.push(Run {
-                    text: cell.label.clone(),
+                    text: tag.clone(),
                     x,
                     baseline: y,
                     size: font,
@@ -466,7 +510,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
         };
         let (width, curve) = match group.cells.as_slice() {
             [cell] => {
-                let name = fonts.width(&cell.label, small, false);
+                let name = fonts.width(cell.tag(), small, false);
                 let room = figure_width(fonts, &cell.widest, body, small).max(figure_width(
                     fonts,
                     &cell.value,
@@ -476,7 +520,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
                 let width = inside + name + px(9.) + room + inside;
                 let baseline = top + px(15.);
                 layout.runs.push(Run {
-                    text: cell.label.clone(),
+                    text: cell.tag().to_owned(),
                     x: x + inside,
                     baseline,
                     size: small,
@@ -591,7 +635,7 @@ fn capsules(
                 let centre = [x as f32 + dot as f32 / 2., y as f32 + tall as f32 / 2.];
                 x += dot + px(5.);
                 layout.runs.push(Run {
-                    text: cell.label.clone(),
+                    text: cell.tag().to_owned(),
                     x,
                     baseline,
                     size: name_size,
@@ -599,7 +643,7 @@ fn capsules(
                     paint: Paint::Ink,
                     shade: Shade::Name,
                 });
-                x += fonts.width(&cell.label, name_size, false) + px(5.);
+                x += fonts.width(cell.tag(), name_size, false) + px(5.);
                 // The value right after its name, as rates follow their
                 // arrows: room held for a wider one lies after it.
                 figure_from(
@@ -612,7 +656,7 @@ fn capsules(
                     unit,
                     value_paint(cell),
                 );
-                x += room(format!("{index}:0:{}", cell.label), cell);
+                x += room(format!("{index}:0:{}", cell.tag()), cell);
                 Some((centre, dot as f32 / 2.))
             }
             cells => {
@@ -688,14 +732,14 @@ fn figures(
             [cell] => {
                 let room = held(
                     &mut reserve,
-                    format!("figures:{index}:0:{}", cell.label),
+                    format!("figures:{index}:0:{}", cell.tag()),
                     figure_width(fonts, &cell.value, large, unit),
                     figure_width(fonts, &cell.widest, large, unit),
                 );
-                let width = fonts.width(&cell.label, name_size, false).max(room);
+                let width = fonts.width(cell.tag(), name_size, false).max(room);
                 // In its device's colour even when the value is amber.
                 layout.runs.push(Run {
-                    text: cell.label.clone(),
+                    text: cell.tag().to_owned(),
                     x,
                     baseline: middle - px(5.),
                     size: name_size,
@@ -1481,8 +1525,26 @@ mod tests {
             label: label.into(),
             value: value.into(),
             widest: "100%".into(),
-            high: false,
+            ..Cell::default()
         }
+    }
+
+    /// A reading of the device `run` names, after another of it.
+    fn after(run: usize, label: &str, name: &str, value: &str) -> Group {
+        let mut group = single(label, value);
+        group.cells[0].name = name.into();
+        group.cells[0].run = run;
+        group
+    }
+
+    fn first(run: usize, label: &str, value: &str) -> Group {
+        let mut group = single(label, value);
+        group.cells[0].run = run;
+        group
+    }
+
+    fn texts(runs: &[Run]) -> Vec<&str> {
+        runs.iter().map(|run| run.text.as_str()).collect()
     }
 
     fn single(label: &str, value: &str) -> Group {
@@ -1498,7 +1560,7 @@ mod tests {
             label: label.into(),
             value: value.into(),
             widest: "999.9 MB/s".into(),
-            high: false,
+            ..Cell::default()
         };
         Group {
             cells: vec![rate("↓", down), rate("↑", up)],
@@ -1660,6 +1722,50 @@ mod tests {
     }
 
     #[test]
+    fn a_parameter_goes_by_its_name_where_its_device_shows() {
+        // CPU, its temperature, the memory, then the GPU's temperature
+        // after the GPU.
+        let groups = vec![
+            first(1, "CPU", "41%"),
+            after(1, "CPU", "Temp", "59 °C"),
+            first(3, "RAM", "40%"),
+            first(4, "GPU", "94%"),
+            after(4, "GPU", "Temp", "48 °C"),
+        ];
+        // In colour, each after its device's reading.
+        for style in [Style::Figures, Style::Capsules, Style::Curves] {
+            let layout = lay_out(&groups, 48, 1., style, &Even, None);
+            assert_eq!(
+                texts(&layout.runs)
+                    .into_iter()
+                    .filter(|text| text.chars().all(char::is_alphabetic))
+                    .collect::<Vec<_>>(),
+                ["CPU", "Temp", "RAM", "GPU", "Temp"],
+                "{style:?}"
+            );
+        }
+        // In plain names, two rows: only under its device's reading; the
+        // GPU's temperature opens a column of its own and names the GPU.
+        let labels = lay_out(&groups, 48, 1., Style::Labels, &Even, None);
+        let names = labels
+            .runs
+            .iter()
+            .filter(|run| !run.value)
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["CPU", "Temp", "RAM", "GPU", "GPU"]);
+        // In one row, right after it.
+        let low = lay_out(&groups, 30, 1., Style::Labels, &Even, None);
+        let names = low
+            .runs
+            .iter()
+            .filter(|run| !run.value)
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["CPU", "Temp", "RAM", "GPU", "Temp"]);
+    }
+
+    #[test]
     fn a_high_value_turns_amber_and_its_name_keeps_its_colour() {
         let mut busy = single("GPU", "94%");
         busy.tone = Tone::Gpu;
@@ -1756,6 +1862,7 @@ mod tests {
                 value: "88%".into(),
                 widest: "100%".into(),
                 high: true,
+                ..Cell::default()
             }],
             ..Group::default()
         }];
@@ -1815,6 +1922,7 @@ mod tests {
                 value: value.into(),
                 widest: widest.into(),
                 high,
+                ..Cell::default()
             }],
             tone,
             history,

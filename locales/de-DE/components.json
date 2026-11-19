@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "Auslastung"
+      "option": "Auslastung",
+      "tag": "Last"
     },
     "cpuTemperature": {
       "name": "CPU-Temperatur",
       "short": "CPU",
-      "option": "Temperatur"
+      "option": "Temperatur",
+      "tag": "Temp."
     },
     "cpuClock": {
       "name": "CPU-Takt",
       "short": "CPU",
-      "option": "Takt"
+      "option": "Takt",
+      "tag": "Takt"
     },
     "cpuPower": {
       "name": "CPU-Leistung",
       "short": "CPU",
-      "option": "Leistung"
+      "option": "Leistung",
+      "tag": "Leist."
     },
     "memory": {
       "name": "Arbeitsspeicher",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "Auslastung"
+      "option": "Auslastung",
+      "tag": "Last"
     },
     "gpuTemperature": {
       "name": "GPU-Temperatur",
       "short": "GPU",
-      "option": "Temperatur"
+      "option": "Temperatur",
+      "tag": "Temp."
     },
     "gpuMemory": {
       "name": "GPU-Speicher",
       "short": "VRAM",
-      "option": "Speicher"
+      "option": "Speicher",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "GPU-Takt",
       "short": "GPU",
-      "option": "Takt"
+      "option": "Takt",
+      "tag": "Takt"
     },
     "gpuPower": {
       "name": "GPU-Leistung",
       "short": "GPU",
-      "option": "Leistung"
+      "option": "Leistung",
+      "tag": "Leist."
     },
     "gpuFan": {
       "name": "GPU-Lüfter",
       "short": "Lüfter",
-      "option": "Lüfter"
+      "option": "Lüfter",
+      "tag": "Lüfter"
     },
     "disk": {
       "name": "Datenträger",

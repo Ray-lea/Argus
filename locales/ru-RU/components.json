@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "Загрузка"
+      "option": "Загрузка",
+      "tag": "Загр."
     },
     "cpuTemperature": {
       "name": "Температура CPU",
       "short": "CPU",
-      "option": "Температура"
+      "option": "Температура",
+      "tag": "Темп."
     },
     "cpuClock": {
       "name": "Частота CPU",
       "short": "CPU",
-      "option": "Частота"
+      "option": "Частота",
+      "tag": "Част."
     },
     "cpuPower": {
       "name": "Мощность CPU",
       "short": "CPU",
-      "option": "Мощность"
+      "option": "Мощность",
+      "tag": "Мощн."
     },
     "memory": {
       "name": "Память",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "Загрузка"
+      "option": "Загрузка",
+      "tag": "Загр."
     },
     "gpuTemperature": {
       "name": "Температура GPU",
       "short": "GPU",
-      "option": "Температура"
+      "option": "Температура",
+      "tag": "Темп."
     },
     "gpuMemory": {
       "name": "Память GPU",
       "short": "VRAM",
-      "option": "Память"
+      "option": "Память",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "Частота GPU",
       "short": "GPU",
-      "option": "Частота"
+      "option": "Частота",
+      "tag": "Част."
     },
     "gpuPower": {
       "name": "Мощность GPU",
       "short": "GPU",
-      "option": "Мощность"
+      "option": "Мощность",
+      "tag": "Мощн."
     },
     "gpuFan": {
       "name": "Вентилятор GPU",
       "short": "Вент.",
-      "option": "Вентилятор"
+      "option": "Вентилятор",
+      "tag": "Вент."
     },
     "disk": {
       "name": "Диск",

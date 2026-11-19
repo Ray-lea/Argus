@@ -56,22 +56,26 @@
     "cpu": {
       "name": "CPU",
       "short": "CPU",
-      "option": "使用率"
+      "option": "使用率",
+      "tag": "使用率"
     },
     "cpuTemperature": {
       "name": "CPU 温度",
       "short": "CPU",
-      "option": "温度"
+      "option": "温度",
+      "tag": "温度"
     },
     "cpuClock": {
       "name": "CPU クロック",
       "short": "CPU",
-      "option": "クロック"
+      "option": "クロック",
+      "tag": "クロック"
     },
     "cpuPower": {
       "name": "CPU 消費電力",
       "short": "CPU",
-      "option": "消費電力"
+      "option": "消費電力",
+      "tag": "電力"
     },
     "memory": {
       "name": "メモリ",
@@ -86,32 +90,38 @@
     "gpu": {
       "name": "GPU",
       "short": "GPU",
-      "option": "使用率"
+      "option": "使用率",
+      "tag": "使用率"
     },
     "gpuTemperature": {
       "name": "GPU 温度",
       "short": "GPU",
-      "option": "温度"
+      "option": "温度",
+      "tag": "温度"
     },
     "gpuMemory": {
       "name": "GPU メモリ",
       "short": "VRAM",
-      "option": "メモリ"
+      "option": "メモリ",
+      "tag": "VRAM"
     },
     "gpuClock": {
       "name": "GPU クロック",
       "short": "GPU",
-      "option": "クロック"
+      "option": "クロック",
+      "tag": "クロック"
     },
     "gpuPower": {
       "name": "GPU 消費電力",
       "short": "GPU",
-      "option": "消費電力"
+      "option": "消費電力",
+      "tag": "電力"
     },
     "gpuFan": {
       "name": "GPU ファン",
       "short": "ファン",
-      "option": "ファン"
+      "option": "ファン",
+      "tag": "ファン"
     },
     "disk": {
       "name": "ディスク",

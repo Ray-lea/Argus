@@ -1051,33 +1051,58 @@ fn tone(metric: Metric) -> TaskbarTone {
 /// The taskbar's cells for `gauges`: a single value under its short name,
 /// a pair of rates under their marks, after the short name of the device
 /// they are of; each with its device's colour and, from `timeline`, its
-/// recent values for a curve.
+/// recent values for a curve. A CPU or GPU reading right after another of
+/// the same CPU or GPU also has its parameter's name (temperature, clock
+/// …), which the taskbar shows where the device is plain anyway.
 fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<TaskbarGroup> {
+    let mut run = 0;
     gauges
         .iter()
-        .map(|gauge| TaskbarGroup {
-            tone: tone(gauge.reading.metric),
-            history: timeline
-                .zip(gauge.trend.as_ref())
-                .map(|(timeline, trend)| history(timeline, trend))
-                .unwrap_or_default(),
-            cells: match gauge.parts.as_slice() {
-                [part] => vec![TaskbarCell {
-                    label: gauge.short.clone(),
-                    value: part.text.clone(),
-                    widest: part.widest.clone(),
-                    high: gauge.high,
-                }],
-                parts => parts
-                    .iter()
-                    .map(|part| TaskbarCell {
-                        label: format!("{}{}", gauge.short, part.mark),
+        .enumerate()
+        .map(|(index, gauge)| {
+            let tone = tone(gauge.reading.metric);
+            let follows = matches!(tone, TaskbarTone::Cpu | TaskbarTone::Gpu)
+                && index > 0
+                && gauges[index - 1].reading.device == gauge.reading.device
+                && self::tone(gauges[index - 1].reading.metric) == tone;
+            if !follows {
+                run = index + 1;
+            }
+            TaskbarGroup {
+                tone,
+                history: timeline
+                    .zip(gauge.trend.as_ref())
+                    .map(|(timeline, trend)| history(timeline, trend))
+                    .unwrap_or_default(),
+                cells: match gauge.parts.as_slice() {
+                    [part] => vec![TaskbarCell {
+                        label: gauge.short.clone(),
+                        name: if follows {
+                            label(&format!(
+                                "components.metric.{}.tag",
+                                metric_key(gauge.reading.metric)
+                            ))
+                        } else {
+                            String::new()
+                        },
+                        run,
                         value: part.text.clone(),
                         widest: part.widest.clone(),
-                        high: false,
-                    })
-                    .collect(),
-            },
+                        high: gauge.high,
+                    }],
+                    parts => parts
+                        .iter()
+                        .map(|part| TaskbarCell {
+                            label: format!("{}{}", gauge.short, part.mark),
+                            name: String::new(),
+                            run,
+                            value: part.text.clone(),
+                            widest: part.widest.clone(),
+                            high: false,
+                        })
+                        .collect(),
+                },
+            }
         })
         .collect()
 }
@@ -2062,6 +2087,45 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["↓", "↑"]
         );
+        // A CPU or GPU reading after another of its device has its
+        // parameter's name too; the memory's two readings do not.
+        let groups = taskbar_groups(
+            &gauges(
+                &snapshot(),
+                &plain(&[
+                    Metric::Cpu,
+                    Metric::CpuTemperature,
+                    Metric::CpuPower,
+                    Metric::Memory,
+                    Metric::MemoryUsed,
+                    Metric::GpuTemperature,
+                ]),
+                false,
+            ),
+            None,
+        );
+        let cells = groups
+            .iter()
+            .map(|group| &group.cells[0])
+            .collect::<Vec<_>>();
+        let tag = |key: &str| label(&format!("components.metric.{key}.tag"));
+        assert_eq!(
+            cells
+                .iter()
+                .map(|cell| cell.name.clone())
+                .collect::<Vec<_>>(),
+            [
+                String::new(),
+                tag("cpuTemperature"),
+                tag("cpuPower"),
+                String::new(),
+                String::new(),
+                String::new(),
+            ]
+        );
+        assert!(cells[0].run == cells[1].run && cells[1].run == cells[2].run);
+        assert!(cells[2].run != cells[3].run && cells[3].run != cells[4].run);
+        assert!(cells[4].run != cells[5].run);
     }
 
     fn several() -> serde_json::Value {
