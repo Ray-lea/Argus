@@ -45,6 +45,8 @@ use power::Access;
 pub struct GpuInfo {
     /// Adapter LUID as a string.
     pub id: String,
+    #[serde(skip)]
+    pub(crate) history_id: Option<String>,
     pub name: String,
     pub dedicated_total: u64,
     pub shared_total: u64,
@@ -693,6 +695,11 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
         handle: a.hAdapter,
         luid,
         info: Arc::new(GpuInfo {
+            history_id: driver
+                .device
+                .as_ref()
+                .map(|device| device.instance_id())
+                .or_else(|| pci.map(|(bus, dev, func)| format!("pci-{bus}-{dev}-{func}"))),
             id: (((luid.HighPart as u32 as u64) << 32) | luid.LowPart as u64).to_string(),
             name: if name.is_empty() { "GPU".into() } else { name },
             dedicated_total: sizes.DedicatedVideoMemorySize,
@@ -1058,6 +1065,7 @@ mod tests {
         GpuStats {
             info: Arc::new(GpuInfo {
                 id: "1".into(),
+                history_id: None,
                 name: "test".into(),
                 dedicated_total: 0,
                 shared_total: 0,

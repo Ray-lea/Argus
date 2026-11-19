@@ -10,6 +10,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
+arc-swap = "1.9.5"
 log = "0.4.35"
 png = "0.18.1"
 serde = { version = "1.0.229", features = ["derive", "rc"] }

@@ -789,19 +789,47 @@ pub fn history_series(
     to: i64,
     buckets: usize,
 ) -> Vec<HistoryPoint> {
-    history::series(&dir.0, from, to, buckets.min(4096))
+    history::legacy_series(&dir.0, from, to, buckets.min(4096))
 }
 
+pub fn history_points(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    bucket: i64,
+    origin: i64,
+    keys: Vec<String>,
+) -> history::HistorySeries {
+    history::series(&dir.0, from, to, bucket, origin, &keys)
+}
+pub fn history_channels(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+) -> Vec<history::HistoryChannel> {
+    history::channels(&dir.0, from, to)
+}
+pub fn history_frame(dir: State<'_, HistoryDir>, ts: i64) -> Option<history::HistoryFrame> {
+    history::frame(&dir.0, ts)
+}
+pub fn history_table(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+    trend: String,
+    points: usize,
+) -> Result<history::HistoryTable, String> {
+    if points > 4096 || !matches!(trend.as_str(), "cpu" | "mem" | "disk" | "net" | "gpu") {
+        return Err(tr!("app.invalidRequest"));
+    }
+    Ok(history::table(&dir.0, from, to, &trend, points))
+}
 pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMoment> {
     history::moment(&dir.0, ts)
 }
 
 pub fn history_usage(dir: State<'_, HistoryDir>) -> HistoryUsage {
-    let mut usage = history::usage(&dir.0);
-    usage.bytes = usage
-        .bytes
-        .saturating_add(argus_core::watch::WatchRecorder::storage_bytes(&dir.0));
-    usage
+    history::usage(&dir.0)
 }
 
 /// Explicit observation runs on the sampler, where its file and instance handle live.
@@ -840,9 +868,9 @@ pub fn set_history_enabled(
     app.state::<SettingsStore>()
         .update(|s| s.history = enabled)
         .map_err(|e| e.to_string())?;
-    state
-        .sampler
-        .send(Control::SetHistoryDir(enabled.then(|| dir.0.clone())));
+    state.sampler.send(Control::SetHistoryDir(
+        (enabled && dir.1).then(|| dir.0.clone()),
+    ));
     Ok(settings_view(&app))
 }
 
@@ -1243,6 +1271,82 @@ pub fn pick_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_dispatch_serves_both_page_contracts() {
+        use crate::{dispatch::invoke, native_runtime::Host};
+        use serde_json::json;
+        let base = 1_800_000_000_000i64;
+        let dir =
+            std::env::temp_dir().join(format!("argus-history-dispatch-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let host = Host::new("dev.argus.taskmanager.test.history-dispatch".into());
+        host.manage(HistoryDir(dir.clone(), true));
+        let mut rec = history::HistoryRecorder::new(dir.clone());
+        for n in 0..10 {
+            rec.record(&argus_core::Snapshot {
+                seq: n as u64,
+                timestamp: base + n * 1000,
+                system: argus_core::SystemStats {
+                    cpu: 25.,
+                    ..Default::default()
+                },
+                hardware: Default::default(),
+                processes: Vec::new(),
+                sessions: Vec::new(),
+                process_network: false,
+            });
+        }
+        let live = invoke(
+            &host,
+            "history_points",
+            json!({"from":base,"to":base+9000,"bucket":1000,"origin":base,"keys":["cpu","absent"]}),
+        )
+        .unwrap();
+        assert_eq!(live["ts"].as_array().unwrap().len(), 10);
+        assert_eq!(live["series"]["cpu"]["mean"][0], 25.);
+        assert!(live["series"]["absent"]["mean"][0].is_null());
+        drop(rec);
+        let query = |name, args| invoke(&host, name, args).unwrap();
+        let interval = json!({"from":base,"to":base+10000});
+        assert_eq!(
+            query("history_range", json!({})),
+            json!([base, base + 5000])
+        );
+        assert_eq!(
+            query(
+                "history_series",
+                json!({"from":base,"to":base+10000,"buckets":2})
+            )[0]["frameTs"],
+            base
+        );
+        assert_eq!(
+            query("history_moment", json!({"ts":base}))["system"]["cpuPeak"],
+            25.
+        );
+        assert_eq!(
+            query("history_frame", json!({"ts":base}))["system"]["cpuKernel"],
+            0.
+        );
+        assert!(
+            query("history_channels", interval)
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v["key"] == "cpuVoltage" && v["service"] == true)
+        );
+        assert_eq!(
+            query(
+                "history_table",
+                json!({"from":base,"to":base+10000,"trend":"cpu","points":4})
+            )["recorded"],
+            10_000
+        );
+        let usage = query("history_usage", json!({}));
+        assert_eq!(usage["days"], 1);
+        assert_eq!(usage["breakdown"]["watch"], 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn denied() -> Result<(), ActionError> {
         Err(ActionError::AccessDenied)

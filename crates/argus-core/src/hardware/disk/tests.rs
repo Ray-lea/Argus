@@ -33,6 +33,7 @@ fn disk(index: u32) -> Disk {
         handle: None,
         generation: 0,
         info: Arc::new(DiskInfo {
+            history_id: String::new(),
             index,
             model: format!("Disk {index}"),
             size: 1024,

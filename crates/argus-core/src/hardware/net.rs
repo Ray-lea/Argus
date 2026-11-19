@@ -24,8 +24,10 @@ const IF_TYPE_WIFI: u32 = 71;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NicInfo {
-    /// Stable interface LUID, as a string.
+    /// Interface LUID, as a string.
     pub id: String,
+    #[serde(skip)]
+    pub(crate) history_guid: String,
     /// User-visible connection name, e.g. `以太网`, `WLAN`.
     pub name: String,
     /// Adapter model, e.g. `Intel(R) Wi-Fi 6E AX211`.
@@ -150,6 +152,7 @@ fn describe(row: &MIB_IF_ROW2, addrs: Option<&(Vec<String>, Vec<String>)>) -> Ni
     let (ipv4, ipv6) = addrs.cloned().unwrap_or_default();
     NicInfo {
         id: unsafe { row.InterfaceLuid.Value }.to_string(),
+        history_guid: format!("{:032x}", row.InterfaceGuid.to_u128()),
         name: from_wide(&row.Alias),
         description: from_wide(&row.Description),
         kind: match row.Type {

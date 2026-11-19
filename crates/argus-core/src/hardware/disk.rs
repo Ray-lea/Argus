@@ -73,6 +73,8 @@ const LEGACY_PROBE_DISKS: u32 = 32;
 #[serde(rename_all = "camelCase")]
 pub struct DiskInfo {
     pub index: u32,
+    #[serde(skip)]
+    pub(crate) history_id: String,
     /// Empty when the drive does not report one.
     pub model: String,
     pub size: u64,
@@ -273,9 +275,9 @@ impl DiskTracker {
         for index in indices {
             // The interface names the driver that serves the disk even when
             // its handle is not the one kept.
-            let (interface, controller) = match discovered.remove(&index) {
-                Some(found) => (Some(found.handle), found.controller),
-                None => (None, None),
+            let (interface, controller, path) = match discovered.remove(&index) {
+                Some(found) => (Some(found.handle), found.controller, found.path),
+                None => (None, None, String::new()),
             };
             let opened = DeviceHandle::open(&format!(r"\\.\PhysicalDrive{index}"))
                 .or_else(|code| interface.ok_or(code));
@@ -296,7 +298,7 @@ impl DiskTracker {
                 }
             };
             let vols = volumes.get(&index).cloned().unwrap_or_default();
-            let (info, geometry_error) = match &handle {
+            let (mut info, geometry_error) = match &handle {
                 Some(handle) => handle
                     .read(|raw, _| Ok(describe(raw, index, vols.clone())))
                     .unwrap_or_else(|_| (unknown_disk(index, vols), None)),
@@ -304,6 +306,7 @@ impl DiskTracker {
                     DiskInfo {
                         index,
                         model: String::new(),
+                        history_id: String::new(),
                         size: 0,
                         bus: "other",
                         ssd: None,
@@ -313,6 +316,9 @@ impl DiskTracker {
                     None,
                 ),
             };
+            if !path.is_empty() {
+                info.history_id = path;
+            }
             if no_media(&info, geometry_error) {
                 continue;
             }
@@ -500,6 +506,7 @@ fn unknown_disk(index: u32, volumes: Vec<String>) -> DiskInfo {
     DiskInfo {
         index,
         model: String::new(),
+        history_id: String::new(),
         size: 0,
         bus: "other",
         ssd: None,
@@ -632,6 +639,7 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> (DiskInfo, 
     let mut info = DiskInfo {
         index,
         model: String::new(),
+        history_id: String::new(),
         size: 0,
         bus: "other",
         ssd: None,
@@ -662,6 +670,7 @@ fn describe(handle: HANDLE, index: u32, mut volumes: Vec<String>) -> (DiskInfo, 
                 .map_or(raw.len(), |p| o + p);
             String::from_utf8_lossy(&raw[o..end]).trim().to_owned()
         };
+        info.history_id = string_at(desc.SerialNumberOffset);
         let vendor = string_at(desc.VendorIdOffset);
         let product = string_at(desc.ProductIdOffset);
         let model = if vendor.is_empty() || product.starts_with(&vendor) {

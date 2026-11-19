@@ -271,6 +271,7 @@ mod tests {
     #[test]
     fn spanning_volumes_and_unrecognized_providers_are_not_misattributed() {
         let disk = |index, letter: &str| DiskInfo {
+            history_id: String::new(),
             index,
             model: String::new(),
             size: 100,

@@ -48,6 +48,10 @@ pub(super) fn powers_down(adapter_type: u32) -> bool {
 pub(super) struct Device(Vec<u16>);
 
 impl Device {
+    pub(super) fn instance_id(&self) -> String {
+        crate::util::from_wide(&self.0)
+    }
+
     pub fn of(node: u32) -> Option<Self> {
         let mut id = vec![0u16; MAX_DEVICE_ID_LEN as usize + 1];
         (unsafe { CM_Get_Device_IDW(node, &mut id, 0) } == CR_SUCCESS).then_some(Self(id))

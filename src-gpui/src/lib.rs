@@ -53,7 +53,7 @@ pub(crate) fn stop_network_session() {
         argus_core::net_process::stop_session(session);
     }
 }
-pub struct HistoryDir(pub PathBuf);
+pub struct HistoryDir(pub PathBuf, bool);
 pub struct AppState {
     sampler: Sampler,
     elevated: bool,
@@ -134,7 +134,13 @@ pub fn run() -> anyhow::Result<()> {
     }
     let mut options = Options::parse();
     anyhow::ensure!(
-        !options.test || options.identifier != argus_app::config::identifier(),
+        !options.test
+            || (!options
+                .identifier
+                .eq_ignore_ascii_case(argus_app::config::identifier())
+                && !options.identifier.eq_ignore_ascii_case(
+                    &argus_app::config::development_identifier(env!("CARGO_MANIFEST_DIR"))
+                )),
         "tests require an isolated identifier"
     );
     anyhow::ensure!(
@@ -250,20 +256,24 @@ pub fn run() -> anyhow::Result<()> {
     host.manage(Latest::default());
     let local_data = host.path().app_local_data_dir()?;
     let history = local_data.join("history");
-    if !options.test {
+    let record_history =
+        !options.test || std::env::var_os("ARGUS_TEST_HISTORY").is_some_and(|v| v == "1");
+    if record_history {
         argus_core::history::prune_expired(&history);
     }
     // Before the interface restores a disk's details page and reads for it.
     disk_reads::install(&local_data);
     leftovers::remove_webview_data(local_data);
-    host.manage(HistoryDir(history.clone()));
+    host.manage(HistoryDir(history.clone(), record_history));
     let saved = host.state::<SettingsStore>().get();
     let state = host.state::<AppState>();
-    if !options.test {
-        state.rules.set_rules(saved.rules.clone());
+    if record_history {
         state
             .sampler
             .send(Control::SetHistoryDir(saved.history.then_some(history)));
+    }
+    if !options.test {
+        state.rules.set_rules(saved.rules.clone());
         state
             .sampler
             .send(Control::SetKernelSensors(saved.kernel_sensors));
@@ -315,6 +325,7 @@ pub fn run() -> anyhow::Result<()> {
     let output = argus_core::diagnostics::startup_phase("graphics.event-loop", || {
         frontend::run(host.clone(), options)
     });
+    host.state::<AppState>().sampler.shutdown();
     shell::shutdown(&host);
     instance::shutdown(&host);
     stop_network_session();

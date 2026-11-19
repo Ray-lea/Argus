@@ -279,6 +279,7 @@ dependencies = [
 name = "argus-core"
 version = "0.5.0"
 dependencies = [
+ "arc-swap",
  "log",
  "png 0.18.1",
  "serde",

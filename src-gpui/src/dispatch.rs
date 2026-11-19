@@ -288,6 +288,35 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<usize>(&args, "buckets")?,
         ))
         .expect("serializable command response")),
+        "history_points" => Ok(serde_json::to_value(crate::commands::history_points(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<i64>(&args, "bucket")?,
+            argument::<i64>(&args, "origin")?,
+            argument::<Vec<String>>(&args, "keys")?,
+        ))
+        .expect("serializable command response")),
+        "history_channels" => Ok(serde_json::to_value(crate::commands::history_channels(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+        ))
+        .expect("serializable command response")),
+        "history_frame" => Ok(serde_json::to_value(crate::commands::history_frame(
+            host.state(),
+            argument::<i64>(&args, "ts")?,
+        ))
+        .expect("serializable command response")),
+        "history_table" => crate::commands::history_table(
+            host.state(),
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<String>(&args, "trend")?,
+            argument::<usize>(&args, "points")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "history_moment" => Ok(serde_json::to_value(crate::commands::history_moment(
             host.state(),
             argument::<i64>(&args, "ts")?,

@@ -13,6 +13,7 @@ use windows::Win32::System::Ioctl::{GUID_DEVINTERFACE_DISK, IOCTL_STORAGE_GET_DE
 /// A present disk interface, by its physical drive number.
 pub(super) struct Found {
     pub(super) handle: DeviceHandle,
+    pub(super) path: String,
     /// Service name of the driver that serves the disk (see `controller`).
     pub(super) controller: Option<String>,
 }
@@ -136,6 +137,7 @@ pub(super) fn disks() -> HashMap<u32, Found> {
                 if kind == 7 && index <= 4095 {
                     out.entry(index).or_insert_with(|| Found {
                         handle,
+                        path: from_wide(path),
                         controller: super::controller::of_disk(device.DevInst),
                     });
                 } else {
