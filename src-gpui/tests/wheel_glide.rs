@@ -1,0 +1,80 @@
+//! Wheel glides of the vendored GPUI (`smooth_scroll` in its div.rs) at a
+//! fractional scale factor, where a scroller's far edge can lie between
+//! device pixels: each glide step lands on whole device pixels, and the step
+//! next to such an edge snaps past it.
+use gpui_test::{
+    AppContext, Context, InteractiveElement, IntoElement, Modifiers, ParentElement, Render,
+    ScrollDelta, ScrollEvent, ScrollHandle, ScrollSource, StatefulInteractiveElement, Styled,
+    TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
+};
+
+/// A 50 px box over 254 device pixels of content at 1.5x: it scrolls by
+/// 119.333…, which the scroll max rounds to 119.33, between device pixels.
+struct Tall {
+    scroll: ScrollHandle,
+}
+impl Render for Tall {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(
+            div()
+                .id("list")
+                .h(px(50.))
+                .w(px(100.))
+                .overflow_y_scroll()
+                .track_scroll(&self.scroll)
+                .child(div().w_full().h(px(254. / 1.5))),
+        )
+    }
+}
+
+#[test]
+fn a_wheel_glide_leaves_a_bottom_edge_between_device_pixels() {
+    let mut cx = TestAppContext::single();
+    let scroll = ScrollHandle::new();
+    let window = cx.add_window({
+        let scroll = scroll.clone();
+        |_, _| Tall { scroll }
+    });
+    let frame = |cx: &mut TestAppContext| {
+        cx.update_window(window.into(), |_, window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+    };
+    cx.update_window(window.into(), |_, window, _| window.set_scale_factor(1.5))
+        .unwrap();
+    frame(&mut cx);
+    let max = scroll.max_offset().y;
+    assert!(
+        (f32::from(max) * 1.5).fract().abs() > 1e-3,
+        "the bottom edge {max:?} lies on a device pixel; the case needs one between them"
+    );
+    scroll.set_offset(point(px(0.), -max));
+    frame(&mut cx);
+    assert_eq!(scroll.offset().y, -max);
+
+    // A notch up, through the scroller's own wheel listener. Its first steps
+    // barely move and snap past the edge; they must not end the glide.
+    let mut visual = VisualTestContext::from_window(window.into(), &cx);
+    visual.simulate_event(ScrollEvent {
+        position: point(px(50.), px(25.)),
+        delta: ScrollDelta::Lines(point(0., 3.)),
+        modifiers: Modifiers::default(),
+        touch_phase: TouchPhase::Moved,
+        source: ScrollSource::Pointer,
+    });
+    for _ in 0..3 {
+        frame(&mut cx);
+        assert!(scroll.offset().y >= -max, "a step went past the edge");
+    }
+    // Past the longest glide (200 ms), the last step lands on the target.
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    frame(&mut cx);
+    let target = -max + px(100.);
+    assert!(
+        (scroll.offset().y - target).abs() < px(1.),
+        "the glide up from the bottom stopped at {:?}, not near {target:?}",
+        scroll.offset().y
+    );
+}

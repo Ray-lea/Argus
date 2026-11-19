@@ -6328,11 +6328,17 @@ pub mod smooth_scroll {
             let now = Instant::now();
             // On whole device pixels, each frame of a glide moves the content
             // by a whole number of them: the renderer can copy it instead of
-            // drawing it again (`ScrollRegion`).
-            *offset = window.pixel_snap_point(clamp(glide.value(now)));
+            // drawing it again (`ScrollRegion`). An edge off the device grid
+            // (a fractional scale factor, or the scroll max rounded to two
+            // decimals) snaps past itself, so the snapped offset is clamped
+            // again here: the prepaint's own clamp would otherwise move it off
+            // what the glide wrote, the next step would take that for someone
+            // else's scroll and end the glide, and a glide leaving that edge
+            // would never get away from it.
+            *offset = clamp(window.pixel_snap_point(clamp(glide.value(now))));
             glide.written = *offset;
             if glide.progress(now) >= 1. {
-                *offset = window.pixel_snap_point(to);
+                *offset = clamp(window.pixel_snap_point(to));
                 glide.written = *offset;
                 glides.remove(&key);
             }
