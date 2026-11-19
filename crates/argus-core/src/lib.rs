@@ -26,6 +26,7 @@ mod nt;
 mod package;
 mod paths;
 mod pdh;
+pub mod power;
 pub mod privilege;
 pub mod process;
 pub mod rules;

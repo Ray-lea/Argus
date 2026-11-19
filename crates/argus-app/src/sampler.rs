@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::channel::Channel;
 use argus_core::history::{self, HistoryRecorder};
+use argus_core::power::PowerTracker;
 use argus_core::watch::{WatchAction, WatchError, WatchRecorder, WatchView};
 use argus_core::{Collector, Snapshot};
 use argus_service::{DiskClient, NetworkClient, RuleRunner, SensorClient};
@@ -206,6 +207,7 @@ impl Sampler {
                 let mut network = NetworkClient::spawn();
                 let mut disk = DiskClient::spawn();
                 let mut sensors = SensorClient::spawn();
+                let mut power = PowerTracker::default();
                 let mut kernel_sensors = false;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut window: Option<Probe> = None;
@@ -320,6 +322,8 @@ impl Sampler {
                     if let Some(failure) = disk.new_failure() {
                         log::warn!("per-process disk I/O unavailable: {failure}");
                     }
+                    let logical_cpus = snapshot.system.logical_cpus;
+                    power.apply(&mut snapshot.processes, logical_cpus, Instant::now());
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);

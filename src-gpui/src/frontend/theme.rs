@@ -490,6 +490,12 @@ pub fn set_font_size(size: f32) {
 }
 pub fn heat_alpha(field: &str, value: f64) -> f32 {
     let heat = &design()["heat"];
+    if matches!(field, "power" | "powerTrend") {
+        // By the level shown, none for the lowest.
+        let top = argus_core::power::LEVELS.len() - 1;
+        let level = argus_core::power::level(value) as f64 / top as f64;
+        return (level * heat["opacity"].as_f64().unwrap()) as f32;
+    }
     let kind = match field {
         "cpu" | "gpu" => "percent",
         "mem" | "workingSet" | "commit" | "gpuDedicated" | "gpuShared" => "memory",
@@ -734,9 +740,13 @@ mod tests {
             "gpuShared",
             "net",
             "io",
+            "power",
+            "powerTrend",
         ] {
             assert!(super::heat_alpha(field, 1_000_000_000.) > 0.);
         }
+        // An idle process's power level has no heat.
+        assert_eq!(super::heat_alpha("power", 0.), 0.);
         assert_eq!(
             super::bytes(2_199_023_255_552., false),
             crate::regional::numeric("2.0 TB".into())

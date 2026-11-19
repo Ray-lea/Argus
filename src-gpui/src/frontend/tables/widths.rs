@@ -18,6 +18,7 @@
 //! (`fill`): the table always spans its width, and a column dragged
 //! narrower gives its room to that last column.
 use super::*;
+use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Weak;
 use std::time::Duration;
@@ -87,7 +88,21 @@ pub(super) struct Contents<'a> {
 /// The widest values a numeric format shows in practice: a column is this
 /// wide from the start instead of creeping wider as readings grow. A rarer,
 /// wider value still widens it.
-fn envelope(field: &Field, bits: bool) -> &'static [&'static str] {
+fn envelope(field: &Field, bits: bool) -> Vec<Cow<'static, str>> {
+    if field.kind == CellKind::Power {
+        // Every level, in the interface language.
+        return argus_core::power::LEVELS
+            .iter()
+            .map(|level| Cow::Owned(label(&format!("processes.power.{level}"))))
+            .collect();
+    }
+    figures_envelope(field, bits)
+        .iter()
+        .map(|text| Cow::Borrowed(*text))
+        .collect()
+}
+
+fn figures_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
     match field.kind {
         CellKind::Percent => &["100%", "8.8%"],
         CellKind::Memory if field.key.starts_with("io") && field.key.ends_with("Total") => {
@@ -110,7 +125,7 @@ fn envelope(field: &Field, bits: bool) -> &'static [&'static str] {
 fn total_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
     match field.key {
         "cpu" | "mem" | "gpu" => &["100%"],
-        _ if field.kind != CellKind::Percent => envelope(field, bits),
+        _ if field.kind != CellKind::Percent => figures_envelope(field, bits),
         _ => &[],
     }
 }
@@ -724,7 +739,7 @@ impl AutoWidths {
         let mut required = header.max(total);
         for text in envelope(field, contents.bits) {
             required =
-                required.max(self.measure(text, Role::Cell, &system, cx) + CELL_PADDING * 2.);
+                required.max(self.measure(&text, Role::Cell, &system, cx) + CELL_PADDING * 2.);
         }
         for index in 0..contents.rows.len() {
             if let Some(width) = self.row_width(index, field, &mut contents, &system, cx) {
@@ -780,7 +795,7 @@ impl AutoWidths {
             } else {
                 let mut required = floor;
                 let bounds = envelope(field, contents.bits);
-                for text in bounds {
+                for text in &bounds {
                     required = required
                         .max(self.measure(text, Role::Cell, &system, cx) + CELL_PADDING * 2.);
                 }

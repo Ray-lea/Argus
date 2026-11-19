@@ -43,6 +43,8 @@ enum CellKind {
     Timestamp,
     ProcessBoolean,
     AddressSpace,
+    /// A power estimate shown as its level.
+    Power,
 }
 /// A CSS grid track from the tables: a fixed width or `minmax(min, fr)`.
 /// The service and startup lists size theirs by their contents instead
@@ -234,6 +236,7 @@ fn process_fields(preferences: &columns::Preferences, sources: columns::Sources)
                 Format::Duration => CellKind::Duration,
                 Format::Timestamp => CellKind::Timestamp,
                 Format::Boolean => CellKind::ProcessBoolean,
+                Format::Power => CellKind::Power,
             };
             Field {
                 key: column.key,
@@ -248,7 +251,11 @@ fn process_fields(preferences: &columns::Preferences, sources: columns::Sources)
                 }),
                 end: !matches!(
                     column.format,
-                    Format::Name | Format::Text | Format::Timestamp | Format::Boolean
+                    Format::Name
+                        | Format::Text
+                        | Format::Timestamp
+                        | Format::Boolean
+                        | Format::Power
                 ),
             }
         })
@@ -358,6 +365,10 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::Rate | CellKind::NetworkRate => row
             .metric(field.key)
             .map(|v| theme::bytes(v, true))
+            .unwrap_or_else(missing),
+        CellKind::Power => row
+            .metric(field.key)
+            .map(columns::power_label)
             .unwrap_or_else(missing),
         _ => entry_cell(raw, field),
     }

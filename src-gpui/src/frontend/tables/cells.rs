@@ -173,6 +173,7 @@ impl CellSpec {
                 let dim = match field.kind {
                     CellKind::Percent => reading.is_none_or(|v| v < 0.05),
                     CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
+                    CellKind::Power => reading.is_none_or(|v| columns::power_level(v) == 0),
                     _ => false,
                 };
                 let delayed = row.native_pending(field.key)
@@ -187,6 +188,7 @@ impl CellSpec {
                             | CellKind::Memory
                             | CellKind::Rate
                             | CellKind::NetworkRate
+                            | CellKind::Power
                     )
                 {
                     spec.background =

@@ -1,0 +1,10 @@
+{
+  "window": [1500, 900],
+  "steps": [
+    { "note": "Power usage and its trend: levels, heat, the app's sum and sorting by the level shown." },
+    {"control":{"page":"processes","view":"list","details":"closed","motion":"off","preference":{"processColumns":{"selected":["name","cpu","gpu","diskRead","power","powerTrend"],"order":["name","cpu","gpu","diskRead","power","powerTrend"],"autoWidth":true},"processSort":{"key":"power","desc":true}},"sample":{"set":{"/processes":[{"pid":10001,"createTime":100,"name":"Game.exe","path":"C:/Game.exe","cpu":30,"gpu":85,"diskRead":1048576,"power":8.2,"powerTrend":7.5},{"pid":10002,"createTime":200,"name":"Browser.exe","path":"C:/Browser.exe","cpu":2.1,"gpu":6,"diskRead":0,"power":0.6,"powerTrend":0.4},{"pid":10003,"createTime":300,"name":"Browser.exe","path":"C:/Browser.exe","cpu":0.8,"gpu":0,"diskRead":0,"power":0.15,"powerTrend":0.2},{"pid":10004,"createTime":400,"name":"Indexer.exe","path":"C:/Indexer.exe","cpu":0.4,"gpu":0,"diskRead":52428800,"power":0.27,"powerTrend":0.9},{"pid":10005,"createTime":500,"name":"Compiler.exe","path":"C:/Compiler.exe","cpu":7.5,"gpu":0,"diskRead":2097152,"power":1.2,"powerTrend":0.5},{"pid":10006,"createTime":600,"name":"Idle.exe","path":"C:/Idle.exe","cpu":0,"gpu":0,"diskRead":0,"power":0,"powerTrend":0},{"pid":10007,"createTime":700,"name":"New.exe","path":"C:/New.exe","cpu":0.2,"gpu":0,"diskRead":0,"power":0.05,"powerTrend":null}]}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"power-columns","expect":{"state.visible.4.key":"power","state.visible.5.key":"powerTrend"},"capture":"power-dark"},
+    {"control":{"view":"apps","pointerOutside":true},"wait":600,"capture":"power-apps-dark"},
+    {"control":{"preference":{"processSort":{"key":"powerTrend","desc":false}},"view":"list","theme":"light","pointerOutside":true},"wait":600,"capture":"power-trend-light"},
+    {"control":{"dialog":"columns"},"wait":1000,"capture":"power-dialog-light"}
+  ]
+}

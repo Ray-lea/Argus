@@ -102,6 +102,12 @@ pub struct ProcessRow {
     /// Network bytes per second, when per-process traffic is measured (ETW).
     pub net_sent: u64,
     pub net_received: u64,
+    /// Estimated power usage from CPU, GPU and disk activity, in busy
+    /// logical processors (`power`); None until the counters arrive.
+    pub power: Option<f32>,
+    /// That estimate averaged over about the last two minutes; None until
+    /// ten seconds of the process have been seen.
+    pub power_trend: Option<f32>,
     pub threads: u32,
     pub handles: u32,
     pub session_id: u32,
@@ -540,6 +546,9 @@ impl ProcessTracker {
                 gpu_shared: None,
                 net_sent: 0,
                 net_received: 0,
+                // The host estimates them once the disk rates are in.
+                power: None,
+                power_trend: None,
                 threads: p.number_of_threads,
                 handles: p.handle_count,
                 session_id: p.session_id,

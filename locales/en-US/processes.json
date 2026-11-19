@@ -150,6 +150,14 @@
       "label": "Efficiency mode",
       "title": "EcoQoS power efficiency state of the process."
     },
+    "power": {
+      "label": "Power usage",
+      "title": "Current power use estimated from CPU, GPU and disk activity; groups show the member total."
+    },
+    "powerTrend": {
+      "label": "Power usage trend",
+      "title": "Average power use over about the last two minutes, estimated from CPU, GPU and disk activity; groups show the member total."
+    },
     "cpuTime": {
       "label": "CPU time",
       "title": "Accumulated user and kernel CPU time; groups show the member total."
@@ -292,6 +300,13 @@
     "medium": "Medium",
     "belowNormal": "Below normal",
     "normal": "Normal"
+  },
+  "power": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "moderate": "Moderate",
+    "high": "High",
+    "veryHigh": "Very high"
   },
   "menu": {
     "endAll": {

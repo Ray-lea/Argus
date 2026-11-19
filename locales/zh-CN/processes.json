@@ -144,6 +144,14 @@
       "label": "效率模式",
       "title": "进程的 EcoQoS 节能状态。"
     },
+    "power": {
+      "label": "电源使用情况",
+      "title": "按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。"
+    },
+    "powerTrend": {
+      "label": "电源使用情况趋势",
+      "title": "最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。"
+    },
     "cpuTime": {
       "label": "CPU 时间",
       "title": "累计用户态与内核态 CPU 时间；分组显示成员合计。"
@@ -283,6 +291,13 @@
     "medium": "中",
     "belowNormal": "低于正常",
     "normal": "正常"
+  },
+  "power": {
+    "veryLow": "非常低",
+    "low": "低",
+    "moderate": "中",
+    "high": "高",
+    "veryHigh": "非常高"
   },
   "menu": {
     "endAll": "结束全部 {count} 个进程",

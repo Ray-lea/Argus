@@ -127,6 +127,14 @@
       "label": "效率模式",
       "title": "處理程序的 EcoQoS 節能狀態。"
     },
+    "power": {
+      "label": "電源使用量",
+      "title": "依 CPU、GPU 與磁碟活動估算的目前耗電程度；群組顯示成員合計。"
+    },
+    "powerTrend": {
+      "label": "電源使用量趨勢",
+      "title": "最近約兩分鐘的平均耗電程度，依 CPU、GPU 與磁碟活動估算；群組顯示成員合計。"
+    },
     "cpuTime": {
       "label": "CPU 時間",
       "title": "累計使用者模式與核心模式 CPU 時間；群組顯示成員合計。"
@@ -266,6 +274,13 @@
     "medium": "中",
     "belowNormal": "低於正常",
     "normal": "正常"
+  },
+  "power": {
+    "veryLow": "非常低",
+    "low": "低",
+    "moderate": "中",
+    "high": "高",
+    "veryHigh": "非常高"
   },
   "menu": {
     "endAll": "結束全部 {count} 個處理程序",

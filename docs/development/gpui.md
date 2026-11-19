@@ -63,6 +63,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`process-facts.json`](../../tools/window-probe/steps/process-facts.json) 核对文件版本、架构、提升状态与命令行列的启用、未知值、应用组共同值、窄窗口和恢复默认列，并捕获深浅主题画面。
 
+[`power-columns.json`](../../tools/window-probe/steps/power-columns.json) 用模拟快照中写定的估算值核对“电源使用情况”与“电源使用情况趋势”：五个等级的文字与底色、应用组的合计、按显示的等级排序（同级按名称、缺少趋势的进程排在最后），并捕获深浅主题与“选择列”对话框。模拟快照不经过采样线程，估算与趋势的计算由 `argus-core` 的 `power` 单元测试覆盖。
+
 [`about-scroll.json`](../../tools/window-probe/steps/about-scroll.json) 检查关于页在 150% 界面缩放、大字号及窗口尺寸变化后的滚动范围与底部可达性，`inspectLayout` 的 `aboutScroll` 字段记录滚动位置和边界。
 
 [`diagnostic-summary.json`](../../tools/window-probe/steps/diagnostic-summary.json) 检查关于页的诊断信息复制入口、深浅主题及小窗口大字号布局。模拟快照下单击复制按钮时将生成内容写入 `inspectLayout.diagnosticCopy`，保留系统剪贴板内容；摘要字段筛选、缺失值和缩放换算由相关单元测试覆盖。

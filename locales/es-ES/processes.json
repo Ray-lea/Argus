@@ -152,6 +152,14 @@
       "label": "Modo de eficiencia",
       "title": "Estado de eficiencia energética EcoQoS del proceso."
     },
+    "power": {
+      "label": "Consumo de energía",
+      "title": "Consumo de energía actual estimado a partir de la actividad de CPU, GPU y disco; los grupos muestran la suma de sus miembros."
+    },
+    "powerTrend": {
+      "label": "Tendencia de consumo de energía",
+      "title": "Consumo de energía medio de los últimos dos minutos aproximadamente, estimado a partir de la actividad de CPU, GPU y disco; los grupos muestran la suma de sus miembros."
+    },
     "cpuTime": {
       "label": "Tiempo de CPU",
       "title": "Tiempo acumulado de CPU en modo de usuario y de kernel; los grupos muestran la suma de sus miembros."
@@ -295,6 +303,13 @@
     "medium": "Media",
     "belowNormal": "Por debajo de lo normal",
     "normal": "Normal"
+  },
+  "power": {
+    "veryLow": "Muy bajo",
+    "low": "Bajo",
+    "moderate": "Moderado",
+    "high": "Alto",
+    "veryHigh": "Muy alto"
   },
   "menu": {
     "endAll": {

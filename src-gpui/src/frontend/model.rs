@@ -749,6 +749,18 @@ fn compare_rows(a: &Row, b: &Row, sort: &str, descending: bool) -> Ordering {
             }
             .then_with(by_name)
         }
+        // By the level shown, like the other figures at their precision.
+        key if columns::definition(key)
+            .is_some_and(|column| column.format == columns::Format::Power) =>
+        {
+            match (a.metric_value(key), b.metric_value(key)) {
+                (Some(a), Some(b)) => direct(columns::power_level(a).cmp(&columns::power_level(b))),
+                (None, None) => Ordering::Equal,
+                (None, _) => Ordering::Greater,
+                (_, None) => Ordering::Less,
+            }
+            .then_with(by_name)
+        }
         key => {
             let scale = match key {
                 "cpu" | "gpu" => 10.,
@@ -1691,6 +1703,43 @@ mod tests {
             order("ioPriority", true),
             ["critical", "high", "normal", "low", "veryLow"]
         );
+    }
+
+    #[test]
+    fn power_sums_over_an_app_and_sorts_by_the_level_it_shows() {
+        let process = |pid: u64, name: &str, power: f64, trend: Value| {
+            json!({"pid":pid,"createTime":pid,"name":name,"path":format!("C:/{name}"),
+                "power":power,"powerTrend":trend})
+        };
+        let processes = vec![
+            // Two "low" processes: together "moderate".
+            process(1, "app.exe", 0.2, json!(0.2)),
+            process(2, "app.exe", 0.2, Value::Null),
+            // The same level as the app sorts by name; a higher estimate
+            // within that level does not come first.
+            process(3, "b.exe", 0.7, json!(0.05)),
+            process(4, "c.exe", 2.5, json!(3.0)),
+            process(5, "d.exe", 0.0, Value::Null),
+        ];
+        let rows = rows_of(&processes, "list", "", "power", true, &HashMap::new());
+        assert_eq!(pids(&rows), [4, 3, 1, 2, 5]);
+        let apps = rows_of(&processes, "apps", "", "power", true, &HashMap::new());
+        let app = apps.iter().find(|row| row.members.len() == 2).unwrap();
+        assert_eq!(app.metric("power"), Some(0.4));
+        // Members without a trend yet leave it to the others.
+        assert_eq!(app.metric("powerTrend"), Some(0.2));
+        let names = |rows: &[Row]| {
+            rows.iter()
+                .filter(|row| row.section.is_none())
+                .map(|row| text(&row.raw, "name").to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&apps), ["c.exe", "app.exe", "b.exe", "d.exe"]);
+        let trend = rows_of(&processes, "list", "", "powerTrend", true, &HashMap::new());
+        // Missing trends sort last in either direction.
+        assert_eq!(pids(&trend)[..3], [4, 1, 3]);
+        let rising = rows_of(&processes, "list", "", "powerTrend", false, &HashMap::new());
+        assert_eq!(pids(&rising)[..3], [3, 1, 4]);
     }
 
     #[test]

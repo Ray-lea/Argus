@@ -22,6 +22,9 @@ pub(super) enum Format {
     Duration,
     Timestamp,
     Boolean,
+    /// An estimate shown as one of `argus_core::power::LEVELS`, summed over
+    /// a group's members and sorted by the level it shows.
+    Power,
 }
 
 #[derive(Clone, Copy)]
@@ -70,6 +73,8 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("handles", "general", Count, 86., true),
     column("suspended", "general", Boolean, 90., false),
     column("efficiency", "general", Boolean, 100., false),
+    column("power", "general", Power, 120., true),
+    column("powerTrend", "general", Power, 140., true),
     column("cpu", "cpu", Percent, 70., true),
     column("cpuTime", "cpu", Duration, 100., true),
     column("cpuUserTime", "cpu", Duration, 115., true),
@@ -159,6 +164,19 @@ pub(super) fn shown<'a>(key: &str, value: &'a str) -> std::borrow::Cow<'a, str> 
         "ioPriority" | "memoryPriority" => label(&format!("processes.{key}.{value}")).into(),
         _ => value.into(),
     }
+}
+
+/// The level a power estimate shows: its index in `argus_core::power::LEVELS`.
+pub(super) fn power_level(estimate: f64) -> usize {
+    argus_core::power::level(estimate)
+}
+
+/// What a power estimate shows.
+pub(super) fn power_label(estimate: f64) -> String {
+    label(&format!(
+        "processes.power.{}",
+        argus_core::power::LEVELS[power_level(estimate)]
+    ))
 }
 
 /// Where a level column's value stands, lowest first; text columns without
