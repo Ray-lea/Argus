@@ -43,7 +43,7 @@
     "managed": "Cette application n’autorise pas les modifications manuelles de cette tâche de démarrage.",
     "unavailable": "L’état de cette tâche de démarrage n’a pas pu être lu. Aucune modification n’a été apportée."
   },
-  "unavailable": "Indisponible",
+  "stateUnavailable": "Indisponible",
   "loading": "Lecture des applications de démarrage…",
   "noMatch": "Aucune application correspondante",
   "summary": "Activés : {enabled} sur {total}",

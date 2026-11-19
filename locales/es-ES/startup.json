@@ -43,7 +43,7 @@
     "managed": "Esta aplicación no permite cambios manuales en esta tarea de inicio.",
     "unavailable": "No se pudo leer el estado de esta tarea de inicio. No se realizaron cambios."
   },
-  "unavailable": "No disponible",
+  "stateUnavailable": "No disponible",
   "loading": "Leyendo aplicaciones de inicio…",
   "noMatch": "No hay aplicaciones coincidentes",
   "summary": "Habilitados: {enabled} de {total}",

@@ -43,7 +43,7 @@
     "managed": "This app does not allow manual changes to this startup task.",
     "unavailable": "The state of this startup task could not be read. No changes were made."
   },
-  "unavailable": "Unavailable",
+  "stateUnavailable": "Unavailable",
   "loading": "Reading startup apps…",
   "noMatch": "No matching startup apps",
   "summary": "{enabled} of {total} enabled",

@@ -43,7 +43,7 @@
     "managed": "此应用不允许手动更改该启动任务。",
     "unavailable": "暂时无法读取此启动项的状态，未进行更改。"
   },
-  "unavailable": "无法读取",
+  "stateUnavailable": "无法读取",
   "loading": "正在读取启动项…",
   "noMatch": "没有匹配的启动项",
   "summary": "已启用 {enabled} / 共 {total} 项",

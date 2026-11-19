@@ -32,9 +32,9 @@
     { "control": { "pointer": { "event": "down", "dx": 4 } }, "wait": 120 },
     { "control": { "pointer": { "event": "move", "dx": -30 } }, "wait": 120 },
     { "control": { "pointer": { "event": "move", "dx": -56 } }, "wait": 300, "inspect": "columns", "label": "startup-dragging", "capture": "startup-dragging",
-      "expect": { "state.visible.0.width": 132, "state.visible.4.width": 995 } },
+      "expect": { "state.visible.0.width": 132, "state.visible.4.width": 982 } },
     { "control": { "pointer": { "event": "up", "dx": -56 } }, "wait": 800, "inspect": "columns", "label": "startup-narrowed", "capture": "startup-narrowed",
-      "expect": { "state.listWidths.name": 132, "state.visible.4.width": 995 } },
+      "expect": { "state.listWidths.name": 132, "state.visible.4.width": 982 } },
     { "sheet": { "name": "drag-sheet", "from": "drag", "region": [0, 80, 1600, 120], "columns": 1, "every": 4 } },
 
     { "note": "Drag the publisher column far right: it stops where the command column reaches its minimum." },

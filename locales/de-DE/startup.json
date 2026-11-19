@@ -43,7 +43,7 @@
     "managed": "Diese App erlaubt keine manuellen Änderungen an dieser Startaufgabe.",
     "unavailable": "Der Status dieses Autostarteintrags konnte vorübergehend nicht gelesen werden. Es wurden keine Änderungen vorgenommen."
   },
-  "unavailable": "Nicht verfügbar",
+  "stateUnavailable": "Nicht verfügbar",
   "loading": "Autostart-Apps werden gelesen…",
   "noMatch": "Keine passenden Autostart-Apps",
   "summary": "{enabled} von {total} aktiviert",

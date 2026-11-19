@@ -396,7 +396,7 @@ fn entry_cell(raw: &Value, field: &Field) -> String {
             }
         }
         CellKind::Enabled => label(if text(raw, "blocked") == "unavailable" {
-            "startup.unavailable"
+            "startup.stateUnavailable"
         } else if boolean(raw, "enabled") {
             "common.enabled"
         } else {
@@ -743,13 +743,15 @@ impl NativeTable {
                     let (prefix, keys, beside) = cell_labels(field.kind);
                     let labels = keys.iter().map(|key| format!("{prefix}.{key}"));
                     // A startup entry's switch and its gap before the label.
-                    // An entry whose state could not be read is rare, and
-                    // its label is cut short rather than widen the column.
                     let (labels, beside): (Vec<String>, f32) = if field.kind == CellKind::Enabled {
                         (
-                            ["common.enabled", "common.disabled"]
-                                .map(str::to_owned)
-                                .into(),
+                            [
+                                "common.enabled",
+                                "common.disabled",
+                                "startup.stateUnavailable",
+                            ]
+                            .map(str::to_owned)
+                            .into(),
                             28. + 8.,
                         )
                     } else {

@@ -43,7 +43,7 @@
     "managed": "此應用程式不允許手動變更該啟動工作。",
     "unavailable": "暫時無法讀取此啟動項目的狀態，未進行變更。"
   },
-  "unavailable": "無法讀取",
+  "stateUnavailable": "無法讀取",
   "loading": "正在讀取啟動項目…",
   "noMatch": "沒有相符的啟動項目",
   "summary": "已啟用 {enabled} / 共 {total} 項",
