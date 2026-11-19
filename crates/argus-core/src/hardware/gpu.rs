@@ -3,7 +3,9 @@
 //! residency, temperature/fan/power/memory clock from the WDDM 2.4+ adapter
 //! perf data, and core clock/voltage from the 3D engine's node perf data.
 //! NVIDIA cards leave power out of that perf data; their board power comes
-//! from NVML (`nvml.rs`), matched to the adapter by PCI address.
+//! from NVML (`nvml.rs`), matched to the adapter by PCI address. The perf data
+//! and the vendor libraries are answered by the adapter's driver, which wakes
+//! an adapter that has powered down: `power.rs` decides when to ask.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -34,7 +36,9 @@ use crate::diagnostics::{startup_native, startup_phase};
 use crate::gpu_process::{GpuAdapters, GpuMemoryLayout};
 use crate::util::from_wide;
 mod metadata;
+mod power;
 pub use metadata::DirectXInfo;
+use power::Access;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +113,55 @@ pub struct GpuStats {
     pub kernel_sensor_state: Option<super::SensorState>,
     pub kernel_sensor_supported: bool,
     pub integrated_sensors: Option<super::IntegratedGpuSensors>,
+    /// The adapter has powered down (the idle discrete GPU of a hybrid
+    /// laptop). Its driver is not asked meanwhile, so the readings that come
+    /// from the driver are absent.
+    pub low_power: bool,
+}
+
+/// What only the adapter's driver or its vendor library reports.
+#[derive(Clone, Default)]
+struct DriverReadings {
+    temperature: Option<f32>,
+    fan_rpm: Option<u32>,
+    power: Option<f32>,
+    board_power: Option<f32>,
+    board_power_limit: Option<f32>,
+    power_source: Option<GpuPowerSource>,
+    clock_mhz: Option<f32>,
+    clock_max_mhz: Option<f32>,
+    voltage_mv: Option<u32>,
+    memory_clock_mhz: Option<f32>,
+}
+
+impl DriverReadings {
+    fn of(stats: &GpuStats) -> Self {
+        Self {
+            temperature: stats.temperature,
+            fan_rpm: stats.fan_rpm,
+            power: stats.power,
+            board_power: stats.board_power,
+            board_power_limit: stats.board_power_limit,
+            power_source: stats.power_source,
+            clock_mhz: stats.clock_mhz,
+            clock_max_mhz: stats.clock_max_mhz,
+            voltage_mv: stats.voltage_mv,
+            memory_clock_mhz: stats.memory_clock_mhz,
+        }
+    }
+
+    fn apply(&self, stats: &mut GpuStats) {
+        stats.temperature = self.temperature;
+        stats.fan_rpm = self.fan_rpm;
+        stats.power = self.power;
+        stats.board_power = self.board_power;
+        stats.board_power_limit = self.board_power_limit;
+        stats.power_source = self.power_source;
+        stats.clock_mhz = self.clock_mhz;
+        stats.clock_max_mhz = self.clock_max_mhz;
+        stats.voltage_mv = self.voltage_mv;
+        stats.memory_clock_mhz = self.memory_clock_mhz;
+    }
 }
 
 impl GpuStats {
@@ -144,6 +197,15 @@ struct Adapter {
     node_3d: Option<u32>,
     /// PCI bus and device number.
     pci: Option<Pci>,
+    nvidia: bool,
+    /// The adapter's device, for its power state; None when PnP names none.
+    device: Option<power::Device>,
+    gate: power::Gate,
+    /// The driver readings of the last sample, shown while the driver is left
+    /// alone.
+    kept: DriverReadings,
+    /// The driver reported work that the engine counters do not show.
+    driver_busy: bool,
 }
 
 pub(crate) struct GpuTracker {
@@ -153,6 +215,9 @@ pub(crate) struct GpuTracker {
     ignored: HashSet<u64>,
     last: Option<Instant>,
     nvml: Option<Nvml>,
+    /// NVML is loaded with the first NVIDIA adapter that may be asked:
+    /// initializing it wakes every NVIDIA adapter.
+    nvml_due: bool,
     vendor: VendorGpu,
     vendor_telemetry: bool,
 }
@@ -186,29 +251,18 @@ impl GpuTracker {
 
     pub(super) fn new_with_vendor(vendor_telemetry: bool) -> Self {
         let (adapters, ignored) = startup_phase("gpu.enumerate", enumerate).unwrap_or_default();
-        let mut tracker = Self {
+        Self {
             adapters,
             ignored,
             last: None,
             nvml: None,
+            nvml_due: vendor_telemetry,
             vendor: if vendor_telemetry {
                 VendorGpu::spawn()
             } else {
                 VendorGpu::inactive()
             },
             vendor_telemetry,
-        };
-        tracker.load_nvml();
-        tracker
-    }
-
-    /// Only hardware adapters have a PCI address for NVML to match.
-    fn load_nvml(&mut self) {
-        if self.nvml.is_none()
-            && self.vendor_telemetry
-            && self.adapters.iter().any(|a| a.pci.is_some())
-        {
-            self.nvml = Nvml::load();
         }
     }
 
@@ -232,7 +286,8 @@ impl GpuTracker {
         let listed: HashSet<u64> = self.adapters.iter().map(|a| luid_key(a.luid)).collect();
         ignored.extend(unknown.iter().filter(|luid| !listed.contains(luid)));
         self.ignored = ignored;
-        self.load_nvml();
+        // A driver installed since can bring NVML with it.
+        self.nvml_due = self.vendor_telemetry && self.nvml.is_none();
         log::info!(target: "argus_diagnostics", "gpu adapters enumerated again; listed={}; ignored={}", self.adapters.len(), self.ignored.len());
     }
 
@@ -245,14 +300,16 @@ impl GpuTracker {
 
     pub fn sample(&mut self) -> Vec<GpuStats> {
         let now = Instant::now();
-        let vendor = self.vendor.sample(
-            self.last
-                .map(|at| now.duration_since(at))
-                .unwrap_or_default(),
-        );
+        let interval = self
+            .last
+            .map(|at| now.duration_since(at))
+            .unwrap_or_default();
         self.last = Some(now);
 
-        self.adapters
+        // The graphics kernel's own statistics first: they show whether an
+        // adapter is in use, which decides whether its driver is asked.
+        let mut samples: Vec<(GpuStats, Access)> = self
+            .adapters
             .iter_mut()
             .map(|a| {
                 let mut stats = GpuStats {
@@ -276,6 +333,7 @@ impl GpuTracker {
                     kernel_sensor_state: None,
                     kernel_sensor_supported: false,
                     integrated_sensors: None,
+                    low_power: false,
                 };
                 for (node, prev) in a.prev_running.iter_mut().enumerate() {
                     let mut q = statistics_query(D3DKMT_QUERYSTATISTICS_NODE, a.luid);
@@ -318,53 +376,90 @@ impl GpuTracker {
                     }
                 }
 
-                if let Some(perf) = a.perf_query.query(now, || {
-                    let mut perf = D3DKMT_ADAPTER_PERFDATA::default();
-                    query_info(a.handle, KMTQAITYPE_ADAPTERPERFDATA, &mut perf).then_some(perf)
-                }) {
-                    stats.temperature =
-                        (perf.Temperature > 0).then(|| perf.Temperature as f32 / 10.0);
-                    stats.fan_rpm = (perf.FanRPM > 0).then_some(perf.FanRPM);
-                    stats.power = (perf.Power > 0).then(|| perf.Power as f32 / 10.0);
-                    stats.memory_clock_mhz = mhz(perf.MemoryFrequency);
-                }
-                if let (Some(nvml), Some((bus, device, function))) = (&self.nvml, a.pci) {
-                    (stats.board_power, stats.board_power_limit) =
-                        nvml.power(bus, device, function);
-                    stats.power_source = stats.board_power.map(|_| GpuPowerSource::Nvml);
-                    if let Some(util) = nvml.utilization(bus, device, function) {
-                        stats.include_usage(util, GpuUtilSource::Nvml);
-                    }
-                }
-                if let Some(node) = a.node_3d
-                    && let Some(perf) = a.node_perf_query.query(now, || {
-                        let mut perf = D3DKMT_NODE_PERFDATA {
-                            NodeOrdinal: node,
-                            ..Default::default()
-                        };
-                        query_info(a.handle, KMTQAITYPE_NODEPERFDATA, &mut perf).then_some(perf)
-                    })
-                {
-                    stats.clock_mhz = mhz(perf.Frequency);
-                    stats.clock_max_mhz = mhz(perf.MaxFrequency);
-                    stats.voltage_mv = (perf.Voltage > 0).then_some(perf.Voltage);
-                }
-                if let Some((_, reading)) = vendor.iter().find(|(pci, _)| Some(*pci) == a.pci) {
-                    if reading.watts.is_some() {
-                        stats.board_power = reading.watts;
-                        stats.board_power_limit = reading.limit;
-                        stats.power_source = reading.source;
-                    }
-                    stats.temperature = stats.temperature.or(reading.temperature);
-                    stats.clock_mhz = stats.clock_mhz.or(reading.clock.map(|v| v as f32));
-                    stats.memory_clock_mhz = stats
-                        .memory_clock_mhz
-                        .or(reading.memory_clock.map(|v| v as f32));
-                    stats.voltage_mv = stats.voltage_mv.or(reading.voltage);
-                }
-                stats
+                let access = a
+                    .gate
+                    .sample(a.device.as_ref(), stats.util > 0.0, a.driver_busy, now);
+                (stats, access)
             })
-            .collect()
+            .collect();
+
+        let asked = self
+            .adapters
+            .iter()
+            .zip(&samples)
+            .filter(|(_, (_, access))| *access == Access::Read)
+            .filter_map(|(a, _)| a.pci)
+            .collect();
+        let vendor = self.vendor.sample(interval, asked);
+
+        for (a, (stats, access)) in self.adapters.iter_mut().zip(&mut samples) {
+            match access {
+                Access::Asleep => {
+                    a.kept = DriverReadings::default();
+                    a.driver_busy = false;
+                    stats.low_power = true;
+                    continue;
+                }
+                Access::Keep => a.kept.apply(stats),
+                Access::Read => {
+                    if let Some(perf) = a.perf_query.query(now, || {
+                        let mut perf = D3DKMT_ADAPTER_PERFDATA::default();
+                        query_info(a.handle, KMTQAITYPE_ADAPTERPERFDATA, &mut perf).then_some(perf)
+                    }) {
+                        stats.temperature =
+                            (perf.Temperature > 0).then(|| perf.Temperature as f32 / 10.0);
+                        stats.fan_rpm = (perf.FanRPM > 0).then_some(perf.FanRPM);
+                        stats.power = (perf.Power > 0).then(|| perf.Power as f32 / 10.0);
+                        stats.memory_clock_mhz = mhz(perf.MemoryFrequency);
+                    }
+                    a.driver_busy = false;
+                    if a.nvidia && std::mem::take(&mut self.nvml_due) {
+                        self.nvml = Nvml::load();
+                    }
+                    if let (Some(nvml), Some((bus, device, function))) = (&self.nvml, a.pci) {
+                        (stats.board_power, stats.board_power_limit) =
+                            nvml.power(bus, device, function);
+                        stats.power_source = stats.board_power.map(|_| GpuPowerSource::Nvml);
+                        if let Some(util) = nvml.utilization(bus, device, function) {
+                            stats.include_usage(util, GpuUtilSource::Nvml);
+                            // Compute work can be missing from the engine
+                            // counters; it is no reason to stop asking.
+                            a.driver_busy = util > 0.0;
+                        }
+                    }
+                    if let Some(node) = a.node_3d
+                        && let Some(perf) = a.node_perf_query.query(now, || {
+                            let mut perf = D3DKMT_NODE_PERFDATA {
+                                NodeOrdinal: node,
+                                ..Default::default()
+                            };
+                            query_info(a.handle, KMTQAITYPE_NODEPERFDATA, &mut perf).then_some(perf)
+                        })
+                    {
+                        stats.clock_mhz = mhz(perf.Frequency);
+                        stats.clock_max_mhz = mhz(perf.MaxFrequency);
+                        stats.voltage_mv = (perf.Voltage > 0).then_some(perf.Voltage);
+                    }
+                }
+            }
+            // The vendor worker answers a round late: its readings also reach
+            // a sample that asks for none itself.
+            if let Some((_, reading)) = vendor.iter().find(|(pci, _)| Some(*pci) == a.pci) {
+                if reading.watts.is_some() {
+                    stats.board_power = reading.watts;
+                    stats.board_power_limit = reading.limit;
+                    stats.power_source = reading.source;
+                }
+                stats.temperature = stats.temperature.or(reading.temperature);
+                stats.clock_mhz = stats.clock_mhz.or(reading.clock.map(|v| v as f32));
+                stats.memory_clock_mhz = stats
+                    .memory_clock_mhz
+                    .or(reading.memory_clock.map(|v| v as f32));
+                stats.voltage_mv = stats.voltage_mv.or(reading.voltage);
+            }
+            a.kept = DriverReadings::of(stats);
+        }
+        samples.into_iter().map(|(stats, _)| stats).collect()
     }
 }
 
@@ -497,6 +592,7 @@ fn enumerate() -> Option<(Vec<Adapter>, HashSet<u64>)> {
 fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option<Adapter> {
     // Skip software renderers and display-only adapters (no engines to watch).
     let mut kind = D3DKMT_ADAPTERTYPE::default();
+    let mut adapter_type = 0;
     if query_info(a.hAdapter, KMTQAITYPE_ADAPTERTYPE, &mut kind) {
         let bits = unsafe { kind.Anonymous.Value };
         log::info!(target: "argus_startup", "phase=gpu.adapter-type; instance={}; handle={}; bits=0x{bits:08X}", luid_key(a.AdapterLuid), a.hAdapter);
@@ -505,6 +601,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
         if !render || software {
             return None;
         }
+        adapter_type = bits;
     }
 
     let mut stats = statistics_query(D3DKMT_QUERYSTATISTICS_ADAPTER, a.AdapterLuid);
@@ -584,6 +681,14 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
     let vendor = query_info(a.hAdapter, KMTQAITYPE_PHYSICALADAPTERDEVICEIDS, &mut ids)
         .then_some(ids.DeviceIds.VendorID);
     let driver = metadata.driver(luid);
+    let powers_down = power::powers_down(adapter_type);
+    // Answers "why are there no sensor readings" for a GPU that was asleep.
+    log::info!(target: "argus::gpu", "gpu adapter: vendor=0x{:04X}; type=0x{adapter_type:08X}; powers down when idle: {}; power state: {}", vendor.unwrap_or(0), if powers_down { "yes" } else { "not reported" }, match driver.device.as_ref().map(power::Device::working) {
+        Some(Some(true)) => "D0",
+        Some(Some(false)) => "low power",
+        Some(None) => "unknown",
+        None => "no device",
+    });
     Some(Adapter {
         handle: a.hAdapter,
         luid,
@@ -608,6 +713,12 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
         perf_query: Retry::default(),
         node_perf_query: Retry::default(),
         pci,
+        // Without an ID, as before: any adapter with a PCI address may be one.
+        nvidia: pci.is_some() && vendor.is_none_or(|id| id == 0x10de),
+        device: driver.device,
+        gate: power::Gate::new(powers_down),
+        kept: DriverReadings::default(),
+        driver_busy: false,
     })
 }
 
@@ -920,6 +1031,29 @@ mod tests {
         );
         assert_eq!(counter.sample(Some(-1), now + Duration::from_secs(3)), None);
     }
+    #[test]
+    #[ignore = "Requires live Windows graphics adapters"]
+    fn live_driver_access() {
+        let mut tracker = GpuTracker::new();
+        for round in 0..30 {
+            if round > 0 {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+            let started = Instant::now();
+            let stats = tracker.sample();
+            let micros = started.elapsed().as_micros();
+            for (adapter, stats) in tracker.adapters.iter().zip(&stats) {
+                println!(
+                    "{}",
+                    serde_json::json!({"round": round, "sampleMicros": micros,
+                        "name": stats.info.name, "powersDown": adapter.gate.powers_down(),
+                        "access": format!("{:?}", adapter.gate.last), "lowPower": stats.low_power,
+                        "util": stats.util, "temperature": stats.temperature,
+                        "boardPower": stats.board_power, "clockMhz": stats.clock_mhz})
+                );
+            }
+        }
+    }
     fn stats() -> GpuStats {
         GpuStats {
             info: Arc::new(GpuInfo {
@@ -953,6 +1087,7 @@ mod tests {
             kernel_sensor_state: None,
             kernel_sensor_supported: false,
             integrated_sensors: None,
+            low_power: false,
         }
     }
     #[test]

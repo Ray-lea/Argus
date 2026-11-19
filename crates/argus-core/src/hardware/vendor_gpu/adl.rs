@@ -146,9 +146,10 @@ impl Adl {
         }
     }
 
-    pub fn sample(&mut self) -> Vec<(Pci, Reading)> {
+    pub fn sample(&mut self, asked: &[Pci]) -> Vec<(Pci, Reading)> {
         self.adapters
             .iter()
+            .filter(|(pci, _)| asked.contains(pci))
             .map(|&(pci, index)| {
                 let mut reading = Reading::default();
                 if let Some(query) = self.log {

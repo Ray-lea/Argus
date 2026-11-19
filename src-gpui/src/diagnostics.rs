@@ -208,7 +208,7 @@ pub fn log_hardware_once(s: &Snapshot) {
             "none"
         };
         log::info!(
-            "gpu: {}; model=\"{}\"; temperature: {}; power: {power}; clock: {}; intel_integrated={}; kernel_sensor_supported={}",
+            "gpu: {}; model=\"{}\"; temperature: {}; power: {power}; clock: {}; intel_integrated={}; kernel_sensor_supported={}; low_power={}",
             index,
             hardware_label(&g.info.name),
             if g.temperature.is_some() {
@@ -219,6 +219,7 @@ pub fn log_hardware_once(s: &Snapshot) {
             if g.clock_mhz.is_some() { "yes" } else { "none" },
             g.info.intel_integrated,
             g.kernel_sensor_supported,
+            g.low_power,
         );
     }
     log::info!(

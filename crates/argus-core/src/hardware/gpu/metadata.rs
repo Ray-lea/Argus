@@ -52,6 +52,8 @@ pub struct DirectXInfo {
 pub(super) struct Driver {
     pub version: Option<String>,
     pub date: Option<String>,
+    /// The adapter's device, for its power state.
+    pub device: Option<super::power::Device>,
 }
 
 struct DeviceSet(HDEVINFO);
@@ -189,7 +191,11 @@ fn drivers() -> HashMap<u64, Driver> {
         let date = property(device.DevInst, &DEVPKEY_Device_DriverDate)
             .filter(|(kind, _)| *kind == DEVPROP_TYPE_FILETIME)
             .and_then(|(_, data)| date(&data));
-        drivers.entry(luid).or_insert(Driver { version, date });
+        drivers.entry(luid).or_insert_with(|| Driver {
+            version,
+            date,
+            device: super::power::Device::of(device.DevInst),
+        });
     }
     drivers
 }

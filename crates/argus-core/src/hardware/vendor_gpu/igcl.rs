@@ -229,10 +229,11 @@ impl Igcl {
         }
     }
 
-    pub fn sample(&mut self) -> Vec<(Pci, Reading)> {
+    pub fn sample(&mut self, asked: &[Pci]) -> Vec<(Pci, Reading)> {
         let now = Instant::now();
         self.devices
             .iter_mut()
+            .filter(|device| asked.contains(&device.pci))
             .map(|device| (device.pci, self.queries.sample(device, now)))
             .collect()
     }

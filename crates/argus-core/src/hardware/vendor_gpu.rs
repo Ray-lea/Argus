@@ -1,6 +1,8 @@
 //! Optional vendor telemetry. SDK calls run on one bounded worker; the sampler
 //! only reads a fresh cache. All libraries come from System32, all exports are
 //! read-only, and adapters are matched by the full PCI bus/device/function.
+//! An SDK call wakes an adapter that has powered down, so the worker asks only
+//! about the adapters the sampler names (see `gpu/power.rs`).
 
 mod adl;
 mod igcl;
@@ -44,7 +46,8 @@ pub(super) struct Reading {
 type Cache = Arc<Mutex<Option<(Instant, Vec<(Pci, Reading)>)>>>;
 
 pub(super) struct VendorGpu {
-    tx: mpsc::SyncSender<()>,
+    /// The adapters to ask about in the next round.
+    tx: mpsc::SyncSender<Vec<Pci>>,
     cache: Cache,
 }
 
@@ -58,7 +61,7 @@ impl VendorGpu {
     }
 
     pub fn spawn() -> Self {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = mpsc::sync_channel::<Vec<Pci>>(1);
         let cache: Cache = Arc::default();
         let output = cache.clone();
         let _ = std::thread::Builder::new()
@@ -67,7 +70,7 @@ impl VendorGpu {
                 let mut amd = crate::diagnostics::startup_phase("vendor.adl", adl::Adl::load);
                 let mut intel = crate::diagnostics::startup_phase("vendor.igcl", igcl::Igcl::load);
                 let mut last: Option<Instant> = None;
-                while rx.recv().is_ok() {
+                while let Ok(asked) = rx.recv() {
                     if last.is_some_and(|at| at.elapsed() < Duration::from_millis(500)) {
                         continue;
                     }
@@ -75,10 +78,10 @@ impl VendorGpu {
                     last = Some(started);
                     let mut readings = Vec::new();
                     if let Some(amd) = &mut amd {
-                        readings.extend(amd.sample());
+                        readings.extend(amd.sample(&asked));
                     }
                     if let Some(intel) = &mut intel {
-                        readings.extend(intel.sample());
+                        readings.extend(intel.sample(&asked));
                     }
                     if let Ok(mut cache) = output.lock() {
                         *cache = Some((started, readings));
@@ -88,9 +91,13 @@ impl VendorGpu {
         Self { tx, cache }
     }
 
-    pub fn sample(&self, interval: Duration) -> Vec<(Pci, Reading)> {
-        let _ = self.tx.try_send(());
-        self.cache
+    /// The readings of the last round, and a request for the next one about
+    /// the adapters in `asked`; none are asked about when it is empty.
+    pub fn sample(&self, interval: Duration, asked: Vec<Pci>) -> Vec<(Pci, Reading)> {
+        // Read first: the next round replaces the readings of adapters it
+        // leaves out.
+        let readings = self
+            .cache
             .try_lock()
             .ok()
             .and_then(|cache| {
@@ -100,7 +107,11 @@ impl VendorGpu {
                         .then(|| values.clone())
                 })
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !asked.is_empty() {
+            let _ = self.tx.try_send(asked);
+        }
+        readings
     }
 }
 
