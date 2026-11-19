@@ -517,6 +517,10 @@
         "standby": 7945689497.6,
         "free": 1353377742.4061794
       },
+      "memoryCompression": {
+        "resident": 1288490189,
+        "stored": 4617089843
+      },
       "kernelPaged": 671088640,
       "kernelNonpaged": 325058560,
       "processCount": 120,

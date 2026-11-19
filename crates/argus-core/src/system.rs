@@ -40,6 +40,8 @@ pub struct SystemStats {
     pub memory_lists: Option<MemoryLists>,
     pub kernel_paged: u64,
     pub kernel_nonpaged: u64,
+    /// The memory compression store; None when Windows reports none.
+    pub memory_compression: Option<MemoryCompression>,
     pub process_count: u32,
     pub thread_count: u32,
     pub handle_count: u32,
@@ -83,6 +85,72 @@ impl MemoryLists {
             free,
         })
     }
+}
+
+/// Compressed memory, as Task Manager's "In use (Compressed)" counts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryCompression {
+    /// Physical memory holding compressed pages: the Memory Compression
+    /// process's working set, part of the memory in use.
+    pub resident: u64,
+    /// Estimated uncompressed size of the data in `resident`.
+    pub stored: u64,
+}
+
+/// The compression store's reply to `MemCompressionInfoRequest`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompressionStore {
+    pub pid: u32,
+    working_set: u64,
+    data: u64,
+    compressed: u64,
+}
+
+impl CompressionStore {
+    /// `process_working_set` is the store process's working set from the
+    /// process list, which unlike the reply's 32-bit field does not wrap.
+    pub fn memory(&self, process_working_set: Option<u64>) -> MemoryCompression {
+        let resident = process_working_set.unwrap_or(self.working_set);
+        // The store's pages are not all resident; the data they hold is
+        // estimated at the store's compression ratio, as Task Manager does.
+        let stored = if self.compressed == 0 {
+            0
+        } else {
+            (self.data as u128 * resident as u128 / self.compressed as u128).min(self.data as u128)
+                as u64
+        };
+        MemoryCompression { resident, stored }
+    }
+}
+
+/// Queries the memory compression store; about 6 µs with standard rights.
+pub(crate) fn compression_store() -> Option<CompressionStore> {
+    use crate::nt::*;
+    let mut reply = StoreCompressionInformation {
+        version: STORE_COMPRESSION_INFORMATION_VERSION,
+        ..Default::default()
+    };
+    let mut request = SystemStoreInformation {
+        version: SYSTEM_STORE_INFORMATION_VERSION,
+        command: MEM_COMPRESSION_INFO_REQUEST,
+        data: (&mut reply as *mut StoreCompressionInformation).cast(),
+        length: size_of_val(&reply) as u32,
+    };
+    let status = unsafe {
+        NtQuerySystemInformation(
+            SYSTEM_STORE_INFORMATION,
+            (&mut request as *mut SystemStoreInformation).cast(),
+            size_of_val(&request) as u32,
+            &mut 0,
+        )
+    };
+    status.is_ok().then_some(CompressionStore {
+        pid: reply.pid,
+        working_set: reply.working_set as u64,
+        data: reply.total_data_compressed as u64,
+        compressed: reply.total_compressed_size as u64,
+    })
 }
 
 fn memory_lists(page: u64, total: u64) -> Option<MemoryLists> {
@@ -351,6 +419,46 @@ mod tests {
         lists.modified_page_count = 0;
         lists.page_count_by_priority = [usize::MAX; 8];
         assert!(MemoryLists::from_native(&lists, 4096, u64::MAX).is_none());
+    }
+
+    #[test]
+    fn compressed_data_is_estimated_for_the_resident_part_of_the_store() {
+        const GIB: u64 = 1 << 30;
+        let store = CompressionStore {
+            pid: 3972,
+            working_set: 3 * GIB,
+            data: 12 * GIB,
+            compressed: 4 * GIB,
+        };
+        // The process list's working set wins over the 32-bit reply field.
+        assert_eq!(
+            store.memory(Some(6 * GIB)),
+            MemoryCompression {
+                resident: 6 * GIB,
+                stored: 12 * GIB,
+            }
+        );
+        assert_eq!(
+            store.memory(None),
+            MemoryCompression {
+                resident: 3 * GIB,
+                stored: 9 * GIB,
+            }
+        );
+        let empty = CompressionStore {
+            compressed: 0,
+            data: 0,
+            ..store
+        };
+        assert_eq!(empty.memory(None).stored, 0);
+    }
+
+    #[test]
+    fn compression_store_reply_is_consistent() {
+        // Windows 10 and later report the store unless compression is off.
+        if let Some(store) = compression_store() {
+            assert!(store.data >= store.compressed || store.compressed == 0);
+        }
     }
     fn times(idle: i64, kernel: i64, user: i64) -> CpuReading {
         CpuReading {

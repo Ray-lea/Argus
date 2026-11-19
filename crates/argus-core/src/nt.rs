@@ -55,6 +55,44 @@ pub struct SystemMemoryListInformation {
 #[cfg(target_pointer_width = "64")]
 const _: () = assert!(std::mem::size_of::<SystemMemoryListInformation>() == 176);
 
+pub const SYSTEM_STORE_INFORMATION: SYSTEM_INFORMATION_CLASS = SYSTEM_INFORMATION_CLASS(109);
+pub const SYSTEM_STORE_INFORMATION_VERSION: u32 = 1;
+/// `STORE_INFORMATION_CLASS::MemCompressionInfoRequest`; standard user
+/// rights can query it, unlike the store's other commands.
+pub const MEM_COMPRESSION_INFO_REQUEST: u32 = 22;
+/// The request layout every Windows 10 and later build accepts (phnt's
+/// `SYSTEM_STORE_COMPRESSION_INFORMATION_VERSION_V1`).
+pub const STORE_COMPRESSION_INFORMATION_VERSION: u32 = 3;
+
+#[repr(C)]
+pub struct SystemStoreInformation {
+    pub version: u32,
+    pub command: u32,
+    pub data: *mut core::ffi::c_void,
+    pub length: u32,
+}
+
+/// `SM_STORE_COMPRESSION_INFORMATION_REQUEST` through
+/// `TotalUniqueDataCompressed`, the version 3 size; sizes are in bytes.
+#[repr(C)]
+#[derive(Default)]
+pub struct StoreCompressionInformation {
+    /// Version in the low 8 bits.
+    pub version: u32,
+    /// The Memory Compression process that holds the store.
+    pub pid: u32,
+    /// The store's working set; 32 bits wide, so it wraps above 4 GiB.
+    pub working_set: u32,
+    /// Uncompressed size of the data in the store.
+    pub total_data_compressed: usize,
+    /// The data's size once compressed.
+    pub total_compressed_size: usize,
+    pub total_unique_data_compressed: usize,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<StoreCompressionInformation>() == 40);
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct SystemHandleEntry {

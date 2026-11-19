@@ -29,6 +29,14 @@ fn main() {
         sys.handle_count,
         sys.uptime_ms / 1000
     );
+    match sys.memory_compression {
+        Some(c) => println!(
+            "compressed {:.0} MB, storing an estimated {:.0} MB",
+            c.resident as f64 / 1048576.0,
+            c.stored as f64 / 1048576.0
+        ),
+        None => println!("compressed: no store"),
+    }
 
     // Let the meta worker resolve descriptions/icons, then sample again.
     std::thread::sleep(Duration::from_millis(1500));

@@ -1694,8 +1694,23 @@ impl Desktop {
         match hint {
             Some(hint) => div()
                 .id(id)
+                .relative()
                 .min_w_0()
                 .child(stat)
+                // Where tests hover the figure.
+                .when(self.options.test, |d| {
+                    let anchors = self.ui.anchors.clone();
+                    d.child(
+                        canvas(
+                            move |bounds, _, _| {
+                                anchors.borrow_mut().insert(id.into(), bounds);
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                })
                 .tooltip(move |window, cx| {
                     widgets::wrapping_tooltip(hint.clone(), px(HINT_WIDTH), window, cx)
                 })
@@ -2998,8 +3013,62 @@ impl Desktop {
             ));
         let gb_stat =
             |key: &str, bytes: f64| self.stat(label(key), gb(bytes), Some("GB".into()), None, cx);
+        let compression = &sys["memoryCompression"];
+        let in_use = if compression.is_object() {
+            let (resident, stored) = (
+                number(compression, "resident"),
+                number(compression, "stored"),
+            );
+            // "39.5 GB (3.4 GB)", as Task Manager's "In use (Compressed)".
+            let unit = |unit: String| {
+                div()
+                    .ml(px(2.))
+                    .text_size(theme::font(13.))
+                    .text_color(p.muted)
+                    .child(unit)
+            };
+            let (part, part_unit) = if resident >= GIB {
+                (gb(resident), "GB")
+            } else {
+                (format!("{}", (resident / MIB).round()), "MB")
+            };
+            let value = div()
+                .flex()
+                .items_baseline()
+                .child(gb(used))
+                .child(unit("GB".into()))
+                .child(div().ml(px(6.)).child(format!("({part}")))
+                .child(unit(part_unit.into()))
+                .child(")")
+                .into_any_element();
+            let hint = [
+                tr!(
+                    "performance.memory.legendInUse",
+                    value = theme::memory(used)
+                ),
+                label("performance.memory.inUseDescription"),
+                String::new(),
+                tr!(
+                    "performance.memory.compressedHeading",
+                    value = theme::memory(resident)
+                ),
+                tr!(
+                    "performance.memory.compressedDescription",
+                    stored = theme::memory(stored),
+                    saved = theme::memory((stored - resident).max(0.))
+                ),
+            ]
+            .join("\n");
+            self.hinted(
+                "memory-stat-in-use",
+                Some(hint),
+                self.stat_element(label("performance.memory.inUseCompressed"), value, None, cx),
+            )
+        } else {
+            gb_stat("performance.memory.inUse", used)
+        };
         let stats = vec![
-            gb_stat("performance.memory.inUse", used),
+            in_use,
             gb_stat("performance.memory.available", number(sys, "memAvailable")),
             self.stat(
                 label("performance.memory.committed"),

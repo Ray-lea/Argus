@@ -123,6 +123,12 @@ impl Collector {
             p.app_window = apps.contains(&p.pid);
         }
 
+        system.memory_compression = crate::system::compression_store().map(|store| {
+            let process = (store.pid != 0)
+                .then(|| processes.iter().find(|p| p.pid == store.pid))
+                .flatten();
+            store.memory(process.map(|p| p.working_set))
+        });
         system.process_count = processes.len() as u32;
         if system.thread_count == 0 {
             system.thread_count = processes.iter().map(|p| p.threads).sum();
