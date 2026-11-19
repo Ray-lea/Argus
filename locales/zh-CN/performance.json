@@ -309,6 +309,12 @@
     "readAt": "读取于 {time}",
     "loading": "正在读取磁盘信息…",
     "unavailable": "暂无磁盘详情。",
+    "held": {
+      "title": "已暂停自动读取",
+      "reason": "上次读取磁盘详情后，Argus 未正常退出，可能发生了系统崩溃、断电或进程被强制结束。为避免问题在每次启动时重现，打开此页时不再自动读取。",
+      "note": "读取会向存储驱动发送只读查询。读取后 Argus 继续正常运行一段时间，自动读取即恢复；再次异常退出时，下次启动仍显示本说明。",
+      "read": "仍要读取"
+    },
     "performanceUnavailable": "暂时无法读取磁盘性能计数。",
     "volumeCounters": "当前使用卷 {volumes} 的性能统计，统计范围为该卷。",
     "volumeCountersMultiple": "当前汇总卷 {volumes} 的读写速率和响应时间；活动时间暂无可用读数。",

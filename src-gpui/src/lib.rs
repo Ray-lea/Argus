@@ -6,6 +6,7 @@ mod catalog;
 mod commands;
 
 mod diagnostics;
+mod disk_reads;
 mod dispatch;
 mod explorer;
 mod frontend;
@@ -252,6 +253,8 @@ pub fn run() -> anyhow::Result<()> {
     if !options.test {
         argus_core::history::prune_expired(&history);
     }
+    // Before the interface restores a disk's details page and reads for it.
+    disk_reads::install(&local_data);
     leftovers::remove_webview_data(local_data);
     host.manage(HistoryDir(history.clone()));
     let saved = host.state::<SettingsStore>().get();

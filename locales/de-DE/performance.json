@@ -324,6 +324,12 @@
     "readAt": "Ausgelesen um {time}",
     "loading": "Festplatteninformationen werden gelesen…",
     "unavailable": "Keine Datenträgerdetails.",
+    "held": {
+      "title": "Automatisches Lesen angehalten",
+      "reason": "Nach dem letzten Lesen der Datenträgerdetails wurde Argus nicht ordnungsgemäß beendet. Möglicherweise ist Windows abgestürzt, der Strom ausgefallen oder der Argus-Prozess wurde beendet. Damit sich das Problem nicht bei jedem Start wiederholt, wird beim Öffnen dieser Seite nicht mehr automatisch gelesen.",
+      "note": "Beim Lesen werden nur lesende Abfragen an den Speichertreiber gesendet. Läuft Argus nach einem Lesevorgang eine Zeit lang normal weiter, wird das automatische Lesen fortgesetzt. Wird Argus erneut nicht ordnungsgemäß beendet, erscheint dieser Hinweis beim nächsten Start wieder.",
+      "read": "Trotzdem lesen"
+    },
     "openFailed": "Dieser Datenträger konnte nicht geöffnet werden.",
     "errorCode": "Windows-Fehlercode {code}",
     "health": "Zustand",

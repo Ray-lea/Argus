@@ -321,6 +321,12 @@
     "readAt": "Read at {time}",
     "loading": "Reading disk information…",
     "unavailable": "No disk details.",
+    "held": {
+      "title": "Automatic reading paused",
+      "reason": "Argus did not exit normally after it last read disk details. Windows may have crashed, the power may have failed, or the Argus process may have been ended. This page no longer reads when it opens, so that the problem does not repeat at every start.",
+      "note": "Reading sends read-only queries to the storage driver. Automatic reading resumes after Argus has kept running normally for a while after a read. If Argus ends abnormally again, this notice appears at the next start.",
+      "read": "Read anyway"
+    },
     "performanceUnavailable": "Disk performance counters are temporarily unavailable.",
     "volumeCounters": "Performance statistics come from volume {volumes} and cover that volume.",
     "volumeCountersMultiple": "Read/write rates and response time are aggregated from volumes {volumes}; active time is unavailable.",

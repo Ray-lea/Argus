@@ -328,6 +328,12 @@
     "readAt": "Lectura: {time}",
     "loading": "Leyendo información del disco…",
     "unavailable": "No hay detalles del disco.",
+    "held": {
+      "title": "Lectura automática en pausa",
+      "reason": "Argus no se cerró correctamente después de la última lectura de los detalles del disco. Es posible que Windows haya fallado, que se haya cortado la alimentación o que se haya finalizado el proceso de Argus. Para que el problema no se repita en cada inicio, esta página ya no lee automáticamente al abrirse.",
+      "note": "La lectura envía consultas de solo lectura al controlador de almacenamiento. Si Argus sigue funcionando con normalidad durante un tiempo después de una lectura, la lectura automática se reanuda. Si Argus vuelve a cerrarse de forma anómala, este aviso aparecerá en el próximo inicio.",
+      "read": "Leer de todos modos"
+    },
     "openFailed": "Este disco no se pudo abrir.",
     "errorCode": "Código de error de Windows: {code}",
     "health": "Estado",

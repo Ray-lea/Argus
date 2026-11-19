@@ -106,7 +106,7 @@ Intel 的能效核与低功耗能效核（LP E-core）可属于同一效率类�
 
 ## 磁盘详情接口
 
-宿主命令 `disk_details` 接受 `{ "index": 0 }`，调用 `argus_service::disk_details(index)`，按 `PhysicalDrive` 编号返回 `DiskDetails`。先以本地零访问权限句柄调用 `hardware::disk_details::query(index)`；ATA、SATA、USB、SCSI、SAS、RAID 设备再通过已运行的特权服务补充读取。每次请求读取一份新的 SMART 数据，完成后关闭句柄。磁盘温度和活动率另由周期采样维护。
+宿主命令 `disk_details` 接受 `{ "index": 0 }`，调用 `argus_service::disk_details(index)`，按 `PhysicalDrive` 编号返回 `DiskDetails`。宿主在发出读取前写入标记文件，上次会话在读取后异常结束时不再自动读取，见[原生宿主](host.md)。先以本地零访问权限句柄调用 `hardware::disk_details::query(index)`；ATA、SATA、USB、SCSI、SAS、RAID 设备再通过已运行的特权服务补充读取。每次请求读取一份新的 SMART 数据，完成后关闭句柄。磁盘温度和活动率另由周期采样维护。
 
 设备以零访问权限打开，通过 Windows 存储属性查询读取；PCIe 参数通过匹配物理磁盘编号的 PnP 设备树取得，只采用最近 PCI 控制器节点的属性。使用系统现有权限，设备或驱动拒绝时返回对应状态。
 

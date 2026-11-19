@@ -5,6 +5,7 @@ pub mod desktop_identity;
 pub mod explorer;
 pub mod installer;
 pub mod preferences;
+pub mod read_marker;
 pub mod sampler;
 pub mod settings;
 pub mod tasks;

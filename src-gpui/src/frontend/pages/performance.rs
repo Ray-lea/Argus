@@ -869,6 +869,7 @@ impl Desktop {
                 .into_iter()
                 .map(CoreKind::key)
                 .collect::<Vec<_>>(),
+            "diskDetails": self.disk_details_test_state(),
         })
     }
     /// The CPU graphs' menu.
@@ -1841,15 +1842,8 @@ impl Desktop {
             .child(note)
             .into_any_element()
     }
-    /// A details card's title (with an optional note), a one-line summary on the right, and its body.
-    fn card(
-        &self,
-        title: String,
-        note: Option<String>,
-        summary: Option<String>,
-        alert: bool,
-        body: impl IntoElement,
-    ) -> AnyElement {
+    /// A details card's surface: its padding, border and fill.
+    fn card_frame(&self, alert: bool) -> Div {
         let p = self.palette;
         div()
             .min_w_0()
@@ -1864,6 +1858,18 @@ impl Desktop {
             })
             .rounded(px(8.))
             .bg(p.layer)
+    }
+    /// A details card's title (with an optional note), a one-line summary on the right, and its body.
+    fn card(
+        &self,
+        title: String,
+        note: Option<String>,
+        summary: Option<String>,
+        alert: bool,
+        body: impl IntoElement,
+    ) -> AnyElement {
+        let p = self.palette;
+        self.card_frame(alert)
             .child(
                 div()
                     .flex()

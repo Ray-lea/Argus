@@ -1,6 +1,9 @@
 //! The disk details page: health, device information and protocol-specific SMART
 //! log as cards, read once each time the page opens (`hardware::disk_details`).
+//! After a session that ended with a read pending, the page waits to be asked
+//! instead (`disk_reads`).
 use super::*;
+use widgets::ButtonExt as _;
 mod legacy;
 
 /// Protocol identity describes the manufacturer's device. Windows' generic
@@ -38,6 +41,14 @@ const ROW_GROUP: &str = "disk-table-row";
 const WORN_PERCENT: u64 = 10;
 /// How long a first read may take before the page says it is reading.
 const QUIET_WAIT: Duration = Duration::from_millis(400);
+/// The notice in place of a withheld read: its button (the control's name,
+/// and where tests reach it) and the button's height, its icon, and how wide
+/// its text runs.
+const HELD_READ: &str = "disk-details-read";
+const HELD_ACTION: f32 = 32.;
+const HELD_ICON: f32 = 14.;
+const HELD_ICON_GAP: f32 = 8.;
+const HELD_TEXT: f32 = 680.;
 
 /// How the drive is doing, in order of concern.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -525,6 +536,32 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Its page waits from now, unless it is waiting for a read already.
+        if !self.reading_disk_details(index)
+            && let Some(open) = &mut self.disk_details_open
+            && open.disk == index
+        {
+            let asked = Instant::now();
+            open.asked = asked;
+            // Past the quiet wait the page says that it is reading: drawn
+            // then, rather than with whichever sample comes next.
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(QUIET_WAIT).await;
+                let _ = this.update(cx, |this, cx| {
+                    let waiting = this
+                        .disk_details_open
+                        .is_some_and(|open| open.disk == index && open.asked == asked);
+                    if waiting && this.reading_disk_details(index) {
+                        if this.has_region(regions::RegionKind::Page) {
+                            this.refresh_region(regions::RegionKind::Page, cx);
+                        } else {
+                            cx.notify();
+                        }
+                    }
+                });
+            })
+            .detach();
+        }
         self.request(
             "disk_details",
             json!({ "index": index }),
@@ -533,8 +570,26 @@ impl Desktop {
             cx,
         );
     }
+    /// Whether a read of the disk's details is in flight.
+    fn reading_disk_details(&self, index: u64) -> bool {
+        let key = key(index);
+        self.pending
+            .values()
+            .any(|pending| pending.cache.as_deref() == Some(key.as_str()))
+    }
+    /// Whether details pages wait for a request instead of reading when they
+    /// open: the last session ended with a read pending (`disk_reads`). A
+    /// fixture reads nothing; a test sets `diskReadsHeld` to see the page so.
+    fn disk_reads_held(&self) -> bool {
+        if self.options.fixture.is_some() {
+            self.data.get("diskReadsHeld").and_then(Value::as_bool) == Some(true)
+        } else {
+            crate::disk_reads::held()
+        }
+    }
     /// Reads the shown disk's details each time its details page opens:
     /// another disk, the overview and back, or the performance page again.
+    /// Where reads are held, the page offers the read instead.
     pub(super) fn open_disk_details(
         &mut self,
         device: Option<&Device>,
@@ -547,17 +602,30 @@ impl Desktop {
                 self.snapshot["hardware"]["disks"][device.index]["info"]["index"].as_u64()
             });
         let open = index.map(|index| (index, self.page_epoch));
-        if open
-            == self
-                .disk_details_open
-                .map(|(index, epoch, _)| (index, epoch))
-        {
+        if open == self.disk_details_open.map(|open| (open.disk, open.epoch)) {
             return;
         }
-        self.disk_details_open = open.map(|(index, epoch)| (index, epoch, Instant::now()));
-        if let Some(index) = index {
+        // Asked once for each opening: a page that says why it did not read
+        // keeps saying so until it is left, also once reads run again.
+        let held = index.is_some() && self.disk_reads_held();
+        self.disk_details_open = open.map(|(disk, epoch)| DiskDetailsOpen {
+            disk,
+            epoch,
+            asked: Instant::now(),
+            held,
+        });
+        if let Some(index) = index
+            && !held
+        {
             self.read_disk_details(index, window, cx);
         }
+    }
+    /// The open details page, as tests see it (`inspectLayout`).
+    pub(super) fn disk_details_test_state(&self) -> Value {
+        json!(
+            self.disk_details_open
+                .map(|open| json!({"disk": open.disk, "held": open.held}))
+        )
     }
     /// The head's button reading the details again.
     pub(super) fn disk_refresh_button(&self, index: u64, cx: &mut Context<Self>) -> AnyElement {
@@ -589,7 +657,7 @@ impl Desktop {
             return div().into_any_element();
         };
         let Some(details) = self.data.get(&key(index)) else {
-            return self.disk_details_waiting(index);
+            return self.disk_details_waiting(index, cx);
         };
         let mut read_at = details["queriedAt"]
             .as_u64()
@@ -666,20 +734,24 @@ impl Desktop {
             .into_any_element()
     }
     /// Before the first answer: nothing for a moment (a read takes a few
-    /// milliseconds), then a note that it is reading.
-    fn disk_details_waiting(&self, index: u64) -> AnyElement {
-        let p = self.palette;
-        let key = key(index);
-        let reading = self
-            .pending
-            .values()
-            .any(|pending| pending.cache.as_deref() == Some(key.as_str()));
-        let quiet = self
-            .disk_details_open
-            .is_some_and(|(_, _, at)| at.elapsed() < QUIET_WAIT);
+    /// milliseconds), then a note that it is reading. Where the read on
+    /// opening was withheld, why, and the read on request.
+    fn disk_details_waiting(&self, index: u64, cx: &mut Context<Self>) -> AnyElement {
+        let reading = self.reading_disk_details(index);
+        let open = self.disk_details_open.filter(|open| open.disk == index);
+        let quiet = open.is_some_and(|open| open.asked.elapsed() < QUIET_WAIT);
+        if open.is_some_and(|open| open.held) {
+            return self.disk_details_held(index, reading, quiet, cx);
+        }
         if reading && quiet {
             return div().into_any_element();
         }
+        self.disk_details_note(reading)
+    }
+    /// A line in place of the details: that they are being read, or that
+    /// there are none.
+    fn disk_details_note(&self, reading: bool) -> AnyElement {
+        let p = self.palette;
         div()
             .flex()
             .items_center()
@@ -692,6 +764,104 @@ impl Desktop {
             } else {
                 "performance.disk.unavailable"
             }))
+            .into_any_element()
+    }
+    /// In place of the read on opening, after a session that ended with a
+    /// read pending: what happened and what reading does, and the read on
+    /// request. The button stays through a read's first moment and gives way
+    /// to the note that it is reading, as an opening page does.
+    fn disk_details_held(
+        &self,
+        index: u64,
+        reading: bool,
+        quiet: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let action = if reading && !quiet {
+            self.disk_details_note(true)
+        } else {
+            // Where tests reach the button.
+            let anchor = self.options.test.then(|| {
+                let anchors = self.ui.anchors.clone();
+                canvas(
+                    move |bounds, _, _| {
+                        anchors.borrow_mut().insert(HELD_READ.into(), bounds);
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0()
+            });
+            div()
+                .relative()
+                .child(
+                    self.btn(
+                        HELD_READ,
+                        label("performance.disk.held.read"),
+                        None,
+                        widgets::Tone::Plain,
+                    )
+                    .inert(reading)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.act(
+                            Action::Preference("refreshDiskDetails".into(), json!(index)),
+                            window,
+                            cx,
+                        )
+                    })),
+                )
+                .children(anchor)
+                .into_any_element()
+        };
+        // The title leads the text instead of heading the card: it wraps
+        // with the text where the card is narrow, as a card's title cannot.
+        let text = div()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(
+                div()
+                    .text_size(theme::font(14.))
+                    .font_weight(theme::LABEL_WEIGHT)
+                    .child(label("performance.disk.held.title")),
+            )
+            .child(label("performance.disk.held.reason"))
+            .child(
+                div()
+                    .text_color(p.muted)
+                    .child(label("performance.disk.held.note")),
+            );
+        self.card_frame(false)
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .child(
+                // As wide as the card up to a width that still reads well.
+                div()
+                    .max_w(px(HELD_TEXT))
+                    .flex()
+                    .gap(px(HELD_ICON_GAP))
+                    .child(
+                        div()
+                            .mt(px(3.))
+                            .flex_shrink_0()
+                            .child(icon("WarningIcon", p.io).size(px(HELD_ICON))),
+                    )
+                    .child(text),
+            )
+            // Under the text, not under the icon, no wider than it needs, and
+            // as tall with the note as with the button: the card keeps its
+            // height when one gives way to the other.
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .min_h(px(HELD_ACTION))
+                    .pl(px(HELD_ICON + HELD_ICON_GAP))
+                    .child(action),
+            )
             .into_any_element()
     }
     /// Why a part of the details is missing, with the Windows error code if any.

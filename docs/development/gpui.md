@@ -91,6 +91,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`disk-details-layout.json`](../../tools/window-probe/steps/disk-details-layout.json) 用 `data` 控制注入一块 NVMe 固态硬盘与一块 SATA 机械硬盘的详情，在默认、最小与宽窗口以及 150% 界面缩放加大字号下截取磁盘详情页的顶部与底部，核对 SMART 属性表的分栏、名称换行与数值换行。
 
+[`disk-details-held.json`](../../tools/window-probe/steps/disk-details-held.json) 检查上次会话在读取磁盘详情后异常结束时的详情页：用 `data` 控制把 `diskReadsHeld` 设为真（模拟快照不读取磁盘，也不读写标记文件），核对打开详情页不发出读取、显示说明，单击“仍要读取”后才请求读取，用 `hold` 与 `resolve` 走过读取中与读取完成两种画面，其他磁盘同样等待请求，已打开的说明在恢复自动读取后保留到离开该页，重新打开后自动读取；另截取浅色主题、小窗口加大字号与宽窗口的画面。`inspectLayout.performance.diskDetails` 输出当前详情页的磁盘编号与是否等待请求，`skippedRequest` 记录被模拟快照跳过的 `disk_details` 请求。更换 `--language` 可复核各语言的换行。标记文件的写入、保留与清除由 `cargo test -p argus-app read_marker` 覆盖。
+
 [`star-reminder.json`](../../tools/window-probe/steps/star-reminder.json) 检查 Star 提醒卡片的入场、悬停点亮、两个按钮与设置开关的联动，并覆盖图表之上和浅色主题。测试实例不会自行显示该卡片，由 `starPrompt` 控制触发；`inspectLayout.star` 输出卡片是否显示及提醒是否开启。卡片叠在图表上，只使用纯色矩形、文字和图标，动效均为一次性播放：改动其绘制后，用 `--live` 加 `ARGUS_GPUI_DIAGNOSTICS=1` 在性能页确认没有 `gpu-chart-foreground-reject`。
 
 [`portable-notice.json`](../../tools/window-probe/steps/portable-notice.json) 用 `data` 控制把 `info.portable` 设为免安装版，核对引导第一步的说明卡片与右下角的一次性提示，覆盖图表之上、浅色主题和最小窗口加大字号。测试实例不会自行显示该提示，由 `portableNotice` 控制触发；模拟快照下单击下载入口不打开浏览器。更换 `--language` 可复核各语言的换行。

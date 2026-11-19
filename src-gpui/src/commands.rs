@@ -162,8 +162,12 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }
 
+/// Reads a disk's details, on the caller's worker thread. The read reaches the
+/// disk's storage driver: it is made with the marker on disk (`disk_reads`),
+/// so that a read which brings the system down is not made again by itself at
+/// the next start.
 pub fn disk_details(index: u32) -> argus_core::hardware::disk_details::DiskDetails {
-    argus_service::disk_details(index)
+    crate::disk_reads::read(index, || argus_service::disk_details(index))
 }
 
 /// Runs `operation` in the privileged service when one runs for this account,

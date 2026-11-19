@@ -1,0 +1,21 @@
+{
+  "window": [1000,680],
+  "steps": [
+    {"note":"held: the page opens without reading","control":{"data":{"diskReadsHeld":true,"skippedRequest":{"command":"none"}},"page":"performance","device":"disk:0","preference":{"diskPage":"details"},"pointerOutside":true},"wait":800,"inspect":"layout","label":"held-not-read","expect":{"page":"performance","device":"disk:0","performance.diskDetails.disk":0,"performance.diskDetails.held":true,"skippedRequest.command":"none"},"capture":"held"},
+    {"control":{"hoverAnchor":"disk-details-read"},"wait":300,"capture":"held-hover"},
+    {"note":"the button asks for the read","control":{"clickAnchor":"disk-details-read"},"wait":300,"inspect":"layout","label":"held-read-asked","expect":{"skippedRequest.command":"disk_details","skippedRequest.args.index":0,"performance.diskDetails.held":true}},
+    {"note":"a read that takes long","control":{"hold":{"command":"disk_details","cache":"diskDetails.0","args":{"index":0}},"pointerOutside":true},"wait":600,"capture":"held-reading"},
+    {"control":{"resolve":{"command":"disk_details","ok":true,"value":{"index":0,"queriedAt":1794211200000,"volumes":["C:"],"identity":{"model":"Nimbus P700 2TB","serialNumber":"NP700A1B2C3D4E5","firmwareRevision":"N240620a","bus":"nvme","busCode":17,"removable":false},"capacityBytes":2000398934016,"solidState":true,"logicalSectorBytes":512,"physicalSectorBytes":4096,"trimEnabled":true,"queries":[{"query":"open","state":"ready"},{"query":"identity","state":"ready"}]}}},"wait":500,"capture":"held-answered"},
+    {"note":"another disk waits to be asked as well","control":{"device":"disk:1","pointerOutside":true},"wait":700,"inspect":"layout","label":"held-other-disk","expect":{"device":"disk:1","performance.diskDetails.disk":1,"performance.diskDetails.held":true,"skippedRequest.args.index":0},"capture":"held-other-disk"},
+    {"note":"what was read stays; opening it again does not read","control":{"device":"disk:0"},"wait":700,"inspect":"layout","label":"held-kept","expect":{"performance.diskDetails.disk":0,"performance.diskDetails.held":true},"capture":"held-kept"},
+    {"note":"a page that said why keeps saying so once reads run again","control":{"device":"disk:1","data":{"skippedRequest":{"command":"none"}}},"wait":600},
+    {"control":{"data":{"diskReadsHeld":false}},"wait":500,"inspect":"layout","label":"held-until-left","expect":{"performance.diskDetails.disk":1,"performance.diskDetails.held":true,"skippedRequest.command":"none"}},
+    {"note":"opened again, it reads by itself","control":{"preference":{"diskPage":"overview"}},"wait":400},
+    {"control":{"preference":{"diskPage":"details"}},"wait":600,"inspect":"layout","label":"reads-again","expect":{"performance.diskDetails.disk":1,"performance.diskDetails.held":false,"skippedRequest.command":"disk_details","skippedRequest.args.index":1},"capture":"reads-again"},
+    {"note":"a disk that was read shows its details","control":{"device":"disk:0"},"wait":700,"inspect":"layout","label":"normal","expect":{"performance.diskDetails.disk":0,"performance.diskDetails.held":false},"capture":"normal"},
+    {"note":"light theme, small window, large text","control":{"data":{"diskReadsHeld":true},"device":"disk:1","theme":"light","pointerOutside":true},"wait":800,"inspect":"layout","label":"held-light","expect":{"performance.diskDetails.disk":1,"performance.diskDetails.held":true},"capture":"held-light"},
+    {"probe":"size 640 480","wait":700,"capture":"held-small"},
+    {"control":{"preference":{"uiScale":150,"fontSize":16}},"wait":900,"capture":"held-small-large-text"},
+    {"control":{"preference":{"uiScale":100,"fontSize":13},"theme":"dark"},"probe":"size 1800 900","wait":900,"capture":"held-wide"}
+  ]
+}

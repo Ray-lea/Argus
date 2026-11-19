@@ -328,6 +328,12 @@
     "readAt": "Lecture à {time}",
     "loading": "Lecture des informations sur le disque…",
     "unavailable": "Aucun détail sur le disque.",
+    "held": {
+      "title": "Lecture automatique suspendue",
+      "reason": "Argus ne s’est pas fermé normalement après la dernière lecture des détails du disque. Windows a peut-être planté, l’alimentation a peut-être été coupée ou le processus Argus a été arrêté. Pour que le problème ne se répète pas à chaque démarrage, cette page ne lit plus automatiquement à l’ouverture.",
+      "note": "La lecture envoie des requêtes en lecture seule au pilote de stockage. Si Argus continue de fonctionner normalement pendant un certain temps après une lecture, la lecture automatique reprend. Si Argus se ferme de nouveau anormalement, cet avis s’affichera au prochain démarrage.",
+      "read": "Lire quand même"
+    },
     "openFailed": "Ce disque n’a pas pu être ouvert.",
     "errorCode": "Code d’erreur Windows {code}",
     "health": "État de santé",

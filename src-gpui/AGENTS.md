@@ -17,5 +17,6 @@
 - 曲线时间来自采集时间戳，保留未知区间与暂停语义；避免在每帧复制快照或重建表格。修改曲线、帧调度或缓存逻辑时检查真实呈现与隐藏开销；静态排版与文案按根目录规定做局部验证。
 - 图表层（`ChartLayer`）画在整个页面之上，页面里的文字会被曲线盖住；要压在曲线上的内容用 `charts::Overlay` 交给图表层绘制。Windows 合成只在静止内容画在所有与其重叠的移动图元（曲线纹理、动画柱条）之后、且只用纯色底色或普通图像时保留曲线图层：渐变底色或夹在移动图元之间的静止内容会让曲线退回逐帧重绘，随曲线逐帧移动的小图像也会明显增加 CPU 与 GPU 开销。修改这些图层的绘制顺序、背景或合成方式后，用 `ARGUS_GPUI_DIAGNOSTICS=1` 核对 `gpu-chart-layers` 的 `images` 与 `gpu-chart-foreground-reject`。
 - `gpui_kit::base::ElementExt::on_prepaint` 的探针是没有定位的绝对子元素，落在文字流之后，量出的边界比元素本身低一个行高；记录测试锚点改用 `canvas(...).absolute().inset_0()`。
+- 磁盘详情的读取只经 `commands::disk_details` 发出，它把读取放在标记文件之间（`disk_reads`，机制在 `argus_app::read_marker`）：读取前由工作线程把标记写入并刷新到磁盘，上次会话留下标记时详情页不自动读取（`Desktop::disk_reads_held`）。不要在别处直接调用 `argus_service::disk_details`；标记的读写不放到界面线程，界面只读 `disk_reads::held`。新增打开页面即发往存储或显卡驱动的按需查询时沿用同一做法。模拟快照不读取磁盘，等待请求的画面用 `data` 控制的 `diskReadsHeld` 核对（`disk-details-held.json`）。
 - 更新公钥和版本签名约束不可改变，安装前二次验签。耗时命令不运行在 UI 线程。
 - 平台能力与前端分离；macOS 不可用的采集或操作不能返回模拟成功。

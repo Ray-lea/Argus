@@ -201,6 +201,20 @@ struct Pending {
     cache: Option<String>,
     args: Value,
 }
+/// A disk's details page as it was opened: each opening reads once.
+#[derive(Clone, Copy)]
+struct DiskDetailsOpen {
+    /// The disk's PhysicalDrive number.
+    disk: u64,
+    /// `page_epoch` at the time: leaving the performance page and coming
+    /// back opens it anew.
+    epoch: u64,
+    /// When its read was last asked for: on opening, or by the user.
+    asked: Instant,
+    /// The read on opening was withheld (`disk_reads::held`): the page says
+    /// why and offers the read instead.
+    held: bool,
+}
 type TablePair = (
     Entity<gpui_kit::component::table::TableState<tables::NativeTable>>,
     Entity<tables::TableFrame>,
@@ -368,9 +382,8 @@ struct Desktop {
     cpu_mode: String,
     cpu_page: String,
     disk_page: String,
-    /// The disk whose details page is open (PhysicalDrive number and
-    /// `page_epoch`) and when it was opened: each opening reads once.
-    disk_details_open: Option<(u64, u64, Instant)>,
+    /// The disk details page that is open, if one is.
+    disk_details_open: Option<DiskDetailsOpen>,
     interval: u64,
     paused: bool,
     control_paused: bool,
@@ -854,6 +867,8 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             .expect("create native window");
             cx.on_app_quit(move |_| {
                 owner.exit(0);
+                // A quit and the end of the Windows session both come here.
+                crate::disk_reads::finish();
                 crate::window_state::flush();
                 // Preferences are written in the background: finish before exit.
                 prefs::flush(Duration::from_secs(2));
