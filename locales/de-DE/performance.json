@@ -33,6 +33,16 @@
       "e": "E-Kerne",
       "lp": "LP-E-Kerne"
     },
+    "view": {
+      "overall": "Gesamtansicht",
+      "logical": "Mehrkernansicht"
+    },
+    "filter": {
+      "all": "Alle Kerne",
+      "p": "Nur P-Kerne",
+      "e": "Nur E-Kerne",
+      "lp": "Nur LP-E-Kerne"
+    },
     "filterAll": "Alle",
     "filterTitle": {
       "all": "Alle logischen Prozessoren anzeigen",

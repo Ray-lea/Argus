@@ -35,6 +35,16 @@
       "e": "Núcleos E",
       "lp": "Núcleos LP E"
     },
+    "view": {
+      "overall": "Vista total",
+      "logical": "Vista multinúcleo"
+    },
+    "filter": {
+      "all": "Todos los núcleos",
+      "p": "Solo núcleos P",
+      "e": "Solo núcleos E",
+      "lp": "Solo núcleos LP E"
+    },
     "filterAll": "Todos",
     "filterTitle": {
       "all": "Mostrar todos los procesadores lógicos",

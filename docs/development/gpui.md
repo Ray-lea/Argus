@@ -107,7 +107,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`portable-notice.json`](../../tools/window-probe/steps/portable-notice.json) 用 `data` 控制把 `info.portable` 设为免安装版，核对引导第一步的说明卡片与右下角的一次性提示，覆盖图表之上、浅色主题和最小窗口加大字号。测试实例不会自行显示该提示，由 `portableNotice` 控制触发；模拟快照下单击下载入口不打开浏览器。更换 `--language` 可复核各语言的换行。
 
-[`performance-menus.json`](../../tools/window-probe/steps/performance-menus.json) 检查性能页的两个右键菜单：CPU 图表的“显示内核时间”在整体与多核视图间共用，设备列表可隐藏某一项、在“显示的设备”子菜单中逐项勾选并恢复默认显示；另核对隐藏选中项后的选中项、仅剩一项时不可隐藏、从别处打开已隐藏设备时该项回到列表，以及浅色主题。`pointer` 的 `context` 事件在已记录元素上按下并松开右键，CPU 图表区记录为 `cpu-graphs`，设备项记录为 `device-<设备标识>`；`inspectLayout.performance` 输出列表显示的设备、已隐藏设备的标识、选中项、内核时间开关，以及 CPU 总图与第一张逻辑处理器图的序列数。录制过渡时让 `record` 先于触发它的控制一步开始（间隔约 700 ms）：捕获会话建立需要数百毫秒，同一步内发出的控制会在第一帧到达前完成过渡。
+[`performance-menus.json`](../../tools/window-probe/steps/performance-menus.json) 检查性能页的两个右键菜单：CPU 图表的菜单切换整体与多核视图，多核视图下筛选核心类型（整体视图不列出核心类型），“显示内核时间”在两种视图间共用；设备列表可隐藏某一项、在“显示的设备”子菜单中逐项勾选并恢复默认显示；另核对隐藏选中项后的选中项、仅剩一项时不可隐藏、从别处打开已隐藏设备时该项回到列表，以及浅色主题。`pointer` 的 `context` 事件在已记录元素上按下并松开右键，CPU 图表区记录为 `cpu-graphs`，设备项记录为 `device-<设备标识>`；`inspectLayout.performance` 输出列表显示的设备、已隐藏设备的标识、选中项、CPU 视图（`cpuMode`）、生效的核心类型（`coreFilter`）、内核时间开关，以及 CPU 总图与第一张逻辑处理器图的序列数。录制过渡时让 `record` 先于触发它的控制一步开始（间隔约 700 ms）：捕获会话建立需要数百毫秒，同一步内发出的控制会在第一帧到达前完成过渡。
 
 [`device-order.json`](../../tools/window-probe/steps/device-order.json) 检查设备列表的排序：用 `sample` 改写磁盘的盘符后在“按盘符”与“按磁盘编号”间切换，拖动网络适配器到顶部时磁盘顺序不变，拖动磁盘打乱顺序后改为“自定义”，并核对菜单的勾选与“恢复默认顺序”，录制行的让位与滑动。`inspectLayout.performance` 的 `diskOrder` 为磁盘排序方式，`arranged` 为拖动保存的顺序。
 
@@ -123,7 +123,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`hardware-acceleration.json`](../../tools/window-probe/steps/hardware-acceleration.json) 在设置页单击“硬件加速”开关，核对窗口在运行中换到软件渲染设备、再换回 GPU，并截取两种设备下的设置页、性能页、进程页与托盘快捷面板；两段录制覆盖切换前后的每一帧，用于确认切换期间没有空白画面。`inspectLayout.graphics` 的 `softwareRequested` 为设置所请求的渲染方式，`software` 为窗口实际使用的适配器是否带软件标记。模拟快照下该开关照常执行，只改变测试实例自身的渲染设备与设置文件。步骤需在装有 GPU 的机器上运行，没有 GPU 时两种设置都使用软件适配器。
 
-[`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄到放不下 8 列时改为留空位的排布；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标、筛选项与图例；只有性能核与低功耗能效核的处理器不显示能效核筛选项。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
+[`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄到放不下 8 列时改为留空位的排布；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标与图例，CPU 图表的右键菜单列出三种核心类型；只有性能核与低功耗能效核的处理器，菜单不列出能效核，此前选中的能效核筛选回到全部核心。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
 
 测试控制除页面、主题、对话框等既有项外，还包括：
 
@@ -136,7 +136,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `pointer` | `{ "at"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>` 或 `row:<行序号>`（当前表格中从 0 起的行）；省略时相对于手势起点，元素在拖动中移动也不影响 |
 | `touch` | `{ "id", "at"?, "fraction"?, "event", "dx"?, "dy"? }`：原始触摸事件，仅模拟快照；`event` 为 `down`、`move`、`up`、`cancel` 或 `tap`。每次接触使用新的 `id`，同一次接触保持不变。`at` 沿用指针锚点，也接受窗口内坐标 `[x,y]` 与 `about-scroll`；`fraction` 指定锚点内的相对位置，默认中心。事件经正式手势识别路径，长按需在 `down` 后等待至少 500 ms |
 | `headerMenu` | 打开某一列的表头菜单 |
-| `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项与展开的子菜单 |
+| `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项、展开的子菜单，以及各项的文字（`items`，分隔线为空字符串）、是否不可用（`disabled`）与是否勾选（`checked`） |
 | `passive` | 与 `mouse`、`wheel` 等输入一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |

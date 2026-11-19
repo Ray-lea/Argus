@@ -842,8 +842,9 @@ impl Desktop {
         );
         kernel_fade::stepped(level, graphs)
     }
-    /// The device list, the CPU graphs' kernel time layer and the logical
-    /// processors' grid as tests see them (test control `inspectLayout`).
+    /// The device list, the CPU graphs' view, core type and kernel time layer,
+    /// and the logical processors' grid as tests see them (test control
+    /// `inspectLayout`).
     pub(in crate::frontend) fn performance_test_state(&self) -> Value {
         let devices = self.listed_devices();
         let shown = self.shown_devices(&devices);
@@ -862,6 +863,8 @@ impl Desktop {
             "arranged": self.prefs.get::<Vec<String>>(rail::ORDER, Vec::new()),
             "selected": devices.get(selected).map(|device| device.id.as_str()),
             "kernelTime": self.prefs.get(KERNEL_TIME, true),
+            "cpuMode": self.cpu_mode,
+            "coreFilter": self.core_filter(&CoreKind::present(&self.snapshot["hardware"]["cpu"])),
             "overallSeries": self.chart_series("cpu-overall-plot"),
             "coreSeries": self.chart_series("cpu-0"),
             "coreColumns": self.core_columns.get(),
@@ -872,20 +875,59 @@ impl Desktop {
             "diskDetails": self.disk_details_test_state(),
         })
     }
-    /// The CPU graphs' menu.
+    /// The core type the processors' grid shows: `all` or one of `kinds`.
+    /// A type this CPU lacks (a preference from other hardware) shows all.
+    fn core_filter(&self, kinds: &[CoreKind]) -> String {
+        let filter: String = self.prefs.get("coreFilter", "all".into());
+        if kinds.iter().any(|kind| kind.key() == filter) {
+            filter
+        } else {
+            "all".into()
+        }
+    }
+    /// The CPU graphs' menu: the view, the core type the processors' grid
+    /// shows on a hybrid CPU, and the kernel time layer.
     pub(in crate::frontend) fn cpu_graph_menu(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let logical = self.cpu_mode == "logical";
+        let mut items = ["overall", "logical"]
+            .into_iter()
+            .map(|mode| {
+                MenuItem::new(
+                    label(&format!("performance.cpu.view.{mode}")),
+                    Action::CpuMode(mode.into()),
+                )
+                .checked(self.cpu_mode == mode)
+            })
+            .collect::<Vec<_>>();
+        let kinds = CoreKind::present(&self.snapshot["hardware"]["cpu"]);
+        if logical && !kinds.is_empty() {
+            let filter = self.core_filter(&kinds);
+            items.push(MenuItem::separator());
+            items.extend(
+                std::iter::once("all")
+                    .chain(kinds.iter().map(|kind| kind.key()))
+                    .map(|choice| {
+                        MenuItem::new(
+                            label(&format!("performance.cpu.filter.{choice}")),
+                            Action::Preference("coreFilter".into(), json!(choice)),
+                        )
+                        .checked(choice == filter)
+                    }),
+            );
+        }
         let shown = self.prefs.get(KERNEL_TIME, true);
-        let items = vec![
+        items.push(MenuItem::separator());
+        items.push(
             MenuItem::new(
                 label("performance.cpu.showKernelTime"),
                 Action::Preference(KERNEL_TIME.into(), json!(!shown)),
             )
             .checked(shown),
-        ];
+        );
         self.open_popup(items, window, cx);
     }
     /// The device list's width: at most half the page, so the detail never gets squeezed.
@@ -2004,58 +2046,12 @@ impl Desktop {
             out.push(self.cpu_details(hw, window, cx));
             return out;
         }
+        // The view and the core type are chosen in the graphs' menu
+        // (`cpu_graph_menu`).
         let kinds = CoreKind::present(cpu);
         let hybrid = !kinds.is_empty();
-        // A type this CPU lacks (a preference from other hardware) shows all.
-        let filter: String = self.prefs.get("coreFilter", "all".into());
-        let filter = if kinds.iter().any(|kind| kind.key() == filter) {
-            filter
-        } else {
-            "all".into()
-        };
+        let filter = self.core_filter(&kinds);
         let logical = self.cpu_mode == "logical";
-        let mut controls = Vec::new();
-        if hybrid && logical {
-            controls.push(
-                self.segments(
-                    "core-filter",
-                    std::iter::once("all")
-                        .chain(kinds.iter().map(|kind| kind.key()))
-                        .map(|choice| {
-                            (
-                                label(&if choice == "all" {
-                                    "performance.cpu.filterAll".into()
-                                } else {
-                                    format!("performance.cpu.filterShort.{choice}")
-                                }),
-                                None,
-                                Action::Preference("coreFilter".into(), json!(choice)),
-                                choice == filter,
-                            )
-                        })
-                        .collect(),
-                    cx,
-                ),
-            );
-        }
-        controls.push(
-            self.segments(
-                "cpu-mode",
-                ["overall", "logical"]
-                    .into_iter()
-                    .map(|mode| {
-                        (
-                            label(&format!("performance.cpu.{mode}")),
-                            None,
-                            Action::CpuMode(mode.into()),
-                            self.cpu_mode == mode,
-                        )
-                    })
-                    .collect(),
-                cx,
-            ),
-        );
-        out.push(self.perf_toolbar(controls));
         out.push(self.cpu_graphs(logical, hybrid, &filter, window, cx));
         // Live figures.
         let mut stats = vec![

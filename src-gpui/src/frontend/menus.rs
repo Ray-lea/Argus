@@ -444,6 +444,7 @@ impl Desktop {
             "submenu": popup.sub.as_ref().map(|sub| sub.owner),
             "items": popup.items.iter().map(|item| &item.label).collect::<Vec<_>>(),
             "disabled": popup.items.iter().map(|item| item.disabled).collect::<Vec<_>>(),
+            "checked": popup.items.iter().map(|item| item.checked).collect::<Vec<_>>(),
         })
     }
 

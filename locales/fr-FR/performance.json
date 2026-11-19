@@ -35,6 +35,16 @@
       "e": "Cœurs E",
       "lp": "Cœurs LP E"
     },
+    "view": {
+      "overall": "Vue globale",
+      "logical": "Vue multicœur"
+    },
+    "filter": {
+      "all": "Tous les cœurs",
+      "p": "Cœurs P uniquement",
+      "e": "Cœurs E uniquement",
+      "lp": "Cœurs LP E uniquement"
+    },
     "filterAll": "Tous",
     "filterTitle": {
       "all": "Afficher tous les processeurs logiques",

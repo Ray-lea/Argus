@@ -33,6 +33,16 @@
       "e": "E-cores",
       "lp": "LP E-cores"
     },
+    "view": {
+      "overall": "Overall utilization",
+      "logical": "Logical processors"
+    },
+    "filter": {
+      "all": "All cores",
+      "p": "P-cores only",
+      "e": "E-cores only",
+      "lp": "LP E-cores only"
+    },
     "filterAll": "All",
     "filterTitle": {
       "all": "Show all logical processors",
