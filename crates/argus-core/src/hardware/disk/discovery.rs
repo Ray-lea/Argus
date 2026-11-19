@@ -5,10 +5,17 @@ use std::collections::HashMap;
 use std::mem::{offset_of, size_of};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, HDEVINFO, SP_DEVICE_INTERFACE_DATA,
-    SP_DEVICE_INTERFACE_DETAIL_DATA_W, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces,
-    SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
+    SP_DEVICE_INTERFACE_DETAIL_DATA_W, SP_DEVINFO_DATA, SetupDiDestroyDeviceInfoList,
+    SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW,
 };
 use windows::Win32::System::Ioctl::{GUID_DEVINTERFACE_DISK, IOCTL_STORAGE_GET_DEVICE_NUMBER};
+
+/// A present disk interface, by its physical drive number.
+pub(super) struct Found {
+    pub(super) handle: DeviceHandle,
+    /// Service name of the driver that serves the disk (see `controller`).
+    pub(super) controller: Option<String>,
+}
 
 struct Devices(HDEVINFO);
 impl Drop for Devices {
@@ -26,7 +33,7 @@ fn warn(stage: &'static str, ordinal: u32, code: u32) {
     );
 }
 
-pub(super) fn disks() -> HashMap<u32, DeviceHandle> {
+pub(super) fn disks() -> HashMap<u32, Found> {
     let mut out = HashMap::new();
     let set = unsafe {
         SetupDiGetClassDevsW(
@@ -85,8 +92,19 @@ pub(super) fn disks() -> HashMap<u32, DeviceHandle> {
         unsafe {
             (*detail).cbSize = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as u32;
         }
+        let mut device = SP_DEVINFO_DATA {
+            cbSize: size_of::<SP_DEVINFO_DATA>() as u32,
+            ..Default::default()
+        };
         if let Err(error) = unsafe {
-            SetupDiGetDeviceInterfaceDetailW(set.0, &interface, Some(detail), needed, None, None)
+            SetupDiGetDeviceInterfaceDetailW(
+                set.0,
+                &interface,
+                Some(detail),
+                needed,
+                None,
+                Some(&mut device),
+            )
         } {
             warn("disk.interface.detail", ordinal, native_code(error));
             continue;
@@ -113,10 +131,13 @@ pub(super) fn disks() -> HashMap<u32, DeviceHandle> {
         match handle.read(|raw, _| ioctl(raw, IOCTL_STORAGE_GET_DEVICE_NUMBER, None, &mut number)) {
             Ok(12) => {
                 let raw = unsafe { std::slice::from_raw_parts(number.as_ptr(), 12) };
-                let device = u32::from_le_bytes(raw[0..4].try_into().unwrap());
+                let kind = u32::from_le_bytes(raw[0..4].try_into().unwrap());
                 let index = u32::from_le_bytes(raw[4..8].try_into().unwrap());
-                if device == 7 && index <= 4095 {
-                    out.entry(index).or_insert(handle);
+                if kind == 7 && index <= 4095 {
+                    out.entry(index).or_insert_with(|| Found {
+                        handle,
+                        controller: super::controller::of_disk(device.DevInst),
+                    });
                 } else {
                     warn("disk.interface.number", ordinal, 13);
                 }

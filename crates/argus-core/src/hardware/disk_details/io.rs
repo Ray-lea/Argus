@@ -113,7 +113,8 @@ pub(super) fn query(index: u32) -> DiskDetails {
     result.trim_enabled = record(&mut result, DiskQuery::Trim, trim);
     let bus = result.identity.as_ref().map_or("", |i| i.bus.as_str());
     let native_nvme = bus == "nvme";
-    if probe_nvme(bus, result.solid_state) {
+    let controller = super::pcie::controller(index);
+    if probe_nvme(bus, result.solid_state, controller.as_deref()) {
         let identity = nvme_query(native_nvme, |scope| {
             protocol(handle.0, scope, NVMeDataTypeIdentify.0 as u32, 1, 4096)
                 .and_then(|data| nvme::identify(&data).ok_or_else(Failure::invalid))
@@ -228,13 +229,22 @@ pub(super) fn control(handle: HANDLE, code: u32, input: &[u8], capacity: usize) 
 
 /// NVMe protocol queries are answered by the adapter's miniport driver, like
 /// the periodic temperature query (see `disk::temperature_query_allowed`).
-/// A RAID-class controller serves the system disk too, and an Intel RST
-/// release that leaves such a request pending stalls it for all of Windows,
-/// so disks behind one keep to the queries the class driver answers.
-fn probe_nvme(bus: &str, solid_state: Option<bool>) -> bool {
-    bus == "nvme"
-        || solid_state != Some(false) && matches!(bus, "scsi" | "usb")
-        || bus == "other" && solid_state == Some(true)
+/// A vendor miniport serves the system disk too. Intel RST releases have left
+/// such a request pending, which stalls the disk for all of Windows, and
+/// Intel RST VMD 20.x writes past the buffer Storport hands it for the
+/// device-scope query, which corrupts the kernel pool (bug check 0x139). The
+/// bus type does not tell: RST VMD presents its NVMe drives as NVMe. So only
+/// Microsoft's NVMe miniport is asked, and Microsoft's USB storage drivers
+/// for a bridge that may hold an NVMe drive; a disk behind any other driver,
+/// or one PnP does not name, keeps to the queries the class driver answers.
+fn probe_nvme(bus: &str, solid_state: Option<bool>, controller: Option<&str>) -> bool {
+    use super::super::disk::controller::{answers_nvme, bridges_usb};
+    if bus == "nvme" {
+        return answers_nvme(controller);
+    }
+    bridges_usb(controller)
+        && (solid_state != Some(false) && matches!(bus, "scsi" | "usb")
+            || bus == "other" && solid_state == Some(true))
 }
 
 /// Try the existing controller query first. Some drivers only implement device
@@ -439,15 +449,33 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error.state, DiskQueryState::InvalidData);
-        assert!(probe_nvme("nvme", None));
-        assert!(probe_nvme("usb", Some(true)));
-        assert!(probe_nvme("scsi", None));
-        // A RAID-class miniport must never receive an NVMe request from here.
-        assert!(!probe_nvme("raid", Some(true)));
-        assert!(!probe_nvme("raid", None));
-        assert!(!probe_nvme("scsi", Some(false)));
-        assert!(!probe_nvme("ata", None));
-        assert!(!probe_nvme("virtual", Some(true)));
+    }
+
+    #[test]
+    fn nvme_requests_reach_only_microsofts_own_drivers() {
+        let nvme = Some("stornvme");
+        let usb = Some("UASPStor");
+        assert!(probe_nvme("nvme", None, nvme));
+        assert!(probe_nvme("usb", Some(true), usb));
+        assert!(probe_nvme("scsi", None, Some("USBSTOR")));
+        assert!(probe_nvme("other", Some(true), usb));
+        assert!(!probe_nvme("scsi", Some(false), usb));
+        assert!(!probe_nvme("other", None, usb));
+        assert!(!probe_nvme("ata", None, Some("atapi")));
+        assert!(!probe_nvme("virtual", Some(true), usb));
+        // Intel RST VMD passes its NVMe drives through with the NVMe bus type:
+        // the driver decides, never the bus.
+        assert!(!probe_nvme("nvme", Some(true), Some("iaStorVD")));
+        assert!(!probe_nvme("nvme", Some(true), Some("secnvme")));
+        assert!(!probe_nvme("nvme", Some(true), None));
+        // A vendor miniport must never receive an NVMe request from here,
+        // whatever bus its disks report.
+        for bus in ["raid", "scsi", "sata", "sas", "usb", "other"] {
+            assert!(!probe_nvme(bus, Some(true), Some("iaStorAC")), "{bus}");
+            assert!(!probe_nvme(bus, Some(true), None), "{bus}");
+        }
+        assert!(!probe_nvme("raid", Some(true), nvme));
+        assert!(!probe_nvme("scsi", Some(true), nvme));
     }
 
     fn response() -> Vec<u8> {

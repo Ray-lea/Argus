@@ -41,6 +41,7 @@ fn disk(index: u32) -> Disk {
             removable: false,
             volumes: vec![],
         }),
+        controller: Some("stornvme".into()),
         prev: None,
         fallback: volumes::Counters::default(),
         fallback_reported: false,
@@ -255,7 +256,7 @@ fn temperature_is_queried_only_on_buses_the_inbox_miniports_serve() {
         (99, false),
     ] {
         assert_eq!(
-            temperature_query_allowed(bus_name(code)),
+            temperature_query_allowed(bus_name(code), Some("stornvme")),
             allowed,
             "bus type {code}"
         );
@@ -263,37 +264,91 @@ fn temperature_is_queried_only_on_buses_the_inbox_miniports_serve() {
 }
 
 #[test]
-fn a_disk_behind_a_raid_controller_is_never_asked_for_its_temperature() {
+fn temperature_is_queried_only_from_microsofts_own_storage_drivers() {
+    for (bus, controller, allowed) in [
+        ("nvme", Some("stornvme"), true),
+        ("sata", Some("storahci"), true),
+        ("ata", Some("atapi"), true),
+        // Intel RST VMD passes NVMe drives through with the NVMe bus type,
+        // and RST presents SATA drives it manages as SATA.
+        ("nvme", Some("iaStorVD"), false),
+        ("sata", Some("iaStorAC"), false),
+        ("nvme", Some("secnvme"), false),
+        // A disk whose driver PnP does not name is not asked either.
+        ("nvme", None, false),
+        ("sata", None, false),
+        ("usb", Some("USBSTOR"), false),
+    ] {
+        assert_eq!(
+            temperature_query_allowed(bus, controller),
+            allowed,
+            "{bus} behind {controller:?}"
+        );
+    }
+}
+
+#[test]
+fn a_disk_behind_a_vendor_storage_driver_is_never_asked_for_its_temperature() {
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
         CM_NOTIFY_ACTION_DEVICEQUERYREMOVE, CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED,
     };
-    let file = FileFixture::new();
-    let mut info = (*disk(0).info).clone();
-    info.bus = "raid";
-    let mut d = Disk::new(Some(DeviceHandle::fixture(&file.path)), info);
-    let never =
-        |_: HANDLE| -> Option<(f32, Option<f32>)> { panic!("temperature query on a RAID bus") };
-    assert!(
-        d.sample_with_queries(|_| Ok(counters(1, 100)), never)
-            .is_some()
-    );
-    // Neither the periodic re-arm nor a reopened device handle starts asking.
-    d.arm_temperature();
-    d.temperature_at = None;
-    assert!(
-        d.sample_with_queries(|_| Ok(counters(2, 300)), never)
-            .is_some()
-    );
-    {
-        let handle = d.handle.as_ref().unwrap();
-        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE);
-        handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED);
+    for (bus, controller) in [
+        ("raid", Some("iaStorAC")),
+        // What Intel RST VMD reports for an NVMe drive it passes through.
+        ("nvme", Some("iaStorVD")),
+        ("nvme", None),
+    ] {
+        let file = FileFixture::new();
+        let mut info = (*disk(0).info).clone();
+        info.bus = bus;
+        let mut d = Disk::new(
+            Some(DeviceHandle::fixture(&file.path)),
+            info,
+            controller.map(String::from),
+        );
+        let never = |_: HANDLE| -> Option<(f32, Option<f32>)> {
+            panic!("temperature query sent to a vendor storage driver")
+        };
+        assert!(
+            d.sample_with_queries(|_| Ok(counters(1, 100)), never)
+                .is_some()
+        );
+        // Neither the periodic re-arm nor a reopened device handle starts asking.
+        d.arm_temperature();
+        d.temperature_at = None;
+        assert!(
+            d.sample_with_queries(|_| Ok(counters(2, 300)), never)
+                .is_some()
+        );
+        {
+            let handle = d.handle.as_ref().unwrap();
+            handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVE);
+            handle.notify(CM_NOTIFY_ACTION_DEVICEQUERYREMOVEFAILED);
+        }
+        assert!(
+            d.sample_with_queries(|_| Ok(counters(3, 500)), never)
+                .is_some()
+        );
+        assert!(d.temperature.is_none() && !d.temperature_supported);
     }
-    assert!(
-        d.sample_with_queries(|_| Ok(counters(3, 500)), never)
-            .is_some()
-    );
-    assert!(d.temperature.is_none() && !d.temperature_supported);
+}
+
+/// Prints what this machine's disks are served by; run by hand.
+#[test]
+#[ignore = "reads the PnP tree and opens the disks of this machine"]
+fn live_controllers() {
+    let started = Instant::now();
+    let found = discovery::disks();
+    let elapsed = started.elapsed();
+    let mut disks: Vec<_> = found.iter().collect();
+    disks.sort_by_key(|(index, _)| **index);
+    for (index, disk) in disks {
+        println!(
+            "disk {index}: storage driver={}",
+            controller::label(disk.controller.as_deref())
+        );
+    }
+    println!("discovery took {elapsed:?}");
 }
 
 #[test]
@@ -305,6 +360,7 @@ fn a_declining_nvme_disk_is_asked_again_only_after_a_rescan_or_reopen() {
     let mut d = Disk::new(
         Some(DeviceHandle::fixture(&file.path)),
         (*disk(0).info).clone(),
+        Some("stornvme".into()),
     );
     let mut asked = 0;
     d.sample_with_queries(

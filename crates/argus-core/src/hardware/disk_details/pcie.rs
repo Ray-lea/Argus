@@ -73,6 +73,11 @@ pub(super) fn query(index: u32) -> Option<PcieLink> {
     None
 }
 
+/// Service name of the driver that serves the disk (see `disk::controller`).
+pub(super) fn controller(index: u32) -> Option<String> {
+    super::super::disk::controller::of_disk(disk_node(index)?)
+}
+
 fn property(node: u32, pid: u32) -> Option<u32> {
     let key = DEVPROPKEY {
         fmtid: PCI_PROPERTIES,

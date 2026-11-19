@@ -1,6 +1,7 @@
 //! Physical disks: identity via storage IOCTLs, activity via IOCTL_DISK_PERFORMANCE.
 //! Device presence is independent of performance counter support.
 mod access;
+pub(super) mod controller;
 mod discovery;
 #[cfg(test)]
 mod tests;
@@ -44,18 +45,21 @@ pub(super) fn bus_name(code: u32) -> &'static str {
         _ => "other",
     }
 }
-/// Buses on which a disk is asked for its temperature.
+/// Whether a disk is asked for its temperature: by its bus, and by the driver
+/// that serves it (`controller`, a service name from the PnP tree).
 ///
 /// Storport hands `StorageDeviceTemperatureProperty` to the adapter's miniport
 /// driver, and nothing in user mode can cancel a request the miniport never
 /// completes. Microsoft's NVMe and AHCI miniports answer or decline at once.
-/// RAID-class miniports (Intel RST and VMD, vendor RAID) serve every disk
-/// behind them, the system disk included: an Intel RST release has been seen
-/// to leave the request for an NVMe drive pending forever, which stalls the
-/// controller and with it Windows until the PC is powered off. Disks on every
-/// other bus therefore report no temperature rather than risk that.
-pub(super) fn temperature_query_allowed(bus: &str) -> bool {
-    matches!(bus, "nvme" | "sata" | "ata")
+/// Vendor miniports (Intel RST and VMD, vendor RAID) serve every disk behind
+/// them, the system disk included: an Intel RST release has been seen to leave
+/// the request for an NVMe drive pending forever, which stalls the controller
+/// and with it Windows until the PC is powered off. The bus type does not tell
+/// such a disk apart: Intel RST VMD presents the NVMe drives it passes through
+/// as NVMe. A disk on another bus, behind another driver, or behind one PnP
+/// does not name therefore reports no temperature rather than risk that.
+pub(super) fn temperature_query_allowed(bus: &str, controller: Option<&str>) -> bool {
+    matches!(bus, "nvme" | "sata" | "ata") && controller::answers_temperature(controller)
 }
 const DRIVE_REMOVABLE: u32 = 2;
 const DRIVE_FIXED: u32 = 3;
@@ -104,6 +108,8 @@ struct Disk {
     handle: Option<DeviceHandle>,
     generation: u64,
     info: Arc<DiskInfo>,
+    /// Service name of the driver that serves the disk, when PnP names it.
+    controller: Option<String>,
     prev: Option<DISK_PERFORMANCE>,
     fallback: volumes::Counters,
     fallback_reported: bool,
@@ -114,12 +120,13 @@ struct Disk {
 }
 
 impl Disk {
-    fn new(handle: Option<DeviceHandle>, info: DiskInfo) -> Self {
+    fn new(handle: Option<DeviceHandle>, info: DiskInfo, controller: Option<String>) -> Self {
         Self {
             handle,
             generation: 0,
-            temperature_supported: temperature_query_allowed(info.bus),
+            temperature_supported: temperature_query_allowed(info.bus, controller.as_deref()),
             info: Arc::new(info),
+            controller,
             prev: None,
             fallback: volumes::Counters::default(),
             fallback_reported: false,
@@ -128,10 +135,14 @@ impl Disk {
         }
     }
 
+    fn temperature_allowed(&self) -> bool {
+        temperature_query_allowed(self.info.bus, self.controller.as_deref())
+    }
+
     /// Lets a drive that declined the temperature query be asked again, only
-    /// on the buses where the query is sent at all.
+    /// where the query is sent at all.
     fn arm_temperature(&mut self) {
-        self.temperature_supported = temperature_query_allowed(self.info.bus);
+        self.temperature_supported = self.temperature_allowed();
         if !self.temperature_supported {
             self.temperature = None;
         }
@@ -156,7 +167,9 @@ impl Disk {
                 self.prev = None;
                 self.fallback.clear();
                 self.temperature_at = None;
-                self.temperature_supported = temperature_query_allowed(self.info.bus);
+                // Field by field: the closure must not borrow all of `self`.
+                self.temperature_supported =
+                    temperature_query_allowed(self.info.bus, self.controller.as_deref());
             }
             if self.temperature_supported
                 && self
@@ -225,8 +238,14 @@ impl DiskTracker {
             .filter(|index| *index <= 4095)
             .collect();
         for index in indices {
+            // The interface names the driver that serves the disk even when
+            // its handle is not the one kept.
+            let (interface, controller) = match discovered.remove(&index) {
+                Some(found) => (Some(found.handle), found.controller),
+                None => (None, None),
+            };
             let opened = DeviceHandle::open(&format!(r"\\.\PhysicalDrive{index}"))
-                .or_else(|code| discovered.remove(&index).ok_or(code));
+                .or_else(|code| interface.ok_or(code));
             let handle = match opened {
                 Ok(handle) => Some(handle),
                 Err(code) => {
@@ -282,14 +301,16 @@ impl DiskTracker {
                 if *d.info != info {
                     d.info = Arc::new(info);
                 }
+                d.controller = controller;
                 d.arm_temperature();
                 self.disks.push(d);
                 continue;
             }
-            let disk = Disk::new(handle, info);
-            if disk.handle.is_some() && matches!(disk.info.bus, "raid" | "scsi" | "sas") {
-                // Answers "why is there no temperature" for an internal drive.
-                log::info!(target: "argus::disk", "disk temperature is not queried on this bus; disk={}; bus={}", disk.info.index, disk.info.bus);
+            let disk = Disk::new(handle, info, controller);
+            if disk.handle.is_some() {
+                // Names the storage driver in a report, and answers "why is
+                // there no temperature" for an internal drive.
+                log::info!(target: "argus::disk", "disk: {}; bus={}; storage driver={}; temperature query: {}", disk.info.index, disk.info.bus, controller::label(disk.controller.as_deref()), if disk.temperature_supported { "yes" } else { "no" });
             }
             self.disks.push(disk);
         }
