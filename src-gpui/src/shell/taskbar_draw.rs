@@ -584,7 +584,6 @@ fn capsules(
         if !layout.pills.is_empty() {
             x += gap;
         }
-        let high = group.cells.iter().any(|cell| cell.high);
         let start = x;
         x += inside;
         let dot_at = match group.cells.as_slice() {
@@ -649,14 +648,12 @@ fn capsules(
             }
         };
         x += inside;
+        // The dot marks the device, as a name does: in its colour even
+        // when the value is amber.
         layout.pills.push(Pill {
             rect: [start, y, x, y + tall],
             dot: dot_at,
-            paint: if high {
-                Paint::High
-            } else {
-                Paint::Tone(group.tone)
-            },
+            paint: Paint::Tone(group.tone),
         });
     }
     if layout.pills.is_empty() { 0 } else { x + pad }
@@ -696,17 +693,14 @@ fn figures(
                     figure_width(fonts, &cell.widest, large, unit),
                 );
                 let width = fonts.width(&cell.label, name_size, false).max(room);
+                // In its device's colour even when the value is amber.
                 layout.runs.push(Run {
                     text: cell.label.clone(),
                     x,
                     baseline: middle - px(5.),
                     size: name_size,
                     value: false,
-                    paint: if cell.high {
-                        Paint::High
-                    } else {
-                        Paint::Tone(group.tone)
-                    },
+                    paint: Paint::Tone(group.tone),
                     shade: Shade::Full,
                 });
                 // The figure starts under its name: room left over for a
@@ -1663,6 +1657,27 @@ mod tests {
         // A taskbar too low for two rows shows labels instead.
         let low = lay_out(&[single("CPU", "41%")], 30, 1., Style::Figures, &Even, None);
         assert!(low.runs.iter().all(|run| run.size == 13));
+    }
+
+    #[test]
+    fn a_high_value_turns_amber_and_its_name_keeps_its_colour() {
+        let mut busy = single("GPU", "94%");
+        busy.tone = Tone::Gpu;
+        busy.cells[0].high = true;
+        let figures = lay_out(&[busy.clone()], 48, 1., Style::Figures, &Even, None);
+        assert_eq!(figures.runs[0].paint, Paint::Tone(Tone::Gpu));
+        assert!(
+            values(&figures.runs)
+                .iter()
+                .all(|run| run.paint == Paint::High)
+        );
+        let capsules = lay_out(&[busy], 48, 1., Style::Capsules, &Even, None);
+        assert_eq!(capsules.pills[0].paint, Paint::Tone(Tone::Gpu));
+        assert!(
+            values(&capsules.runs)
+                .iter()
+                .all(|run| run.paint == Paint::High)
+        );
     }
 
     #[test]
