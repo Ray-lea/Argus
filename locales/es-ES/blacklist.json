@@ -1,0 +1,16 @@
+{
+  "title": "Lista de procesos bloqueados",
+  "intro": "Los procesos de la lista se terminan en cuanto aparecen, para impedir que software impuesto se ejecute por su cuenta, lance tareas de fondo en la pantalla de bloqueo o abra navegadores sin permiso. La comparación usa el valor completo, sin distinción de mayúsculas: al añadir desde el panel de detalles se registra la ruta completa del exe y solo se termina ese archivo; un nombre escrito aquí se toma como nombre de imagen completo (sin extensión se lee como .exe: 360 significa 360.exe y nunca afecta a 360safe.exe).",
+  "placeholder": "Nombre de proceso, p. ej. 360se.exe",
+  "add": "Añadir",
+  "remove": "Quitar",
+  "empty": "No hay procesos bloqueados",
+  "added": "Añadido a la lista: {name}; se terminará al aparecer",
+  "removed": "Quitado de la lista: {name}",
+  "removeButton": "Quitar de la lista",
+  "addButton": "Bloquear",
+  "confirmTitle": "Añadir a la lista",
+  "confirmBody": "¿Añadir «{path}» a la lista? Los procesos de la lista se terminan en cuanto aparecen.",
+  "confirmAdd": "Añadir",
+  "watchHint": "Lista activa ({count} entradas): cada muestreo termina los procesos coincidentes en cuanto aparecen"
+}

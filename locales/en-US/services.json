@@ -21,7 +21,7 @@
     "running": "Running",
     "stopped": "Stopped"
   },
-  "search": "Search name, description or PID",
+  "search": "Search name, description or PID; separate several with commas",
   "control": {
     "start": "Start service",
     "stop": "Stop service",

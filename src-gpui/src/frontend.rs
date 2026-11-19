@@ -2,6 +2,7 @@
 mod appearance;
 mod assets;
 mod backend;
+mod blacklist;
 mod charts;
 mod collation;
 mod columns;
@@ -28,6 +29,8 @@ mod regions;
 mod release_notes;
 mod reorder;
 mod scrollbar;
+mod search;
+mod search_history;
 mod shift;
 mod star;
 mod tables;
@@ -62,7 +65,7 @@ use theme::{Palette, icon, label};
 /// Minutes hidden before the window gives its memory back; 0 for never.
 const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
 const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
-const PAGES: [(&str, &str); 9] = [
+const PAGES: [(&str, &str); 10] = [
     ("processes", "ProcessesIcon"),
     ("performance", "PulseIcon"),
     ("services", "ServicesIcon"),
@@ -70,15 +73,16 @@ const PAGES: [(&str, &str); 9] = [
     ("network", "GlobeIcon"),
     ("history", "HistoryIcon"),
     ("components", "ComponentsIcon"),
+    ("blacklist", "ShieldIcon"),
     ("settings", "SettingsIcon"),
     ("about", "InfoIcon"),
 ];
-/// The pages a start can open on (the `startPage` preference): all but
-/// Components, Settings and About.
+/// The pages a start can open on (the `startPage` preference): all but the
+/// blacklist and the system pages.
 fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
     PAGES
         .iter()
-        .filter(|(page, _)| !matches!(*page, "components" | "settings" | "about"))
+        .filter(|(page, _)| !matches!(*page, "blacklist" | "components" | "settings" | "about"))
 }
 /// The page a start opens on: the saved `startPage` when it names one of
 /// `start_pages`, the process page otherwise.
@@ -117,6 +121,12 @@ enum Action {
     Preference(String, Value),
     /// Text to copy and the locale key naming it in the confirmation.
     Copy(String, &'static str),
+    /// An image name to add to, or remove from, the blacklist.
+    Blacklist(String),
+    /// A remembered search to put in the search box.
+    SearchHistory(String),
+    /// Forgets the current page's searches.
+    ClearSearchHistory,
     CloseOverlay,
     Confirm,
 }
@@ -286,6 +296,12 @@ struct Desktop {
     settings_rail: pages::section_rail::SectionRail,
     components_rail: pages::section_rail::SectionRail,
     about_scroll: ScrollHandle,
+    blacklist_scroll: ScrollHandle,
+    /// The blacklist page's add box, kept across frames.
+    blacklist_input: Entity<InputState>,
+    /// When each blacklist entry last killed, so a guarded process that
+    /// respawns meets a calm sweep instead of a kill–resample–kill storm.
+    blacklist_cooldown: HashMap<String, Instant>,
     device_scroll: ScrollHandle,
     page: String,
     page_epoch: u64,
@@ -442,6 +458,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx));
+        let blacklist_input = cx.new(|cx| InputState::new(window, cx));
         let settings =
             crate::dispatch::invoke(&host, "get_settings", json!({})).unwrap_or(Value::Null);
         let info = crate::dispatch::invoke(&host, "app_info", json!({})).unwrap_or(Value::Null);
@@ -483,6 +500,9 @@ impl Desktop {
             settings_rail: Default::default(),
             components_rail: Default::default(),
             about_scroll: ScrollHandle::new(),
+            blacklist_scroll: ScrollHandle::new(),
+            blacklist_input: blacklist_input.clone(),
+            blacklist_cooldown: HashMap::new(),
             device_scroll: ScrollHandle::new(),
             // A start opens the chosen page, wherever the last run ended; an
             // update's relaunch returns to the page it left (`page`, kept
@@ -614,8 +634,16 @@ impl Desktop {
                     this.rebuild_rows(false, cx);
                     cx.notify();
                 }
+                // A search leaves its mark when it is used: Enter, or the box
+                // losing the keyboard to the list.
                 InputEvent::PressEnter { .. } => {
+                    let typed = this.search.read(cx).value().to_string();
+                    this.remember_search(&typed);
                     this.focus.focus(window, cx);
+                }
+                InputEvent::Blur => {
+                    let typed = this.search.read(cx).value().to_string();
+                    this.remember_search(&typed);
                 }
                 _ => {}
             }),
@@ -625,6 +653,17 @@ impl Desktop {
             .push(cx.observe_in(&search, window, |this, _, window, cx| {
                 this.composition_settled(window, cx)
             }));
+        // Enter in the blacklist page's add box adds the name.
+        this.subscriptions.push(cx.subscribe_in(
+            &blacklist_input,
+            window,
+            |this, input, event, window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    let raw = input.read(cx).value().to_string();
+                    this.add_blacklist_name(&raw, window, cx);
+                }
+            },
+        ));
         this.watch_menu_window(window, cx);
         if let Some(path) = &options.fixture {
             match std::fs::read(path)

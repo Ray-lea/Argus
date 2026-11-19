@@ -13,6 +13,7 @@
     "network": "连接",
     "history": "历史",
     "components": "组件",
+    "blacklist": "黑名单",
     "settings": "设置",
     "about": "关于"
   },
@@ -67,7 +68,9 @@
     "next": "单击改为“{mode}”，右键可直接选择"
   },
   "search": {
-    "processes": "搜索名称、PID、路径或服务",
+    "processes": "搜索名称、PID、路径或服务，可逗号分隔多个",
+    "history": "搜索历史",
+    "clearHistory": "清除搜索历史",
     "clear": "清除搜索"
   },
   "viewMode": {

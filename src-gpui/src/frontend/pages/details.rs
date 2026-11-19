@@ -1158,16 +1158,85 @@ impl Desktop {
                 }),
             );
         if !picked.group {
+            // The blacklist matches full paths: a path entry kills exactly
+            // this file and never a same-named program elsewhere. A process
+            // without a readable path falls back to its image name.
+            let path = text(process, "path");
+            let entry = if path.is_empty() {
+                text(process, "name").to_owned()
+            } else {
+                path.to_owned()
+            };
+            let blacklisted = blacklist::holds(&self.prefs, &entry);
             row = row.child(
                 action_button(
                     "details-end-tree",
                     label("common.endProcessTree"),
-                    Action::Dialog("endTree".into(), args),
+                    Action::Dialog("endTree".into(), args.clone()),
                 )
                 .border_color(p.stroke)
                 .bg(p.control)
                 .text_color(p.ink)
                 .hover(move |style| style.bg(control_hover)),
+            );
+            // A wrong entry here kills software for as long as the list
+            // holds it: the danger face of the end action, and a question
+            // before anything is added.
+            let pending = picked
+                .members
+                .iter()
+                .any(|member| number(member, "createTime") < 0.);
+            let button_name = label(if blacklisted {
+                "blacklist.removeButton"
+            } else {
+                "blacklist.addButton"
+            });
+            let ask_add = (!blacklisted).then(|| entry.clone());
+            row = row.child(
+                Button::new("details-blacklist")
+                    .disabled(pending)
+                    .line_height(theme::line_height())
+                    .flex_1()
+                    .min_w_0()
+                    .h(px(32.))
+                    .px(px(12.))
+                    .rounded(px(4.))
+                    .accessibility_label(button_name.clone())
+                    .child(div().truncate().child(button_name))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        match ask_add.clone() {
+                            // Removing is harmless and stays immediate.
+                            Some(entry) => {
+                                let confirm_entry = entry.clone();
+                                this.ask(
+                                    label("blacklist.confirmTitle"),
+                                    tr!("blacklist.confirmBody", path = entry),
+                                    label("blacklist.confirmAdd"),
+                                    true,
+                                    move |this, window, cx| {
+                                        this.act(
+                                            Action::Blacklist(confirm_entry.clone()),
+                                            window,
+                                            cx,
+                                        );
+                                    },
+                                    window,
+                                    cx,
+                                );
+                            }
+                            None => this.act(Action::Blacklist(entry.clone()), window, cx),
+                        }
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .border_color(danger.opacity(0.))
+                    .bg(danger)
+                    .text_color(on_danger)
+                    .hover(move |style| {
+                        style.bg(Hsla {
+                            l: (danger.l * 1.08).min(1.),
+                            ..danger
+                        })
+                    }),
             );
         }
         let mut actions = div().flex_none().flex().flex_col();

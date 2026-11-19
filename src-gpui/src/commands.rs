@@ -279,6 +279,18 @@ pub fn kill_process(
     result
 }
 
+/// The blacklist's sweep uses this: the list refreshes at the sampling pace,
+/// so a kill must not demand another sample at once — a guarded process that
+/// respawns would otherwise turn into a kill–resample–kill storm.
+pub fn kill_process_quiet(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+    force: bool,
+) -> Result<(), ActionError> {
+    terminate(&state, pid, create_time, force)
+}
+
 pub fn kill_process_tree(
     state: State<'_, AppState>,
     pid: u32,

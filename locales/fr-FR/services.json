@@ -21,7 +21,7 @@
     "running": "En cours d’exécution",
     "stopped": "Arrêté"
   },
-  "search": "Rechercher un nom, une description ou PID",
+  "search": "Rechercher un nom, une description ou PID ; séparez-en plusieurs par des virgules",
   "control": {
     "start": "Démarrer le service",
     "stop": "Arrêter le service",

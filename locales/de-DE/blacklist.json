@@ -1,0 +1,16 @@
+{
+  "title": "Prozess-Sperrliste",
+  "intro": "Prozesse auf der Sperrliste werden sofort beendet, sobald sie erscheinen – gegen Software, die sich unaufgefordert startet, im Sperrbildschirm Hintergrundtasks ausführt oder selbst Browser öffnet. Verglichen wird der vollständige Wert, ohne Groß-/Kleinschreibung: Über den Detailbereich wird der vollständige Pfad der exe aufgenommen und nur diese Datei beendet; ein hier eingetragener Name gilt als vollständiger Bildname (ohne Endung als .exe: 360 bedeutet 360.exe und berührt 360safe.exe nicht).",
+  "placeholder": "Prozessname, z. B. 360se.exe",
+  "add": "Hinzufügen",
+  "remove": "Entfernen",
+  "empty": "Keine gesperrten Prozesse",
+  "added": "Zur Sperrliste hinzugefügt: {name} – wird beim Erscheinen beendet",
+  "removed": "Aus der Sperrliste entfernt: {name}",
+  "removeButton": "Aus Sperrliste entfernen",
+  "addButton": "Zur Sperrliste",
+  "confirmTitle": "Zur Sperrliste hinzufügen",
+  "confirmBody": "„{path}“ zur Sperrliste hinzufügen? Prozesse auf der Sperrliste werden sofort beendet, sobald sie erscheinen.",
+  "confirmAdd": "Hinzufügen",
+  "watchHint": "Sperrliste aktiv ({count} Einträge): Jede Abtastung beendet passende Prozesse, sobald sie erscheinen"
+}

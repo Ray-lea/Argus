@@ -543,6 +543,53 @@ impl Desktop {
             // rebuilt off the UI thread, and only when those changed.
             self.refresh_connections(cx);
         }
+        self.sweep_blacklist();
+    }
+    /// Records a used search on the current page, unless it is blank.
+    pub(in crate::frontend) fn remember_search(&mut self, query: &str) {
+        search_history::record(&mut self.prefs, &self.page, query);
+    }
+    /// The current page's remembered searches, below the search box. The
+    /// process and service pages keep separate lists, so the entries follow
+    /// the page as it changes.
+    pub(in crate::frontend) fn open_search_history(
+        &mut self,
+        at: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.popup.is_some()
+            || !matches!(
+                self.page.as_str(),
+                "processes" | "services" | "startup" | "network"
+            )
+        {
+            return;
+        }
+        let entries = search_history::load(&self.prefs, &self.page);
+        if entries.is_empty() {
+            return;
+        }
+        let mut items = entries
+            .into_iter()
+            .map(|entry| MenuItem::new(entry.clone(), Action::SearchHistory(entry)))
+            .collect::<Vec<_>>();
+        items.push(MenuItem::separator());
+        items.push(MenuItem::new(
+            label("shell.search.clearHistory"),
+            Action::ClearSearchHistory,
+        ));
+        let at = at.or_else(|| {
+            self.ui
+                .search_bounds
+                .borrow()
+                .map(|bounds| point(bounds.left(), bounds.bottom() + px(4.)))
+        });
+        let at = at.unwrap_or_else(|| {
+            // No measurement yet (the first frame): under the toolbar, centred.
+            point(window.viewport_size().width / 2. - px(140.), px(52.))
+        });
+        self.open_popup_at(items, at, window, cx);
     }
     /// Whether a row's processes all started within the last three samples.
     pub(in crate::frontend) fn is_fresh(&self, row: &Row) -> bool {
@@ -553,6 +600,68 @@ impl Desktop {
                     .get(&model::identity(member))
                     .is_some_and(|first| *first != 0 && self.sequence.saturating_sub(*first) < 3)
             })
+    }
+    /// Adds the image name to the blacklist (or clears the box's text when it
+    /// is blank or already present) and says so.
+    pub(in crate::frontend) fn add_blacklist_name(
+        &mut self,
+        raw: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(name) = blacklist::add(&mut self.prefs, raw) else {
+            return;
+        };
+        self.blacklist_input
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        self.notify_toast(
+            widgets::ToastKind::Success,
+            tr!("blacklist.added", name = name),
+        );
+        cx.notify();
+    }
+    /// Removes a name from the blacklist, or adds it when absent (the details
+    /// pane's button toggles).
+    pub(in crate::frontend) fn toggle_blacklist_name(
+        &mut self,
+        image: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if blacklist::holds(&self.prefs, image) {
+            blacklist::remove(&mut self.prefs, image);
+            self.notify_toast(
+                widgets::ToastKind::Info,
+                tr!("blacklist.removed", name = image),
+            );
+        } else {
+            let Some(name) = blacklist::add(&mut self.prefs, image) else {
+                return;
+            };
+            self.notify_toast(
+                widgets::ToastKind::Success,
+                tr!("blacklist.added", name = name),
+            );
+        }
+        cx.notify();
+    }
+    /// Sweeps each new sample for blacklisted processes: they are terminated
+    /// off the UI thread as soon as a sample names them, one kill per entry
+    /// per cooldown so a guarded process cannot force a storm.
+    fn sweep_blacklist(&mut self) {
+        if self.options.fixture.is_some() || blacklist::names(&self.prefs).is_empty() {
+            return;
+        }
+        let targets = blacklist::targets(
+            &self.snapshot,
+            &self.prefs,
+            &std::env::current_exe()
+                .ok()
+                .and_then(|path| Some(path.file_name()?.to_string_lossy().into_owned()))
+                .unwrap_or_default(),
+        );
+        let targets = blacklist::cooled(targets, &mut self.blacklist_cooldown);
+        blacklist::sweep(&self.host, &targets);
     }
     /// How often the visible page re-reads its list.
     pub(in crate::frontend) fn poll_interval(&self) -> Duration {
@@ -944,6 +1053,21 @@ impl Desktop {
                     1800,
                 );
             }
+            Action::Blacklist(image) => self.toggle_blacklist_name(&image, window, cx),
+            Action::SearchHistory(value) => {
+                self.search
+                    .update(cx, |state, cx| state.set_value(value.clone(), window, cx));
+                self.query = value.clone();
+                self.rebuild_rows(false, cx);
+                self.remember_search(&value);
+                // The keyboard goes back to the box for the next edit.
+                self.search.read(cx).focus_handle(cx).focus(window, cx);
+                cx.notify();
+            }
+            Action::ClearSearchHistory => {
+                search_history::clear(&mut self.prefs, &self.page);
+                cx.notify();
+            }
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }
@@ -1013,18 +1137,28 @@ impl Desktop {
             }
         }
         if searching {
-            // ↓ leaves the search box for the list, selecting the first row if none is.
-            if key == "down" && !self.rows.is_empty() {
-                if !self
-                    .selected
-                    .get(&self.page)
-                    .is_some_and(|key| self.rows.iter().any(|row| &row.key == key))
+            // ↓ on an empty box opens the page's remembered searches; with text
+            // it leaves the box for the list, selecting the first row if none is.
+            if key == "down" {
+                if self.query.trim().is_empty()
+                    && !search_history::load(&self.prefs, &self.page).is_empty()
                 {
-                    let first = self.rows[0].key.clone();
-                    self.act(Action::Select(first), window, cx);
+                    self.open_search_history(None, window, cx);
+                    cx.stop_propagation();
+                    return;
                 }
-                self.focus.focus(window, cx);
-                cx.stop_propagation();
+                if !self.rows.is_empty() {
+                    if !self
+                        .selected
+                        .get(&self.page)
+                        .is_some_and(|key| self.rows.iter().any(|row| &row.key == key))
+                    {
+                        let first = self.rows[0].key.clone();
+                        self.act(Action::Select(first), window, cx);
+                    }
+                    self.focus.focus(window, cx);
+                    cx.stop_propagation();
+                }
             }
             return;
         }

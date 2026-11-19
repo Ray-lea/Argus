@@ -88,6 +88,14 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "kill_process_quiet" => crate::commands::kill_process_quiet(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<bool>(&args, "force")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "kill_process_tree" => crate::commands::kill_process_tree(
             host.state(),
             argument::<u32>(&args, "pid")?,

@@ -13,6 +13,7 @@
     "network": "Connexions",
     "history": "Historique",
     "components": "Composants",
+    "blacklist": "Liste noire",
     "settings": "Paramètres",
     "about": "À propos"
   },
@@ -67,7 +68,9 @@
     "next": "Cliquez pour « {mode} » ; clic droit pour choisir"
   },
   "search": {
-    "processes": "Rechercher un nom, PID, un chemin ou un service",
+    "processes": "Rechercher un nom, PID, un chemin ou un service ; séparez-en plusieurs par des virgules",
+    "history": "Historique des recherches",
+    "clearHistory": "Effacer l’historique des recherches",
     "clear": "Effacer la recherche"
   },
   "viewMode": {

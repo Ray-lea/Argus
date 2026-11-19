@@ -628,6 +628,60 @@ impl Desktop {
                 } else {
                     filled.then_some(px(1.))
                 };
+                // The remembered searches of this page, reachable while the
+                // box is empty (the clear button takes the space otherwise).
+                let history_available = !search_history::load(&self.prefs, &self.page).is_empty();
+                let history_button = (history_available && empty).then(|| {
+                    div()
+                        .id("search-history")
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .w(px(20.))
+                        .h_full()
+                        .rounded(px(3.))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(hover))
+                        .tooltip(|window, cx| {
+                            widgets::tooltip(label("shell.search.history"), window, cx)
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.open_search_history(None, window, cx);
+                            }),
+                        )
+                        .child(icon("ChevronDown", p.muted).w(px(12.)).h(px(12.)))
+                        .when(self.options.test, |d| {
+                            let anchors = self.ui.anchors.clone();
+                            d.child(
+                                canvas(
+                                    move |bounds, _, _| {
+                                        anchors
+                                            .borrow_mut()
+                                            .insert("search-history".into(), bounds);
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .inset_0(),
+                            )
+                        })
+                });
+                let mut search_input = widgets::input(&self.search)
+                    .appearance(false)
+                    .cleanable(true)
+                    .h_full()
+                    .pl(px(9.))
+                    .gap(px(9.))
+                    .text_size(theme::font(13.))
+                    .aria_label(placeholder.clone())
+                    .prefix(icon("SearchIcon", if filled { p.accent } else { p.muted }));
+                let history_shown = history_button.is_some();
+                if let Some(button) = history_button {
+                    search_input = search_input.suffix(button);
+                }
                 let face = div()
                     .relative()
                     .size_full()
@@ -649,18 +703,8 @@ impl Desktop {
                             &p,
                         ))
                     })
-                    .child(
-                        widgets::input(&self.search)
-                            .appearance(false)
-                            .cleanable(true)
-                            .h_full()
-                            .pl(px(9.))
-                            .gap(px(9.))
-                            .text_size(theme::font(13.))
-                            .aria_label(placeholder)
-                            .prefix(icon("SearchIcon", if filled { p.accent } else { p.muted })),
-                    )
-                    .when(hint, |d| {
+                    .child(search_input)
+                    .when(hint && !history_shown, |d| {
                         d.child(
                             div()
                                 .absolute()
@@ -685,12 +729,24 @@ impl Desktop {
                 let owner = cx.entity().downgrade();
                 let track = track_title(1, anchors, owner);
                 let centered = (window.viewport_size().width - width) / 2.;
+                let search_bounds = self.ui.search_bounds.clone();
                 let search = div()
                     .id("toolbar-search")
                     .relative()
                     .h(px(32.))
                     .occlude()
                     .child(face)
+                    .child(
+                        // Where the history list opens from (no layout of its own).
+                        canvas(
+                            move |bounds, _, _| {
+                                *search_bounds.borrow_mut() = Some(bounds);
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
                     .when_some(edge, |d, width| {
                         d.child(widgets::accent_edge(p.accent, width))
                     })

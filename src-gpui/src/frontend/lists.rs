@@ -91,7 +91,7 @@ impl Order {
 pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> Vec<Row> {
     let page = spec.page.as_str();
     let network = page == "network";
-    let query = spec.query.trim().to_lowercase();
+    let terms = super::search::terms(&spec.query);
     let marks = &spec.marks;
     // Listening sockets by owner and port: a connection on such a port is local.
     let listening: HashSet<(Option<u64>, Option<u64>)> = if network {
@@ -103,9 +103,6 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
     } else {
         HashSet::new()
     };
-    // A number is almost always a port or PID: match it exactly, so 80 does not find 8080.
-    let number_query = query.parse::<u64>().ok();
-    let contains = |value: &str| value.to_lowercase().contains(&query);
     let exited = network.then(|| label("connections.exited"));
     let owner = |raw: &Value| {
         raw["pid"]
@@ -192,39 +189,45 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
             let mark = mark_key.as_ref().map(|key| &marks[key]);
             let note = mark.and_then(|m| m["note"].as_str()).map(str::to_owned);
             let pinned = mark.is_some_and(|m| boolean(m, "pinned"));
-            if !query.is_empty() {
-                let found_note = note.as_deref().is_some_and(contains);
-                let found = match page {
-                    "services" => {
-                        number_query.is_some_and(|n| raw["pid"].as_u64() == Some(n))
-                            || contains(text(raw, "name"))
-                            || contains(text(raw, "displayName"))
-                            || contains(text(raw, "description"))
-                            || found_note
-                    }
-                    "startup" => {
-                        contains(text(raw, "name"))
-                            || contains(text(raw, "entry"))
-                            || contains(text(raw, "publisher"))
-                            || contains(text(raw, "command"))
-                            || found_note
-                    }
-                    _ => match number_query {
-                        Some(n) => {
-                            raw["localPort"].as_u64() == Some(n)
-                                || raw["remotePort"].as_u64() == Some(n)
-                                || raw["pid"].as_u64() == Some(n)
-                        }
-                        None => {
-                            contains(&title)
-                                || text(raw, "localAddress").contains(&query)
-                                || text(raw, "remoteAddress").contains(&query)
-                                || owner(raw)
-                                    .is_some_and(|p| contains(&p.name) || contains(&p.description))
+            if !terms.is_empty() {
+                // A row stays when any term matches it; a term of digits is a
+                // port or PID and matches exactly, so 80 does not find 8080.
+                let found = terms.iter().any(|term| {
+                    let contains = |value: &str| value.to_lowercase().contains(&term.text);
+                    let found_note = note.as_deref().is_some_and(contains);
+                    match page {
+                        "services" => {
+                            term.number.is_some_and(|n| raw["pid"].as_u64() == Some(n))
+                                || contains(text(raw, "name"))
+                                || contains(text(raw, "displayName"))
+                                || contains(text(raw, "description"))
                                 || found_note
                         }
-                    },
-                };
+                        "startup" => {
+                            contains(text(raw, "name"))
+                                || contains(text(raw, "entry"))
+                                || contains(text(raw, "publisher"))
+                                || contains(text(raw, "command"))
+                                || found_note
+                        }
+                        _ => match term.number {
+                            Some(n) => {
+                                raw["localPort"].as_u64() == Some(n)
+                                    || raw["remotePort"].as_u64() == Some(n)
+                                    || raw["pid"].as_u64() == Some(n)
+                            }
+                            None => {
+                                contains(&title)
+                                    || text(raw, "localAddress").contains(&term.text)
+                                    || text(raw, "remoteAddress").contains(&term.text)
+                                    || owner(raw).is_some_and(|p| {
+                                        contains(&p.name) || contains(&p.description)
+                                    })
+                                    || found_note
+                            }
+                        },
+                    }
+                });
                 if !found {
                     return None;
                 }
@@ -542,7 +545,7 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     // Not the glob: the frontend's imports bring GPUI's own `test` attribute.
-    use super::{ListSpec, Row, list_rows, owners};
+    use super::{ListSpec, Owners, Row, list_rows, owners};
     use serde_json::{Value, json};
 
     fn spec(sort: &str, descending: bool, query: &str, marks: Value) -> ListSpec {
@@ -714,5 +717,42 @@ mod tests {
             [(8080, false)]
         );
         assert!(shown(&[("protocol", "udp"), ("state", "listen")]).is_empty());
+    }
+
+    #[test]
+    fn comma_separated_terms_match_any_service_or_connection() {
+        let services = vec![
+            json!({"name":"Spooler","displayName":"Print Spooler","description":"","pid":10}),
+            json!({"name":"WSearch","displayName":"Windows Search","description":"","pid":20}),
+            json!({"name":"AudioSrv","displayName":"Windows Audio","description":"","pid":30}),
+        ];
+        let mut list = spec("name", false, "spooler, wsearch", Value::Null);
+        list.page = "services".into();
+        let titles =
+            |rows: &[Row]| -> Vec<String> { rows.iter().map(|row| row.title.clone()).collect() };
+        let rows = list_rows(&list, &services, &Owners::new());
+        assert_eq!(titles(&rows), ["Print Spooler", "Windows Search"]);
+        // A term of digits matches the PID exactly; the fullwidth comma separates.
+        list.query = "20，audio".into();
+        let mut pids: Vec<u64> = list_rows(&list, &services, &Owners::new())
+            .iter()
+            .map(|row| row.raw["pid"].as_u64().unwrap())
+            .collect();
+        pids.sort_unstable();
+        assert_eq!(pids, [20, 30]);
+        // A note enters the terms like any other text.
+        list.query = "indexing, audio".into();
+        list.marks = json!({"wsearch":{"note":"indexing"}});
+        let rows = list_rows(&list, &services, &Owners::new());
+        assert_eq!(titles(&rows), ["Windows Audio", "Windows Search"]);
+        // Connections: a port and another port show either endpoint.
+        let source = connections();
+        let owners = owners(&processes(), &source);
+        let rows = list_rows(
+            &spec("localPort", false, "443, 80", Value::Null),
+            &source,
+            &owners,
+        );
+        assert_eq!(ports(&rows), vec![(80, None), (50000, Some(443))]);
     }
 }

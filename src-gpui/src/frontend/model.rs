@@ -2,6 +2,7 @@
 use super::collation::{self, SortKey};
 use super::columns;
 use super::gpu_usage::{self, GpuUsage};
+use super::search::{self, Term};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -794,7 +795,7 @@ fn user_rows(processes: &[Value], users: &UserGroups, options: &ProcessOptions<'
     for process in processes {
         parts[users.group_of(process)].push(process);
     }
-    let searching = !options.query.trim().is_empty();
+    let searching = !search::terms(options.query).is_empty();
     let mut out = Vec::with_capacity(processes.len() + users.groups.len());
     for (group, part) in users.groups.iter().zip(parts) {
         if part.is_empty() {
@@ -840,6 +841,24 @@ fn user_rows(processes: &[Value], users: &UserGroups, options: &ProcessOptions<'
     }
     out
 }
+/// Whether a process matches one search term: the term anywhere in its name,
+/// description, company, path, WebView host or hosted service names, or a PID
+/// that starts with its digits (a numeric search narrows as it is typed).
+fn process_matches(p: &Value, term: &Term, hosted: &HashMap<u64, Vec<String>>) -> bool {
+    let contains = |value: &str| value.to_lowercase().contains(&term.text);
+    (term.number.is_some() && p["pid"].to_string().starts_with(&term.text))
+        || contains(text(p, "name"))
+        || contains(text(p, "description"))
+        || contains(text(p, "company"))
+        || contains(text(p, "path"))
+        || contains(text(&p["webView"], "hostName"))
+        || contains(text(&p["webView"], "hostDescription"))
+        || web_role(p).is_some_and(|role| contains(&role))
+        || p["pid"]
+            .as_u64()
+            .and_then(|pid| hosted.get(&pid))
+            .is_some_and(|names| names.iter().any(|name| contains(name)))
+}
 fn group_rows(
     processes: &[&Value],
     options: &ProcessOptions<'_>,
@@ -855,23 +874,14 @@ fn group_rows(
         Some(group) => scoped_key(&key, &group.id),
         None => key,
     };
-    let query = options.query.trim().to_lowercase();
-    let numeric = !query.is_empty() && query.bytes().all(|b| b.is_ascii_digit());
+    let terms = search::terms(options.query);
+    let searching = !terms.is_empty();
+    // A row stays when any term matches it.
     let matches = |p: &Value| {
-        let contains = |value: &str| value.to_lowercase().contains(&query);
-        query.is_empty()
-            || (numeric && p["pid"].to_string().starts_with(&query))
-            || contains(text(p, "name"))
-            || contains(text(p, "description"))
-            || contains(text(p, "company"))
-            || contains(text(p, "path"))
-            || contains(text(&p["webView"], "hostName"))
-            || contains(text(&p["webView"], "hostDescription"))
-            || web_role(p).is_some_and(|role| contains(&role))
-            || p["pid"]
-                .as_u64()
-                .and_then(|pid| options.hosted.get(&pid))
-                .is_some_and(|names| names.iter().any(|name| contains(name)))
+        !searching
+            || terms
+                .iter()
+                .any(|term| process_matches(p, term, options.hosted))
     };
     let compare = |a: &Row, b: &Row| compare_rows(a, b, options.sort, options.descending);
     let named_process = |p: &Value, depth: usize| {
@@ -918,10 +928,11 @@ fn group_rows(
                         String::new()
                     };
                 // A search that names the app shows all of it; otherwise only the matches.
-                let shown = if !query.is_empty()
-                    && !label.to_lowercase().contains(&query)
-                    && !name.to_lowercase().contains(&query)
-                {
+                let named = |term: &Term| {
+                    label.to_lowercase().contains(&term.text)
+                        || name.to_lowercase().contains(&term.text)
+                };
+                let shown = if searching && !terms.iter().any(named) {
                     let shown: Vec<Value> = members
                         .iter()
                         .filter(|p| matches(p))
@@ -964,7 +975,7 @@ fn group_rows(
             return tree_rows(
                 processes,
                 options,
-                &query,
+                searching,
                 &matches,
                 &named_process,
                 user.is_some(),
@@ -1019,8 +1030,7 @@ fn group_rows(
             heading.gpu = Some(gpu_usage::aggregate(grouped.iter().map(Row::gpu_usage)));
             heading.raw["entryCount"] = json!(grouped.len());
             heading.expandable = true;
-            heading.expanded =
-                options.open || !options.sections.contains(section) || !query.is_empty();
+            heading.expanded = options.open || !options.sections.contains(section) || searching;
             let expanded = heading.expanded;
             out.push(heading);
             if expanded {
@@ -1062,7 +1072,7 @@ pub fn tree_parents(processes: &[Value]) -> HashSet<String> {
 fn tree_rows(
     processes: &[&Value],
     options: &ProcessOptions<'_>,
-    query: &str,
+    searching: bool,
     matches: &impl Fn(&Value) -> bool,
     named: &impl Fn(&Value, usize) -> Row,
     totals: bool,
@@ -1086,7 +1096,6 @@ fn tree_rows(
             None => roots.push(p),
         }
     }
-    let searching = !query.is_empty();
     let mut visible = HashSet::new();
     if searching {
         for process in processes
@@ -2253,6 +2262,72 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].members.len(), 2);
         assert_eq!(rows[1].raw["pid"], 42);
+    }
+    #[test]
+    fn comma_separated_terms_show_each_match_in_every_view() {
+        let processes = vec![
+            json!({"pid":10,"ppid":0,"createTime":1,"name":"wxwork.exe","description":"WeCom"}),
+            json!({"pid":20,"ppid":0,"createTime":2,"name":"qq.exe","description":"QQ"}),
+            json!({"pid":30,"ppid":0,"createTime":3,"name":"other.exe"}),
+        ];
+        let none = HashMap::new();
+        for mode in ["apps", "list", "tree"] {
+            assert_eq!(
+                pids(&rows_of(
+                    &processes,
+                    mode,
+                    "wxwork.exe, qq.exe",
+                    "pid",
+                    false,
+                    &none
+                )),
+                [10, 20],
+                "{mode}"
+            );
+            // The fullwidth comma of Chinese input separates terms too.
+            assert_eq!(
+                pids(&rows_of(
+                    &processes,
+                    mode,
+                    "wxwork.exe，other",
+                    "pid",
+                    false,
+                    &none
+                )),
+                [10, 30],
+                "{mode}"
+            );
+        }
+        // A PID and a name can be asked for together.
+        assert_eq!(
+            pids(&rows_of(&processes, "list", "30,qq", "pid", false, &none)),
+            [20, 30]
+        );
+        // Commas with no term between them leave the whole list.
+        assert_eq!(
+            pids(&rows_of(&processes, "list", " , ", "pid", false, &none)),
+            [10, 20, 30]
+        );
+    }
+    #[test]
+    fn naming_an_app_among_terms_shows_all_of_it() {
+        let processes = vec![
+            json!({"pid":10,"createTime":1,"name":"app.exe","path":"C:/app.exe"}),
+            json!({"pid":42,"createTime":2,"name":"app.exe","path":"C:/app.exe"}),
+            json!({"pid":50,"createTime":3,"name":"other.exe","path":"C:/other.exe"}),
+        ];
+        let rows = rows_of(
+            &processes,
+            "apps",
+            "other.exe, app.exe",
+            "pid",
+            false,
+            &HashMap::new(),
+        );
+        assert_eq!(pids(&rows), [10, 50]);
+        // The app term names both instances' app, so neither one is left out.
+        assert_eq!(rows[0].members.len(), 2);
+        assert!(rows[0].visible_members.is_none());
     }
     #[test]
     fn identity_only_rows_keep_selection_and_history_when_counters_arrive() {

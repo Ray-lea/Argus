@@ -13,6 +13,7 @@
     "network": "連線",
     "history": "歷程記錄",
     "components": "元件",
+    "blacklist": "黑名單",
     "settings": "設定",
     "about": "關於"
   },
@@ -67,7 +68,9 @@
     "next": "按一下改為「{mode}」，按一下滑鼠右鍵可直接選擇"
   },
   "search": {
-    "processes": "搜尋名稱、PID、路徑或服務",
+    "processes": "搜尋名稱、PID、路徑或服務，可逗號分隔多個",
+    "history": "搜尋記錄",
+    "clearHistory": "清除搜尋記錄",
     "clear": "清除搜尋"
   },
   "viewMode": {
