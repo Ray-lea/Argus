@@ -1086,6 +1086,7 @@ fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<T
                             String::new()
                         },
                         run,
+                        key: gauge.reading.text(),
                         value: part.text.clone(),
                         widest: part.widest.clone(),
                         high: gauge.high,
@@ -1096,6 +1097,7 @@ fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<T
                             label: format!("{}{}", gauge.short, part.mark),
                             name: String::new(),
                             run,
+                            key: gauge.reading.text(),
                             value: part.text.clone(),
                             widest: part.widest.clone(),
                             high: false,

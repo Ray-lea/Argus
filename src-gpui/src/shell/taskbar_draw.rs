@@ -46,6 +46,9 @@ pub(crate) struct Cell {
     pub name: String,
     /// Readings of one device in a row share this; others differ.
     pub run: usize,
+    /// The reading it shows, as saved ("memory", "disk@…"): where it keeps
+    /// its room, wherever it moves among the others.
+    pub key: String,
     pub value: String,
     /// The widest value it takes, so that it keeps its room.
     pub widest: String,
@@ -62,6 +65,13 @@ impl Cell {
         } else {
             &self.name
         }
+    }
+
+    /// Where it keeps its room in `style`: its reading and its mark (a
+    /// pair's two rates differ by theirs), not its place, which another
+    /// reading takes when one is added, removed or moved.
+    fn kept(&self, style: &str) -> String {
+        format!("{style}:{}:{}", self.key, self.label)
     }
 
     /// What it is called in plain text after `before` (the cell above it,
@@ -446,7 +456,7 @@ fn labels(
             .map(|(row, ((cell, name), value))| {
                 let room = held(
                     &mut reserve,
-                    format!("labels:{rows}:{index}:{row}:{}", tags[row]),
+                    cell.kept("labels"),
                     *value,
                     fonts.width(&cell.widest, font, true),
                 );
@@ -621,7 +631,7 @@ fn capsules(
         )
     };
     let mut x = pad;
-    for (index, group) in groups.iter().enumerate() {
+    for group in groups {
         if group.cells.is_empty() {
             continue;
         }
@@ -656,7 +666,7 @@ fn capsules(
                     unit,
                     value_paint(cell),
                 );
-                x += room(format!("{index}:0:{}", cell.tag()), cell);
+                x += room(cell.kept("capsules"), cell);
                 Some((centre, dot as f32 / 2.))
             }
             cells => {
@@ -686,7 +696,7 @@ fn capsules(
                         unit,
                         value_paint(cell),
                     );
-                    x += room(format!("{index}:{row}:{}", cell.label), cell);
+                    x += room(cell.kept("capsules"), cell);
                 }
                 None
             }
@@ -720,7 +730,7 @@ fn figures(
     let (pad, gap) = (px(8.), px(9.));
     let mut x = pad;
     let mut any = false;
-    for (index, group) in groups.iter().enumerate() {
+    for group in groups {
         if group.cells.is_empty() {
             continue;
         }
@@ -732,7 +742,7 @@ fn figures(
             [cell] => {
                 let room = held(
                     &mut reserve,
-                    format!("figures:{index}:0:{}", cell.tag()),
+                    cell.kept("figures"),
                     figure_width(fonts, &cell.value, large, unit),
                     figure_width(fonts, &cell.widest, large, unit),
                 );
@@ -769,11 +779,10 @@ fn figures(
                     .unwrap_or(0);
                 let room = cells
                     .iter()
-                    .enumerate()
-                    .map(|(row, cell)| {
+                    .map(|cell| {
                         held(
                             &mut reserve,
-                            format!("figures:{index}:{row}:{}", cell.label),
+                            cell.kept("figures"),
                             figure_width(fonts, &cell.value, body, unit),
                             figure_width(fonts, &cell.widest, body, unit),
                         )
@@ -1811,6 +1820,44 @@ mod tests {
             lay_out(&busier, 48, 1., Style::Capsules, &Even, None).pills,
             layout.pills
         );
+    }
+
+    #[test]
+    fn a_reading_keeps_its_own_room_when_another_takes_its_place() {
+        use super::Reserve;
+        use std::time::{Duration, Instant};
+        let reading = |key: &str, value: &str| {
+            let mut group = single("RAM", value);
+            group.cells[0].key = key.into();
+            group
+        };
+        let (share, used) = (reading("memory", "73%"), reading("memoryUsed", "23.3 GB"));
+        let start = Instant::now();
+        let later = start + Duration::from_secs(1);
+        for style in [Style::Figures, Style::Capsules, Style::Labels] {
+            // The amount in use alone, then its share added before it: the
+            // share, where the amount was, keeps only its own room.
+            let mut reserve = Reserve::default();
+            lay_out(
+                std::slice::from_ref(&used),
+                48,
+                1.,
+                style,
+                &Even,
+                Some((&mut reserve, start)),
+            );
+            let both = [share.clone(), used.clone()];
+            let after = lay_out(&both, 48, 1., style, &Even, Some((&mut reserve, later)));
+            let fresh = lay_out(
+                &both,
+                48,
+                1.,
+                style,
+                &Even,
+                Some((&mut Reserve::default(), later)),
+            );
+            assert_eq!(after.width, fresh.width, "{style:?}");
+        }
     }
 
     #[test]
