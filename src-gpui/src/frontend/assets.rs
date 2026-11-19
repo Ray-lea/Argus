@@ -60,6 +60,7 @@ product_icons! {
     "NetworkIcon" => Network,
     "BatteryIcon" => BatteryMedium,
     "ComputerIcon" => Monitor,
+    "DisplayIcon" => MonitorCheck,
     "RefreshIcon" | "RestartIcon" => RotateCw,
     "ResetIcon" => RotateCcw,
     "KeyboardIcon" => Keyboard,

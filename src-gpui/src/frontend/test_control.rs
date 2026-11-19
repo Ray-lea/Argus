@@ -56,6 +56,18 @@ impl Desktop {
                 cx,
             );
         }
+        // Displays of the test's own in place of the system's (an empty
+        // list, or none, for the system's): the components page and the
+        // panel list them, and the taskbar monitor gets a stand-in taskbar
+        // for each.
+        if let Some(displays) = control.get("taskbarDisplays") {
+            let displays =
+                serde_json::from_value::<Vec<crate::shell::displays::Display>>(displays.clone())
+                    .ok()
+                    .filter(|displays| !displays.is_empty());
+            crate::shell::displays::set_test(displays);
+            self.sync_monitors(cx);
+        }
         if let Some(change) = control.get("taskbarMonitor") {
             self.request(
                 "set_taskbar_monitor",

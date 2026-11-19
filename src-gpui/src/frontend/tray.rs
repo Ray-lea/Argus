@@ -614,7 +614,11 @@ impl Flyout {
     /// change.
     fn ask(&mut self, ask: Ask, window: &mut Window, cx: &mut Context<Self>) {
         if let Ask::Taskbar(choice) = ask {
-            let closes = matches!(choice, TaskbarChoice::Settings | TaskbarChoice::Hide);
+            // Another display takes the monitor away from under the panel.
+            let closes = matches!(
+                choice,
+                TaskbarChoice::Settings | TaskbarChoice::Hide | TaskbarChoice::Display(_)
+            );
             let desktop = self.desktop.clone();
             let handle = self.desktop_window;
             cx.defer(move |cx| {

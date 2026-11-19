@@ -653,6 +653,7 @@ pub fn set_taskbar_monitor(
     order: Option<Vec<Metric>>,
     place: Option<TaskbarPlace>,
     style: Option<TaskbarStyle>,
+    display: Option<String>,
 ) -> Result<SettingsView, String> {
     let saved = app
         .state::<SettingsStore>()
@@ -672,6 +673,9 @@ pub fn set_taskbar_monitor(
             }
             if let Some(style) = style {
                 monitor.style = style;
+            }
+            if let Some(display) = display {
+                monitor.display = display;
             }
         })
         .map_err(|e| e.to_string())?;

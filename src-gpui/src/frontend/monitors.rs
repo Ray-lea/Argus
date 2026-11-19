@@ -1147,6 +1147,11 @@ pub(in crate::frontend) struct TaskbarPanel {
     /// The display scale the previews were drawn at.
     pub scale: f32,
     pub kinds: Vec<super::pages::components::PanelKind>,
+    /// The displays to choose from (key, name), the primary one first; none
+    /// with one display and none chosen elsewhere.
+    pub displays: Vec<(String, String)>,
+    /// The display chosen, by its key; empty for the primary one.
+    pub display: String,
 }
 
 impl PartialEq for TaskbarPanel {
@@ -1155,6 +1160,8 @@ impl PartialEq for TaskbarPanel {
             && self.ground == other.ground
             && self.scale == other.scale
             && self.kinds == other.kinds
+            && self.displays == other.displays
+            && self.display == other.display
             && self.previews.len() == other.previews.len()
             && self
                 .previews
@@ -1759,15 +1766,21 @@ impl Desktop {
     /// What the taskbar monitor's panel shows.
     pub(in crate::frontend) fn taskbar_panel(&mut self, scale: f32) -> TaskbarPanel {
         let (previews, ground) = self.taskbar_previews(scale);
+        let monitor: TaskbarMonitor = self.monitor_settings("taskbarMonitor");
+        let displays = super::pages::components::display_choices(&monitor.display, false);
         TaskbarPanel {
-            style: String::from(
-                self.monitor_settings::<TaskbarMonitor>("taskbarMonitor")
-                    .style,
-            ),
+            style: String::from(monitor.style),
             previews,
             ground,
             scale,
             kinds: self.taskbar_panel_kinds(),
+            // The primary display and one other at least.
+            displays: if displays.len() > 2 {
+                displays
+            } else {
+                Vec::new()
+            },
+            display: monitor.display,
         }
     }
 
@@ -1831,6 +1844,11 @@ impl Desktop {
                 let metrics = super::pages::components::metrics_named(&metrics);
                 let order = with_metrics(&saved(), &metrics);
                 self.arrange_readings(key, command, order, window, cx);
+            }
+            TaskbarChoice::Display(display) => {
+                // The monitor leaves the panel behind on the taskbar it was on.
+                self.close_tray_panel(cx);
+                self.change_monitor(key, command, json!({ "display": display }), window, cx)
             }
             TaskbarChoice::Settings => {
                 self.open_components("taskbar", window, cx);
@@ -1931,6 +1949,9 @@ impl Desktop {
                 "taskbar": arranged(&super::pages::components::saved_order(&self.data["settings"]["taskbarMonitor"]["order"])).iter().map(|kind| kind.key).collect::<Vec<_>>(),
             },
             "taskbarMetrics": self.data["settings"]["taskbarMonitor"]["metrics"],
+            "taskbarDisplay": self.data["settings"]["taskbarMonitor"]["display"],
+            "taskbarOn": crate::shell::taskbar_monitor_on().map(|(display, fallback)| json!({"display": display, "fallback": fallback})),
+            "displays": crate::shell::displays::displays().iter().map(|display| display.key.clone()).collect::<Vec<_>>(),
             "taskbarPanel": self.taskbar_panel_kinds().iter().map(|kind| json!({
                 "kind": kind.key,
                 "devices": kind.devices.iter().map(|device| json!({

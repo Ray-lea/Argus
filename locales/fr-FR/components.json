@@ -209,12 +209,20 @@
   },
   "taskbar": {
     "title": "Moniteur de barre des tâches",
-    "desc": "Affiche les mesures choisies dans la barre des tâches de l’écran principal. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "desc": "Affiche les mesures choisies dans la barre des tâches. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
     "place": {
       "title": "Position",
       "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
       "tray": "Près de la zone de notification",
       "start": "Côté gauche"
+    },
+    "display": {
+      "title": "Écran",
+      "desc": "L’écran dont la barre des tâches affiche le moniteur. Si l’écran choisi n’est pas connecté ou n’affiche pas de barre des tâches, le moniteur s’affiche sur l’écran principal.",
+      "primary": "Écran principal",
+      "item": "{name} ({width} × {height})",
+      "unnamed": "Écran {index}",
+      "absent": "Écran déconnecté"
     },
     "style": {
       "title": "Style",

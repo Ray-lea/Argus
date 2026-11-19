@@ -1,6 +1,7 @@
 //! The taskbar monitor's panel: the style, a card per style with the
-//! monitor's look in it, and the readings it shows, a row per kind of
-//! device, checked in place. A kind dragged by its name, or a reading
+//! monitor's look in it; with several displays, the display whose taskbar
+//! it sits on; and the readings it shows, a row per kind of device, checked
+//! in place. A kind dragged by its name, or a reading
 //! dragged, takes another place, and the monitor shows its readings in that
 //! order. The panel stays open while they change; each change shows on the
 //! taskbar at once and is saved.
@@ -100,6 +101,7 @@ impl Flyout {
                 }),
             )
             .on_drop(cx.listener(|this, _: &Lifted, window, cx| this.finish_order(window, cx)));
+        let displays = (!self.monitor.displays.is_empty()).then(|| self.display_choice(p, cx));
         let mut footer_button =
             |id: &'static str, glyph: &str, name: String, choice: TaskbarChoice| {
                 self.pressable(id, name.clone(), Ask::Taskbar(choice), p.hover, cx)
@@ -124,6 +126,15 @@ impl Flyout {
                     .pb(px(12. - ROW_PAD))
                     .child(caption(label("components.taskbar.style.title")).mb(px(8.)))
                     .child(div().grid().grid_cols(2).gap(px(6.)).children(styles))
+                    .when_some(displays, |panel, displays| {
+                        panel
+                            .child(
+                                caption(label("components.taskbar.display.title"))
+                                    .mt(px(14.))
+                                    .mb(px(8.)),
+                            )
+                            .child(div().flex().child(displays))
+                    })
                     .child(
                         caption(label("components.metrics.title"))
                             .mt(px(14.))
@@ -256,6 +267,51 @@ impl Flyout {
                 .child(name),
         )
         .into_any_element()
+    }
+
+    /// The displays to choose from, as tabs: the primary display, then each
+    /// by its monitor's name. Choosing one moves the monitor there and
+    /// closes the panel, which it leaves behind.
+    fn display_choice(&self, p: Palette, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(2.))
+            .p(px(2.))
+            .rounded(px(6.))
+            .bg(p.control_face)
+            .border_1()
+            .border_color(p.stroke)
+            .children(
+                self.monitor
+                    .displays
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (key, name))| {
+                        let current = *key == self.monitor.display;
+                        self.pressable(
+                            ("monitor-display", index),
+                            name.clone(),
+                            Ask::Taskbar(TaskbarChoice::Display(key.clone())),
+                            if current { p.control_checked } else { p.hover },
+                            cx,
+                        )
+                        .role(Role::RadioButton)
+                        .aria_toggled(if current {
+                            Toggled::True
+                        } else {
+                            Toggled::False
+                        })
+                        .h(px(24.))
+                        .px(px(8.))
+                        .flex()
+                        .items_center()
+                        .text_size(theme::font(12.))
+                        .text_color(if current { p.ink } else { p.muted })
+                        .when(current, |tab| tab.bg(p.control_checked))
+                        .child(div().max_w(px(140.)).truncate().child(name.clone()))
+                    }),
+            )
     }
 
     /// The device tab of `kind` shown.

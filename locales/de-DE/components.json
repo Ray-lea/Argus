@@ -209,12 +209,20 @@
   },
   "taskbar": {
     "title": "Taskleistenanzeige",
-    "desc": "Zeigt die ausgewählten Werte in der Taskleiste des Hauptbildschirms. Ein Klick zeigt oder verbirgt das Fenster, ein Rechtsklick öffnet einen Bereich, in dem sich Stil und angezeigte Werte ändern lassen. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "desc": "Zeigt die ausgewählten Werte in der Taskleiste. Ein Klick zeigt oder verbirgt das Fenster, ein Rechtsklick öffnet einen Bereich, in dem sich Stil und angezeigte Werte ändern lassen. Während der Anzeige gilt das „Aktualisierungsintervall“.",
     "place": {
       "title": "Position",
       "desc": "„Linke Seite“ gilt nur für die Taskleiste von Windows 11 mit zentrierten Schaltflächen. Andernfalls erscheint die Anzeige neben dem Infobereich.",
       "tray": "Neben dem Infobereich",
       "start": "Linke Seite"
+    },
+    "display": {
+      "title": "Bildschirm",
+      "desc": "Der Bildschirm, in dessen Taskleiste die Anzeige erscheint. Ist der gewählte Bildschirm nicht verbunden oder zeigt er keine Taskleiste, erscheint sie auf dem Hauptbildschirm.",
+      "primary": "Hauptbildschirm",
+      "item": "{name} ({width} × {height})",
+      "unnamed": "Bildschirm {index}",
+      "absent": "Nicht verbundener Bildschirm"
     },
     "style": {
       "title": "Stil",

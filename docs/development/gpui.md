@@ -81,6 +81,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`monitor-order.json`](../../tools/window-probe/steps/monitor-order.json) 在组件页按住桌面监控的类别手柄（锚点 `<卡片>-grip-<类别>`，类别整块为 `<卡片>-block-<类别>`）和读数选项拖动，捕获拖动中的画面，核对类别与读数的新顺序及桌面监控显示的各行，并核对拖动后单击选项仍只勾选；随后在任务栏监控的面板中用 `taskbarPanelDrag` 拖动类别名称与读数，再用 `taskbarPanel` 的 `kinds:` 直接排列类别，捕获深浅主题下的组件页与面板。`inspectLayout.monitors` 的 `kinds.desktop`、`kinds.taskbar` 为两个监控的类别顺序，`taskbarMetrics` 为任务栏监控保存的读数。
 
+[`monitor-display.json`](../../tools/window-probe/steps/monitor-display.json) 用 `taskbarDisplays` 换上三台虚构的显示器，测试实例为每台显示器各建一条替身任务栏（主显示器的在最下方并带托盘，其余依次叠在其上方，标题为“Argus taskbar stand-in 2”等），经面板控制把任务栏监控移到第二台显示器的任务栏，核对该显示器断开时暂时显示在主显示器上、重新连接后移回，并捕获组件页的“显示器”卡片与面板中的显示器选择。`inspectLayout.monitors` 的 `taskbarDisplay` 为保存的显示器，`taskbarOn` 为监控实际所在任务栏对应的显示器及是否暂时显示在主显示器上，`displays` 为当前列出的显示器。
+
 [`section-rail.json`](../../tools/window-probe/steps/section-rail.json) 检查组件页与设置页左侧的分组列表：单击分组跳转、滚轮滚动后标记跟随、从托盘设置入口打开时回到托盘分组，核对宽窗口下卡片列不超过 960 px，并捕获深浅主题与窄窗口（不显示列表）的画面。`inspectLayout.sections` 记录两页列表当前标出的分组，`sections.cards` 为两页卡片列最近一次绘制的左边与宽度；分组的测试锚点为 `<页面>-nav-<分组>`，如 `components-nav-taskbar`。
 
 [`tray-reopen.json`](../../tools/window-probe/steps/tray-reopen.json) 在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开、关闭后 150 ms 内再次右键单击仍能打开，指针停留时悬停卡片先等待再打开、停留不足即离开时不打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。
@@ -137,7 +139,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
 | `trayHover` | `rest` 或 `leave`：如同 Shell 报告指针停留在托盘图标上或离开，经宿主的同一计时打开或取消悬停卡片（假定托盘位置） |
 | `trayPress` | `true`：记下右键在托盘图标上按下的时刻，与同一步中随后的 `trayFlyout: "panel"` 组成一次右键单击：面板在按下时打开（或因按下而关闭）则关闭，否则打开 |
-| `taskbarPanel` | `open`：在替身任务栏的任务栏监控上方打开其面板，不取得前台；`close` 关闭；`style:<样式>`、`reading:<读数>`、`settings` 或 `hide`：如同在面板中单击对应的控件；`kinds:<类别>,…`、`metrics:<读数>,…`：如同在面板中把类别或一个类别的读数拖成该顺序 |
+| `taskbarPanel` | `open`：在替身任务栏的任务栏监控上方打开其面板，不取得前台；`close` 关闭；`style:<样式>`、`reading:<读数>`、`settings` 或 `hide`：如同在面板中单击对应的控件；`kinds:<类别>,…`、`metrics:<读数>,…`：如同在面板中把类别或一个类别的读数拖成该顺序；`display:<显示器>`：如同在面板中选择该显示器（为空时为主显示器） |
+| `taskbarDisplays` | `[{ "key", "name", "primary", "rect" }, …]`：以测试自己的显示器代替系统的显示器，组件页与面板列出它们，任务栏监控为每台显示器建一条替身任务栏；空数组恢复系统的显示器 |
 | `taskbarPanelDrag` | `[[列表, 部分, 项], [列表, 部分, 项], 比例]`：在任务栏监控的面板中从第一项的中心按下，分八步移到第二项高度的该比例处后松开；类别名称为 `["kinds", "name", <类别>]`，类别整行为 `["kinds", "", <类别>]`，读数为 `["chips/<类别>", <设备标签序号>, <读数>]`；仅模拟快照 |
 
 合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。

@@ -1,7 +1,10 @@
-//! The taskbar monitor: a layered child window of the primary display's
-//! taskbar (`Shell_TrayWnd`) that shows short readings beside the
-//! notification area, or at the start of the taskbar (Windows 11 with its
-//! buttons centred).
+//! The taskbar monitor: a layered child window of a display's taskbar
+//! (`Shell_TrayWnd` on the primary display, `Shell_SecondaryTrayWnd` on
+//! the others) that shows short readings beside the notification area (or
+//! where a taskbar without one keeps its clock), or at the start of the
+//! taskbar (Windows 11 with its buttons centred). While the display chosen
+//! is away or shows no taskbar, it sits on the primary display's and looks
+//! for the one chosen every two seconds.
 //!
 //! A child window of another thread's window shares that thread's input
 //! queue, and the taskbar's thread belongs to the shell. The monitor's window
@@ -22,7 +25,8 @@
 //!
 //! A test instance never touches the shell: its monitor attaches to a
 //! stand-in taskbar of its own, shown at the bottom of the z-order without
-//! activation (`--test`).
+//! activation (`--test`); for displays a test names (`displays::set_test`),
+//! one stand-in each, stacked up from the bottom of the primary display.
 use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out};
 use crate::settings::{TaskbarPlace, TaskbarStyle};
 use std::cell::RefCell;
@@ -80,6 +84,9 @@ impl Action {
 static SHOWN: Mutex<Option<[i32; 4]>> = Mutex::new(None);
 /// The monitor shows readings, so sampling keeps the shown window's pace.
 static LIVE: AtomicBool = AtomicBool::new(false);
+/// While it shows: the display chosen for it (empty for the primary one)
+/// and whether the primary display's taskbar stands in for that display's.
+static ON: Mutex<Option<(String, bool)>> = Mutex::new(None);
 
 pub(crate) fn shown_rect() -> Option<[i32; 4]> {
     *SHOWN.lock().unwrap()
@@ -89,10 +96,17 @@ pub(crate) fn live() -> bool {
     LIVE.load(Ordering::Relaxed)
 }
 
+pub(crate) fn shown_on() -> Option<(String, bool)> {
+    ON.lock().unwrap().clone()
+}
+
 #[derive(Clone)]
 struct State {
     place: TaskbarPlace,
     style: TaskbarStyle,
+    /// The display chosen, by its key (`displays::Display::key`); empty
+    /// for the primary display.
+    display: String,
     groups: Vec<Group>,
     closed: bool,
 }
@@ -126,12 +140,14 @@ impl Monitor {
         main: HWND,
         place: TaskbarPlace,
         style: TaskbarStyle,
+        display: String,
         test: bool,
     ) -> std::io::Result<Self> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 place,
                 style,
+                display,
                 groups: Vec::new(),
                 closed: false,
             }),
@@ -146,6 +162,7 @@ impl Monitor {
                 run(worker.clone(), HWND(main as _), test);
                 LIVE.store(false, Ordering::Relaxed);
                 *SHOWN.lock().unwrap() = None;
+                *ON.lock().unwrap() = None;
                 *worker.done.0.lock().unwrap() = true;
                 worker.done.1.notify_all();
             })?;
@@ -157,10 +174,11 @@ impl Monitor {
         self.shared.post(CHANGED);
     }
 
-    pub fn place(&self, place: TaskbarPlace, style: TaskbarStyle) {
+    pub fn place(&self, place: TaskbarPlace, style: TaskbarStyle, display: String) {
         self.update(|state| {
             state.place = place;
             state.style = style;
+            state.display = display;
         });
     }
 
@@ -190,6 +208,21 @@ struct Host {
     window: HWND,
     /// The stand-in of a test instance, owned by this thread.
     stand_in: bool,
+    /// The display chosen when it was found, by its key.
+    wanted: String,
+    /// The primary display's, standing in for the one chosen.
+    fallback: bool,
+    /// The primary display's taskbar, with the notification area and the
+    /// widgets button.
+    primary: bool,
+}
+
+/// A taskbar found for the display chosen: its window, whether the primary
+/// display's stands in for it, and whether it is the primary display's.
+struct Found {
+    window: HWND,
+    fallback: bool,
+    primary: bool,
 }
 
 /// The Windows 10 task buttons narrowed for the monitor: their window and
@@ -204,8 +237,9 @@ struct Worker {
     main: HWND,
     test: bool,
     host: Option<Host>,
-    /// The test stand-in, made once.
-    stand_in: Option<HWND>,
+    /// The test stand-ins, by the key of the display each is for, the
+    /// primary display's first; made again when the displays change.
+    stand_ins: Vec<(String, HWND)>,
     window: Option<HWND>,
     painter: Option<Painter>,
     layout: Layout,
@@ -297,7 +331,7 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
             main,
             test,
             host: None,
-            stand_in: None,
+            stand_ins: Vec::new(),
             window: None,
             painter: None,
             layout: Layout::default(),
@@ -326,11 +360,7 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
     let worker = WORKER.with(|worker| worker.borrow_mut().take());
     if let Some(mut worker) = worker {
         worker.detach();
-        if let Some(stand_in) = worker.stand_in.take() {
-            unsafe {
-                let _ = DestroyWindow(stand_in);
-            }
-        }
+        worker.drop_stand_ins();
     }
     shared.control.store(0, Ordering::Release);
     unsafe {
@@ -354,7 +384,12 @@ unsafe extern "system" fn control_procedure(
             LRESULT(0)
         }
         WM_SETTINGCHANGE | WM_DISPLAYCHANGE => {
+            if message == WM_DISPLAYCHANGE {
+                super::displays::forget();
+            }
             with_worker(|worker| {
+                // A display came or went: the taskbar chosen may have too.
+                worker.sought = None;
                 worker.light = super::taskbar_light();
                 worker.image.clear();
                 worker.refresh();
@@ -465,13 +500,35 @@ fn alive(window: HWND) -> bool {
 }
 
 impl Worker {
-    /// The test stand-in: a taskbar-sized strip at the bottom of the
-    /// primary display with a tray at its right end, beneath every other
-    /// window and never active.
-    fn stand_in(&mut self) -> Option<HWND> {
-        if let Some(window) = self.stand_in.filter(|window| alive(*window)) {
-            return Some(window);
+    /// The test stand-ins: taskbar-sized strips at the bottom of the
+    /// primary display, one for each display a test names (else one for the
+    /// primary display), the primary display's lowest and with a tray at its
+    /// right end; beneath every other window and never active.
+    fn stand_ins(&mut self) -> &[(String, HWND)] {
+        let displays = if super::displays::testing() {
+            super::displays::displays()
+        } else {
+            super::displays::displays()
+                .into_iter()
+                .filter(|display| display.primary)
+                .take(1)
+                .collect()
+        };
+        let keys = displays
+            .iter()
+            .map(|display| display.key.clone())
+            .collect::<Vec<_>>();
+        let current = self.stand_ins.len() == keys.len().max(1)
+            && self.stand_ins.iter().all(|(_, window)| alive(*window))
+            && self
+                .stand_ins
+                .iter()
+                .zip(&keys)
+                .all(|((made, _), key)| made == key);
+        if current {
+            return &self.stand_ins;
         }
+        self.drop_stand_ins();
         register(STAND_IN_CLASS, Some(stand_in_procedure), None);
         register(TRAY_CLASS, Some(stand_in_procedure), None);
         let monitor = unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) };
@@ -484,82 +541,149 @@ impl Worker {
         let px = |logical: f32| (logical * scale).round() as i32;
         let whole = info.rcMonitor;
         let (width, height) = ((whole.right - whole.left).min(px(1280.)), px(48.));
-        unsafe {
-            let window = CreateWindowExW(
-                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                STAND_IN_CLASS,
-                w!("Argus taskbar stand-in"),
-                WS_POPUP | WS_CLIPCHILDREN,
-                whole.left,
-                whole.bottom - height,
-                width,
-                height,
-                None,
-                None,
-                Some(instance()),
-                None,
-            )
-            .ok()?;
-            let _ = CreateWindowExW(
-                WS_EX_NOPARENTNOTIFY,
-                TRAY_CLASS,
-                PCWSTR::null(),
-                WS_CHILD | WS_VISIBLE,
-                width - px(280.),
-                0,
-                px(280.),
-                height,
-                Some(window),
-                None,
-                Some(instance()),
-                None,
-            );
-            let _ = SetWindowPos(
-                window,
-                Some(HWND_BOTTOM),
-                0,
-                0,
-                0,
-                0,
-                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
-            );
-            self.stand_in = Some(window);
-            Some(window)
+        let keys = if keys.is_empty() {
+            vec![String::new()]
+        } else {
+            keys
+        };
+        for (index, key) in keys.into_iter().enumerate() {
+            // "Argus taskbar stand-in" for the primary display, then
+            // "… stand-in 2", "… stand-in 3", for captures to tell apart.
+            let title = if index == 0 {
+                "Argus taskbar stand-in".to_owned()
+            } else {
+                format!("Argus taskbar stand-in {}", index + 1)
+            };
+            let title = windows::core::HSTRING::from(title);
+            unsafe {
+                let Ok(window) = CreateWindowExW(
+                    WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                    STAND_IN_CLASS,
+                    &title,
+                    WS_POPUP | WS_CLIPCHILDREN,
+                    whole.left,
+                    whole.bottom - height * (index as i32 + 1),
+                    width,
+                    height,
+                    None,
+                    None,
+                    Some(instance()),
+                    None,
+                ) else {
+                    continue;
+                };
+                // Only the primary display's taskbar has the tray.
+                if index == 0 {
+                    let _ = CreateWindowExW(
+                        WS_EX_NOPARENTNOTIFY,
+                        TRAY_CLASS,
+                        PCWSTR::null(),
+                        WS_CHILD | WS_VISIBLE,
+                        width - px(280.),
+                        0,
+                        px(280.),
+                        height,
+                        Some(window),
+                        None,
+                        Some(instance()),
+                        None,
+                    );
+                }
+                let _ = SetWindowPos(
+                    window,
+                    Some(HWND_BOTTOM),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+                );
+                self.stand_ins.push((key, window));
+            }
+        }
+        &self.stand_ins
+    }
+
+    fn drop_stand_ins(&mut self) {
+        for (_, window) in self.stand_ins.drain(..) {
+            unsafe {
+                let _ = DestroyWindow(window);
+            }
         }
     }
 
-    /// The taskbar to attach to, looked for again while it is missing (at
-    /// most every two seconds).
-    fn find_host(&mut self) -> Option<HWND> {
-        if let Some(host) = &self.host
-            && alive(host.window)
-        {
-            return Some(host.window);
-        }
-        if self.host.take().is_some() {
-            self.detach();
-        }
+    /// The stand-in for the display `wanted` names, or the primary
+    /// display's.
+    fn stand_in_for(&mut self, wanted: &str) -> Option<Found> {
+        let stand_ins = self.stand_ins();
+        let primary = stand_ins.first()?.1;
+        Some(
+            match stand_ins
+                .iter()
+                .position(|(key, _)| !wanted.is_empty() && key == wanted)
+            {
+                Some(index) => Found {
+                    window: stand_ins[index].1,
+                    fallback: false,
+                    primary: index == 0,
+                },
+                None => Found {
+                    window: primary,
+                    fallback: !wanted.is_empty(),
+                    primary: true,
+                },
+            },
+        )
+    }
+
+    /// The taskbar to attach to for the display `wanted` names: looked for
+    /// again while it is missing, or while the primary display's stands in
+    /// for it (at most every two seconds). A taskbar other than the one the
+    /// monitor sits on takes it over.
+    fn find_host(&mut self, wanted: &str) -> Option<HWND> {
+        // A display a test took away takes its stand-in along, as the shell
+        // closes a display's taskbar.
         if self.test {
-            let window = self.stand_in()?;
-            self.host = Some(Host {
-                window,
-                stand_in: true,
-            });
-            return Some(window);
+            self.stand_ins();
         }
-        if self
+        let current = self
+            .host
+            .as_ref()
+            .filter(|host| alive(host.window) && host.wanted == wanted)
+            .map(|host| (host.window, host.fallback));
+        let lately = self
             .sought
-            .is_some_and(|at| at.elapsed() < Duration::from_secs(2))
-        {
-            return None;
+            .is_some_and(|at| at.elapsed() < Duration::from_secs(2));
+        match current {
+            Some((window, false)) => return Some(window),
+            Some((window, true)) if lately => return Some(window),
+            None if lately && !self.test => return None,
+            _ => {}
         }
         self.sought = Some(Instant::now());
-        let window = unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }.ok()?;
+        let found = if self.test {
+            self.stand_in_for(wanted)
+        } else {
+            shell_taskbar(wanted)
+        };
+        let Some(found) = found else {
+            if self.host.take().is_some() {
+                self.detach();
+            }
+            return None;
+        };
+        if self.host.as_ref().map(|host| host.window) != Some(found.window) {
+            // The monitor's window is a child of the taskbar it was made on.
+            self.detach();
+        }
         self.host = Some(Host {
-            window,
-            stand_in: false,
+            window: found.window,
+            stand_in: self.test,
+            wanted: wanted.to_owned(),
+            fallback: found.fallback,
+            primary: found.primary,
         });
-        Some(window)
+        Some(found.window)
     }
 
     /// Makes the monitor's window on `host`.
@@ -622,6 +746,10 @@ impl Worker {
 
     fn shown(&self, rect: Option<[i32; 4]>) {
         *SHOWN.lock().unwrap() = rect;
+        *ON.lock().unwrap() = rect.and_then(|_| {
+            let host = self.host.as_ref()?;
+            Some((host.wanted.clone(), host.fallback))
+        });
         let before = LIVE.swap(rect.is_some(), Ordering::Relaxed);
         // On the taskbar while the window is away: a fresh sample at the
         // faster pace.
@@ -642,7 +770,7 @@ impl Worker {
         if state.closed {
             return;
         }
-        let Some(host) = self.find_host() else {
+        let Some(host) = self.find_host(&state.display) else {
             self.detach();
             return;
         };
@@ -684,7 +812,8 @@ impl Worker {
             return;
         }
         let stand_in = self.host.as_ref().is_some_and(|host| host.stand_in);
-        let geometry = Geometry::read(host, bar, scale, stand_in);
+        let primary = self.host.as_ref().is_none_or(|host| host.primary);
+        let geometry = Geometry::read(host, bar, scale, stand_in, primary);
         let x = match self.squeeze_for(&geometry, layout.width) {
             Some(x) => x,
             None => place(&geometry, layout.width, state.place),
@@ -785,12 +914,17 @@ impl Worker {
             self.release_squeeze();
             return None;
         }
-        let host = self.host.as_ref()?.window;
+        let host = self.host.as_ref()?;
+        // The primary display's buttons sit in a rebar, the other
+        // displays' in a worker window.
+        let (strip, buttons) = if host.primary {
+            (w!("ReBarWindow32"), w!("MSTaskSwWClass"))
+        } else {
+            (w!("WorkerW"), w!("MSTaskListWClass"))
+        };
         let rebar =
-            unsafe { FindWindowExW(Some(host), None, w!("ReBarWindow32"), PCWSTR::null()) }.ok()?;
-        let tasks =
-            unsafe { FindWindowExW(Some(rebar), None, w!("MSTaskSwWClass"), PCWSTR::null()) }
-                .ok()?;
+            unsafe { FindWindowExW(Some(host.window), None, strip, PCWSTR::null()) }.ok()?;
+        let tasks = unsafe { FindWindowExW(Some(rebar), None, buttons, PCWSTR::null()) }.ok()?;
         let (strip, buttons) = (rect_of(rebar)?, rect_of(tasks)?);
         let gap = (4. * geometry.scale).round() as i32;
         let right = self
@@ -911,15 +1045,16 @@ pub(crate) struct Geometry {
     pub windows11: bool,
     /// The taskbar's buttons are centred (Windows 11).
     pub centred: bool,
-    /// The widgets button shows (Windows 11): at the start of a centred
-    /// taskbar, beside the tray otherwise.
+    /// The widgets button shows (Windows 11, the primary display's
+    /// taskbar): at the start of a centred taskbar, beside the tray
+    /// otherwise.
     pub widgets: bool,
     pub scale: f32,
     pub stand_in: bool,
 }
 
 impl Geometry {
-    fn read(host: HWND, bar: [i32; 4], scale: f32, stand_in: bool) -> Self {
+    fn read(host: HWND, bar: [i32; 4], scale: f32, stand_in: bool, primary: bool) -> Self {
         let tray = unsafe { FindWindowExW(Some(host), None, w!("TrayNotifyWnd"), PCWSTR::null()) }
             .ok()
             .and_then(rect_of)
@@ -932,7 +1067,7 @@ impl Geometry {
             tray,
             windows11: shell || stand_in,
             centred: stand_in || (shell && explorer_flag(w!("TaskbarAl")).unwrap_or(true)),
-            widgets: shell && widgets_shown(),
+            widgets: shell && primary && widgets_shown(),
             scale,
             stand_in,
         }
@@ -959,6 +1094,47 @@ pub(crate) fn place(geometry: &Geometry, width: i32, place: TaskbarPlace) -> i32
         end
     };
     (end - width).max(0)
+}
+
+/// The shell's taskbar on the display `wanted` names (the primary
+/// display's for none), or the primary display's while that display is away
+/// or shows no taskbar of its own.
+fn shell_taskbar(wanted: &str) -> Option<Found> {
+    let primary = unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }.ok();
+    let on_primary = |fallback| {
+        primary.map(|window| Found {
+            window,
+            fallback,
+            primary: true,
+        })
+    };
+    if wanted.is_empty() {
+        return on_primary(false);
+    }
+    let Some(display) = super::displays::displays()
+        .into_iter()
+        .find(|display| display.key == wanted)
+    else {
+        return on_primary(true);
+    };
+    if display.primary {
+        return on_primary(false);
+    }
+    let mut after = None;
+    while let Ok(window) =
+        unsafe { FindWindowExW(None, after, w!("Shell_SecondaryTrayWnd"), PCWSTR::null()) }
+    {
+        if unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONULL) }.0 as isize == display.monitor
+        {
+            return Some(Found {
+                window,
+                fallback: false,
+                primary: false,
+            });
+        }
+        after = Some(window);
+    }
+    on_primary(true)
 }
 
 fn windows11() -> bool {

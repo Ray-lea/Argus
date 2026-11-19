@@ -1,0 +1,44 @@
+{
+  "window": [1100, 900],
+  "steps": [
+    {"note":"three displays of the test's own: one stand-in taskbar each, the primary display's lowest"},
+    {"control":{"taskbarDisplays":[
+      {"key":"ACM0001","name":"ACME 27Q","primary":true,"rect":[0,0,2560,1440]},
+      {"key":"ACM0002","name":"ACME 24F","primary":false,"rect":[2560,0,4480,1080]},
+      {"key":"ACM0003","name":"","primary":false,"rect":[-1920,0,0,1080]}
+    ]},"wait":300},
+    {"control":{"page":"components"},"wait":700},
+    {"control":{"taskbarMonitor":{"enabled":true}},"wait":1500},
+    {"inspect":"layout","label":"primary","expect":{"monitors.taskbarDisplay":"","monitors.taskbarOn.display":"","monitors.taskbarOn.fallback":false}},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-card-dark"},
+    {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"display-panel-dark"},
+    {"note":"the second display chosen in the panel: the monitor moves to its taskbar and the panel closes"},
+    {"control":{"taskbarPanel":"display:ACM0002"},"wait":1500},
+    {"inspect":"layout","label":"second","expect":{"tray.monitor":false,"monitors.taskbarDisplay":"ACM0002","monitors.taskbarOn.display":"ACM0002","monitors.taskbarOn.fallback":false}},
+    {"captureWindow":{"name":"second-taskbar","class":"ArgusTestTaskbar","title":"stand-in 2"}},
+    {"note":"that display goes away: the primary display's taskbar stands in, and the page names the choice as away"},
+    {"control":{"taskbarDisplays":[
+      {"key":"ACM0001","name":"ACME 27Q","primary":true,"rect":[0,0,2560,1440]},
+      {"key":"ACM0003","name":"","primary":false,"rect":[-1920,0,0,1080]}
+    ]},"wait":2600},
+    {"inspect":"layout","label":"away","expect":{"monitors.taskbarDisplay":"ACM0002","monitors.taskbarOn.display":"ACM0002","monitors.taskbarOn.fallback":true}},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-away-dark"},
+    {"note":"it comes back: the monitor returns to it"},
+    {"control":{"taskbarDisplays":[
+      {"key":"ACM0001","name":"ACME 27Q","primary":true,"rect":[0,0,2560,1440]},
+      {"key":"ACM0002","name":"ACME 24F","primary":false,"rect":[2560,0,4480,1080]},
+      {"key":"ACM0003","name":"","primary":false,"rect":[-1920,0,0,1080]}
+    ]},"wait":2600},
+    {"inspect":"layout","label":"back","expect":{"monitors.taskbarOn.display":"ACM0002","monitors.taskbarOn.fallback":false}},
+    {"note":"the primary display again"},
+    {"control":{"taskbarPanel":"display:"},"wait":1500},
+    {"inspect":"layout","label":"primary-again","expect":{"monitors.taskbarDisplay":"","monitors.taskbarOn.display":"","monitors.taskbarOn.fallback":false}},
+    {"control":{"theme":"light"},"wait":900},
+    {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"display-panel-light"},
+    {"control":{"taskbarPanel":"close"},"wait":700},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-card-light"},
+    {"note":"the system's displays again; with one, the panel offers no choice"},
+    {"control":{"taskbarDisplays":[]},"wait":900},
+    {"control":{"taskbarMonitor":{"enabled":false}},"wait":900}
+  ]
+}

@@ -1,6 +1,7 @@
 //! Native window lifecycle, backdrop, tray, the taskbar monitor and
 //! visibility-driven sampling.
 pub(crate) mod desk;
+pub(crate) mod displays;
 mod taskbar;
 mod taskbar_draw;
 mod tray;
@@ -823,14 +824,20 @@ pub fn apply_taskbar_monitor(app: &Host, monitor: &TaskbarMonitor) {
         return;
     }
     if let Some(running) = running.as_ref() {
-        running.place(monitor.place, monitor.style);
+        running.place(monitor.place, monitor.style, monitor.display.clone());
         return;
     }
     let Some(main) = app.get_window("main").and_then(|window| window.hwnd().ok()) else {
         return;
     };
     let test = std::env::args().any(|arg| arg == "--test");
-    match taskbar::Monitor::spawn(main, monitor.place, monitor.style, test) {
+    match taskbar::Monitor::spawn(
+        main,
+        monitor.place,
+        monitor.style,
+        monitor.display.clone(),
+        test,
+    ) {
         Ok(started) => *running = Some(started),
         Err(error) => argus_core::diagnostics::warn(
             "taskbar monitor creation",
@@ -902,6 +909,13 @@ pub fn taskbar_preview(
 /// right, bottom), while it shows.
 pub fn taskbar_monitor_rect() -> Option<[i32; 4]> {
     taskbar::shown_rect()
+}
+
+/// The display the taskbar monitor was put on (empty for the primary one)
+/// and whether the primary display's taskbar stands in for its; none while
+/// it is not shown.
+pub fn taskbar_monitor_on() -> Option<(String, bool)> {
+    taskbar::shown_on()
 }
 pub fn set_tray_tooltip(_app: &Host, text: &str) {
     if let Some(worker) = TRAY.lock().unwrap().clone() {

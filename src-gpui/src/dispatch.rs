@@ -231,6 +231,7 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<Option<Vec<Metric>>>(&args, "order")?,
             argument::<Option<TaskbarPlace>>(&args, "place")?,
             argument::<Option<TaskbarStyle>>(&args, "style")?,
+            argument::<Option<String>>(&args, "display")?,
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

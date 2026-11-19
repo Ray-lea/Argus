@@ -550,6 +550,11 @@ pub struct TaskbarMonitor {
     pub order: Vec<Metric>,
     pub place: TaskbarPlace,
     pub style: TaskbarStyle,
+    /// The display whose taskbar it sits on, by what keeps that display
+    /// apart across restarts (its monitor's device path); empty for the
+    /// primary display, whichever that is. While that display is away or
+    /// shows no taskbar, it sits on the primary display's.
+    pub display: String,
 }
 
 impl Default for TaskbarMonitor {
@@ -562,6 +567,7 @@ impl Default for TaskbarMonitor {
             order: Vec::new(),
             place: TaskbarPlace::default(),
             style: TaskbarStyle::default(),
+            display: String::new(),
         }
     }
 }
@@ -981,6 +987,7 @@ mod tests {
             [Metric::Disk, Metric::CpuPower, Metric::Cpu]
         );
         assert_eq!(newer.taskbar_monitor.style, TaskbarStyle::Labels);
+        assert!(newer.taskbar_monitor.display.is_empty());
         let styled: Settings =
             serde_json::from_str(r#"{"taskbarMonitor": {"style": "figures"}}"#).unwrap();
         assert_eq!(styled.taskbar_monitor.style, TaskbarStyle::Figures);
@@ -1063,6 +1070,8 @@ mod tests {
                 order: vec![Metric::Network, Metric::Memory],
                 place: TaskbarPlace::Start,
                 style: TaskbarStyle::Curves,
+                display: r"\\?\DISPLAY#ACM0001#5&1&UID4353#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}"
+                    .into(),
             },
             ..Settings::default()
         };

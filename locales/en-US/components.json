@@ -209,12 +209,20 @@
   },
   "taskbar": {
     "title": "Taskbar monitor",
-    "desc": "Shows the chosen readings on the taskbar of the main display. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown. While it is shown, Argus samples at the “Refresh rate”.",
+    "desc": "Shows the chosen readings on the taskbar. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown. While it is shown, Argus samples at the “Refresh rate”.",
     "place": {
       "title": "Position",
       "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
       "tray": "Next to tray",
       "start": "Left side"
+    },
+    "display": {
+      "title": "Display",
+      "desc": "The display whose taskbar shows the monitor. While the chosen display is disconnected or shows no taskbar, the monitor appears on the main display.",
+      "primary": "Main display",
+      "item": "{name} ({width} × {height})",
+      "unnamed": "Display {index}",
+      "absent": "Disconnected display"
     },
     "style": {
       "title": "Style",

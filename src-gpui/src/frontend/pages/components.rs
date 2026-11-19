@@ -106,6 +106,9 @@ pub(in crate::frontend) enum TaskbarChoice {
     Kinds(Vec<String>),
     /// A kind's metrics in another order, by name (`metric_key`).
     Metrics(Vec<String>),
+    /// The display whose taskbar it sits on, by its key; empty for the
+    /// primary display.
+    Display(String),
     /// The components page in the window.
     Settings,
     Hide,
@@ -588,7 +591,8 @@ impl Desktop {
     /// What the control the tests name by `key` does: "style:curves",
     /// "reading:<reading>" (as saved), "kinds:<kind>,<kind>…" or
     /// "metrics:<metric>,<metric>…" (as dragged into that order),
-    /// "settings" or "hide".
+    /// "display:<display>" (empty for the primary one), "settings" or
+    /// "hide".
     pub(in crate::frontend) fn taskbar_panel_choice(&self, key: &str) -> Option<TaskbarChoice> {
         let list = |keys: &str| keys.split(',').map(str::to_owned).collect::<Vec<_>>();
         if let Some(keys) = key.strip_prefix("kinds:") {
@@ -596,6 +600,9 @@ impl Desktop {
         }
         if let Some(keys) = key.strip_prefix("metrics:") {
             return Some(TaskbarChoice::Metrics(list(keys)));
+        }
+        if let Some(display) = key.strip_prefix("display:") {
+            return Some(TaskbarChoice::Display(display.to_owned()));
         }
         if let Some(style) = key.strip_prefix("style:") {
             return TASKBAR_STYLES
@@ -1352,6 +1359,25 @@ impl Desktop {
         );
         let style = text(&settings["taskbarMonitor"], "style").to_owned();
         let style = self.style_card(&style, window, cx);
+        let choices = display_choices(&monitor.display, true);
+        let chosen = choices.iter().position(|(key, _)| *key == monitor.display);
+        let keys = choices
+            .iter()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let display = self.select(
+            "components-taskbar-display",
+            label("components.taskbar.display.title"),
+            choices.into_iter().map(|(_, name)| name).collect(),
+            chosen,
+            false,
+            move |this, index, window, cx| {
+                if let Some(key) = keys.get(index) {
+                    this.taskbar_choice(TaskbarChoice::Display(key.clone()), window, cx);
+                }
+            },
+            cx,
+        );
         vec![
             self.setting_text(
                 "taskbarMonitor",
@@ -1376,6 +1402,13 @@ impl Desktop {
                 "components.taskbar.place.title",
                 "components.taskbar.place.desc",
                 vec![place],
+            ),
+            self.setting_text(
+                "taskbarDisplay",
+                "DisplayIcon",
+                "components.taskbar.display.title",
+                "components.taskbar.display.desc",
+                vec![display],
             ),
         ]
     }
@@ -1545,6 +1578,56 @@ impl Desktop {
             vec![open],
         )
     }
+}
+
+/// The displays the taskbar monitor can sit on, as offered: the primary
+/// display (an empty key), whichever that is, then each display by its
+/// monitor's name, and its size when `sized`; one chosen and away now
+/// follows, so that the choice shows. Alike names are numbered.
+pub(in crate::frontend) fn display_choices(chosen: &str, sized: bool) -> Vec<(String, String)> {
+    let displays = crate::shell::displays::displays();
+    let names = displays
+        .iter()
+        .enumerate()
+        .map(|(index, display)| {
+            if display.name.is_empty() {
+                tr!("components.taskbar.display.unnamed", index = index + 1)
+            } else {
+                display.name.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    let mut choices = vec![(String::new(), label("components.taskbar.display.primary"))];
+    for (index, display) in displays.iter().enumerate() {
+        let alike = names.iter().filter(|name| **name == names[index]).count();
+        let name = if alike > 1 {
+            let nth = names[..index]
+                .iter()
+                .filter(|name| **name == names[index])
+                .count();
+            format!("{} {}", names[index], nth + 1)
+        } else {
+            names[index].clone()
+        };
+        let text = if sized {
+            tr!(
+                "components.taskbar.display.item",
+                name = name,
+                width = display.width(),
+                height = display.height()
+            )
+        } else {
+            name
+        };
+        choices.push((display.key.clone(), text));
+    }
+    if !chosen.is_empty() && !displays.iter().any(|display| display.key == chosen) {
+        choices.push((
+            chosen.to_owned(),
+            label("components.taskbar.display.absent"),
+        ));
+    }
+    choices
 }
 
 /// The metrics `keys` name (`metric_key`), in turn; names this version
