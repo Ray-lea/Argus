@@ -279,9 +279,13 @@ struct Desktop {
     fixture_samples: bool,
     chart_frame: u64,
     grid_bounds: RefCell<HashMap<String, Bounds<Pixels>>>,
-    core_grid_size: Rc<Cell<Size<Pixels>>>,
-    /// The columns the logical processors' grid was last arranged in.
+    /// The room the logical processors' grid last had before the view scrolls,
+    /// and how much of the view showed below its top.
+    core_grid_size: Rc<Cell<(Size<Pixels>, Pixels)>>,
+    /// The columns the logical processors' grid was last arranged in, and
+    /// what its cards' captions showed.
     core_columns: Cell<usize>,
+    core_caption: Cell<model::CoreCaption>,
     /// The settings' and the components' sections and the lists of them.
     settings_rail: pages::section_rail::SectionRail,
     components_rail: pages::section_rail::SectionRail,
@@ -478,8 +482,9 @@ impl Desktop {
             fixture_samples: false,
             chart_frame: 0,
             grid_bounds: RefCell::new(HashMap::new()),
-            core_grid_size: Rc::new(Cell::new(size(px(0.), px(0.)))),
+            core_grid_size: Rc::new(Cell::new((size(px(0.), px(0.)), px(0.)))),
             core_columns: Cell::new(0),
+            core_caption: Cell::new(model::CoreCaption::Full),
             settings_rail: Default::default(),
             components_rail: Default::default(),
             about_scroll: ScrollHandle::new(),

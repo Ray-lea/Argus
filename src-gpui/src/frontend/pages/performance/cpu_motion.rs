@@ -11,7 +11,10 @@
 //! frame and curve stretch, their captions move with its corners), cards that
 //! go fade out and shrink a little where they were, and cards that come grow
 //! in at theirs. Another number of columns moves the cards along the same way
-//! on the theme's transition. The cards are laid out in fractions of the grid
+//! on the theme's transition, as do captions that show more or less (the
+//! frequency left out, or the whole caption where the grid's room runs
+//! short): they fade while the chart frame gives up or takes their row. The
+//! cards are laid out in fractions of the grid
 //! (`Slot`), so that another size of the same arrangement (the window or the
 //! device list resized) stretches them in the very frame the grid changes,
 //! with no animation; a rearrangement under way heads for the places they
@@ -67,8 +70,10 @@ pub(super) struct ViewSwitch {
     shown: Option<bool>,
     /// The graph going while a switch runs.
     leaving: Option<bool>,
-    /// The logical processors' cards as drawn when they started to go.
+    /// The logical processors' cards and their captions as drawn when they
+    /// started to go.
     pub(super) cards: Vec<(usize, Card)>,
+    pub(super) caption: Caption,
     /// The incoming graph's zoom and fade.
     pub(super) area: LiveTransform,
     /// The outgoing graph's fade.
@@ -80,23 +85,24 @@ pub(super) struct ViewSwitch {
 impl ViewSwitch {
     /// The graph going while `logical` comes in, if a switch runs. A first
     /// graph shows at once, as does any switch under reduced motion.
-    /// `cards` gives the cards as drawn, for a grid that starts to go.
+    /// `cards` gives the cards and their captions as drawn, for a grid that
+    /// starts to go.
     pub(super) fn update(
         &mut self,
         logical: bool,
         animate: bool,
         motions: &LiveMotions,
-        cards: impl FnOnce() -> Vec<(usize, Card)>,
+        cards: impl FnOnce() -> (Vec<(usize, Card)>, Caption),
         done: impl FnOnce(&mut App) + 'static,
     ) -> Option<bool> {
         let previous = self.shown.replace(logical);
         if previous.is_some_and(|shown| shown != logical) {
             if animate {
                 self.leaving = previous;
-                self.cards = if previous == Some(true) {
+                (self.cards, self.caption) = if previous == Some(true) {
                     cards()
                 } else {
-                    Vec::new()
+                    (Vec::new(), Caption::default())
                 };
                 // Fresh transforms: elements of an earlier switch keep theirs.
                 self.area = LiveTransform::default();
@@ -167,25 +173,50 @@ pub(super) struct Card {
 
 /// The live transforms a card in motion is drawn with: the whole card
 /// (zoom and fade about its centre), its caption's two ends (moved with the
-/// card's top corners) and its chart frame (moved and stretched to the card).
+/// card's top corners, faded as the caption shows or hides), the frequency
+/// in it (faded as it shows or hides) and its chart frame (moved and
+/// stretched to the card, below the caption as drawn).
 #[derive(Clone, Default)]
 pub(super) struct CardLives {
     pub(super) card: LiveTransform,
     pub(super) left: LiveTransform,
     pub(super) right: LiveTransform,
+    pub(super) detail: LiveTransform,
     pub(super) frame: LiveTransform,
 }
 
+/// The cards' captions: the height of their row above the chart frame (none
+/// while hidden) and how far the frequency in them shows (0 left out, 1 shown).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct Caption {
+    pub(super) height: Pixels,
+    pub(super) detail: f32,
+}
+impl Caption {
+    fn lerp(self, to: Self, t: f32) -> Self {
+        Self {
+            height: px(lerp(f32::from(self.height), f32::from(to.height), t)),
+            detail: lerp(self.detail, to.detail, t),
+        }
+    }
+}
+
 /// The grid's arrangement: so many columns and rows with `gap` between them,
-/// the rows at least `min_height` tall.
+/// the rows at least `min_height` tall, and what the cards' captions show.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct Grid {
     pub(super) columns: usize,
     pub(super) rows: usize,
     pub(super) gap: Pixels,
     pub(super) min_height: Pixels,
+    pub(super) caption: Caption,
 }
 impl Grid {
+    /// Whether `other` places the cards in the same columns and rows: its
+    /// least row height follows the width, which the cards follow anyway.
+    pub(super) fn same_arrangement(&self, other: &Self) -> bool {
+        (self.columns, self.rows, self.gap) == (other.columns, other.rows, other.gap)
+    }
     /// The card at `ordinal` in a grid of `area`.
     pub(super) fn bounds(&self, ordinal: usize, area: Size<Pixels>) -> Bounds<Pixels> {
         let (columns, rows) = (self.columns.max(1), self.rows.max(1));
@@ -240,7 +271,8 @@ impl Slot {
 /// What rearranges the cards.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Reflow {
-    /// Another number of columns: the cards follow on the theme's transition.
+    /// Another number of columns, or captions that show more or less: the
+    /// cards follow on the theme's transition.
     Resize,
     /// Another core type: cards glide, go and come.
     Filter,
@@ -272,15 +304,21 @@ impl Moving {
 pub(super) struct Rearrangement {
     reflow: Reflow,
     pub(super) cards: Vec<Moving>,
-    /// The height of a card's caption, above its chart frame.
+    /// The height of a card's caption row while it shows.
     header: Pixels,
+    /// The captions as drawn when it started, and as the cards are laid out.
+    from: Caption,
+    to: Caption,
     enter_scale: f32,
 }
 impl Rearrangement {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         reflow: Reflow,
         drawn: &[(usize, Card)],
+        from: Caption,
         targets: &[(usize, Bounds<Pixels>)],
+        to: Caption,
         header: Pixels,
         enter_scale: f32,
     ) -> Self {
@@ -326,8 +364,36 @@ impl Rearrangement {
             reflow,
             cards,
             header,
+            from,
+            to,
             enter_scale,
         }
+    }
+
+    /// Whether the captions show at some point of it (they are drawn
+    /// throughout, faded by the cards' lives), and the frequency in them.
+    pub(super) fn shows_caption(&self) -> bool {
+        self.from.height > px(0.) || self.to.height > px(0.)
+    }
+    pub(super) fn shows_detail(&self) -> bool {
+        self.from.detail > 0. || self.to.detail > 0.
+    }
+
+    /// How far the cards have moved `elapsed` into it.
+    fn moved(&self, elapsed: Duration) -> f32 {
+        let elapsed = ms(elapsed);
+        match self.reflow {
+            Reflow::Resize => eased(
+                gpui_kit::base::animation::ease_out_cubic,
+                elapsed / ms(theme::motion_duration()),
+            ),
+            Reflow::Filter => eased(theme::ease_move, elapsed / ms(MOVE)),
+        }
+    }
+
+    /// The captions as drawn `elapsed` into it.
+    fn caption(&self, elapsed: Duration) -> Caption {
+        self.from.lerp(self.to, self.moved(elapsed))
     }
 
     fn duration(&self) -> Duration {
@@ -340,25 +406,19 @@ impl Rearrangement {
     /// A card `elapsed` into the rearrangement.
     fn sample(&self, card: &Moving, elapsed: Duration) -> Card {
         let (from, to) = (card.from, card.to.get());
+        let moved = self.moved(elapsed);
         let elapsed = ms(elapsed);
-        let (moved, came) = match self.reflow {
-            Reflow::Resize => {
-                let t = eased(
-                    gpui_kit::base::animation::ease_out_cubic,
-                    elapsed / ms(theme::motion_duration()),
-                );
-                (t, t)
-            }
-            Reflow::Filter => (
-                eased(theme::ease_move, elapsed / ms(MOVE)),
+        let came = match self.reflow {
+            Reflow::Resize => moved,
+            Reflow::Filter => {
                 if to.presence > from.presence {
                     eased(theme::ease_out, (elapsed - ms(ENTER_DELAY)) / ms(ENTER))
                 } else if to.presence < from.presence {
                     (elapsed / ms(LEAVE)).clamp(0., 1.)
                 } else {
                     1.
-                },
-            ),
+                }
+            }
         };
         Card {
             bounds: lerp_bounds(from.bounds, to.bounds, moved),
@@ -392,12 +452,19 @@ impl Rearrangement {
 
     /// Sets the cards' live transforms for `elapsed`.
     fn apply(&self, elapsed: Duration) {
-        let header = self.header;
-        let frame = |bounds: Bounds<Pixels>| {
+        let frame = |bounds: Bounds<Pixels>, header: Pixels| {
             Bounds::new(
                 point(bounds.origin.x, bounds.origin.y + header),
                 size(bounds.size.width, (bounds.size.height - header).max(px(1.))),
             )
+        };
+        // The captions fade as their row opens or closes, and the frame
+        // takes the rest of the card below them.
+        let caption = self.caption(elapsed);
+        let shown = if self.header > px(0.) {
+            (caption.height / self.header).clamp(0., 1.)
+        } else {
+            1.
         };
         for card in &self.cards {
             let drawn = self.sample(card, elapsed);
@@ -409,6 +476,7 @@ impl Rearrangement {
             ));
             let moved = |offset: gpui_kit::Point<Pixels>| LiveTransformValue {
                 offset,
+                opacity: shown,
                 ..LiveTransformValue::default()
             };
             card.lives
@@ -418,7 +486,14 @@ impl Rearrangement {
                 drawn.bounds.right() - laid.right(),
                 drawn.bounds.top() - laid.top(),
             )));
-            let (to, from) = (frame(drawn.bounds), frame(laid));
+            card.lives.detail.set(LiveTransformValue {
+                opacity: caption.detail.clamp(0., 1.),
+                ..LiveTransformValue::default()
+            });
+            let (to, from) = (
+                frame(drawn.bounds, caption.height),
+                frame(laid, self.to.height),
+            );
             card.lives.frame.set(LiveTransformValue {
                 offset: to.origin - from.origin,
                 scale_x: f32::from(to.size.width) / f32::from(from.size.width).max(1.),
@@ -488,7 +563,10 @@ impl CoreMotion {
                 .all(|((was, _), (is, _))| was == is);
         let reflow = if filtered {
             Some(Reflow::Filter)
-        } else if !same_order || self.grid != grid {
+        } else if !same_order
+            || !self.grid.same_arrangement(&grid)
+            || self.grid.caption != grid.caption
+        {
             Some(Reflow::Resize)
         } else {
             None
@@ -505,7 +583,9 @@ impl CoreMotion {
             let moving = Rc::new(Rearrangement::new(
                 reflow,
                 &drawn,
+                self.drawn_caption(motions),
                 targets,
+                grid.caption,
                 header,
                 enter_scale,
             ));
@@ -534,6 +614,14 @@ impl CoreMotion {
     /// The cards as drawn now.
     pub(super) fn drawn(&self, motions: &LiveMotions) -> Vec<(usize, Card)> {
         self.drawn_at(motions, self.area)
+    }
+
+    /// The captions as drawn now.
+    pub(super) fn drawn_caption(&self, motions: &LiveMotions) -> Caption {
+        match (&self.moving, motions.elapsed(CORES_KEY)) {
+            (Some(moving), Some(elapsed)) => moving.caption(elapsed),
+            _ => self.grid.caption,
+        }
     }
 
     /// The cards as drawn in a grid that has become `area` large: at rest,
@@ -598,12 +686,21 @@ mod tests {
         Bounds::new(point(px(x), px(0.)), size(px(100.), px(50.)))
     }
     const AREA: Size<Pixels> = size(px(210.), px(50.));
+    const SHOWN: Caption = Caption {
+        height: px(20.),
+        detail: 1.,
+    };
+    /// No cards going (a switch from the overall graph).
+    fn nothing() -> (Vec<(usize, Card)>, Caption) {
+        (Vec::new(), Caption::default())
+    }
     fn grid(columns: usize) -> Grid {
         Grid {
             columns,
             rows: 1,
             gap: px(10.),
             min_height: px(20.),
+            caption: SHOWN,
         }
     }
     fn update(
@@ -763,9 +860,9 @@ mod tests {
         let motions = LiveMotions::default();
         let mut frames = Frames::new();
         let mut switch = ViewSwitch::default();
-        assert_eq!(switch.update(false, true, &motions, Vec::new, |_| {}), None);
+        assert_eq!(switch.update(false, true, &motions, nothing, |_| {}), None);
         assert_eq!(
-            switch.update(true, true, &motions, Vec::new, |_| {}),
+            switch.update(true, true, &motions, nothing, |_| {}),
             Some(false)
         );
         let area = switch.area.get();
@@ -780,12 +877,9 @@ mod tests {
         frames.run(&motions, 300);
         assert_eq!(switch.area.get(), LiveTransformValue::default());
         assert_eq!(switch.ghost.get().opacity, 0.);
-        assert_eq!(switch.update(true, true, &motions, Vec::new, |_| {}), None);
+        assert_eq!(switch.update(true, true, &motions, nothing, |_| {}), None);
         // Reduced motion switches at once.
-        assert_eq!(
-            switch.update(false, false, &motions, Vec::new, |_| {}),
-            None
-        );
+        assert_eq!(switch.update(false, false, &motions, nothing, |_| {}), None);
         assert!(!motions.active());
     }
 
@@ -794,8 +888,8 @@ mod tests {
         let motions = LiveMotions::default();
         let mut frames = Frames::new();
         let mut switch = ViewSwitch::default();
-        switch.update(false, true, &motions, Vec::new, |_| {});
-        switch.update(true, true, &motions, Vec::new, |_| {});
+        switch.update(false, true, &motions, nothing, |_| {});
+        switch.update(true, true, &motions, nothing, |_| {});
         switch.wait();
         frames.run(&motions, 30);
         assert!(switch.area.get().opacity > 0.);
@@ -823,8 +917,13 @@ mod tests {
             grid(2),
             AREA,
         );
-        let wider = placed(grid(2), 2, wide);
-        let moving = arranged(&mut motion, &motions, "all", &wider, grid(2), wide);
+        // Wider cards hold taller rows: the same arrangement all the same.
+        let taller = Grid {
+            min_height: px(30.),
+            ..grid(2)
+        };
+        let wider = placed(taller, 2, wide);
+        let moving = arranged(&mut motion, &motions, "all", &wider, taller, wide);
         assert!(moving.is_none() && !motions.active());
         assert_eq!(motion.drawn(&motions)[1].1.bounds, wider[1].1);
     }
@@ -885,12 +984,64 @@ mod tests {
     }
 
     #[test]
+    fn captions_fade_while_the_frame_takes_their_row() {
+        let motions = LiveMotions::default();
+        let mut frames = Frames::new();
+        let mut motion = CoreMotion::default();
+        let cards = placed(grid(2), 2, AREA);
+        arranged(&mut motion, &motions, "all", &cards, grid(2), AREA);
+        // The frequency first: only it fades, the caption's row stays.
+        let short = Grid {
+            caption: Caption {
+                detail: 0.,
+                ..SHOWN
+            },
+            ..grid(2)
+        };
+        let moving =
+            arranged(&mut motion, &motions, "all", &cards, short, AREA).expect("rearrangement");
+        assert!(moving.shows_caption() && moving.shows_detail());
+        frames.run(&motions, 100);
+        let card = &moving.cards[0];
+        let detail = card.lives.detail.get().opacity;
+        assert!(detail > 0. && detail < 1.);
+        assert_eq!(card.lives.left.get().opacity, 1.);
+        assert_eq!(card.lives.frame.get(), LiveTransformValue::default());
+        frames.run(&motions, 300);
+        assert!(!motions.active());
+        // Then the whole caption: it fades while the frame, laid out over the
+        // whole card, is drawn below it as it closes.
+        let hidden = Grid {
+            caption: Caption::default(),
+            ..grid(2)
+        };
+        let moving =
+            arranged(&mut motion, &motions, "all", &cards, hidden, AREA).expect("rearrangement");
+        assert!(moving.shows_caption() && !moving.shows_detail());
+        let card = &moving.cards[0];
+        assert_eq!(card.lives.left.get().opacity, 1.);
+        let frame = card.lives.frame.get();
+        assert_eq!(frame.offset.y, px(20.));
+        assert_eq!(frame.scale_y, 30. / 50.);
+        frames.run(&motions, 100);
+        let left = card.lives.left.get().opacity;
+        assert!(left > 0. && left < 1.);
+        assert_eq!(card.lives.right.get().opacity, left);
+        frames.run(&motions, 300);
+        assert_eq!(card.lives.left.get().opacity, 0.);
+        assert_eq!(card.lives.frame.get(), LiveTransformValue::default());
+        // At rest, the same captions draw no motion.
+        assert!(arranged(&mut motion, &motions, "all", &cards, hidden, AREA).is_none());
+    }
+
+    #[test]
     fn a_slot_shares_the_gaps() {
         let grid = Grid {
             columns: 3,
             rows: 2,
             gap: px(6.),
             min_height: px(0.),
+            caption: Caption::default(),
         };
         let area = size(px(306.), px(206.));
         for ordinal in 0..6 {

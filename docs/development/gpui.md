@@ -123,7 +123,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`hardware-acceleration.json`](../../tools/window-probe/steps/hardware-acceleration.json) 在设置页单击“硬件加速”开关，核对窗口在运行中换到软件渲染设备、再换回 GPU，并截取两种设备下的设置页、性能页、进程页与托盘快捷面板；两段录制覆盖切换前后的每一帧，用于确认切换期间没有空白画面。`inspectLayout.graphics` 的 `softwareRequested` 为设置所请求的渲染方式，`software` 为窗口实际使用的适配器是否带软件标记。模拟快照下该开关照常执行，只改变测试实例自身的渲染设备与设置文件。步骤需在装有 GPU 的机器上运行，没有 GPU 时两种设置都使用软件适配器。
 
-[`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄到放不下 8 列时改为留空位的排布；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标与图例，CPU 图表的右键菜单列出三种核心类型；只有性能核与低功耗能效核的处理器，菜单不列出能效核，此前选中的能效核筛选回到全部核心。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
+[`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄后标题省去频率，再变矮后隐藏标题、网格占用可见区域；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标与图例，CPU 图表的右键菜单列出三种核心类型；只有性能核与低功耗能效核的处理器，菜单不列出能效核，此前选中的能效核筛选回到全部核心。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreCaption` 为标题显示的内容（`full`、`short` 省去频率、`hidden`），`coreRoom` 为网格宽度、页面不滚动时的可用高度与网格顶端以下的可见高度，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
 
 测试控制除页面、主题、对话框等既有项外，还包括：
 

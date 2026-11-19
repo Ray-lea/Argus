@@ -12,63 +12,168 @@ pub use sensor_layout::SensorLayout;
 pub fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.)
 }
-/// Available grid space and the minimum dimensions of a processor card.
+/// The processors' grid: the room it has and what a card needs.
 pub struct CoreGrid {
     pub count: usize,
     pub width: f32,
+    /// The height the grid has before the page scrolls.
     pub height: f32,
-    pub cell_width: f32,
-    pub cell_height: f32,
+    /// The narrowest card with its whole caption on one line, and with its
+    /// caption short of the frequency.
+    pub caption_width: f32,
+    pub short_caption_width: f32,
+    /// The narrowest card, its caption hidden.
+    pub plot_width: f32,
+    /// The lowest plot before the page scrolls.
+    pub plot_height: f32,
+    /// The caption's row above the plot.
     pub header_height: f32,
     pub gap: f32,
 }
+/// What a card's caption shows, from the most to the least.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CoreCaption {
+    /// Number, frequency and load.
+    Full,
+    /// Number and load.
+    Short,
+    /// None: the plot takes the caption's row.
+    Hidden,
+}
+/// The cards in so many columns and rows, what their captions show, and the
+/// lowest the rows go before the page scrolls.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoreArrangement {
+    pub columns: usize,
+    pub rows: usize,
+    pub caption: CoreCaption,
+    pub row_min: f32,
+}
+impl CoreGrid {
+    /// A card's width in `columns`.
+    pub fn card_width(&self, columns: usize) -> f32 {
+        let columns = columns.max(1) as f32;
+        (self.width - (columns - 1.) * self.gap) / columns
+    }
+    /// The lowest plot `width` wide before the page scrolls: no lower than
+    /// `plot_height`, and no flatter than `CORE_PLOT_FLATTEST` until it is
+    /// tall enough to read.
+    fn plot_min(&self, width: f32) -> f32 {
+        self.plot_height
+            .max((width / CORE_PLOT_FLATTEST).min(CORE_PLOT_TALL_ENOUGH))
+    }
+    /// The cards in `columns`. The caption shows where the card is wide
+    /// enough for it and the room leaves its row above a plot of readable
+    /// shape; otherwise the plot takes the row.
+    pub fn arrangement(&self, columns: usize) -> CoreArrangement {
+        let columns = columns.max(1);
+        let rows = self.count.div_ceil(columns).max(1);
+        let width = self.card_width(columns);
+        let share = (self.height - (rows - 1) as f32 * self.gap) / rows as f32;
+        let plot = self.plot_min(width);
+        let caption = if width >= self.short_caption_width && share >= self.header_height + plot {
+            if width >= self.caption_width {
+                CoreCaption::Full
+            } else {
+                CoreCaption::Short
+            }
+        } else {
+            CoreCaption::Hidden
+        };
+        let header = if caption == CoreCaption::Hidden {
+            0.
+        } else {
+            self.header_height
+        };
+        CoreArrangement {
+            columns,
+            rows,
+            caption,
+            row_min: header + plot,
+        }
+    }
+    /// How readable `arrangement` is: its plots' size, less for text it
+    /// hides, empty slots and scrolling.
+    fn score(&self, arrangement: &CoreArrangement) -> f32 {
+        let CoreArrangement {
+            columns,
+            rows,
+            caption,
+            row_min,
+        } = *arrangement;
+        let header = row_min - self.plot_min(self.card_width(columns));
+        let share = (self.height - (rows - 1) as f32 * self.gap) / rows as f32;
+        let plot = share.max(row_min) - header;
+        let mut score = (self.card_width(columns) / CORE_PLOT_BALANCED).min(plot);
+        score *= match caption {
+            CoreCaption::Full => 1.,
+            CoreCaption::Short => CORE_CAPTION_SHORT,
+            CoreCaption::Hidden => CORE_CAPTION_HIDDEN,
+        };
+        let empty = rows * columns - self.count;
+        if empty > 0 {
+            // A last row of a few cards keeps less than one with a single gap.
+            score *= CORE_GRID_GAPPED * (1. - 0.5 * empty as f32 / columns as f32);
+        }
+        let needed = rows as f32 * (row_min + self.gap) - self.gap;
+        if needed > self.height {
+            // Scrolling hides part of the grid: the more, the worse.
+            score *= (self.height.max(0.) / needed).powi(3);
+        }
+        score
+    }
+}
+/// A plot this many times as wide as it is tall is as readable as it gets
+/// for its height: wider ones count by their height, taller ones by their
+/// width (the native task manager's are about as wide).
+const CORE_PLOT_BALANCED: f32 = 1.4;
+/// The flattest a plot gets before the page scrolls: past it, curves read as
+/// lines.
+const CORE_PLOT_FLATTEST: f32 = 2.8;
+/// A plot this tall reads well however wide it is.
+const CORE_PLOT_TALL_ENOUGH: f32 = 64.;
+/// What a card keeps of its plot size when its caption leaves out the
+/// frequency, or hides: a caption hides only for much larger plots.
+const CORE_CAPTION_SHORT: f32 = 0.93;
+const CORE_CAPTION_HIDDEN: f32 = 0.72;
 /// What a grid with empty slots keeps of its plot size when compared with a
 /// full one: a full grid is chosen unless its plots are much smaller.
-const CORE_GRID_GAPPED: f32 = 0.6;
-/// Prefer full rows, then readable plots; keep a near-equal layout while
-/// resizing. Empty slots remain only where no full grid fits the area with
-/// cards of the minimum size (a prime count, or one whose divisors are all
-/// too wide or too tall), or where its plots would be much smaller.
-pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> usize {
+const CORE_GRID_GAPPED: f32 = 0.8;
+/// Prefer full rows of readable plots; keep a near-equal layout while
+/// resizing. Cards go narrower than their caption, leaving out the frequency
+/// and then the whole caption, so that a small area takes more columns of
+/// plots of a readable shape (as the native task manager's) rather than
+/// fewer columns of flat strips. Empty slots remain where no full grid fits
+/// with plots of a readable shape (a prime count, or one whose divisors are
+/// all too wide or too tall), or where its plots would be much smaller.
+/// Where nothing fits the height, the grid that needs the least scrolling.
+pub fn core_grid_columns(size: &CoreGrid, previous: usize) -> CoreArrangement {
     if size.count <= 1 || size.width <= 0. {
-        return 1;
+        return size.arrangement(1);
     }
-    let limit = (((size.width + size.gap) / (size.cell_width + size.gap)).floor() as usize)
+    let limit = (((size.width + size.gap) / (size.plot_width + size.gap)).floor() as usize)
         .max(1)
         .min(size.count);
-    let score = |columns: usize| {
-        let rows = size.count.div_ceil(columns);
-        let width = (size.width - (columns - 1) as f32 * size.gap) / columns as f32;
-        let height = (size.height - (rows - 1) as f32 * size.gap) / rows as f32;
-        if height < size.cell_height - 0.5 {
-            return 0.;
-        }
-        let plot = (width / 1.8).min(height - size.header_height);
-        let slots = rows * columns;
-        if slots == size.count {
-            return plot;
-        }
-        // Among grids with empty slots, fewer of them.
-        let empty = 1. - size.count as f32 / slots as f32;
-        plot * CORE_GRID_GAPPED * (1. - empty * 0.5)
-    };
-    let mut best = limit;
+    let mut best = size.arrangement(limit);
     let mut best_score = 0.;
     for columns in 1..=limit {
-        let value = score(columns);
-        if value > best_score {
-            best = columns;
-            best_score = value;
+        let arrangement = size.arrangement(columns);
+        let score = size.score(&arrangement);
+        if score > best_score {
+            best = arrangement;
+            best_score = score;
         }
     }
     if previous > 0 && previous <= limit {
-        let current = score(previous);
-        // A small dead band prevents one-pixel drags from repeatedly moving cores.
-        if current > 0. && best_score <= current * 1.08 {
-            return previous;
+        let current = size.arrangement(previous);
+        let score = size.score(&current);
+        // A small dead band prevents one-pixel drags from repeatedly moving
+        // cores, but does not keep captions hidden that the best shows.
+        if score > 0. && best_score <= score * 1.08 && current.caption <= best.caption {
+            return current;
         }
     }
-    // When no arrangement fits vertically, minimize the height and allow scrolling.
+    // With no room at all, the fewest rows.
     best
 }
 pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {
@@ -1587,19 +1692,26 @@ impl Timeline {
 mod tests {
     use super::*;
 
+    fn core_grid(count: usize, width: f32, height: f32) -> CoreGrid {
+        CoreGrid {
+            count,
+            width,
+            height,
+            caption_width: 131.,
+            short_caption_width: 79.,
+            plot_width: 52.,
+            plot_height: 38.,
+            header_height: 22.,
+            gap: 6.,
+        }
+    }
+
+    fn core_arrangement(count: usize, width: f32, height: f32) -> CoreArrangement {
+        core_grid_columns(&core_grid(count, width, height), 0)
+    }
+
     fn core_columns(count: usize, width: f32, height: f32, previous: usize) -> usize {
-        core_grid_columns(
-            &CoreGrid {
-                count,
-                width,
-                height,
-                cell_width: 150.,
-                cell_height: 80.,
-                header_height: 22.,
-                gap: 6.,
-            },
-            previous,
-        )
+        core_grid_columns(&core_grid(count, width, height), previous).columns
     }
 
     #[test]
@@ -1609,7 +1721,10 @@ mod tests {
         assert_eq!(core_columns(32, 1265., 600., 0), 8);
         assert_eq!(core_columns(32, 1265., 600., 7), 8);
         for (count, columns) in [(20, 5), (24, 6), (16, 4), (12, 4), (8, 4), (4, 2)] {
-            assert_eq!(core_columns(count, 1265., 600., 0), columns, "{count}");
+            let arrangement = core_arrangement(count, 1265., 600.);
+            assert_eq!(arrangement.columns, columns, "{count}");
+            // With room to spare, the whole caption shows.
+            assert_eq!(arrangement.caption, CoreCaption::Full, "{count}");
         }
         // The full grid of two rows is kept over a larger plot with a gap.
         assert_eq!(core_columns(14, 1265., 600., 0), 7);
@@ -1619,23 +1734,73 @@ mod tests {
     fn processor_grid_leaves_slots_empty_where_no_full_grid_fits() {
         // 22 processors fill 2 × 11 or 11 × 2: too tall and too wide here.
         assert_eq!(core_columns(22, 1265., 600., 0), 6);
-        // Eight columns no longer fit, and eight rows would be too flat.
-        assert_eq!(core_columns(32, 1200., 600., 0), 7);
         // A prime count fills one row only, which is too wide here.
         assert_eq!(core_columns(13, 1265., 600., 0), 5);
-        // Where that row fits, its narrow cards give way to much larger
-        // plots in three rows.
-        assert_eq!(core_columns(13, 2100., 600., 0), 5);
+        // Where that row fits, its narrow cards give way to larger plots in
+        // two rows of seven and six.
+        assert_eq!(core_columns(13, 2100., 600., 0), 7);
+        // 20 processors in the default window: three rows of seven cards of
+        // the native task manager's shape, short of the frequency, rather
+        // than four rows of strips with whole captions.
+        let default = core_arrangement(20, 904., 330.);
+        assert_eq!((default.columns, default.caption), (7, CoreCaption::Short));
+    }
+
+    #[test]
+    fn processor_grid_takes_columns_rather_than_flat_rows() {
+        // 20 processors in a short area: four columns would give five rows
+        // of plots four times as wide as tall, five give four rows.
+        let short = core_arrangement(20, 750., 340.);
+        assert_eq!((short.columns, short.caption), (5, CoreCaption::Full));
+        // A wide, short area: two rows of ten, short of the frequency.
+        let wide = core_arrangement(20, 1265., 200.);
+        assert_eq!((wide.columns, wide.caption), (10, CoreCaption::Short));
+        // Eight processors in a very short area: one row of narrow cards
+        // rather than two of strips.
+        assert_eq!(core_columns(8, 1100., 180., 0), 8);
+        assert_eq!(core_columns(8, 1100., 250., 0), 4);
+        // 32 processors in a short area: eight columns, short of the frequency.
+        let many = core_arrangement(32, 860., 330.);
+        assert_eq!((many.columns, many.caption), (8, CoreCaption::Short));
+    }
+
+    #[test]
+    fn processor_grid_hides_captions_where_space_runs_short() {
+        // A narrow, short area: five columns of plots alone, about the
+        // native task manager's size, rather than captions over strips.
+        let narrow = core_arrangement(20, 490., 250.);
+        assert_eq!((narrow.columns, narrow.caption), (5, CoreCaption::Hidden));
+        // The plot takes the caption's row: the rows hold the plot alone.
+        assert_eq!(narrow.row_min, 38.);
+        // A little more height: the short caption over the same columns.
+        let roomier = core_arrangement(20, 445., 270.);
+        assert_eq!((roomier.columns, roomier.caption), (5, CoreCaption::Short));
+        // Rows hold plots no flatter than 2.8:1 until they are 64 px tall,
+        // and no lower than the least plot height.
+        let grid = core_grid(20, 750., 340.);
+        assert_eq!(
+            grid.arrangement(5).row_min,
+            22. + grid.card_width(5) / CORE_PLOT_FLATTEST
+        );
+        assert_eq!(core_grid(16, 1265., 600.).arrangement(4).row_min, 22. + 64.);
+        assert_eq!(core_grid(32, 860., 300.).arrangement(8).row_min, 22. + 38.);
     }
 
     #[test]
     fn processor_grid_keeps_its_columns_within_the_dead_band() {
         // Both fill their rows and their plots differ by a few percent.
-        let fresh = core_columns(24, 1265., 470., 0);
-        let other = if fresh == 6 { 8 } else { 6 };
-        assert_eq!(core_columns(24, 1265., 470., other), other);
-        // Nothing fits the height: as many columns as the width takes.
-        assert_eq!(core_columns(32, 1265., 200., 0), 8);
+        assert_eq!(core_columns(24, 1265., 560., 0), 6);
+        assert_eq!(core_columns(24, 1265., 560., 8), 8);
+        // It does not keep captions hidden that a near arrangement shows:
+        // five columns fit the default window only without captions.
+        assert_eq!(
+            core_grid(20, 904., 330.).arrangement(5).caption,
+            CoreCaption::Hidden
+        );
+        assert_eq!(core_columns(20, 904., 330., 5), 7);
+        // No room at all: the fewest rows of the narrowest plots.
+        let none = core_arrangement(32, 1265., 0.);
+        assert_eq!((none.columns, none.caption), (21, CoreCaption::Hidden));
     }
 
     #[test]
