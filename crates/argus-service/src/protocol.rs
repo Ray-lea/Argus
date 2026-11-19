@@ -106,6 +106,10 @@ pub enum Operation {
         name: String,
         start_type: StartType,
     },
+    /// Removes a service; a running one goes once it has stopped.
+    DeleteService {
+        name: String,
+    },
     CloseConnection {
         local_address: String,
         local_port: u16,
@@ -187,12 +191,13 @@ impl Operation {
                     return Err(ActionError::Refused);
                 }
             }
-            Self::ControlService { name, .. } | Self::ServiceStartType { name, .. } => {
+            Self::ControlService { name, .. }
+            | Self::ServiceStartType { name, .. }
+            | Self::DeleteService { name } => {
                 if name.is_empty()
                     || name.len() > 256
                     || name.contains(['\0', '/', '\\'])
-                    || name.eq_ignore_ascii_case("ArgusPrivileged")
-                    || name.eq_ignore_ascii_case("ArgusPrivilegedDev")
+                    || crate::is_own_service(name)
                 {
                     return Err(ActionError::Refused);
                 }
@@ -312,6 +317,7 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
         Operation::ServiceStartType { name, start_type } => {
             context.services.set_start_type(&name, start_type)
         }
+        Operation::DeleteService { name } => context.services.delete(&name),
         Operation::CloseConnection {
             local_address,
             local_port,
@@ -621,6 +627,21 @@ mod tests {
             }
             .validate()
             .is_err()
+        );
+        // Argus's own service is never deleted through itself.
+        for name in ["ArgusPrivileged", "argusprivilegeddev", "", r"a\b"] {
+            assert!(
+                Operation::DeleteService { name: name.into() }
+                    .validate()
+                    .is_err()
+            );
+        }
+        assert!(
+            Operation::DeleteService {
+                name: "Spooler".into()
+            }
+            .validate()
+            .is_ok()
         );
     }
 

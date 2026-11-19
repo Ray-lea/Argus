@@ -32,6 +32,21 @@
     "startType": "Type de démarrage : {type}",
     "copyName": "Copier le nom du service"
   },
+  "delete": {
+    "title": "Supprimer le service {name} ?",
+    "body": "Le service {service} et ses paramètres seront supprimés. Cette action est irréversible ; les fichiers programme du service sont conservés.",
+    "running": "Le service n’est pas encore arrêté ; Windows le supprimera une fois arrêté.",
+    "system": "Le service exécute un programme du dossier Windows et appartient peut-être à Windows. Le supprimer peut rendre des fonctionnalités associées inutilisables, voire empêcher Windows de démarrer.",
+    "done": "Le service {name} a été supprimé.",
+    "pending": "Le service {name} est marqué pour suppression. Windows le supprimera une fois qu’il sera arrêté et qu’aucun autre programme ne l’utilisera.",
+    "error": {
+      "accessDenied": "Accès refusé : impossible de supprimer le service {name}. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur ; les services protégés peuvent rester inaccessibles.",
+      "notFound": "Le service {name} n’existe pas ; il a peut-être déjà été supprimé.",
+      "refused": "Le service {name} ne peut pas être supprimé.",
+      "serviceOutdated": "Accès refusé : impossible de supprimer le service {name}. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "generic": "Impossible de supprimer le service {name} : {error}"
+    }
+  },
   "copied": {
     "name": "nom du service"
   },

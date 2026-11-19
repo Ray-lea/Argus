@@ -1106,6 +1106,29 @@ impl Desktop {
             "startup" => {
                 let raw = &row.raw;
                 let path = raw["path"].as_str().filter(|p| !p.is_empty());
+                // Asks first. A packaged task belongs to its app, which only
+                // lets it be disabled.
+                let delete = MenuItem::new(
+                    label("common.delete"),
+                    Action::Dialog(
+                        "deleteStartup".into(),
+                        json!({
+                            "id": raw["id"],
+                            "name": text(raw, "name"),
+                            "entry": raw["entry"],
+                            "location": raw["location"],
+                        }),
+                    ),
+                )
+                .icon("TrashIcon")
+                .danger();
+                let delete = if text(raw, "location") == "package" {
+                    delete
+                        .disabled(true)
+                        .detail(label("startup.delete.disableOnly"))
+                } else {
+                    delete
+                };
                 vec![
                     MenuItem::new(
                         label(if boolean(raw, "enabled") {
@@ -1132,6 +1155,8 @@ impl Desktop {
                     )
                     .icon("CopyIcon")
                     .disabled(text(raw, "command").is_empty()),
+                    MenuItem::separator(),
+                    delete,
                     MenuItem::separator(),
                 ]
             }
@@ -1431,6 +1456,23 @@ impl Desktop {
                 Action::Copy(name.into(), "services.copied.name"),
             )
             .icon("CopyIcon"),
+            MenuItem::separator(),
+            // Asks first. Argus's own service goes with its uninstall.
+            MenuItem::new(
+                label("common.delete"),
+                Action::Dialog(
+                    "deleteService".into(),
+                    json!({
+                        "name": name,
+                        "title": text(raw, "displayName"),
+                        "path": command,
+                        "state": state,
+                    }),
+                ),
+            )
+            .icon("TrashIcon")
+            .danger()
+            .disabled(argus_service::is_own_service(name)),
             MenuItem::separator(),
         ]);
         items

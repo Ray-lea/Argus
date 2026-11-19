@@ -185,7 +185,7 @@ impl Desktop {
                     self.send_queued_monitor_changes(window, cx);
                     self.sync_monitors(cx);
                 }
-                self.command_completed(&pending.command, &value, window, cx);
+                self.command_completed(&pending.command, &pending.args, &value, window, cx);
                 if self.page == "network" {
                     // Its rows follow the list, its owners and how the page
                     // shows them: rebuilt only when one of those changed.
@@ -660,6 +660,27 @@ impl Desktop {
         args: &Value,
         error: &Value,
     ) -> String {
+        // A deletion says what it could not delete and why, in Windows's own
+        // words where no text of Argus's tells the cause.
+        let deleting = match command {
+            "delete_service" => Some("services.delete"),
+            "delete_startup_item" => Some("startup.delete"),
+            _ => None,
+        };
+        if let Some(texts) = deleting {
+            let name = super::dialogs::deleted_name(command, args);
+            let kind = error.get("kind").and_then(Value::as_str).unwrap_or("os");
+            let key = format!("{texts}.error.{kind}");
+            let message = argus_core::i18n::format(&key, &[("name", &name)]);
+            if message != key {
+                return message;
+            }
+            let reason = error["message"].as_str().unwrap_or(kind).trim().to_owned();
+            return argus_core::i18n::format(
+                &format!("{texts}.error.generic"),
+                &[("name", &name), ("error", &reason)],
+            );
+        }
         if let Some(message) = error["message"].as_str() {
             return message.into();
         }

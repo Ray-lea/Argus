@@ -10,6 +10,19 @@
   "menu": {
     "copyCommand": "Copiar comando"
   },
+  "delete": {
+    "title": "¿Eliminar la aplicación de inicio {name}?",
+    "registry": "Se quitará «{entry}» de {location}. Esta acción no se puede deshacer; el programa se conserva.",
+    "file": "«{entry}» de {location} se moverá a la Papelera de reciclaje; el programa se conserva.",
+    "done": "Se eliminó la aplicación de inicio {name}.",
+    "error": {
+      "accessDenied": "Acceso denegado: no se pudo eliminar la aplicación de inicio {name}. Los elementos para todos los usuarios requieren ejecutar Argus como administrador; los demás pueden estar protegidos por permisos de archivo o del registro.",
+      "notFound": "La aplicación de inicio {name} ya no existe; puede que ya se haya eliminado.",
+      "refused": "No se puede eliminar la aplicación de inicio {name}. Las tareas de inicio de los paquetes de aplicación solo se pueden desactivar.",
+      "generic": "No se pudo eliminar la aplicación de inicio {name}: {error}"
+    },
+    "disableOnly": "Solo se puede desactivar"
+  },
   "copied": {
     "command": "comando"
   },

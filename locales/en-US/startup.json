@@ -10,6 +10,19 @@
   "menu": {
     "copyCommand": "Copy command"
   },
+  "delete": {
+    "title": "Delete startup app {name}?",
+    "registry": "“{entry}” will be removed from {location}. This cannot be undone; the program itself is kept.",
+    "file": "“{entry}” in {location} will be moved to the Recycle Bin; the program itself is kept.",
+    "done": "Deleted startup app {name}.",
+    "error": {
+      "accessDenied": "Access denied: startup app {name} could not be deleted. Items for all users need Argus running as administrator; other items may be protected by file or registry permissions.",
+      "notFound": "Startup app {name} no longer exists; it may have been deleted already.",
+      "refused": "Startup app {name} cannot be deleted. Startup tasks of app packages can only be disabled.",
+      "generic": "Could not delete startup app {name}: {error}"
+    },
+    "disableOnly": "Can only be disabled"
+  },
   "copied": {
     "command": "command"
   },

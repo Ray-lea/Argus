@@ -34,6 +34,12 @@ pub const SERVICE_NAME: &str = if cfg!(debug_assertions) {
 } else {
     "ArgusPrivileged"
 };
+
+/// Whether `name` is the privileged service of either build, which only
+/// its own install and uninstall change.
+pub fn is_own_service(name: &str) -> bool {
+    name.eq_ignore_ascii_case("ArgusPrivileged") || name.eq_ignore_ascii_case("ArgusPrivilegedDev")
+}
 const PIPE_NAME: &str = if cfg!(debug_assertions) {
     r"\\.\pipe\Argus.Privileged.Dev.v1"
 } else {

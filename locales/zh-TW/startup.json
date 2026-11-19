@@ -10,6 +10,19 @@
   "menu": {
     "copyCommand": "複製命令"
   },
+  "delete": {
+    "title": "刪除啟動項目 {name}？",
+    "registry": "將從{location}中刪除「{entry}」，此操作無法復原；程式本身會保留。",
+    "file": "將把{location}中的「{entry}」移至資源回收筒；程式本身會保留。",
+    "done": "已刪除啟動項目 {name}。",
+    "error": {
+      "accessDenied": "沒有權限刪除啟動項目 {name}。「所有使用者」的項目需要以系統管理員身分執行 Argus；其他項目可能受檔案或登錄檔權限保護。",
+      "notFound": "啟動項目 {name} 已不存在，可能已被刪除。",
+      "refused": "無法刪除啟動項目 {name}。應用程式套件的啟動工作只能停用。",
+      "generic": "無法刪除啟動項目 {name}：{error}"
+    },
+    "disableOnly": "僅可停用"
+  },
   "copied": {
     "command": "命令"
   },

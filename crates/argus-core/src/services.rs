@@ -9,12 +9,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use windows::Win32::Foundation::ERROR_SUCCESS;
+use windows::Win32::Foundation::{
+    ERROR_SERVICE_DOES_NOT_EXIST, ERROR_SERVICE_MARKED_FOR_DELETE, ERROR_SUCCESS,
+};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegLoadMUIStringW, RegOpenKeyExW,
 };
 use windows::Win32::System::Services::{
-    ChangeServiceConfig2W, ChangeServiceConfigW, CloseServiceHandle, ControlService,
+    ChangeServiceConfig2W, ChangeServiceConfigW, CloseServiceHandle, ControlService, DeleteService,
     ENUM_SERVICE_STATUS_PROCESSW, ENUM_SERVICE_TYPE, EnumServicesStatusExW, OpenSCManagerW,
     OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfig2W, QueryServiceConfigW,
     QueryServiceStatusEx, SC_ENUM_PROCESS_INFO, SC_HANDLE, SC_MANAGER_CONNECT,
@@ -282,6 +284,56 @@ impl ServiceCatalog {
         self.invalidate(name);
         Ok(())
     }
+
+    /// Removes a service from the Service Control Manager. Windows takes it
+    /// away once it has stopped and every handle to it is closed: a running
+    /// one stays until then (`remains`). One marked for deletion already
+    /// counts as deleted.
+    pub fn delete(&self, name: &str) -> Result<(), ActionError> {
+        let scm = open_scm().inspect_err(|error| {
+            crate::diagnostics::warn("service delete OpenSCManagerW", error.diagnostic())
+        })?;
+        let w = wide(name);
+        let svc = unsafe { OpenServiceW(scm.0, PCWSTR(w.as_ptr()), DELETE_ACCESS) }
+            .map(Handle)
+            .map_err(|error| {
+                if error.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() {
+                    ActionError::NotFound
+                } else {
+                    crate::diagnostics::windows_failure("service delete OpenServiceW", &error);
+                    error.into()
+                }
+            })?;
+        match unsafe { DeleteService(svc.0) } {
+            Err(error) if error.code() != ERROR_SERVICE_MARKED_FOR_DELETE.to_hresult() => {
+                crate::diagnostics::windows_failure("service DeleteService", &error);
+                return Err(error.into());
+            }
+            _ => {}
+        }
+        self.invalidate(name);
+        Ok(())
+    }
+}
+
+/// The standard right to delete an object, which `DeleteService` needs.
+const DELETE_ACCESS: u32 = 0x0001_0000;
+
+/// Whether the Service Control Manager still has `name`: after deleting it,
+/// until it has stopped and every handle to it is closed. Unsure counts as
+/// still there.
+pub fn remains(name: &str) -> bool {
+    let Ok(scm) = open_scm() else {
+        return true;
+    };
+    let w = wide(name);
+    match unsafe { OpenServiceW(scm.0, PCWSTR(w.as_ptr()), SERVICE_QUERY_STATUS) } {
+        Ok(svc) => {
+            drop(Handle(svc));
+            true
+        }
+        Err(error) => error.code() != ERROR_SERVICE_DOES_NOT_EXIST.to_hresult(),
+    }
 }
 
 fn start(scm: &Handle, name: &str) -> Result<(), ActionError> {
@@ -433,5 +485,98 @@ fn state_name(state: u32) -> &'static str {
         6 => "pausePending",
         7 => "paused",
         _ => "stopped",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Handle, ServiceCatalog, remains};
+    use crate::actions::ActionError;
+    use crate::util::wide;
+    use windows::Win32::System::Services::{
+        CreateServiceW, OpenSCManagerW, SC_MANAGER_CONNECT, SC_MANAGER_CREATE_SERVICE,
+        SERVICE_DEMAND_START, SERVICE_ERROR_IGNORE, SERVICE_QUERY_STATUS,
+        SERVICE_WIN32_OWN_PROCESS,
+    };
+    use windows::core::PCWSTR;
+
+    /// A name no service has, and none of another test run.
+    fn unique(prefix: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |time| time.subsec_nanos());
+        format!("{prefix}{}x{nanos}", std::process::id())
+    }
+
+    #[test]
+    fn deleting_a_service_that_is_not_there_says_so() {
+        let name = unique("ArgusMissing");
+        assert!(matches!(
+            ServiceCatalog::default().delete(&name),
+            Err(ActionError::NotFound)
+        ));
+        assert!(!remains(&name));
+        // Every Windows has the RPC service.
+        assert!(remains("RpcSs"));
+    }
+
+    /// With administrator rights (as on CI), a service of the test's own
+    /// goes: held open, it stays marked until the last handle closes, and
+    /// deleting it again counts as done.
+    #[test]
+    fn a_service_of_its_own_is_deleted() {
+        if !crate::privilege::is_elevated() {
+            return;
+        }
+        let name = unique("ArgusDeleteTest");
+        let scm = Handle(
+            unsafe {
+                OpenSCManagerW(
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE,
+                )
+            }
+            .expect("service manager"),
+        );
+        let (service, binary) = (
+            wide(&name),
+            wide(r"C:\Windows\System32\svchost.exe -k ArgusNone"),
+        );
+        // Never started; deleted below, or by the catalog when a check fails.
+        let held = Handle(
+            unsafe {
+                CreateServiceW(
+                    scm.0,
+                    PCWSTR(service.as_ptr()),
+                    PCWSTR(service.as_ptr()),
+                    SERVICE_QUERY_STATUS,
+                    SERVICE_WIN32_OWN_PROCESS,
+                    SERVICE_DEMAND_START,
+                    SERVICE_ERROR_IGNORE,
+                    PCWSTR(binary.as_ptr()),
+                    PCWSTR::null(),
+                    None,
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                )
+            }
+            .expect("test service"),
+        );
+        struct Gone<'a>(&'a str);
+        impl Drop for Gone<'_> {
+            fn drop(&mut self) {
+                let _ = ServiceCatalog::default().delete(self.0);
+            }
+        }
+        let _gone = Gone(&name);
+        let catalog = ServiceCatalog::default();
+        assert!(catalog.delete(&name).is_ok());
+        assert!(remains(&name), "held open, it stays until closed");
+        assert!(catalog.delete(&name).is_ok(), "marked already counts");
+        drop(held);
+        assert!(!remains(&name));
+        assert!(matches!(catalog.delete(&name), Err(ActionError::NotFound)));
     }
 }

@@ -188,6 +188,7 @@ fn privileged<T>(
         Operation::Suspend { .. } => ("suspend or resume process", operation),
         Operation::ControlService { .. } => ("control Windows service", operation),
         Operation::ServiceStartType { .. } => ("set service start type", operation),
+        Operation::DeleteService { .. } => ("delete Windows service", operation),
         Operation::CloseConnection { .. } => ("close TCP connection", operation),
         _ => ("privileged operation", operation),
     };
@@ -1117,6 +1118,39 @@ pub fn set_service_start_type(
     )
 }
 
+/// What deleting a service came to: gone, or `pending` until it has
+/// stopped and every handle to it is closed.
+#[derive(Debug, Serialize)]
+pub struct ServiceDeletion {
+    pub pending: bool,
+}
+
+pub fn delete_service(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<ServiceDeletion, ActionError> {
+    // The privileged service refuses its own deletion; so does Argus with
+    // its own rights.
+    let result = if argus_service::is_own_service(&name) {
+        action_result("delete Windows service", "local", Err(ActionError::Refused))
+    } else {
+        privileged(
+            &state,
+            Operation::DeleteService { name: name.clone() },
+            |reply| {
+                done(reply)?;
+                state.services.invalidate(&name);
+                Some(())
+            },
+            || state.services.delete(&name),
+        )
+    };
+    state.sampler.send(Control::Refresh);
+    result.map(|()| ServiceDeletion {
+        pending: argus_core::services::remains(&name),
+    })
+}
+
 /// Opens the Windows Services console, for what Argus does not cover.
 pub fn open_services_console() -> Result<(), String> {
     std::process::Command::new("mmc.exe")
@@ -1142,6 +1176,10 @@ pub fn set_startup_enabled(id: String, enabled: bool) -> Result<(), ActionError>
         "local",
         startup::set_enabled(&id, enabled),
     )
+}
+
+pub fn delete_startup_item(id: String) -> Result<(), ActionError> {
+    action_result("delete startup item", "local", startup::delete(&id))
 }
 
 // ---- Connections ----------------------------------------------------------------
@@ -1208,6 +1246,35 @@ mod tests {
 
     fn denied() -> Result<(), ActionError> {
         Err(ActionError::AccessDenied)
+    }
+
+    /// A deletion that fails comes back with its cause, which the log keeps
+    /// too, with the stage that failed but not the entry's name.
+    #[test]
+    fn a_failed_deletion_is_logged_with_its_cause() {
+        argus_core::diagnostics::capture_helper_failures();
+        let name = format!("Argus missing entry {}", std::process::id());
+        let result = delete_startup_item(format!("hklmRun|{name}"));
+        let log = argus_core::diagnostics::take_helper_failures();
+        // Nothing of that name is there, so nothing is deleted either way:
+        // without administrator rights the key does not open.
+        if argus_core::privilege::is_elevated() {
+            assert!(matches!(result, Err(ActionError::NotFound)));
+        } else {
+            assert!(matches!(result, Err(ActionError::AccessDenied)));
+            assert!(
+                log.iter()
+                    .any(|line| line.contains("startup delete RegOpenKeyExW: ")
+                        && line.contains("(0x80070005)")),
+                "{log:#?}"
+            );
+        }
+        assert!(
+            log.iter()
+                .any(|line| line.contains("delete startup item: source=local; ")),
+            "{log:#?}"
+        );
+        assert!(log.iter().all(|line| !line.contains(&name)));
     }
 
     #[test]

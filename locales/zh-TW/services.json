@@ -32,6 +32,21 @@
     "startType": "啟動類型：{type}",
     "copyName": "複製服務名稱"
   },
+  "delete": {
+    "title": "刪除服務 {name}？",
+    "body": "將刪除服務 {service} 及其設定，此操作無法復原；服務的程式檔案會保留。",
+    "running": "此服務尚未停止，Windows 會在其停止後移除。",
+    "system": "此服務的程式位於 Windows 資料夾中，可能屬於 Windows；刪除後相關功能可能無法使用，甚至導致 Windows 無法啟動。",
+    "done": "已刪除服務 {name}。",
+    "pending": "已將服務 {name} 標記為刪除，待此服務停止且不再被其他程式使用後由 Windows 移除。",
+    "error": {
+      "accessDenied": "沒有權限刪除服務 {name}。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的服務仍可能無法刪除。",
+      "notFound": "服務 {name} 不存在，可能已被刪除。",
+      "refused": "無法刪除服務 {name}。",
+      "serviceOutdated": "沒有權限刪除服務 {name}。特殊權限服務版本不相容，請更新服務後重試。",
+      "generic": "無法刪除服務 {name}：{error}"
+    }
+  },
   "copied": {
     "name": "服務名稱"
   },

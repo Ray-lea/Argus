@@ -397,6 +397,11 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "delete_service" => {
+            crate::commands::delete_service(host.state(), argument::<String>(&args, "name")?)
+                .map(|value| serde_json::to_value(value).expect("serializable command response"))
+                .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
+        }
         "open_services_console" => crate::commands::open_services_console()
             .map(|value| serde_json::to_value(value).expect("serializable command response"))
             .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
@@ -410,6 +415,11 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "delete_startup_item" => {
+            crate::commands::delete_startup_item(argument::<String>(&args, "id")?)
+                .map(|value| serde_json::to_value(value).expect("serializable command response"))
+                .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null))
+        }
         "list_connections" => Ok(serde_json::to_value(crate::commands::list_connections())
             .expect("serializable command response")),
         "close_connection" => crate::commands::close_connection(

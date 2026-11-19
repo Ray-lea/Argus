@@ -1,0 +1,40 @@
+{
+  "window": [1200, 800],
+  "steps": [
+    {"control":{"page":"services","motion":"off","pointerOutside":true,"data":{"services":[
+      {"name":"VendorUpdate","displayName":"Vendor Update Service","description":"Keeps Vendor apps up to date.","state":"stopped","startType":"manual","pid":0,"path":"\"C:\\Program Files\\Vendor\\update.exe\" /service","account":"LocalSystem","canStop":false,"shared":false},
+      {"name":"Spooler","displayName":"Print Spooler","description":"Prints.","state":"running","startType":"auto","pid":2400,"path":"C:\\WINDOWS\\System32\\spoolsv.exe","account":"LocalSystem","canStop":true,"shared":false},
+      {"name":"ArgusPrivileged","displayName":"Argus Privileged Service","description":"Argus.","state":"running","startType":"auto","pid":2500,"path":"\"C:\\Program Files\\Argus\\argus-service.exe\"","account":"LocalSystem","canStop":true,"shared":false}
+    ]}},"wait":600},
+    {"control":{"rowMenu":0},"wait":400,"inspect":"menu","label":"own-service","expect":{"state.items.13":"删除","state.disabled.13":true}},
+    {"control":{"keys":["escape"]},"wait":200},
+    {"control":{"rowMenu":2},"wait":400},
+    {"control":{"keys":["up","up","up"]},"wait":300,"inspect":"menu","label":"service-delete-item","expect":{"state.focus.item.label":"删除"},"capture":"service-menu"},
+    {"control":{"keys":["enter"]},"wait":500,"inspect":"layout","label":"service-dialog","expect":{"dialog.kind":"deleteService","dialog.title":"删除服务 Vendor Update Service？"},"capture":"service-dialog"},
+    {"control":{"keys":["enter"]},"wait":400,"inspect":"layout","label":"service-confirmed","expect":{"dialog":null,"skippedRequest.command":"delete_service","skippedRequest.args.name":"VendorUpdate"}},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"VendorUpdate","title":"Vendor Update Service"},"ok":true,"value":{"pending":false}}},"wait":300,"inspect":"layout","label":"service-deleted","expect":{"toasts.0":"已删除服务 Vendor Update Service。"}},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"Spooler","title":"Print Spooler"},"ok":true,"value":{"pending":true}}},"wait":300,"inspect":"layout","label":"service-pending","expect":{"toasts.1":"已将服务 Print Spooler 标记为删除，该服务停止且不再被其他程序使用后由 Windows 移除。"}},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"Spooler","title":"Print Spooler"},"ok":false,"value":{"kind":"accessDenied"}}},"wait":300,"inspect":"layout","label":"service-denied","expect":{"toasts.2":"没有权限删除服务 Print Spooler。请在设置中启用特权服务，或以管理员身份运行 Argus；受保护的服务仍可能无法删除。"}},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"Spooler","title":"Print Spooler"},"ok":false,"value":{"kind":"serviceOutdated"}}},"wait":300,"inspect":"layout","label":"service-outdated","expect":{"toasts.3":"没有权限删除服务 Print Spooler。特权服务版本不兼容，请更新服务后重试。"}},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"Gone","title":"Gone Service"},"ok":false,"value":{"kind":"notFound"}}},"wait":300,"inspect":"layout","label":"service-missing"},
+    {"control":{"resolve":{"command":"delete_service","args":{"name":"Spooler","title":"Print Spooler"},"ok":false,"value":{"kind":"os","message":"另一个程序正在使用此文件，进程无法访问。 (0x80070020)"}}},"wait":300,"inspect":"layout","label":"service-os","capture":"service-notices"},
+    {"control":{"dialog":"deleteService","args":{"name":"Spooler","title":"Print Spooler","path":"C:\\WINDOWS\\System32\\spoolsv.exe","state":"running"}},"wait":500,"inspect":"layout","label":"system-service-dialog","expect":{"dialog.kind":"deleteService","dialog.title":"删除服务 Print Spooler？"},"capture":"system-service-dialog"},
+    {"control":{"keys":["escape"]},"wait":300,"inspect":"layout","label":"service-cancelled","expect":{"dialog":null}},
+    {"control":{"page":"startup","data":{"startup":[
+      {"id":"hkcuRun|VendorTray","name":"Vendor Tray","entry":"VendorTray","blocked":null,"command":"\"C:\\Program Files\\Vendor\\tray.exe\"","path":"C:\\Program Files\\Vendor\\tray.exe","location":"hkcuRun","machine":false,"enabled":true,"exists":true,"publisher":"Vendor","description":"Vendor Tray","icon":null},
+      {"id":"userFolder|Notes.lnk","name":"Notes","entry":"Notes.lnk","blocked":null,"command":"\"C:\\Tools\\notes.exe\"","path":"C:\\Tools\\notes.exe","location":"userFolder","machine":false,"enabled":true,"exists":false,"publisher":null,"description":null,"icon":null},
+      {"id":"package|Vendor.App!Task","name":"Vendor App","entry":"Vendor.App!Task","blocked":null,"command":"","path":null,"location":"package","machine":false,"enabled":true,"exists":false,"publisher":"Vendor","description":null,"icon":null}
+    ]}},"wait":600},
+    {"control":{"rowMenu":1},"wait":400,"inspect":"menu","label":"package-entry","expect":{"state.items.5":"删除","state.disabled.5":true},"capture":"package-menu"},
+    {"control":{"keys":["escape"]},"wait":200},
+    {"control":{"rowMenu":0},"wait":400},
+    {"control":{"keys":["up","up","up"]},"wait":300,"inspect":"menu","label":"startup-delete-item","expect":{"state.focus.item.label":"删除"}},
+    {"control":{"keys":["enter"]},"wait":500,"inspect":"layout","label":"startup-file-dialog","expect":{"dialog.kind":"deleteStartup","dialog.title":"删除启动项 Notes？"},"capture":"startup-file-dialog"},
+    {"control":{"keys":["enter"]},"wait":400,"inspect":"layout","label":"startup-confirmed","expect":{"dialog":null,"skippedRequest.command":"delete_startup_item","skippedRequest.args.id":"userFolder|Notes.lnk"}},
+    {"control":{"resolve":{"command":"delete_startup_item","args":{"id":"userFolder|Notes.lnk","name":"Notes"},"ok":true,"value":null}},"wait":300,"inspect":"layout","label":"startup-deleted"},
+    {"control":{"resolve":{"command":"delete_startup_item","args":{"id":"hklmRun|Vendor","name":"Vendor Agent"},"ok":false,"value":{"kind":"accessDenied"}}},"wait":300,"inspect":"layout","label":"startup-denied"},
+    {"control":{"resolve":{"command":"delete_startup_item","args":{"id":"hkcuRun|Gone","name":"Gone"},"ok":false,"value":{"kind":"notFound"}}},"wait":300,"inspect":"layout","label":"startup-missing","capture":"startup-notices"},
+    {"control":{"dialog":"deleteStartup","args":{"id":"hkcuRun|VendorTray","name":"Vendor Tray","entry":"VendorTray","location":"hkcuRun"}},"wait":500,"inspect":"layout","label":"startup-registry-dialog","expect":{"dialog.title":"删除启动项 Vendor Tray？"},"capture":"startup-registry-dialog"},
+    {"control":{"keys":["escape"]},"wait":300}
+  ]
+}

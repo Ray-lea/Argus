@@ -205,15 +205,70 @@ impl DialogFrame {
 }
 
 /// Dialogs that open over whatever is open.
-const STACKING: [&str; 7] = [
+const STACKING: [&str; 9] = [
     "confirm",
     "end",
     "endTree",
     "restartExplorer",
     "signOut",
     "closeConnection",
+    "deleteService",
+    "deleteStartup",
     "priority",
 ];
+
+/// Whether a service's command runs a program in the Windows folder, which
+/// a service of Windows's own does.
+fn runs_from_windows(command: &str) -> bool {
+    let command = command.trim();
+    let binary = command
+        .strip_prefix('"')
+        .and_then(|rest| rest.split('"').next())
+        .or_else(|| command.split_whitespace().next())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let root = std::env::var("SystemRoot")
+        .unwrap_or_else(|_| r"C:\Windows".into())
+        .to_ascii_lowercase();
+    binary.starts_with(&format!("{}\\", root.trim_end_matches('\\')))
+        || binary.starts_with(r"\systemroot\")
+        || binary.starts_with(r"system32\")
+}
+
+/// The name a deletion's notices give what it deleted: a service by its
+/// display name where it has one, a startup entry by the name it shows.
+pub(in crate::frontend) fn deleted_name(command: &str, args: &Value) -> String {
+    let title = text(args, "title");
+    if command == "delete_service" && !title.is_empty() {
+        title.to_owned()
+    } else {
+        text(args, "name").to_owned()
+    }
+}
+
+#[cfg(test)]
+mod delete_tests {
+    use super::runs_from_windows;
+
+    #[test]
+    fn services_of_windows_are_told_by_their_program() {
+        let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        assert!(runs_from_windows(&format!(
+            r"{root}\system32\svchost.exe -k netsvcs -p"
+        )));
+        assert!(runs_from_windows(&format!(
+            r#""{}\System32\spoolsv.exe""#,
+            root.to_uppercase()
+        )));
+        assert!(runs_from_windows(r"\SystemRoot\System32\drivers\x.sys"));
+        assert!(runs_from_windows(r"System32\drivers\x.sys"));
+        assert!(!runs_from_windows(
+            r#""C:\Program Files\Vendor\Windows Helper\agent.exe" /service"#
+        ));
+        assert!(!runs_from_windows(&format!(r"{root}Old\x.exe")));
+        assert!(!runs_from_windows(""));
+    }
+}
 const PRIORITIES: [&str; 6] = [
     "idle",
     "belowNormal",
@@ -473,6 +528,40 @@ impl Desktop {
                 ),
                 Some((label("connections.menu.close"), true)),
             ),
+            "deleteService" => {
+                let title = text(&args, "title");
+                let mut body = tr!("services.delete.body", service = name);
+                if text(&args, "state") != "stopped" {
+                    body.push('\n');
+                    body.push_str(&label("services.delete.running"));
+                }
+                if runs_from_windows(text(&args, "path")) {
+                    body.push('\n');
+                    body.push_str(&label("services.delete.system"));
+                }
+                (
+                    tr!(
+                        "services.delete.title",
+                        name = if title.is_empty() { &name } else { title }
+                    ),
+                    body,
+                    Some((label("common.delete"), true)),
+                )
+            }
+            "deleteStartup" => {
+                let location = text(&args, "location");
+                let place = label(&format!("startup.location.{location}"));
+                let entry = text(&args, "entry");
+                (
+                    tr!("startup.delete.title", name = name),
+                    if location.ends_with("Folder") {
+                        tr!("startup.delete.file", location = place, entry = entry)
+                    } else {
+                        tr!("startup.delete.registry", location = place, entry = entry)
+                    },
+                    Some((label("common.delete"), true)),
+                )
+            }
             "task" => (label("tasks.title"), label("tasks.description"), None),
             "filelock" => (label("fileLock.title"), label("fileLock.intro"), None),
             "columns" => (label("processes.columns.choose"), String::new(), None),
@@ -1402,6 +1491,8 @@ impl Desktop {
                 return;
             }
             "closeConnection" => self.request("close_connection", args.clone(), None, window, cx),
+            "deleteService" => self.request("delete_service", args.clone(), None, window, cx),
+            "deleteStartup" => self.request("delete_startup_item", args.clone(), None, window, cx),
             "update" => {
                 self.update_primary(window, cx);
                 return;
@@ -1614,11 +1705,29 @@ impl Desktop {
     pub(in crate::frontend) fn command_completed(
         &mut self,
         command: &str,
+        args: &Value,
         value: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match command {
+            "delete_service" => {
+                let name = deleted_name(command, args);
+                self.notify_toast(
+                    ToastKind::Success,
+                    if boolean(value, "pending") {
+                        tr!("services.delete.pending", name = name)
+                    } else {
+                        tr!("services.delete.done", name = name)
+                    },
+                );
+                self.poll_page(window, cx);
+            }
+            "delete_startup_item" => {
+                let name = deleted_name(command, args);
+                self.notify_toast(ToastKind::Success, tr!("startup.delete.done", name = name));
+                self.poll_page(window, cx);
+            }
             "complete_onboarding" => self.onboarding_saved(value, window, cx),
             "batch" => self.batch_done(value),
             "pick_path" => {

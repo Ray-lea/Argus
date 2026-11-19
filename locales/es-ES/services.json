@@ -32,6 +32,21 @@
     "startType": "Tipo de inicio: {type}",
     "copyName": "Copiar nombre del servicio"
   },
+  "delete": {
+    "title": "¿Eliminar el servicio {name}?",
+    "body": "Se quitarán el servicio {service} y su configuración. Esta acción no se puede deshacer; los archivos de programa del servicio se conservan.",
+    "running": "El servicio aún no se ha detenido; Windows lo quitará cuando se detenga.",
+    "system": "El servicio ejecuta un programa de la carpeta de Windows y puede pertenecer a Windows. Eliminarlo puede hacer que dejen de funcionar funciones relacionadas o incluso impedir que Windows se inicie.",
+    "done": "Se eliminó el servicio {name}.",
+    "pending": "El servicio {name} está marcado para eliminación. Windows lo quitará cuando se detenga y ningún otro programa lo esté usando.",
+    "error": {
+      "accessDenied": "Acceso denegado: no se pudo eliminar el servicio {name}. Active el servicio privilegiado en Configuración o ejecute Argus como administrador; los servicios protegidos pueden seguir sin estar disponibles.",
+      "notFound": "El servicio {name} no existe; puede que ya se haya eliminado.",
+      "refused": "No se puede eliminar el servicio {name}.",
+      "serviceOutdated": "Acceso denegado: no se pudo eliminar el servicio {name}. La versión del servicio privilegiado no es compatible; actualice el servicio y vuelva a intentarlo.",
+      "generic": "No se pudo eliminar el servicio {name}: {error}"
+    }
+  },
   "copied": {
     "name": "nombre del servicio"
   },

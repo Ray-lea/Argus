@@ -6,7 +6,9 @@ mod packaged;
 use std::path::Path;
 
 use serde::Serialize;
-use windows::Win32::Foundation::{ERROR_SUCCESS, FILETIME, MAX_PATH};
+use windows::Win32::Foundation::{
+    ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, FILETIME, MAX_PATH, WIN32_ERROR,
+};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, IPersistFile,
     STGM_READ,
@@ -15,10 +17,13 @@ use windows::Win32::System::Environment::ExpandEnvironmentStringsW;
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE, REG_BINARY,
     REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RegCloseKey, RegCreateKeyExW,
-    RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    RegDeleteValueW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
-use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+use windows::Win32::UI::Shell::{
+    FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOCONFIRMMKDIR, FOF_NOERRORUI, FOF_SILENT,
+    IShellLinkW, SHFILEOPSTRUCTW, SHFileOperationW, ShellLink,
+};
 use windows::core::{Interface, PCWSTR, PWSTR};
 
 use crate::actions::ActionError;
@@ -419,6 +424,133 @@ pub fn set_enabled(id: &str, enabled: bool) -> Result<(), ActionError> {
     Ok(())
 }
 
+/// Deletes an entry: its Run key value, or its file in a Startup folder (to
+/// the Recycle Bin), and with it the switch that enabled or disabled it.
+/// Packaged tasks belong to their app and are not deleted.
+pub fn delete(id: &str) -> Result<(), ActionError> {
+    let (loc_id, name) = id.split_once('|').ok_or(ActionError::NotFound)?;
+    if loc_id == "package" {
+        return Err(ActionError::Refused);
+    }
+    let loc = LOCATIONS
+        .iter()
+        .find(|l| l.id == loc_id)
+        .ok_or(ActionError::NotFound)?;
+    match (loc.key, loc.folder) {
+        (Some(key), _) => delete_value(loc.root, key, name)?,
+        (None, Some((var, rel))) => {
+            let base = std::env::var(var).map_err(|_| ActionError::NotFound)?;
+            remove_file(&Path::new(&base).join(rel), name, true)?;
+        }
+        _ => return Err(ActionError::NotFound),
+    }
+    forget_switch(loc.root, loc.approved, name);
+    Ok(())
+}
+
+/// A failed registry call as the action's error: a key or value not there
+/// is gone already.
+fn registry_error(event: &'static str, result: WIN32_ERROR) -> ActionError {
+    if result == ERROR_FILE_NOT_FOUND {
+        return ActionError::NotFound;
+    }
+    let error = windows::core::Error::from(result.to_hresult());
+    crate::diagnostics::windows_failure(event, &error);
+    error.into()
+}
+
+fn delete_value(root: HKEY, path: &str, name: &str) -> Result<(), ActionError> {
+    let path = wide(path);
+    let mut key = HKEY::default();
+    let opened =
+        unsafe { RegOpenKeyExW(root, PCWSTR(path.as_ptr()), None, KEY_SET_VALUE, &mut key) };
+    if opened != ERROR_SUCCESS {
+        return Err(registry_error("startup delete RegOpenKeyExW", opened));
+    }
+    let key = Key(key);
+    let value = wide(name);
+    let deleted = unsafe { RegDeleteValueW(key.0, PCWSTR(value.as_ptr())) };
+    if deleted != ERROR_SUCCESS {
+        return Err(registry_error("startup RegDeleteValueW", deleted));
+    }
+    Ok(())
+}
+
+/// Takes away the switch Windows keeps for an entry deleted, so that one
+/// added later under the name starts enabled. Failing to is only logged:
+/// the entry itself is gone.
+fn forget_switch(root: HKEY, approved: &str, name: &str) {
+    let path = wide(&format!(r"{APPROVED}\{approved}"));
+    let mut key = HKEY::default();
+    if unsafe { RegOpenKeyExW(root, PCWSTR(path.as_ptr()), None, KEY_SET_VALUE, &mut key) }
+        != ERROR_SUCCESS
+    {
+        return;
+    }
+    let key = Key(key);
+    let value = wide(name);
+    let result = unsafe { RegDeleteValueW(key.0, PCWSTR(value.as_ptr())) };
+    if result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND {
+        crate::diagnostics::warn(
+            "startup forget switch RegDeleteValueW",
+            crate::diagnostics::code(result.0),
+        );
+    }
+}
+
+/// Deletes the file `name` in `folder`, to the Recycle Bin with `recycle`,
+/// asking and showing nothing. Only a plain name in the folder itself goes.
+fn remove_file(folder: &Path, name: &str, recycle: bool) -> Result<(), ActionError> {
+    if matches!(name, "" | "." | "..") || name.contains(['\\', '/', ':', '\0']) {
+        return Err(ActionError::Refused);
+    }
+    let path = folder.join(name);
+    if !path.is_file() {
+        return Err(ActionError::NotFound);
+    }
+    // The paths, each ended by a NUL, and the list by another.
+    let mut from = wide(&path.to_string_lossy());
+    from.push(0);
+    let silent = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_NOCONFIRMMKDIR;
+    let flags = if recycle {
+        silent | FOF_ALLOWUNDO
+    } else {
+        silent
+    };
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: flags.0 as u16,
+        ..Default::default()
+    };
+    let code = unsafe { SHFileOperationW(&mut operation) };
+    if code == 0 && !operation.fAnyOperationsAborted.as_bool() {
+        return Ok(());
+    }
+    crate::diagnostics::warn(
+        "startup SHFileOperationW",
+        format!(
+            "{}; aborted={}; recycle={recycle}",
+            crate::diagnostics::code(code as u32),
+            operation.fAnyOperationsAborted.as_bool()
+        ),
+    );
+    Err(shell_error(code as u32))
+}
+
+/// What `SHFileOperationW` returned, as the action's error: a Win32 code,
+/// or for the common causes one of the shell's own (`DE_*`, 0x71 and up).
+fn shell_error(code: u32) -> ActionError {
+    match code {
+        // DE_ACCESSDENIEDSRC
+        5 | 0x78 => ActionError::AccessDenied,
+        // DE_INVALIDFILES
+        2 | 3 | 0x7C => ActionError::NotFound,
+        1..0x71 => windows::core::Error::from(WIN32_ERROR(code).to_hresult()).into(),
+        _ => ActionError::Os(format!("SHFileOperation 0x{code:X}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,5 +584,192 @@ mod tests {
             display_name("Missing app", false, Some(" "), None),
             "Missing app"
         );
+    }
+
+    /// A name no entry has, and none of another test run.
+    fn unique(prefix: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |time| time.subsec_nanos());
+        format!("{prefix}{}x{nanos}", std::process::id())
+    }
+
+    const RUN: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+
+    /// Deletes a value of the test's own, whatever became of it.
+    struct Cleanup(String, String);
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = delete_value(HKEY_CURRENT_USER, &self.0, &self.1);
+        }
+    }
+
+    fn value_exists(path: &str, name: &str) -> bool {
+        let Some(key) = open_key(HKEY_CURRENT_USER, path, KEY_READ) else {
+            return false;
+        };
+        let name = wide(name);
+        let result =
+            unsafe { RegQueryValueExW(key.0, PCWSTR(name.as_ptr()), None, None, None, None) };
+        result == ERROR_SUCCESS
+    }
+
+    /// A Run value of the test's own, disabled so that it has a switch too,
+    /// goes with its switch; deleting it again says it is gone.
+    #[test]
+    fn a_run_entry_is_deleted_with_its_switch() {
+        let name = unique("Argus test entry ");
+        let switch = format!(r"{APPROVED}\Run");
+        let _value = Cleanup(RUN.into(), name.clone());
+        let _switch = Cleanup(switch.clone(), name.clone());
+        let command = wide(r#""C:\Windows\System32\cmd.exe" /c exit"#);
+        let key = open_key(HKEY_CURRENT_USER, RUN, KEY_SET_VALUE).expect("Run key");
+        unsafe {
+            RegSetValueExW(
+                key.0,
+                PCWSTR(wide(&name).as_ptr()),
+                None,
+                REG_SZ,
+                Some(std::slice::from_raw_parts(
+                    command.as_ptr().cast(),
+                    command.len() * 2,
+                )),
+            )
+        }
+        .ok()
+        .expect("test value");
+        drop(key);
+        let id = format!("hkcuRun|{name}");
+        set_enabled(&id, false).expect("switch");
+        assert!(value_exists(RUN, &name) && value_exists(&switch, &name));
+
+        delete(&id).expect("deleted");
+        assert!(!value_exists(RUN, &name), "the entry is gone");
+        assert!(!value_exists(&switch, &name), "and its switch");
+        assert!(matches!(delete(&id), Err(ActionError::NotFound)));
+    }
+
+    #[test]
+    fn entries_for_all_users_need_administrator_rights_and_packages_stay() {
+        // Never there, so nothing is deleted either way: without the rights
+        // the key does not open, with them the value is not found.
+        let result = delete(&format!("hklmRun|{}", unique("Argus missing ")));
+        if crate::privilege::is_elevated() {
+            assert!(matches!(result, Err(ActionError::NotFound)));
+        } else {
+            assert!(matches!(result, Err(ActionError::AccessDenied)));
+        }
+        assert!(matches!(
+            delete("package|Some.App!Task"),
+            Err(ActionError::Refused)
+        ));
+        assert!(matches!(
+            delete("elsewhere|name"),
+            Err(ActionError::NotFound)
+        ));
+        assert!(matches!(delete("no separator"), Err(ActionError::NotFound)));
+    }
+
+    /// A folder of the test's own with a file in it, taken apart afterwards
+    /// whatever its permissions became.
+    struct Folder(std::path::PathBuf);
+
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = std::process::Command::new("icacls")
+                .arg(&self.0)
+                .args(["/reset", "/t", "/q"])
+                .output();
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn folder_with(file: &str) -> Folder {
+        let folder = std::env::temp_dir().join(unique("argus-startup-"));
+        std::fs::create_dir(&folder).unwrap();
+        std::fs::write(folder.join(file), "test").unwrap();
+        Folder(folder)
+    }
+
+    #[test]
+    fn a_startup_file_goes_and_only_by_its_own_name() {
+        let folder = folder_with("Test app.lnk");
+        for name in ["", ".", "..", r"..\Test app.lnk", "a/b", "C:x", "x\0y"] {
+            assert!(matches!(
+                remove_file(&folder.0, name, false),
+                Err(ActionError::Refused)
+            ));
+        }
+        assert!(matches!(
+            remove_file(&folder.0, "Other.lnk", false),
+            Err(ActionError::NotFound)
+        ));
+        remove_file(&folder.0, "Test app.lnk", false).expect("deleted");
+        assert!(!folder.0.join("Test app.lnk").exists());
+    }
+
+    /// A file nobody may delete is refused as access denied, with no window
+    /// shown to ask.
+    #[test]
+    fn a_startup_file_without_the_rights_is_access_denied() {
+        let folder = folder_with("Locked.lnk");
+        // Everyone (S-1-1-0) is denied deleting the file and the folder's
+        // children.
+        for (path, right) in [
+            (folder.0.join("Locked.lnk"), "*S-1-1-0:(D)"),
+            (folder.0.clone(), "*S-1-1-0:(DC)"),
+        ] {
+            let status = std::process::Command::new("icacls")
+                .arg(&path)
+                .args(["/deny", right, "/q"])
+                .status()
+                .expect("icacls");
+            assert!(status.success());
+        }
+        assert!(matches!(
+            remove_file(&folder.0, "Locked.lnk", true),
+            Err(ActionError::AccessDenied)
+        ));
+        assert!(folder.0.join("Locked.lnk").exists());
+    }
+
+    /// A file deleted goes to the Recycle Bin. On demand only, as it passes
+    /// through the account's Recycle Bin: the entry it leaves there, found
+    /// by the folder's unique name, is removed afterwards.
+    #[test]
+    #[ignore = "uses the account's Recycle Bin"]
+    fn a_startup_file_goes_to_the_recycle_bin() {
+        let folder = folder_with("Recycled.lnk");
+        remove_file(&folder.0, "Recycled.lnk", true).expect("recycled");
+        assert!(!folder.0.join("Recycled.lnk").exists());
+
+        // `$I…` records the original path (UTF-16) of the `$R…` beside it.
+        let mark = folder.0.file_name().unwrap().to_string_lossy().into_owned();
+        let mark = mark
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>();
+        let drive = folder.0.components().next().unwrap().as_os_str().to_owned();
+        let bin = std::path::PathBuf::from(format!(r"{}\$Recycle.Bin", drive.to_string_lossy()));
+        let mut found = 0;
+        for account in std::fs::read_dir(&bin).unwrap().flatten() {
+            let Ok(entries) = std::fs::read_dir(account.path()) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Some(rest) = name.strip_prefix("$I") else {
+                    continue;
+                };
+                let record = std::fs::read(entry.path()).unwrap_or_default();
+                if record.windows(mark.len()).any(|window| window == mark) {
+                    std::fs::remove_file(entry.path()).unwrap();
+                    std::fs::remove_file(account.path().join(format!("$R{rest}"))).unwrap();
+                    found += 1;
+                }
+            }
+        }
+        assert_eq!(found, 1, "the file is in the Recycle Bin, once");
     }
 }

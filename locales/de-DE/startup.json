@@ -10,6 +10,19 @@
   "menu": {
     "copyCommand": "Befehl kopieren"
   },
+  "delete": {
+    "title": "Autostart-App {name} löschen?",
+    "registry": "„{entry}“ wird aus {location} entfernt. Dies kann nicht rückgängig gemacht werden; das Programm selbst bleibt erhalten.",
+    "file": "„{entry}“ in {location} wird in den Papierkorb verschoben; das Programm selbst bleibt erhalten.",
+    "done": "Autostart-App {name} wurde gelöscht.",
+    "error": {
+      "accessDenied": "Zugriff verweigert: Autostart-App {name} konnte nicht gelöscht werden. Elemente für alle Benutzer erfordern, dass Argus als Administrator ausgeführt wird; andere Elemente sind möglicherweise durch Datei- oder Registry-Berechtigungen geschützt.",
+      "notFound": "Autostart-App {name} ist nicht mehr vorhanden; sie wurde möglicherweise bereits gelöscht.",
+      "refused": "Autostart-App {name} kann nicht gelöscht werden. Starttasks von App-Paketen können nur deaktiviert werden.",
+      "generic": "Autostart-App {name} konnte nicht gelöscht werden: {error}"
+    },
+    "disableOnly": "Nur deaktivierbar"
+  },
   "copied": {
     "command": "Befehl"
   },

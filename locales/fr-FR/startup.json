@@ -10,6 +10,19 @@
   "menu": {
     "copyCommand": "Copier la commande"
   },
+  "delete": {
+    "title": "Supprimer l’application de démarrage {name} ?",
+    "registry": "« {entry} » sera supprimé de {location}. Cette action est irréversible ; le programme lui-même est conservé.",
+    "file": "« {entry} » dans {location} sera placé dans la Corbeille ; le programme lui-même est conservé.",
+    "done": "L’application de démarrage {name} a été supprimée.",
+    "error": {
+      "accessDenied": "Accès refusé : impossible de supprimer l’application de démarrage {name}. Les éléments destinés à tous les utilisateurs nécessitent d’exécuter Argus en tant qu’administrateur ; les autres peuvent être protégés par des autorisations de fichier ou de registre.",
+      "notFound": "L’application de démarrage {name} n’existe plus ; elle a peut-être déjà été supprimée.",
+      "refused": "L’application de démarrage {name} ne peut pas être supprimée. Les tâches de démarrage des packages d’application peuvent seulement être désactivées.",
+      "generic": "Impossible de supprimer l’application de démarrage {name} : {error}"
+    },
+    "disableOnly": "Désactivation uniquement"
+  },
   "copied": {
     "command": "commande"
   },

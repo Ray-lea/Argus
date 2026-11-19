@@ -32,6 +32,21 @@
     "startType": "Starttyp: {type}",
     "copyName": "Dienstnamen kopieren"
   },
+  "delete": {
+    "title": "Dienst {name} löschen?",
+    "body": "Der Dienst {service} und seine Einstellungen werden entfernt. Dies kann nicht rückgängig gemacht werden; die Programmdateien des Dienstes bleiben erhalten.",
+    "running": "Der Dienst ist noch nicht beendet; Windows entfernt ihn, sobald er beendet ist.",
+    "system": "Der Dienst führt ein Programm im Windows-Ordner aus und gehört möglicherweise zu Windows. Wenn Sie ihn löschen, funktionieren zugehörige Funktionen eventuell nicht mehr oder Windows startet nicht mehr.",
+    "done": "Dienst {name} wurde gelöscht.",
+    "pending": "Dienst {name} ist zum Löschen markiert. Windows entfernt ihn, sobald er beendet ist und kein anderes Programm ihn mehr verwendet.",
+    "error": {
+      "accessDenied": "Zugriff verweigert: Dienst {name} konnte nicht gelöscht werden. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus; geschützte Dienste bleiben möglicherweise unerreichbar.",
+      "notFound": "Dienst {name} ist nicht vorhanden; er wurde möglicherweise bereits gelöscht.",
+      "refused": "Dienst {name} kann nicht gelöscht werden.",
+      "serviceOutdated": "Zugriff verweigert: Dienst {name} konnte nicht gelöscht werden. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+      "generic": "Dienst {name} konnte nicht gelöscht werden: {error}"
+    }
+  },
   "copied": {
     "name": "Dienstname"
   },

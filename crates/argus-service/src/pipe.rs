@@ -1022,6 +1022,29 @@ pub(crate) mod tests {
         );
     }
 
+    /// Deleting a service goes through the pipe and says why it could not:
+    /// one not there, or Argus's own service, refused before anything runs.
+    #[test]
+    fn routes_service_deletion_with_its_reason() {
+        let server = TestServer::new(security::current_sid().unwrap());
+        assert!(matches!(
+            server
+                .call(Operation::DeleteService {
+                    name: format!("ArgusMissing{}", std::process::id())
+                })
+                .unwrap(),
+            Reply::Error(argus_core::actions::ActionError::NotFound)
+        ));
+        assert!(matches!(
+            server
+                .call(Operation::DeleteService {
+                    name: crate::SERVICE_NAME.into()
+                })
+                .unwrap(),
+            Reply::Error(argus_core::actions::ActionError::Refused)
+        ));
+    }
+
     #[test]
     fn routes_process_operations_and_rejects_stale_creation_time() {
         use windows::Win32::System::Threading::{GetPriorityClass, IDLE_PRIORITY_CLASS};
