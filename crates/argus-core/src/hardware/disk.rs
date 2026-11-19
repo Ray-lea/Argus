@@ -22,6 +22,7 @@ use windows::Win32::System::Ioctl::{
     STORAGE_TEMPERATURE_DATA_DESCRIPTOR, StorageDeviceProperty, StorageDeviceSeekPenaltyProperty,
     StorageDeviceTemperatureProperty, VOLUME_DISK_EXTENTS,
 };
+use windows::Win32::System::Power::GetDevicePowerState;
 use windows::core::PCWSTR;
 
 use crate::util::{AlignedBuf, wide};
@@ -117,6 +118,8 @@ struct Disk {
     temperature: Option<(f32, Option<f32>)>,
     temperature_at: Option<Instant>,
     temperature_supported: bool,
+    /// Read and write counts at the last temperature query; None before one.
+    temperature_transfers: Option<(u32, u32)>,
 }
 
 impl Disk {
@@ -132,6 +135,7 @@ impl Disk {
             fallback_reported: false,
             temperature: None,
             temperature_at: None,
+            temperature_transfers: None,
         }
     }
 
@@ -160,6 +164,22 @@ impl Disk {
         read: impl FnOnce(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
         temperature: impl FnOnce(HANDLE) -> Option<(f32, Option<f32>)>,
     ) -> Option<DISK_PERFORMANCE> {
+        self.sample_with_power(read, temperature, working)
+    }
+
+    /// The temperature query is the only request here that reaches the
+    /// miniport driver and the drive itself. Like any command sent to a drive,
+    /// it starts one that has powered down and counts as activity towards the
+    /// idle time after which Windows turns a hard disk off. A drive that is
+    /// not in its working state is therefore not asked, and a hard disk is
+    /// asked only after transfers that others caused: an idle one keeps its
+    /// last reading and can spin down.
+    fn sample_with_power(
+        &mut self,
+        read: impl FnOnce(HANDLE) -> Result<DISK_PERFORMANCE, u32>,
+        temperature: impl FnOnce(HANDLE) -> Option<(f32, Option<f32>)>,
+        working: impl FnOnce(HANDLE) -> bool,
+    ) -> Option<DISK_PERFORMANCE> {
         let handle = self.handle.as_ref()?;
         let result = handle.read(|raw, generation| {
             if self.generation != generation {
@@ -167,27 +187,40 @@ impl Disk {
                 self.prev = None;
                 self.fallback.clear();
                 self.temperature_at = None;
+                self.temperature_transfers = None;
                 // Field by field: the closure must not borrow all of `self`.
                 self.temperature_supported =
                     temperature_query_allowed(self.info.bus, self.controller.as_deref());
             }
+            // The counters come from the partition manager, not the drive.
+            let now = read(raw);
             if self.temperature_supported
                 && self
                     .temperature_at
                     .is_none_or(|t| t.elapsed() > TEMPERATURE_EVERY)
             {
-                // The only request here that reaches the miniport driver:
-                // leave a durable record before it when startup is traced.
-                self.temperature = crate::diagnostics::startup_query(
-                    "hardware.disk-temperature",
-                    u64::from(self.info.index),
-                    0,
-                    || temperature(raw),
-                );
-                self.temperature_supported = self.temperature.is_some();
                 self.temperature_at = Some(Instant::now());
+                let transfers = now.as_ref().ok().map(|p| (p.ReadCount, p.WriteCount));
+                if !working(raw) {
+                    self.temperature = None;
+                    // Awake again, it is asked once whatever woke it.
+                    self.temperature_transfers = None;
+                } else if self.info.ssd != Some(false)
+                    || transfers.is_none()
+                    || transfers != self.temperature_transfers
+                {
+                    // Leave a durable record before it when startup is traced.
+                    self.temperature = crate::diagnostics::startup_query(
+                        "hardware.disk-temperature",
+                        u64::from(self.info.index),
+                        0,
+                        || temperature(raw),
+                    );
+                    self.temperature_supported = self.temperature.is_some();
+                    self.temperature_transfers = transfers;
+                }
             }
-            read(raw)
+            now
         });
         match result {
             Ok(now) => Some(now),
@@ -563,6 +596,14 @@ fn query_property(
         return Err(13);
     }
     Ok((buf, returned))
+}
+
+/// Whether the drive is in its working state (D0), as the power manager
+/// records it; no request is sent to the drive. An unknown state counts as
+/// working.
+fn working(handle: HANDLE) -> bool {
+    let mut on = windows::core::BOOL(1);
+    !unsafe { GetDevicePowerState(handle, &mut on) }.as_bool() || on.as_bool()
 }
 
 /// The drive's composite temperature and warning threshold (°C).

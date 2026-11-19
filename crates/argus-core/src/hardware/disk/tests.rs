@@ -48,6 +48,7 @@ fn disk(index: u32) -> Disk {
         temperature: Some((37., None)),
         temperature_at: None,
         temperature_supported: true,
+        temperature_transfers: None,
     }
 }
 pub(super) fn counters(second: i64, bytes: i64) -> DISK_PERFORMANCE {
@@ -404,6 +405,108 @@ fn a_declining_nvme_disk_is_asked_again_only_after_a_rescan_or_reopen() {
     );
     assert_eq!(asked, 3);
     assert_eq!(d.temperature, Some((42., None)));
+}
+
+/// A disk on the inbox AHCI driver; `ssd` false makes it a hard disk.
+fn sata_disk(file: &FileFixture, ssd: bool) -> Disk {
+    let mut info = (*disk(0).info).clone();
+    info.bus = "sata";
+    info.ssd = Some(ssd);
+    Disk::new(
+        Some(DeviceHandle::fixture(&file.path)),
+        info,
+        Some("storahci".into()),
+    )
+}
+
+/// One sample whose temperature query is due; counts the queries sent.
+fn sample_power(
+    d: &mut Disk,
+    asked: &std::cell::Cell<u32>,
+    read: Result<DISK_PERFORMANCE, u32>,
+    working: bool,
+) {
+    d.temperature_at = None;
+    d.sample_with_power(
+        |_| read,
+        |_| {
+            asked.set(asked.get() + 1);
+            Some((30. + asked.get() as f32, None))
+        },
+        |_| working,
+    );
+}
+
+#[test]
+fn a_powered_down_disk_is_not_asked_and_is_asked_once_after_it_wakes() {
+    for ssd in [false, true] {
+        let file = FileFixture::new();
+        let mut d = sata_disk(&file, ssd);
+        let asked = std::cell::Cell::new(0);
+        sample_power(&mut d, &asked, Ok(counters(1, 100)), true);
+        assert_eq!((asked.get(), d.temperature), (1, Some((31., None))));
+        // Powered down: no query, and no reading of a drive that is off.
+        for _ in 0..3 {
+            sample_power(&mut d, &asked, Ok(counters(1, 100)), false);
+            assert_eq!((asked.get(), d.temperature), (1, None));
+            assert!(d.temperature_supported);
+        }
+        // Awake without a transfer counted, as after another tool's query.
+        sample_power(&mut d, &asked, Ok(counters(1, 100)), true);
+        assert_eq!((asked.get(), d.temperature), (2, Some((32., None))));
+    }
+}
+
+#[test]
+fn an_idle_hard_disk_keeps_its_reading_and_is_asked_after_transfers() {
+    let file = FileFixture::new();
+    let mut d = sata_disk(&file, false);
+    let asked = std::cell::Cell::new(0);
+    sample_power(&mut d, &asked, Ok(counters(1, 100)), true);
+    for _ in 0..3 {
+        sample_power(&mut d, &asked, Ok(counters(1, 100)), true);
+        assert_eq!((asked.get(), d.temperature), (1, Some((31., None))));
+    }
+    sample_power(&mut d, &asked, Ok(counters(2, 300)), true);
+    assert_eq!((asked.get(), d.temperature), (2, Some((32., None))));
+    // Without counters there is no telling: asked as before.
+    sample_power(&mut d, &asked, Err(1), true);
+    sample_power(&mut d, &asked, Err(1), true);
+    assert_eq!(asked.get(), 4);
+
+    // An SSD has no idle time to protect.
+    let file = FileFixture::new();
+    let mut d = sata_disk(&file, true);
+    let asked = std::cell::Cell::new(0);
+    for _ in 0..3 {
+        sample_power(&mut d, &asked, Ok(counters(1, 100)), true);
+    }
+    assert_eq!(asked.get(), 3);
+}
+
+#[test]
+#[ignore = "read-only power state of the physical disks; sends nothing to a drive"]
+fn live_power_state() {
+    use windows::Win32::System::Power::GetDevicePowerState;
+    let tracker = DiskTracker::new();
+    for disk in &tracker.disks {
+        let Some(handle) = &disk.handle else { continue };
+        let report = handle.read(|raw, _| {
+            let mut on = windows::core::BOOL(0);
+            let started = Instant::now();
+            let rounds = 1000;
+            let mut answered = false;
+            for _ in 0..rounds {
+                answered = unsafe { GetDevicePowerState(raw, &mut on) }.as_bool();
+            }
+            Ok(
+                serde_json::json!({"disk": disk.info.index, "bus": disk.info.bus,
+                "answered": answered, "on": on.as_bool(), "working": working(raw),
+                "queryMicros": started.elapsed().as_secs_f64() * 1e6 / f64::from(rounds)}),
+            )
+        });
+        println!("{report:?}");
+    }
 }
 
 #[test]

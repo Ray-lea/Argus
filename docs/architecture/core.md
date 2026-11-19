@@ -73,7 +73,7 @@
 | `sensors.rs` | 合并 CPU 频率读数，使用 PDH 采集 ACPI 温度、空闲驻留时间和功耗。PCW 与 PDH 查询独立。已启用内核传感器时，可用物理核心时钟补齐对应线程。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
-| `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间。温度只向由 `stornvme`、`storahci`、`atapi` 管理的 NVMe、SATA 与 ATA 磁盘查询，驱动名由 `disk/controller.rs` 取自 PnP 设备树 |
+| `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间。温度只向由 `stornvme`、`storahci`、`atapi` 管理的 NVMe、SATA 与 ATA 磁盘查询，驱动名由 `disk/controller.rs` 取自 PnP 设备树。温度查询是周期采样中唯一到达磁盘本身的请求：`GetDevicePowerState` 报告磁盘不在工作状态时不发送并清除读数，恢复工作后查询一次；机械硬盘只在 `IOCTL_DISK_PERFORMANCE` 的读写次数较上次查询有变化时发送，空闲时保留上次读数 |
 | `disk/access.rs` | 缓存句柄注册 PnP 移除通知；在弹出请求中关闭句柄、暂停访问，取消弹出后重新打开并变更采样代次；通知不可用时使用查询期间的临时句柄 |
 | `disk/volumes.rs` | 物理计数接口不支持时读取卷层计数；在同一卷句柄上验证磁盘归属，按提供者与设备编号去重并独立维护基线，单卷提供活动时间，多卷合计速率与加权响应时间 |
 | `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询：基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路、Windows 故障预测；现有特权服务补充 ATA／SAT 身份与 SMART 属性、SCSI 健康日志。只由前端明确请求触发，结果与周期采样分离 |
