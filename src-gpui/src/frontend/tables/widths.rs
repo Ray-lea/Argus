@@ -11,6 +11,12 @@
 //! ellipsis, and widens toward what every row needs while the table has room
 //! to spare (`allocate`). No column stretches to fill the table: what is left
 //! stays empty on the right.
+//!
+//! The service and startup lists measure their columns the same way over the
+//! whole list as loaded (`AutoWidths::apply_list`), but their last column,
+//! the description or command, takes whatever room the others leave
+//! (`fill`): the table always spans its width, and a column dragged
+//! narrower gives its room to that last column.
 use super::*;
 use std::ops::Range;
 use std::sync::Weak;
@@ -33,6 +39,8 @@ enum Role {
     Cell,
     Heading,
     Badge,
+    /// A command or path in the monospaced family, in the small size.
+    Mono,
 }
 
 /// A column's widths before the table's room is shared out.
@@ -334,6 +342,157 @@ pub(super) fn allocate(columns: &[Natural], room: f32) -> Vec<f32> {
         .collect()
 }
 
+/// How a column of a service or startup list takes part in sharing the
+/// table's room (`fill`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Share {
+    /// A width of its own: a column of a few labels, or one dragged to a width.
+    Fixed(f32),
+    /// Text: what most rows need, down to `min` while the last column would
+    /// be narrower than its share of the room, up to what every row needs
+    /// while the last column has more than its longest value needs. A
+    /// width `set` by dragging gives way only when the last column would be
+    /// narrower than its minimum.
+    Text {
+        natural: Natural,
+        min: f32,
+        set: bool,
+    },
+    /// The last column: the room the others leave, at least `min`. `full`
+    /// is what its longest value needs.
+    Fill { full: f32, min: f32 },
+}
+
+/// The share of the room a list's last column keeps before the text beside
+/// it is cut short, unless its longest value needs less: the description or
+/// command is what the list has most of to show.
+const FILL_SHARE: f32 = 1. / 3.;
+
+/// A list's widths for `room`, and how much wider each column can be
+/// dragged: as far as the last column and the other text columns can give
+/// way, so that the columns still span the room and nothing is pushed out
+/// of the table.
+///
+/// The last column takes the room the others leave. When that is less than
+/// its share of the room (`FILL_SHARE`), the text columns narrow toward
+/// their minimums, each by its share of what they can give up; when it is
+/// less than the last column's minimum, the widths set by dragging give way
+/// too; past that the columns overflow the room. When the last column has
+/// more than its longest value needs, the text columns widen toward what
+/// all of their rows need, and the last column keeps the rest. Widths are
+/// whole pixels.
+pub(super) fn fill(columns: &[Share], room: f32) -> (Vec<f32>, Vec<f32>) {
+    let mut widths: Vec<f32> = columns
+        .iter()
+        .map(|column| match *column {
+            Share::Fixed(width) => width,
+            Share::Text { natural, .. } => natural.typical,
+            Share::Fill { .. } => 0.,
+        })
+        .collect();
+    let Some((last, full, minimum)) =
+        columns
+            .iter()
+            .enumerate()
+            .find_map(|(index, column)| match *column {
+                Share::Fill { full, min } => Some((index, full, min)),
+                _ => None,
+            })
+    else {
+        return (
+            widths.iter().map(|width| width.floor()).collect(),
+            vec![0.; columns.len()],
+        );
+    };
+    let texts = || {
+        columns
+            .iter()
+            .enumerate()
+            .filter_map(|(index, column)| match *column {
+                Share::Text { natural, min, set } => Some((index, natural, min, set)),
+                _ => None,
+            })
+    };
+    // Narrows the text columns (those set by dragging only when `set`) for
+    // the last column to have `target`, each by its share of what they can
+    // give up.
+    let narrow = |widths: &mut Vec<f32>, target: f32, set: bool| {
+        let rest = room - widths.iter().sum::<f32>();
+        let spare: f32 = texts()
+            .filter(|column| set || !column.3)
+            .map(|(index, _, min, _)| (widths[index] - min).max(0.))
+            .sum();
+        if rest < target && spare > 0. {
+            let take = ((target - rest) / spare).min(1.);
+            for (index, _, min, _) in texts().filter(|column| set || !column.3) {
+                widths[index] -= (widths[index] - min).max(0.) * take;
+            }
+        }
+    };
+    let rest = room - widths.iter().sum::<f32>();
+    if rest > full {
+        let wanted: f32 = texts()
+            .map(|(_, natural, _, _)| (natural.full - natural.typical).max(0.))
+            .sum();
+        if wanted > 0. {
+            let share = ((rest - full) / wanted).min(1.);
+            for (index, natural, _, _) in texts() {
+                widths[index] = natural.typical + (natural.full - natural.typical).max(0.) * share;
+            }
+        }
+    } else {
+        narrow(
+            &mut widths,
+            (room * FILL_SHARE).min(full).max(minimum),
+            false,
+        );
+        narrow(&mut widths, minimum, true);
+    }
+    for (index, width) in widths.iter_mut().enumerate() {
+        if index != last {
+            *width = width.floor();
+        }
+    }
+    let others: f32 = widths.iter().sum();
+    widths[last] = (room - others).floor().max(minimum);
+    // What each column can be dragged wider by: the last column down to its
+    // minimum, then the other text columns down to theirs.
+    let yield_last = widths[last] - minimum;
+    let yields: Vec<f32> = columns
+        .iter()
+        .zip(&widths)
+        .map(|(column, width)| match *column {
+            Share::Text { min, .. } => (width - min).max(0.),
+            _ => 0.,
+        })
+        .collect();
+    let total: f32 = yields.iter().sum();
+    let reach = yields
+        .iter()
+        .enumerate()
+        .map(|(index, own)| {
+            if index == last {
+                0.
+            } else {
+                yield_last + total - own
+            }
+        })
+        .collect();
+    (widths, reach)
+}
+
+/// What a list column's header takes besides its label: the sort arrow, the
+/// cell's padding, the table's inset at its right (`HEADER_INSET`) and a
+/// filter's button in place of the right padding.
+pub(super) fn header_extra(page: &str, key: &str) -> f32 {
+    let right = if column_filter(page, key).is_some() {
+        FILTER_BUTTON + 4.
+    } else {
+        CELL_PADDING
+    };
+    CELL_PADDING + SORT_ARROW + HEADER_INSET + right
+}
+
 impl AutoWidths {
     /// Measures every column anew (another text size or language).
     pub fn reset(&mut self) {
@@ -367,10 +526,13 @@ impl AutoWidths {
             Role::Cell => 13.,
             Role::Heading => 14.,
             Role::Badge => 11.,
+            Role::Mono => 12.,
         });
         let mut run = theme::text_run(&text, theme::LABEL_WEIGHT, cx);
         if role == Role::Total {
             run.font.family = theme::display_font(cx);
+        } else if role == Role::Mono {
+            run.font.family = theme::mono_font(cx);
         }
         let width = f32::from(system.layout_line(&text, size, &[run], None).width).ceil();
         if self.measured.len() >= 4096 {
@@ -641,11 +803,101 @@ impl AutoWidths {
             self.natural.insert(field.key, natural);
         }
     }
+
+    /// What a service or startup entry's name cell takes, laid out as
+    /// `NativeTable::name_cell` draws it: a startup entry's icon before the
+    /// name, and its mark for a missing file after it.
+    fn entry_name_width(
+        &mut self,
+        page: &str,
+        entry: &Value,
+        system: &gpui_kit::gpui::WindowTextSystem,
+        cx: &App,
+    ) -> f32 {
+        const GAP: f32 = 8.;
+        let title = super::text(
+            entry,
+            if page == "services" {
+                "displayName"
+            } else {
+                "name"
+            },
+        );
+        let mut width = CELL_PADDING * 2. + self.measure(title, Role::Cell, system, cx);
+        if page == "startup" {
+            width += 16. + GAP;
+            if !boolean(entry, "exists") && !entry["path"].is_null() {
+                // The mark's padding and border.
+                let mark = label("startup.missing.label");
+                width += GAP + self.measure(&mark, Role::Badge, system, cx) + 14.;
+            }
+        }
+        width
+    }
+
+    /// Measures the columns of a service or startup list over `entries`, the
+    /// list as loaded (nothing searched or filtered, so that neither changes
+    /// the widths), keeping each one's widths in `natural`. Names and other
+    /// free text take what most rows need (`Natural::typical`); labels and
+    /// figures what every row needs; the last column (`Track::Fill`) records
+    /// what its longest value needs.
+    pub fn apply_list(&mut self, page: &str, fields: &[Field], entries: &[Value], cx: &App) {
+        self.epoch = self.epoch.wrapping_add(1);
+        let system = gpui_kit::gpui::WindowTextSystem::new(cx.text_system().clone());
+        for field in fields {
+            let (minimum, limit) = match field.track {
+                Track::Fit(minimum, limit) => (minimum, limit),
+                Track::Fill(minimum) => (minimum, f32::INFINITY),
+                Track::Fixed(_) | Track::Flex(..) => continue,
+            };
+            let header = self.measure(&field.label, Role::Label, &system, cx)
+                + header_extra(page, field.key);
+            let widths = entries
+                .iter()
+                .map(|entry| {
+                    if field.kind == CellKind::Name {
+                        return self.entry_name_width(page, entry, &system, cx);
+                    }
+                    let shown = entry_cell(entry, field);
+                    let (shown, role) = match field.kind {
+                        CellKind::Mono | CellKind::MonoDim => (shown, Role::Mono),
+                        kind if numeric(kind) || kind == CellKind::ServicePid => {
+                            (figures(&shown), Role::Cell)
+                        }
+                        _ => (shown, Role::Cell),
+                    };
+                    self.measure(&shown, role, &system, cx) + CELL_PADDING * 2.
+                })
+                .collect::<Vec<_>>();
+            let all = widths.iter().copied().fold(0., f32::max);
+            let floor = header.max(minimum);
+            let ceiling = limit.max(header);
+            let current = self.natural.get(field.key).copied();
+            let natural = match field.track {
+                Track::Fill(_) => Natural::fixed(all.max(floor).ceil()),
+                // A few much longer names or descriptions are cut short.
+                _ if matches!(field.kind, CellKind::Name | CellKind::Dim) => {
+                    let typical = stepped(typical(widths).clamp(floor, ceiling));
+                    let all = stepped(all.clamp(floor, ceiling)).max(typical);
+                    let typical = settled(current.map(|natural| natural.typical), typical);
+                    Natural {
+                        typical,
+                        full: settled(current.map(|natural| natural.full), all).max(typical),
+                    }
+                }
+                _ => Natural::fixed(settled(
+                    current.map(|natural| natural.full),
+                    stepped(all.clamp(floor, ceiling)),
+                )),
+            };
+            self.natural.insert(field.key, natural);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Natural, allocate, figures, settled, stepped, typical};
+    use super::{Natural, Share, allocate, figures, fill, settled, stepped, typical};
 
     #[test]
     fn figures_measure_alike_and_widths_grow_in_steps() {
@@ -702,5 +954,79 @@ mod tests {
         assert_eq!(allocate(&columns, 564.), [250., 64., 250.]);
         // More than enough: no wider than every row needs, the rest left empty.
         assert_eq!(allocate(&columns, 2000.), [300., 64., 400.]);
+    }
+
+    #[test]
+    fn the_last_list_column_takes_the_room_the_others_leave() {
+        let name = Share::Text {
+            natural: Natural {
+                typical: 240.,
+                full: 320.,
+            },
+            min: 160.,
+            set: false,
+        };
+        let key = Share::Text {
+            natural: Natural {
+                typical: 160.,
+                full: 200.,
+            },
+            min: 100.,
+            set: false,
+        };
+        let columns = [
+            name,
+            key,
+            Share::Fixed(90.),
+            Share::Fill {
+                full: 900.,
+                min: 240.,
+            },
+        ];
+        // The others as most rows need them, the description the rest; it
+        // can give way down to its minimum, the text columns to theirs.
+        let (widths, reach) = fill(&columns, 1200.);
+        assert_eq!(widths, [240., 160., 90., 710.]);
+        assert_eq!(reach, [470. + 60., 470. + 80., 470. + 140., 0.]);
+        // A column dragged narrower gives its room to the last column only.
+        let dragged = [Share::Fixed(180.), key, Share::Fixed(90.), columns[3]];
+        assert_eq!(fill(&dragged, 1200.).0, [180., 160., 90., 770.]);
+        // Short of room: the text columns narrow, each by its share of what
+        // it can give up, for the last column to keep its share of the
+        // room, and to its minimum before the columns overflow.
+        let wide = |typical: f32, min: f32| Share::Text {
+            natural: Natural {
+                typical,
+                full: typical,
+            },
+            min,
+            set: false,
+        };
+        let long = [
+            wide(500., 160.),
+            wide(300., 100.),
+            Share::Fixed(90.),
+            columns[3],
+        ];
+        assert_eq!(fill(&long, 1200.).0, [443., 266., 90., 401.]);
+        let (widths, _) = fill(&columns, 640.);
+        assert_eq!(widths, [188., 121., 90., 241.]);
+        let (widths, _) = fill(&columns, 500.);
+        assert_eq!(widths, [160., 100., 90., 240.]);
+        // More than the last column needs: the text columns widen toward
+        // what every row needs, the last column keeps the rest.
+        let (widths, _) = fill(&columns, 1600.);
+        assert_eq!(widths, [320., 200., 90., 990.]);
+        let (widths, _) = fill(&columns, 1500.);
+        assert_eq!(widths, [313., 196., 90., 901.]);
+        // A width set by dragging gives way only for the last column's minimum.
+        let set = Share::Text {
+            natural: Natural::fixed(300.),
+            min: 160.,
+            set: true,
+        };
+        let columns = [set, key, Share::Fixed(90.), columns[3]];
+        assert_eq!(fill(&columns, 800.).0, [300., 143., 90., 267.]);
+        assert_eq!(fill(&columns, 700.).0, [270., 100., 90., 240.]);
     }
 }

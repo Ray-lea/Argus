@@ -113,6 +113,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`column-widths.json`](../../tools/window-probe/steps/column-widths.json) 检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。[`column-widths-stable.json`](../../tools/window-probe/steps/column-widths-stable.json) 在进程树中折叠、展开分支和搜索，检查各列宽度保持不变。
 
+[`list-columns.json`](../../tools/window-probe/steps/list-columns.json) 用 `data` 控制换上一组服务，检查服务页与启动页的列宽：宽窗口与窄窗口下最后一列取剩余宽度、不出现横向滚动，搜索不改变列宽；拖动启动页名称列的边界时命令列随之伸缩，松开后宽度存入 `tableWidths.startup`，把发布者列拖到最宽时命令列停在最小宽度，窗口变窄时拖动过的列让出宽度，双击列边界恢复；另截取 125% 与 150% 界面缩放。在服务页或启动页上，`inspect columns` 输出当前页的列（`page`、`listWidths`，各列的 `maxWidth` 为可拖到的最大宽度），其他页面仍输出进程列。
+
 [`process-order-held.json`](../../tools/window-probe/steps/process-order-held.json) 检查指针悬停时进程表的排序暂停：指针停在列表上时用 `sample` 改变 CPU 读数，行序保持不变；随后双击展开、折叠，以及单击展开按钮，展开的行跟在所属条目之后，其余行不移动；指针移出列表后恢复排序；关闭 `holdOrderOnHover` 偏好后悬停不再保持行序。`inspectLayout.processTree` 的 `titles` 为各行标题，`heldOrder` 表示当前行序与排序结果不同。
 
 [`status-rate.json`](../../tools/window-probe/steps/status-rate.json) 检查状态栏的刷新控件：单击刷新状态打开频率菜单，再次单击收起，1 秒后再单击重新打开；单击右端按钮暂停、继续刷新。暂停按钮以窗口内坐标单击（1400×900 窗口、100% 缩放），用截图核对按钮位置在两种状态下相同。

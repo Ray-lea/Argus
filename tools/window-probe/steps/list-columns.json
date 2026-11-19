@@ -1,0 +1,59 @@
+{
+  "window": [1600, 900],
+  "steps": [
+    { "note": "Services: the columns take what their contents need, the description the rest; no empty room on the right, no sideways scrolling." },
+    {"control":{"page":"services","motion":"off","pointerOutside":true,"data":{"services":[
+      {"name":"AppXSvc","displayName":"AppX Deployment Service (AppXSVC)","description":"Provides infrastructure support for deploying Store applications. This service is started on demand and if disabled Store applications will not be deployed to the system, and may not function properly.","state":"running","startType":"manual","pid":11620,"path":"C:\\WINDOWS\\system32\\svchost.exe -k wsappx -p","account":"LocalSystem","canStop":true,"shared":true},
+      {"name":"BFE","displayName":"Base Filtering Engine","description":"The Base Filtering Engine (BFE) is a service that manages firewall and Internet Protocol security (IPsec) policies and implements user mode filtering.","state":"running","startType":"auto","pid":4628,"path":"C:\\WINDOWS\\system32\\svchost.exe -k LocalServiceNoNetworkFirewall -p","account":"LocalService","canStop":false,"shared":true},
+      {"name":"BITS","displayName":"Background Intelligent Transfer Service","description":"Transfers files in the background using idle network bandwidth.","state":"stopped","startType":"manual","pid":0,"path":"C:\\WINDOWS\\System32\\svchost.exe -k netsvcs -p","account":"LocalSystem","canStop":false,"shared":true},
+      {"name":"BrokerInfrastructure","displayName":"Background Tasks Infrastructure Service","description":"Windows infrastructure service that controls which background tasks can run on the system.","state":"running","startType":"auto","pid":1700,"path":"C:\\WINDOWS\\system32\\svchost.exe -k DcomLaunch -p","account":"LocalSystem","canStop":false,"shared":true},
+      {"name":"DiagTrack","displayName":"Connected User Experiences and Telemetry","description":"The Connected User Experiences and Telemetry service enables features that support in-application and connected user experiences.","state":"running","startType":"auto","pid":5120,"path":"C:\\WINDOWS\\System32\\svchost.exe -k utcsvc -p","account":"LocalSystem","canStop":true,"shared":true},
+      {"name":"dmwappushservice","displayName":"Device Management Wireless Application Protocol (WAP) Push message Routing Service","description":"Routes Wireless Application Protocol (WAP) Push messages received by the device and synchronizes Device Management sessions.","state":"stopped","startType":"manual","pid":0,"path":"C:\\WINDOWS\\system32\\svchost.exe -k netsvcs -p","account":"LocalSystem","canStop":false,"shared":true},
+      {"name":"Dnscache","displayName":"DNS Client","description":"缓存 DNS 查询结果，并注册此计算机的完整名称。","state":"running","startType":"auto","pid":1785,"path":"C:\\WINDOWS\\system32\\svchost.exe -k NetworkService -p","account":"NetworkService","canStop":false,"shared":true},
+      {"name":"edgeupdate","displayName":"Microsoft Edge Update Service (edgeupdate)","description":"Keeps your Microsoft software up to date.","state":"stopped","startType":"autoDelayed","pid":0,"path":"\"C:\\Program Files (x86)\\Microsoft\\EdgeUpdate\\MicrosoftEdgeUpdate.exe\" /svc","account":"LocalSystem","canStop":false,"shared":false},
+      {"name":"EventLog","displayName":"Windows Event Log","description":"This service manages events and event logs.","state":"running","startType":"auto","pid":2412,"path":"C:\\WINDOWS\\System32\\svchost.exe -k LocalServiceNetworkRestricted -p","account":"LocalService","canStop":false,"shared":true},
+      {"name":"Spooler","displayName":"Print Spooler","description":"This service spools print jobs and handles interaction with the printer.","state":"running","startType":"auto","pid":2400,"path":"C:\\WINDOWS\\System32\\spoolsv.exe","account":"LocalSystem","canStop":true,"shared":false},
+      {"name":"tzautoupdate","displayName":"Auto Time Zone Updater","description":"Automatically sets the system time zone.","state":"stopped","startType":"disabled","pid":0,"path":"C:\\WINDOWS\\system32\\svchost.exe -k LocalService -p","account":"LocalService","canStop":false,"shared":true},
+      {"name":"WaaSMedicSvc","displayName":"Windows Update Medic Service","description":"Enables remediation and protection of Windows Update components.","state":"stopped","startType":"manual","pid":0,"path":"C:\\WINDOWS\\system32\\svchost.exe -k wusvcs -p","account":"LocalSystem","canStop":false,"shared":true},
+      {"name":"WinDefend","displayName":"Microsoft Defender Antivirus Service","description":"Helps protect users from malware and other potentially unwanted software.","state":"running","startType":"auto","pid":4100,"path":"\"C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\MsMpEng.exe\"","account":"LocalSystem","canStop":false,"shared":false},
+      {"name":"wuauserv","displayName":"Windows Update","description":"Enables the detection, download, and installation of updates for Windows and other programs.","state":"running","startType":"manual","pid":10480,"path":"C:\\WINDOWS\\system32\\svchost.exe -k netsvcs -p","account":"LocalSystem","canStop":true,"shared":true}
+    ]}},"wait":1000,"inspect":"columns","label":"services-wide","capture":"services-wide",
+      "expect":{"state.page":"services","state.scroll.maxX":0,"state.visible.5.key":"description","state.visible.5.resizable":false}},
+    { "probe": "size 1100 800", "wait": 1200, "inspect": "columns", "label": "services-narrow", "capture": "services-narrow", "expect": { "state.scroll.maxX": 0 } },
+    { "probe": "size 1600 900", "wait": 1200 },
+    { "control": { "query": "update" }, "wait": 800, "inspect": "columns", "label": "services-search", "capture": "services-search" },
+    { "control": { "query": "" }, "wait": 600 },
+
+    { "note": "Startup: drag the name column narrower; the command column follows the edge and keeps the room once it is let go." },
+    { "control": { "page": "startup", "pointerOutside": true }, "wait": 1200, "inspect": "columns", "label": "startup-wide", "capture": "startup-wide",
+      "expect": { "state.page": "startup", "state.scroll.maxX": 0, "state.visible.4.key": "command", "state.visible.4.resizable": false } },
+    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover", "passive": true } }, "wait": 1100, "capture": "edge-hint" },
+    { "record": { "name": "drag", "ms": 1400 }, "wait": 200 },
+    { "control": { "pointer": { "event": "down", "dx": 4 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": -30 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": -56 } }, "wait": 300, "inspect": "columns", "label": "startup-dragging", "capture": "startup-dragging",
+      "expect": { "state.visible.0.width": 132, "state.visible.4.width": 995 } },
+    { "control": { "pointer": { "event": "up", "dx": -56 } }, "wait": 800, "inspect": "columns", "label": "startup-narrowed", "capture": "startup-narrowed",
+      "expect": { "state.listWidths.name": 132, "state.visible.4.width": 995 } },
+    { "sheet": { "name": "drag-sheet", "from": "drag", "region": [0, 80, 1600, 120], "columns": 1, "every": 4 } },
+
+    { "note": "Drag the publisher column far right: it stops where the command column reaches its minimum." },
+    { "control": { "pointer": { "at": "header:publisher", "fraction": [1, 0.5], "dx": 4, "event": "down" } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": 300 } }, "wait": 120 },
+    { "control": { "pointer": { "event": "move", "dx": 1000 } }, "wait": 300 },
+    { "control": { "pointer": { "event": "up", "dx": 1000 } }, "wait": 800, "inspect": "columns", "label": "publisher-widest", "capture": "publisher-widest",
+      "expect": { "state.scroll.maxX": 0, "state.visible.4.width": 240 } },
+    { "probe": "size 1100 800", "wait": 1200, "inspect": "columns", "label": "startup-narrow", "capture": "startup-narrow", "expect": { "state.scroll.maxX": 0 } },
+    { "probe": "size 1600 900", "wait": 1200 },
+
+    { "note": "Double-click an edge: that column follows its contents again." },
+    { "control": { "pointer": { "at": "header:publisher", "fraction": [1, 0.5], "dx": 4, "event": "double" } }, "wait": 900 },
+    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "double" } }, "wait": 900, "inspect": "columns", "label": "restored",
+      "expect": { "state.listWidths": {} }, "capture": "restored" },
+
+    { "note": "Interface zoom: 125 % and 150 %." },
+    { "control": { "contentZoom": 1.25, "pointerOutside": true }, "wait": 1500, "inspect": "columns", "label": "startup-125", "capture": "startup-125", "expect": { "state.scroll.maxX": 0 } },
+    { "control": { "page": "services" }, "wait": 1200, "inspect": "columns", "label": "services-125", "capture": "services-125", "expect": { "state.scroll.maxX": 0 } },
+    { "control": { "contentZoom": 1.5 }, "wait": 1500, "inspect": "columns", "label": "services-150", "capture": "services-150", "expect": { "state.scroll.maxX": 0 } }
+  ]
+}

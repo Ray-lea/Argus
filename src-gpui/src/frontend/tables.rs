@@ -14,6 +14,7 @@ use gpui_kit::component::{
     menu::PopupMenu,
     table::{Column, ColumnFixed, ColumnSort, DataTable, TableDelegate, TableEvent, TableState},
 };
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, PartialEq)]
 enum CellKind {
@@ -44,10 +45,26 @@ enum CellKind {
     AddressSpace,
 }
 /// A CSS grid track from the tables: a fixed width or `minmax(min, fr)`.
+/// The service and startup lists size theirs by their contents instead
+/// (`widths::fill`).
 #[derive(Clone, Copy, PartialEq)]
 enum Track {
     Fixed(f32),
     Flex(f32, f32),
+    /// As wide as the contents, between a minimum and a maximum.
+    Fit(f32, f32),
+    /// The last column of a list: the room the others leave, at least this wide.
+    Fill(f32),
+}
+/// Whether `page`'s table sizes its columns by their contents, its last
+/// column taking the room the others leave (`widths::fill`).
+pub(super) fn fills(page: &str) -> bool {
+    matches!(page, "services" | "startup")
+}
+/// The interface's preference that keeps the widths `page`'s columns were
+/// dragged to, by column.
+pub(super) fn list_widths_preference(page: &str) -> String {
+    format!("tableWidths.{page}")
 }
 #[derive(Clone)]
 struct Field {
@@ -66,6 +83,10 @@ struct TableLayout<'a> {
     scope: (&'a str, &'a str),
     /// The process list the automatic column widths measure (`WidthRows`).
     measured: Option<Arc<Vec<WidthRow>>>,
+    /// A service or startup list as loaded, which its column widths
+    /// measure, and the widths its columns were dragged to (`fills`).
+    entries: Option<&'a [Value]>,
+    list_widths: BTreeMap<String, f32>,
 }
 /// Header and row geometry of the tables.
 const ROW_HEIGHT: f32 = 30.;
@@ -92,46 +113,53 @@ pub(super) fn process_table_height(rows: usize) -> Pixels {
 fn fields(page: &str, sources: columns::Sources, _available: f32) -> Vec<Field> {
     use CellKind::*;
     use Track::*;
+    // The lists' label columns are as wide as their widest label
+    // (`fit_fixed`); the others follow the list (`widths::fill`).
     let definitions: Vec<(&str, &str, CellKind, Track)> = match page {
         "services" => vec![
             (
                 "displayName",
                 "services.column.display",
                 Name,
-                Flex(220., 1.3),
+                Fit(160., 360.),
             ),
-            ("name", "common.name", Dim, Flex(110., 0.6)),
-            ("pid", "processes.column.pid.label", ServicePid, Fixed(72.)),
-            ("state", "common.status", ServiceState, Fixed(104.)),
+            ("name", "common.name", Dim, Fit(96., 280.)),
+            (
+                "pid",
+                "processes.column.pid.label",
+                ServicePid,
+                Fit(56., 120.),
+            ),
+            ("state", "common.status", ServiceState, Fixed(0.)),
             (
                 "startType",
                 "services.column.startType",
                 StartType,
-                Fixed(160.),
+                Fixed(0.),
             ),
             (
                 "description",
                 "services.column.description",
                 Dim,
-                Flex(200., 1.6),
+                Fill(240.),
             ),
         ],
         "startup" => vec![
-            ("name", "common.name", Name, Flex(200., 1.2)),
+            ("name", "common.name", Name, Fit(160., 360.)),
             (
                 "publisher",
                 "startup.column.publisher",
                 Dim,
-                Flex(140., 0.8),
+                Fit(100., 280.),
             ),
-            ("enabled", "common.status", Enabled, Fixed(116.)),
+            ("enabled", "common.status", Enabled, Fixed(0.)),
             (
                 "location",
                 "startup.column.location",
                 StartupLocation,
-                Flex(150., 0.8),
+                Fit(100., 280.),
             ),
-            ("command", "common.command", MonoDim, Flex(220., 1.6)),
+            ("command", "common.command", MonoDim, Fill(240.)),
         ],
         "network" => vec![
             ("name", "connections.column.process", Name, Flex(180., 1.1)),
@@ -299,18 +327,6 @@ fn cell(row: &Row, field: &Field) -> String {
                 })
             })
             .unwrap_or_else(missing),
-        CellKind::Dim | CellKind::Mono | CellKind::MonoDim => {
-            let value = &raw[field.key];
-            value.as_str().map(str::to_owned).unwrap_or_else(|| {
-                if !value.is_null() {
-                    value.to_string()
-                } else if field.key == "publisher" {
-                    missing()
-                } else {
-                    String::new()
-                }
-            })
-        }
         CellKind::Pid => {
             if row.members.len() > 1 || row.section.is_some() {
                 String::new()
@@ -321,12 +337,6 @@ fn cell(row: &Row, field: &Field) -> String {
                     .unwrap_or_default()
             }
         }
-        // A stopped service has no process.
-        CellKind::ServicePid => raw["pid"]
-            .as_u64()
-            .filter(|pid| *pid != 0)
-            .map(|v| v.to_string())
-            .unwrap_or_default(),
         CellKind::Count => row
             .metric(field.key)
             .map(theme::count)
@@ -349,6 +359,34 @@ fn cell(row: &Row, field: &Field) -> String {
             .metric(field.key)
             .map(|v| theme::bytes(v, true))
             .unwrap_or_else(missing),
+        _ => entry_cell(raw, field),
+    }
+}
+
+/// What a service, startup or connection cell shows, read from the entry
+/// alone (the lists' widths measure entries, not rows); empty for a name or
+/// a process reading.
+fn entry_cell(raw: &Value, field: &Field) -> String {
+    let missing = || label("format.missing");
+    match field.kind {
+        CellKind::Dim | CellKind::Mono | CellKind::MonoDim => {
+            let value = &raw[field.key];
+            value.as_str().map(str::to_owned).unwrap_or_else(|| {
+                if !value.is_null() {
+                    value.to_string()
+                } else if field.key == "publisher" {
+                    missing()
+                } else {
+                    String::new()
+                }
+            })
+        }
+        // A stopped service has no process.
+        CellKind::ServicePid => raw["pid"]
+            .as_u64()
+            .filter(|pid| *pid != 0)
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
         CellKind::ServiceState => label(&format!("services.state.{}", text(raw, "state"))),
         CellKind::StartType => {
             if raw["startType"].is_null() {
@@ -378,6 +416,7 @@ fn cell(row: &Row, field: &Field) -> String {
                 label(&format!("connections.state.{state}"))
             }
         }
+        _ => String::new(),
     }
 }
 
@@ -416,6 +455,14 @@ pub(super) struct NativeTable {
     /// Fixed column widths of the other tables for the current language and
     /// text size, by page and column (`fit_fixed`).
     fitted: HashMap<(String, &'static str), f32>,
+    /// How a service or startup list's columns share the room before any
+    /// is dragged to a width (`widths::fill`), and the widths they were
+    /// dragged to (`fills`).
+    list_shares: Vec<widths::Share>,
+    list_widths: BTreeMap<String, f32>,
+    /// The list column whose edge is being dragged; its width is kept once
+    /// it is let go.
+    list_dragged: Option<&'static str>,
     cell_values: widths::CellValues,
     horizontal: Option<ScrollHandle>,
     /// A row the desktop selected itself; the table's select event for it is ignored.
@@ -520,6 +567,10 @@ impl Render for TableFrame {
         });
         let gliding = self.state.update(cx, |state, cx| {
             if cx.has_active_drag() {
+                // A list's last column follows a dragged edge as it moves.
+                if NativeTable::follow_list_drag(state) {
+                    state.refresh(cx);
+                }
                 return false;
             }
             let (changed, gliding) = state.delegate_mut().glide_widths(now);
@@ -686,12 +737,29 @@ impl NativeTable {
                 .fitted
                 .entry((page.to_owned(), field.key))
                 .or_insert_with(|| {
-                    // The header leaves room for the sort arrow, as `AutoWidths` does.
+                    // The header leaves room for the sort arrow and a
+                    // filter's button, as `AutoWidths` does.
+                    let header = width(&field.label, 12.) + widths::header_extra(page, field.key);
                     let (prefix, keys, beside) = cell_labels(field.kind);
-                    keys.iter()
-                        .map(|key| width(&label(&format!("{prefix}.{key}")), 13.) + beside)
-                        .fold(width(&field.label, 12.) + 20., f32::max)
-                        + CELL_PADDING * 2.
+                    let labels = keys.iter().map(|key| format!("{prefix}.{key}"));
+                    // A startup entry's switch and its gap before the label.
+                    // An entry whose state could not be read is rare, and
+                    // its label is cut short rather than widen the column.
+                    let (labels, beside): (Vec<String>, f32) = if field.kind == CellKind::Enabled {
+                        (
+                            ["common.enabled", "common.disabled"]
+                                .map(str::to_owned)
+                                .into(),
+                            28. + 8.,
+                        )
+                    } else {
+                        (labels.collect(), beside)
+                    };
+                    labels
+                        .iter()
+                        .map(|key| width(&label(key), 13.) + beside + CELL_PADDING * 2.)
+                        .fold(header, f32::max)
+                        .ceil()
                 });
             field.track = Track::Fixed(designed.max(fitted));
         }
@@ -733,6 +801,9 @@ impl NativeTable {
             auto_widths: Default::default(),
             measured: Arc::new(vec![]),
             fitted: HashMap::new(),
+            list_shares: Vec::new(),
+            list_widths: BTreeMap::new(),
+            list_dragged: None,
             cell_values: Default::default(),
             horizontal: None,
             echo: None,
@@ -754,8 +825,11 @@ impl NativeTable {
             bits,
             scope,
             measured,
+            entries,
+            list_widths,
         } = layout;
         let rows_changed = !Arc::ptr_eq(&self.rows, &rows);
+        let had_rows = !self.rows.is_empty();
         // An empty list (none sampled yet) measures nothing.
         let measured = measured.filter(|measured| !measured.is_empty());
         let measured_changed = measured
@@ -790,6 +864,7 @@ impl NativeTable {
             && self.scope.0 == scope.0
             && self.scope.1 == scope.1
             && (page != "processes" || &self.process_columns == preferences)
+            && self.list_widths == list_widths
             && self
                 .fields
                 .iter()
@@ -799,18 +874,22 @@ impl NativeTable {
             .horizontal
             .as_ref()
             .is_some_and(|h| h.wheel_target() != h.offset());
+        // Whether the widths follow the rows, which only these tables' do.
+        let contents = if page == "processes" {
+            preferences.auto_width
+        } else {
+            fills(page)
+        };
         if same_layout
-            && (!preferences.auto_width
-                || (!rows_changed && !totals_changed && !measured_changed)
-                || gliding)
+            && (!contents || (!rows_changed && !totals_changed && !measured_changed) || gliding)
         {
             return false;
         }
-        // A process column whose contents or settings ask for another width
-        // eases there; a new window size, text size or language takes effect
-        // at once.
+        // A column whose contents or settings ask for another width eases
+        // there; a new window size, text size or language takes effect at
+        // once, as do a list's first rows.
         let restyled = self.font_size != font_size || self.locale != locale;
-        let animate = page == "processes"
+        let animate = (page == "processes" || (fills(page) && had_rows))
             && self.page == page
             && !self.columns.is_empty()
             && self.available == available
@@ -833,7 +912,9 @@ impl NativeTable {
         self.available = available;
         self.font_size = font_size;
         self.process_columns = preferences.clone();
+        let page_changed = self.page != page;
         self.page = page.into();
+        self.list_widths = list_widths;
         if page == "processes" && preferences.auto_width {
             self.measured = match measured {
                 Some(measured) => measured,
@@ -889,7 +970,10 @@ impl NativeTable {
                         .copied()
                         .unwrap_or_else(|| {
                             widths::Natural::fixed(match field.track {
-                                Track::Fixed(width) | Track::Flex(width, _) => width,
+                                Track::Fixed(width)
+                                | Track::Flex(width, _)
+                                | Track::Fit(width, _)
+                                | Track::Fill(width) => width,
                             })
                         })
                 })
@@ -905,6 +989,20 @@ impl NativeTable {
             }
             for (field, width) in fields.iter_mut().zip(allocated) {
                 field.track = Track::Fixed(preferences.set_width(field.key).unwrap_or(width));
+            }
+        } else if fills(page) {
+            self.fit_fixed(page, &mut fields, cx);
+            // Each list as loaded is measured, not the rows a search or a
+            // filter leaves of it: neither changes the widths.
+            if let Some(entries) = entries
+                && (rows_changed || restyled || page_changed || self.auto_widths.natural.is_empty())
+            {
+                self.auto_widths.apply_list(page, &fields, entries, cx);
+            }
+            self.list_shares = fields.iter().map(|field| self.share(field)).collect();
+            let (widths, _) = self.list_layout(&fields, None);
+            for (field, width) in fields.iter_mut().zip(widths) {
+                field.track = Track::Fixed(width);
             }
         } else if page != "processes" {
             self.fit_fixed(page, &mut fields, cx);
@@ -923,32 +1021,28 @@ impl NativeTable {
         // ones share what is left by their fractions without going below their minimum.
         // The rows sit 4 px in from each side and the scrollbar keeps its gutter.
         let room = f32::from(available) - ROW_INSET * 2. - CELL_PADDING;
+        // A list's tracks are fixed by now (`widths::fill`).
+        let base = |track: Track| match track {
+            Track::Fixed(width) | Track::Fit(width, _) | Track::Fill(width) => width,
+            Track::Flex(minimum, _) => minimum,
+        };
         let fixed: f32 = self
             .fields
             .iter()
-            .map(|f| match f.track {
-                Track::Fixed(width) => width,
-                Track::Flex(..) => 0.,
-            })
+            .filter(|f| !matches!(f.track, Track::Flex(..)))
+            .map(|f| base(f.track))
             .sum();
         let mut flexible: Vec<usize> = (0..self.fields.len())
             .filter(|&i| matches!(self.fields[i].track, Track::Flex(..)))
             .collect();
-        let mut widths: Vec<f32> = self
-            .fields
-            .iter()
-            .map(|f| match f.track {
-                Track::Fixed(width) => width,
-                Track::Flex(minimum, _) => minimum,
-            })
-            .collect();
+        let mut widths: Vec<f32> = self.fields.iter().map(|f| base(f.track)).collect();
         let mut free = (room - fixed).max(0.);
         loop {
             let fractions: f32 = flexible
                 .iter()
                 .map(|&i| match self.fields[i].track {
                     Track::Flex(_, fr) => fr,
-                    Track::Fixed(_) => 0.,
+                    _ => 0.,
                 })
                 .sum();
             if fractions <= 0. {
@@ -962,7 +1056,7 @@ impl NativeTable {
                 .copied()
                 .filter(|&i| match self.fields[i].track {
                     Track::Flex(minimum, fr) => unit * fr < minimum,
-                    Track::Fixed(_) => false,
+                    _ => false,
                 })
                 .collect();
             if clamped.is_empty() {
@@ -1017,23 +1111,43 @@ impl NativeTable {
         } else {
             self.width_glides.clear();
         }
+        // A list's last column spans the room the others leave: it has no
+        // edge to drag, and the others are dragged only as far wider as the
+        // columns can give way (`widths::fill`).
+        let list = fills(page).then(|| {
+            let last = self
+                .list_shares
+                .iter()
+                .position(|share| matches!(share, widths::Share::Fill { .. }));
+            (last, self.list_layout(&self.fields, None).1)
+        });
         self.columns = self
             .fields
             .iter()
             .zip(widths)
             .enumerate()
-            .map(|(index, (field, width))| {
+            .map(|(index, (field, target))| {
                 let width = self
                     .width_glides
                     .get(field.key)
-                    .map_or(width, |glide| glide.at(now));
+                    .map_or(target, |glide| glide.at(now));
+                let column = Column::new(field.key, field.label.clone());
+                let (column, resizable) = match &list {
+                    Some((last, reach)) => (
+                        column.max_width(
+                            (target + reach.get(index).copied().unwrap_or(0.)).max(width),
+                        ),
+                        *last != Some(index),
+                    ),
+                    None => (column, true),
+                };
                 // Process columns can be dragged to a width with automatic
                 // widths on as well: that column keeps it, the others still
                 // follow their contents.
-                let column = Column::new(field.key, field.label.clone())
+                let column = column
                     .width(width)
                     .min_width(48.)
-                    .resizable(true)
+                    .resizable(resizable)
                     .movable(page == "processes" && field.key != "name")
                     .paddings(Edges::all(px(0.)))
                     .sort(if field.key == sort.0 {
@@ -1084,6 +1198,93 @@ impl NativeTable {
         self.mark_restored(key);
         if auto { None } else { self.fit_width(key, cx) }
     }
+    /// How list column `field` shares the room before it is dragged to a
+    /// width (`widths::fill`), from what its contents need.
+    fn share(&self, field: &Field) -> widths::Share {
+        let natural = self.auto_widths.natural.get(field.key).copied();
+        match field.track {
+            Track::Fit(minimum, _) if matches!(field.kind, CellKind::Name | CellKind::Dim) => {
+                widths::Share::Text {
+                    natural: natural.unwrap_or(widths::Natural::fixed(minimum)),
+                    min: minimum,
+                    set: false,
+                }
+            }
+            Track::Fit(minimum, _) => {
+                widths::Share::Fixed(natural.map_or(minimum, |natural| natural.full))
+            }
+            Track::Fill(minimum) => widths::Share::Fill {
+                full: natural.map_or(minimum, |natural| natural.full),
+                min: minimum,
+            },
+            Track::Fixed(width) | Track::Flex(width, _) => widths::Share::Fixed(width),
+        }
+    }
+    /// The widths of a list's `fields` for the table's room
+    /// (`widths::fill`), each column dragged to a width kept at it, and how
+    /// far wider each can be dragged. `dragged` is a column being dragged,
+    /// at the width it has reached. A width kept from an earlier drag gives
+    /// way, as text does, when the room is short (a narrower window), down
+    /// to what the column takes before it is dragged.
+    fn list_layout(&self, fields: &[Field], dragged: Option<(&str, f32)>) -> (Vec<f32>, Vec<f32>) {
+        let shares = fields
+            .iter()
+            .zip(&self.list_shares)
+            .map(|(field, share)| match (*share, dragged) {
+                (widths::Share::Fill { .. }, _) => *share,
+                (_, Some((key, width))) if key == field.key => widths::Share::Fixed(width),
+                (share, _) => match self.list_widths.get(field.key) {
+                    Some(&width) => widths::Share::Text {
+                        natural: widths::Natural::fixed(width),
+                        min: width.min(match share {
+                            widths::Share::Text { min, .. } => min,
+                            widths::Share::Fixed(width) => width,
+                            widths::Share::Fill { min, .. } => min,
+                        }),
+                        set: true,
+                    },
+                    None => share,
+                },
+            })
+            .collect::<Vec<_>>();
+        widths::fill(
+            &shares,
+            f32::from(self.available) - ROW_INSET * 2. - CELL_PADDING,
+        )
+    }
+    /// A list column's edge being dragged (the table's width for it has
+    /// moved off the column's): the columns share the room as they will once
+    /// it is let go, so the last column follows the edge. Returns whether
+    /// the columns changed, for the table to take them up (`refresh`).
+    fn follow_list_drag(state: &mut TableState<Self>) -> bool {
+        let delegate = state.delegate();
+        if !fills(&delegate.page) || delegate.list_shares.len() != delegate.columns.len() {
+            return false;
+        }
+        let Some((index, width)) =
+            delegate
+                .columns
+                .iter()
+                .enumerate()
+                .find_map(|(index, column)| {
+                    let width = state.col_width(index)?;
+                    (column.resizable && (width - column.width).abs() >= px(0.5))
+                        .then_some((index, f32::from(width)))
+                })
+        else {
+            return false;
+        };
+        let delegate = state.delegate_mut();
+        let key = delegate.fields[index].key;
+        delegate.list_dragged = Some(key);
+        let (widths, reach) = delegate.list_layout(&delegate.fields, Some((key, width)));
+        delegate.width_glides.clear();
+        for ((column, width), reach) in delegate.columns.iter_mut().zip(widths).zip(reach) {
+            column.width = px(width);
+            column.max_width = px(width + reach);
+        }
+        true
+    }
     /// What process column `key` takes to show every row in full: its width
     /// when fitted to its contents.
     pub(super) fn fit_width(&mut self, key: &str, cx: &App) -> Option<f32> {
@@ -1116,6 +1317,20 @@ impl TableDelegate for NativeTable {
         window: &mut Window,
         cx: &mut Context<TableState<Self>>,
     ) -> Option<Pixels> {
+        // A list column dragged to a width follows its contents again.
+        if fills(&self.page) {
+            let key = self.fields.get(col_ix)?.key;
+            if self.list_widths.contains_key(key) {
+                self.mark_restored(key);
+                cx.notify();
+            }
+            self.edge_fitted = Some(key);
+            let (owner, page) = (self.owner.clone(), self.page.clone());
+            window.defer(cx, move |_, cx| {
+                let _ = owner.update(cx, |this, cx| this.restore_list_column(&page, key, cx));
+            });
+            return self.columns.get(col_ix).map(|column| column.width);
+        }
         if self.page != "processes" {
             return None;
         }
@@ -1238,8 +1453,9 @@ impl TableDelegate for NativeTable {
         let strip = self.lifted_strip(now, cx);
         // Column edges show where they can be dragged (`header::edge_probe`).
         let processes = self.page == "processes";
-        let guide = processes.then(|| self.restore_wash(now, cx)).flatten();
-        let probe = processes.then(|| self.edge_probe(cx));
+        let edges = processes || fills(&self.page);
+        let guide = edges.then(|| self.restore_wash(now, cx)).flatten();
+        let probe = edges.then(|| self.edge_probe(cx));
         // The process header band ends in its own separator row, so the 4 px
         // below the labels are inside it (see `render_th`): no bottom padding.
         // While filtering, the workspace draws the accent separator over that
@@ -2034,6 +2250,8 @@ impl Desktop {
             let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
             let scope = (self.view.as_str(), self.query.as_str());
             let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
+            let entries = self.list_entries(&page);
+            let list_widths = self.list_widths(&page);
             let selected = self
                 .selected
                 .get(&page)
@@ -2054,6 +2272,8 @@ impl Desktop {
                         bits,
                         scope,
                         measured,
+                        entries,
+                        list_widths,
                     },
                     sort,
                     cx,
@@ -2154,6 +2374,20 @@ impl Desktop {
                         }
                     }
                     TableEvent::ColumnWidthsChanged(widths) => {
+                        // A list column let go after a drag keeps its width.
+                        let dragged = source.update(cx, |state, _| {
+                            let delegate = state.delegate_mut();
+                            let key = delegate.list_dragged.take()?;
+                            let index = delegate.fields.iter().position(|f| f.key == key)?;
+                            Some((delegate.page.clone(), key, f32::from(*widths.get(index)?)))
+                        });
+                        if let Some((page, key, width)) = dragged {
+                            let mut saved = this.list_widths(&page);
+                            saved.insert(key.into(), width.round().clamp(48., 1200.));
+                            this.prefs.set(&list_widths_preference(&page), saved);
+                            cx.notify();
+                            return;
+                        }
                         let source = source.read(cx);
                         let delegate = source.delegate();
                         // Not a drag: a double-click just fitted a column.
@@ -2246,6 +2480,7 @@ impl Desktop {
         let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";
         let scope = (self.view.as_str(), self.query.as_str());
         let measured = self.width_rows.as_ref().map(|built| built.rows.clone());
+        let list_widths = self.list_widths(&page);
         let available = window.viewport_size().width
             - px(24.)
             - px(if self.page == "processes" && self.details_shown() {
@@ -2271,6 +2506,7 @@ impl Desktop {
             !Arc::ptr_eq(&delegate.rows, &rows)
                 || delegate.available != available
                 || (page == "processes" && delegate.process_columns != column_preferences)
+                || delegate.list_widths != list_widths
                 || delegate.font_size != theme::font(12.)
                 || delegate.bits != bits
                 || delegate.locale != argus_core::i18n::locale()
@@ -2280,6 +2516,7 @@ impl Desktop {
         } else {
             HashMap::new()
         };
+        let entries = self.list_entries(&page);
         let changed = table.update(cx, |state, cx| {
             let mut changed = false;
             // A column dragged to a width is drawn at it already: a glide to
@@ -2303,6 +2540,8 @@ impl Desktop {
                         bits,
                         scope,
                         measured,
+                        entries,
+                        list_widths,
                     },
                     sort,
                     cx,
@@ -2431,6 +2670,36 @@ impl Desktop {
 /// Case-insensitive comparison that orders digit runs by value, like `Intl.Collator`
 /// with `numeric: true`.
 impl Desktop {
+    /// A service or startup list as loaded, which its column widths measure.
+    fn list_entries(&self, page: &str) -> Option<&[Value]> {
+        fills(page)
+            .then(|| self.data.get(page).map(values))
+            .flatten()
+    }
+    /// The widths `page`'s columns were dragged to (`list_widths_preference`).
+    pub(in crate::frontend) fn list_widths(&self, page: &str) -> BTreeMap<String, f32> {
+        if !fills(page) {
+            return BTreeMap::new();
+        }
+        let mut widths: BTreeMap<String, f32> = self
+            .prefs
+            .get(&list_widths_preference(page), BTreeMap::new());
+        widths.retain(|_, width| width.is_finite() && (48. ..=1200.).contains(width));
+        widths
+    }
+    /// List column `key` follows its contents again, as before it was dragged.
+    pub(in crate::frontend) fn restore_list_column(
+        &mut self,
+        page: &str,
+        key: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let mut widths = self.list_widths(page);
+        if widths.remove(key).is_some() {
+            self.prefs.set(&list_widths_preference(page), widths);
+            cx.notify();
+        }
+    }
     fn process_column_totals(&self, preferences: &columns::Preferences) -> HashMap<String, String> {
         if self.page != "processes" {
             return HashMap::new();
@@ -2442,11 +2711,19 @@ impl Desktop {
             .collect()
     }
     pub(in crate::frontend) fn process_columns_diagnostics(&self, cx: &App) -> Value {
-        let table = self.tables.get("processes").map(|pair| &pair.0);
+        // The page's table where it sizes its columns by their contents,
+        // else the process list's.
+        let page = if fills(&self.page) {
+            self.page.as_str()
+        } else {
+            "processes"
+        };
+        let table = self.tables.get(page).map(|pair| &pair.0);
         let visible=table.map(|table| {
             let state=table.read(cx);
             state.delegate().fields.iter().enumerate().map(|(index,field)|json!({
                 "key":field.key,"width":state.col_width(index).map(f32::from),
+                "maxWidth":f32::from(state.delegate().columns[index].max_width),
                 "resizable":state.delegate().columns[index].resizable,
                 "movable":state.delegate().columns[index].movable,
                 "autoWidth":state.delegate().auto_widths.natural.get(field.key).map(|natural|natural.typical),
@@ -2484,7 +2761,8 @@ impl Desktop {
             let delegate = table.read(cx).delegate();
             delegate.group_view.diagnostics(&delegate.rows)
         });
-        json!({"preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
+        json!({"page":page,"listWidths":self.list_widths(page),
+            "preferences":columns::Preferences::load(&self.prefs),"visible":visible,"anchors":anchors,
             "scroll":scroll,"sort":{"key":self.sort,"desc":self.descending},"groups":groups,
             "popup":self.popup.is_some(),"modal":self.modal.as_ref().filter(|modal|modal.kind=="columns").map(|modal|&modal.args)})
     }

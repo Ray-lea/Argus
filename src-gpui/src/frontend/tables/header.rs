@@ -46,7 +46,8 @@ const RESTORE_WASH: Duration = Duration::from_millis(700);
 
 impl NativeTable {
     /// Where each column's right edge is drawn, in window coordinates, at
-    /// the table's widths and scroll; `None` for an edge scrolled out of view.
+    /// the table's widths and scroll; `None` for an edge scrolled out of
+    /// view, or one that cannot be dragged (a list's last column).
     fn column_edges(state: &TableState<Self>) -> Vec<Option<f32>> {
         let delegate = state.delegate();
         let Some(handle) = delegate.horizontal.as_ref() else {
@@ -57,20 +58,26 @@ impl NativeTable {
         let mut edge = left + f32::from(handle.offset().x);
         (0..delegate.fields.len())
             .map(|index| {
+                let resizable = delegate
+                    .columns
+                    .get(index)
+                    .is_some_and(|column| column.resizable);
                 if index == 0 {
                     // The name is fixed: its edge is where the scrolled lane begins.
-                    return Some(left);
+                    return resizable.then_some(left);
                 }
                 edge += state.col_width(index).map(f32::from).unwrap_or(0.);
-                (edge > left && edge <= right + 1.).then_some(edge)
+                (resizable && edge > left && edge <= right + 1.).then_some(edge)
             })
             .collect()
     }
 
-    /// Follows the pointer at `at` over the process header `band`: the
+    /// Follows the pointer at `at` over the header `band` of the process
+    /// list or another list that sizes its columns by their contents: the
     /// column edge within reach is marked. Returns whether the mark changed.
     fn track_edge(state: &mut TableState<Self>, at: Point<Pixels>, band: Bounds<Pixels>) -> bool {
-        if state.delegate().page != "processes" {
+        let page = &state.delegate().page;
+        if page != "processes" && !fills(page) {
             return false;
         }
         // While an edge is pressed, it stays the marked one.
