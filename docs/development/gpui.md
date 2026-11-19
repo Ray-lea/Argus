@@ -125,6 +125,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`cpu-cores.json`](../../tools/window-probe/steps/cpu-cores.json) 用 `sample` 把 `/hardware/cpu` 换成其他处理器，检查多核视图的排布与核心类型：32 个同类逻辑处理器排成 8 列 4 行，窗口变窄后标题省去频率，再变矮后隐藏标题、网格占用可见区域；6 性能核 + 8 能效核 + 2 低功耗能效核的处理器显示三种颜色、徽标与图例，CPU 图表的右键菜单列出三种核心类型；只有性能核与低功耗能效核的处理器，菜单不列出能效核，此前选中的能效核筛选回到全部核心。`inspectLayout.performance` 的 `coreColumns` 为网格当前的列数，`coreCaption` 为标题显示的内容（`full`、`short` 省去频率、`hidden`），`coreRoom` 为网格宽度、页面不滚动时的可用高度与网格顶端以下的可见高度，`coreKinds` 为处理器具有的核心类型。列数的预期值按 125% 显示缩放下 2000 × 1318 的客户区写定。
 
+[`gpu-low-power.json`](../../tools/window-probe/steps/gpu-low-power.json) 用 `sample` 把模拟快照的显卡改为已断电（`lowPower` 为真，驱动读数为空），核对性能页不显示温度、频率与功耗，规格中出现“电源状态”一行及其悬停说明，并覆盖浅色主题与最小窗口加 20 px 字号；再改回使用中，核对该行消失、读数恢复。
+
 测试控制除页面、主题、对话框等既有项外，还包括：
 
 | 控制 | 作用 |

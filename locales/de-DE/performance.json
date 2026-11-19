@@ -592,6 +592,9 @@
       "rows": "Liste"
     },
     "maxCoreClock": "Maximaler Kerntakt",
+    "powerState": "Energiezustand",
+    "lowPower": "Energiesparzustand",
+    "lowPowerHint": "Die GPU ist im Leerlauf und befindet sich in einem Energiesparzustand. Das Auslesen von Temperatur, Lüfter, Takt, Spannung und Leistung würde sie aufwecken und ist daher ausgesetzt. Die Werte werden wieder angezeigt, sobald die GPU verwendet wird.",
     "powerSource": "Quelle der Leistungsmessung",
     "sources": {
       "nvml": "NVIDIA NVML · Platine",

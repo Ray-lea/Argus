@@ -598,6 +598,9 @@
       "rows": "Liste"
     },
     "maxCoreClock": "Fréquence maximale du cœur",
+    "powerState": "État d’alimentation",
+    "lowPower": "En veille",
+    "lowPowerHint": "Le GPU est inactif et dans un état de faible consommation. Lire la température, le ventilateur, la fréquence, la tension et la puissance le réveillerait. Ces mesures sont donc suspendues et s’affichent de nouveau dès que le GPU est utilisé.",
     "powerSource": "Source de la mesure de puissance",
     "sources": {
       "nvml": "NVIDIA NVML · carte",

@@ -430,7 +430,8 @@
           "coreVidMv": null,
           "kernelSensorState": null,
           "kernelSensorSupported": false,
-          "integratedSensors": null
+          "integratedSensors": null,
+          "lowPower": false
         }
       ],
       "batteries": [

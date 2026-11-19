@@ -586,6 +586,9 @@
       "rows": "一覧"
     },
     "maxCoreClock": "最大コアクロック",
+    "powerState": "電源状態",
+    "lowPower": "スリープ中",
+    "lowPowerHint": "GPU はアイドル状態で、低電力状態に入っています。温度、ファン、クロック、電圧、消費電力を読み取ると GPU が復帰するため、読み取りを停止しています。GPU の使用が再開されると再び表示されます。",
     "powerSource": "消費電力の取得元",
     "sources": {
       "nvml": "NVIDIA NVML・ボード",

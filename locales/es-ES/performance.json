@@ -598,6 +598,9 @@
       "rows": "Lista"
     },
     "maxCoreClock": "Frecuencia máxima del núcleo",
+    "powerState": "Estado de energía",
+    "lowPower": "En suspensión",
+    "lowPowerHint": "La GPU está inactiva y en un estado de bajo consumo. Leer la temperatura, el ventilador, la frecuencia, el voltaje y la potencia la reactivaría, por lo que no se leen. Volverán a mostrarse cuando la GPU esté en uso.",
     "powerSource": "Origen de la lectura de potencia",
     "sources": {
       "nvml": "NVIDIA NVML · placa",

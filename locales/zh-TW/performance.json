@@ -574,6 +574,9 @@
       "rows": "清單"
     },
     "maxCoreClock": "最高核心時脈",
+    "powerState": "電源狀態",
+    "lowPower": "已休眠",
+    "lowPowerHint": "GPU 閒置，已進入低耗電狀態。讀取溫度、風扇、時脈、電壓與功耗會將其喚醒，因此暫不讀取；GPU 恢復運作後繼續顯示。",
     "powerSource": "功耗來源",
     "sources": {
       "nvml": "NVIDIA NVML · 介面卡",

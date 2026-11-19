@@ -1012,6 +1012,18 @@ impl Desktop {
         }
         let plain = |value: String| div().child(value).into_any_element();
         let mut rows = Vec::new();
+        // A GPU that has powered down is not asked for its sensors, which
+        // would wake it: the row says why those figures are missing.
+        if boolean(gpu, "lowPower") {
+            rows.push((
+                label("performance.gpu.powerState"),
+                self.hinted(
+                    "gpu-power-state",
+                    Some(label("performance.gpu.lowPowerHint")),
+                    plain(label("performance.gpu.lowPower")),
+                ),
+            ));
+        }
         if let Some(source) = gpu["powerSource"].as_str() {
             rows.push((
                 label("performance.gpu.powerSource"),

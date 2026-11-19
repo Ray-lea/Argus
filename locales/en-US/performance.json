@@ -589,6 +589,9 @@
       "rows": "List"
     },
     "maxCoreClock": "Max core clock",
+    "powerState": "Power state",
+    "lowPower": "Sleeping",
+    "lowPowerHint": "The GPU is idle and in a low-power state. Reading its temperature, fan, clock, voltage and power would wake it, so they are not read. They are shown again when the GPU is in use.",
     "powerSource": "Power source",
     "sources": {
       "nvml": "NVIDIA NVML · board",
