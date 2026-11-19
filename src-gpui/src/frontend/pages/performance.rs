@@ -2928,15 +2928,28 @@ impl Desktop {
                 .unwrap_or_default()
         );
         let (used, modified, standby, free) = memory_composition(sys);
+        let compression = &sys["memoryCompression"];
+        let compression = compression.is_object().then(|| {
+            (
+                number(compression, "resident"),
+                number(compression, "stored"),
+            )
+        });
+        // Compressed memory is part of the memory in use: the in-use fill in
+        // stripes, at its end next to the modified part. The pattern is laid
+        // out in device pixels.
+        let stripe = 2. * window.scale_factor();
+        let hatch = gpui_kit::gpui::pattern_slash(p.memory.opacity(0.55), stripe, stripe * 1.5);
+        let squeezed = compression.map_or(0., |(resident, _)| resident.clamp(0., used));
         let fraction = |bytes: f64| (bytes / total.max(1.)).clamp(0., 1.) as f32;
-        let segment = |start: f64, length: f64, color: Hsla| {
+        let segment = |start: f64, length: f64, fill: gpui_kit::gpui::Background| {
             div()
                 .absolute()
                 .top_0()
                 .bottom_0()
                 .left(relative(fraction(start)))
                 .w(relative(fraction(length)))
-                .bg(color)
+                .bg(fill)
         };
         let reading = |bytes: Option<f64>| bytes.map(theme::memory).unwrap_or_else(missing);
         let bar = div()
@@ -2948,12 +2961,19 @@ impl Desktop {
             .border_1()
             .border_color(p.memory.opacity(0.45))
             .rounded(px(4.))
-            .child(segment(0., used, p.memory.opacity(0.55)))
-            .child(segment(used, modified.unwrap_or(0.), p.memory.opacity(0.9)))
+            .child(segment(0., used - squeezed, p.memory.opacity(0.55).into()))
+            .when(squeezed > 0., |d| {
+                d.child(segment(used - squeezed, squeezed, hatch))
+            })
+            .child(segment(
+                used,
+                modified.unwrap_or(0.),
+                p.memory.opacity(0.9).into(),
+            ))
             .child(segment(
                 used + modified.unwrap_or(0.),
                 standby.unwrap_or(0.),
-                p.memory.opacity(0.2),
+                p.memory.opacity(0.2).into(),
             ));
         let legend_item =
             |id: &'static str, swatch: Div, description: &'static str, text: String| {
@@ -2990,6 +3010,17 @@ impl Desktop {
                     value = theme::memory(used)
                 ),
             ))
+            .when_some(compression, |d, (resident, _)| {
+                d.child(legend_item(
+                    "memory-legend-compressed",
+                    div().bg(hatch),
+                    "performance.memory.compressedDescription",
+                    tr!(
+                        "performance.memory.legendCompressed",
+                        value = theme::memory(resident)
+                    ),
+                ))
+            })
             .child(legend_item(
                 "memory-legend-modified",
                 div().bg(p.memory.opacity(0.9)),
@@ -3013,12 +3044,7 @@ impl Desktop {
             ));
         let gb_stat =
             |key: &str, bytes: f64| self.stat(label(key), gb(bytes), Some("GB".into()), None, cx);
-        let compression = &sys["memoryCompression"];
-        let in_use = if compression.is_object() {
-            let (resident, stored) = (
-                number(compression, "resident"),
-                number(compression, "stored"),
-            );
+        let in_use = if let Some((resident, stored)) = compression {
             // "39.5 GB (3.4 GB)", as Task Manager's "In use (Compressed)".
             let unit = |unit: String| {
                 div()
@@ -3049,11 +3075,11 @@ impl Desktop {
                 label("performance.memory.inUseDescription"),
                 String::new(),
                 tr!(
-                    "performance.memory.compressedHeading",
+                    "performance.memory.legendCompressed",
                     value = theme::memory(resident)
                 ),
                 tr!(
-                    "performance.memory.compressedDescription",
+                    "performance.memory.compressedSaving",
                     stored = theme::memory(stored),
                     saved = theme::memory((stored - resident).max(0.))
                 ),
