@@ -31,6 +31,8 @@ pub struct Palette {
     pub network: Hsla,
     pub gpu: Hsla,
     pub battery: Hsla,
+    /// Temperatures on the history page.
+    pub temperature: Hsla,
     pub danger: Hsla,
     /// The process list's categories (`processes.section.*`): apps,
     /// background processes and Windows processes. Apart from the heat of
@@ -173,6 +175,7 @@ impl Palette {
             network: colors.chart_4,
             gpu: colors.chart_5,
             battery: colors.chart_bullish,
+            temperature: token("temp", dark),
             danger: role(cx, "danger"),
             group_apps: token("group-apps", dark),
             group_background: token("group-background", dark),

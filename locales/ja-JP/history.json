@@ -1,47 +1,13 @@
 {
-  "range": {
-    "hours": {
-      "other": "{count} 時間"
-    },
-    "days": {
-      "other": "{count} 日"
-    }
-  },
-  "latest": {
-    "label": "最新情報に戻る",
-    "title": "選択した瞬間をクリアして最新のデータを表示します"
-  },
   "metric": {
-    "peak": "最大 {value}%",
-    "total": "{value} GB 中",
-    "charging": "充電中 {value}",
-    "discharging": "放電中 {value}",
-    "average": "平均 {value}%"
+    "peak": "最大 {value}"
   },
-  "exited": "{name}（PID {pid}） は終了しました。",
   "copied": {
     "name": "名前"
   },
-  "column": {
-    "cpuTitle": "記録間隔（通常は5秒）の平均",
-    "memTitle": "プライベート ワーキング セット"
-  },
-  "noData": "データなし",
-  "empty": {
-    "off": "履歴記録がオフになっています",
-    "none": "この期間の記録はありません",
-    "offHint": "設定で履歴の記録を有効にすると、Argus は 5 秒ごとに記録します。最小化中や通知領域への常駐中の更新間隔が長い場合は、その間隔で記録します。",
-    "hint": "Argus は実行中に 5 秒ごとに記録し、最小化中や通知領域への常駐中の更新間隔が長い場合は、その間隔で記録します。記録は 7 日間保存します。"
-  },
-  "busiest": "最もビジーなプロセス",
-  "busiestAt": "{time} で最もビジーなプロセス",
-  "hint": {
-    "pick": "チャート上の任意の瞬間をクリックすると、その時点のプロセスが表示されます",
-    "move": "チャート上で ← → を押して時間を移動し、Esc を押して最新のデータに戻ります。"
-  },
   "noRecordAt": "この時刻の記録はありません",
   "earliest": "最も古い記録",
-  "note": "CPU、メモリ、I/O、GPU、ネットワークの使用量が多いプロセスを 5 秒ごとに記録し、7 日間保存します。最小化中や通知領域への常駐中の更新間隔が長い場合は、その間隔で記録します。",
+  "note": "読み取り値と使用量の多いプロセスを 5 秒ごとに記録し、直近 10 分間は毎秒の読み取り値も保持します。最小化時やトレイ常駐時の更新間隔のほうが長い場合はその間隔で記録します。7 日間保持します。",
   "off": "履歴の記録はオフになっています。新しいデータは記録されません。<link>設定を開く</link>",
   "watch": {
     "title": "プロセスの観測",
@@ -86,6 +52,204 @@
     "unconfirmed": "同名の {count} インスタンスの識別を確認できませんでした。1 分ごとに再試行します。"
   },
   "instanceUnavailable": "記録された {name}（PID {pid}）のインスタンスは終了したか、同一性を確認できません。",
-  "showCpuPeak": "CPU ピークのフレームを表示",
-  "cpuSummary": "CPU 平均 {average}%、最大 {peak}%。ピークのフレーム：{time}。プロセスの値はフレーム内の平均であり、短いピークの原因を証明するものではありません。"
+  "range": {
+    "5m": "5 分",
+    "1h": "1 時間",
+    "6h": "6 時間",
+    "1d": "1 日",
+    "7d": "7 日",
+    "30d": "30 日",
+    "all": "すべて"
+  },
+  "now": "現在",
+  "live": {
+    "on": "ライブ",
+    "onTitle": "最新の読み取り値を表示しています。6 時間以内は毎秒、それより長い範囲は毎分更新します。クリックで一時停止",
+    "off": "最新に戻る",
+    "offTitle": "最新の読み取り値に戻って更新を続けます (グラフの右クリックまたは End キーでも可能)"
+  },
+  "toast": {
+    "latest": "最新に戻りました",
+    "paused": "自動更新を一時停止しました"
+  },
+  "more": "その他",
+  "menu": {
+    "band": "最小値から最大値までの範囲を表示",
+    "settings": "履歴の設定…",
+    "needsService": "特権サービスが必要",
+    "notRecorded": "記録なし"
+  },
+  "group": {
+    "cpu": "プロセッサ",
+    "memory": "メモリ",
+    "disk": "ストレージ",
+    "network": "ネットワーク",
+    "gpu": "グラフィックス",
+    "battery": "バッテリー",
+    "system": "システム"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU 使用率",
+      "memUsed": "メモリ使用量",
+      "disk": "ディスクの読み取りと書き込み",
+      "network": "ネットワークの送受信",
+      "gpu": "GPU 使用率",
+      "battery": "バッテリー残量",
+      "cpuKernel": "CPU カーネル時間",
+      "cpuClock": "CPU 速度",
+      "cpuPower": "CPU パッケージ消費電力",
+      "cpuTemp": "CPU 温度",
+      "cpuVoltage": "CPU コア電圧",
+      "commitUsed": "コミット済みメモリ",
+      "memCached": "キャッシュ済みメモリ",
+      "memCompressed": "圧縮メモリ",
+      "pagedPool": "ページ プール",
+      "nonpagedPool": "非ページ プール",
+      "batteryRate": "バッテリーの充放電電力",
+      "batteryVoltage": "バッテリー電圧",
+      "batteryTemp": "バッテリー温度",
+      "processes": "プロセス数",
+      "threads": "スレッド数",
+      "handles": "ハンドル数"
+    },
+    "short": {
+      "cpuKernel": "カーネル時間",
+      "cpuClock": "CPU 速度",
+      "cpuPower": "CPU 消費電力",
+      "cpuTemp": "CPU 温度",
+      "cpuVoltage": "CPU 電圧",
+      "commitUsed": "コミット済み",
+      "memCached": "キャッシュ済み",
+      "memCompressed": "圧縮",
+      "pagedPool": "ページ プール",
+      "nonpagedPool": "非ページ プール",
+      "batteryRate": "バッテリー電力",
+      "batteryVoltage": "バッテリー電圧",
+      "batteryTemp": "バッテリー温度"
+    }
+  },
+  "device": {
+    "fan": "ファン {name}",
+    "diskOf": "{name} の読み取りと書き込み",
+    "nicOf": "{name} の送受信",
+    "diskActive": "{name} のアクティブな時間",
+    "diskResponse": "{name} の平均応答時間",
+    "deviceTemp": "{name} の温度",
+    "gpuUtil": "{name} の使用率",
+    "gpuDedicated": "{name} の専用 GPU メモリ",
+    "gpuShared": "{name} の共有 GPU メモリ",
+    "gpuPower": "{name} の消費電力",
+    "gpuClock": "{name} の速度",
+    "gpuFan": "{name} のファン"
+  },
+  "part": {
+    "read": "読み取り",
+    "write": "書き込み",
+    "receive": "受信",
+    "send": "送信"
+  },
+  "gap": {
+    "sleep": "スリープ",
+    "shutdown": "シャットダウンまたは再起動",
+    "notRunning": "Argus は実行されていません",
+    "off": "記録はオフ",
+    "unknown": "記録なし",
+    "tip": "記録なし: {reason}"
+  },
+  "duration": {
+    "seconds": "{count} 秒",
+    "minutes": "{count} 分",
+    "hoursMinutes": "{hours} 時間 {minutes} 分",
+    "daysHours": "{days} 日 {hours} 時間"
+  },
+  "drop": {
+    "overlay": "このレーンに重ねる (右側の縦軸)",
+    "lane": "新しいレーン",
+    "move": "ここに移動"
+  },
+  "lane": {
+    "add": "レーン",
+    "addTitle": "レーンを追加",
+    "grip": "ドラッグして並べ替え",
+    "remove": "このレーンを削除"
+  },
+  "overlay": {
+    "add": "重ねる",
+    "addTitle": "2 つ目の読み取り値を右側の縦軸で重ねる",
+    "shared": "左の縦軸を共有",
+    "right": "右の縦軸"
+  },
+  "unrecorded": {
+    "title": "{name} の記録はありません",
+    "hint": "このコンピューターではこの読み取り値を記録していません。必要なデバイスまたはカウンターがない可能性があります。",
+    "serviceTitle": "{name} には特権サービスが必要です",
+    "serviceHint": "特権サービスは PawnIO 固定モジュールでプロセッサのセンサーを読み取ります。インストール後は次のサンプリングから記録し、それ以前の期間は空白のままです。",
+    "install": "特権サービスをインストール…"
+  },
+  "tip": {
+    "second": "毎秒の読み取り値",
+    "frame": "5 秒の記録",
+    "average": "平均",
+    "hint": "クリックで固定 · 右クリックで最新に戻る · Esc でクリア"
+  },
+  "tab": {
+    "add": "新しいレーンに表示",
+    "title": "クリックすると現在のレーンに表示、グラフにドラッグすると重ねるかレーンを追加します",
+    "more": "その他の読み取り値"
+  },
+  "table": {
+    "latest": "最新 {time} のプロセス",
+    "moment": "{time} のプロセス",
+    "range": "{range} のプロセス",
+    "pid": "PID {pid}",
+    "loading": "読み取り中…",
+    "modeMoment": "この時点",
+    "modeRange": "範囲",
+    "columns": "列"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "メモリ",
+      "disk": "ディスク",
+      "diskRead": "ディスク読み取り",
+      "diskWrite": "ディスク書き込み",
+      "io": "I/O",
+      "net": "ネットワーク",
+      "gpu": "GPU",
+      "gpuMem": "専用 GPU メモリ",
+      "power": "電源の使用率",
+      "threads": "スレッド",
+      "handles": "ハンドル"
+    },
+    "range": {
+      "cpu": "CPU 平均",
+      "cpuMax": "CPU 最大",
+      "mem": "メモリ最大",
+      "disk": "ディスク読み書き量",
+      "diskRead": "ディスク読み取り量",
+      "diskWrite": "ディスク書き込み量",
+      "io": "I/O 量",
+      "net": "ネットワーク送受信量",
+      "gpu": "GPU 平均",
+      "gpuMem": "専用 GPU メモリ最大",
+      "power": "電源の使用率",
+      "seen": "記録時間",
+      "threads": "スレッド",
+      "handles": "ハンドル"
+    },
+    "trend": "傾向 · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "メモリ",
+    "disk": "ディスク",
+    "net": "ネットワーク",
+    "gpu": "GPU"
+  },
+  "clearCursor": "カーソルをクリア (Esc)",
+  "selection": {
+    "zoom": "選択範囲を拡大"
+  }
 }

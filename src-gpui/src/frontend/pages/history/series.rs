@@ -1,0 +1,676 @@
+//! What the page draws from: readings in buckets aligned to absolute time (so
+//! a sliding window moves the curve without cutting it anew), kept and merged
+//! as newer answers arrive, and the clock arithmetic around them.
+use serde_json::Value;
+use std::collections::HashMap;
+
+pub(super) const SECOND: i64 = 1_000;
+pub(super) const MINUTE: i64 = 60 * SECOND;
+pub(super) const HOUR: i64 = 60 * MINUTE;
+pub(super) const DAY: i64 = 24 * HOUR;
+/// One recorded frame (`FRAME_MS` in `argus_core::history`).
+pub(super) const FRAME: i64 = argus_core::history::FRAME_MS;
+/// Bucket widths: one second (five minutes on screen) up to six hours.
+pub(super) const NICE: [i64; 16] = [
+    SECOND,
+    2 * SECOND,
+    5 * SECOND,
+    10 * SECOND,
+    15 * SECOND,
+    30 * SECOND,
+    MINUTE,
+    2 * MINUTE,
+    5 * MINUTE,
+    10 * MINUTE,
+    15 * MINUTE,
+    30 * MINUTE,
+    HOUR,
+    2 * HOUR,
+    3 * HOUR,
+    6 * HOUR,
+];
+/// About one point per this many pixels: dense enough to read, sparse enough to keep
+/// a spike visible.
+const PIXELS_PER_POINT: f64 = 2.6;
+/// Buckets this wide or wider carry their lowest and highest readings too.
+pub(super) const BANDED: i64 = 10 * SECOND;
+/// The widest spacing of readings recorded while running: the slowest background
+/// refresh plus a frame. Points further apart than this break the line.
+const MAX_CADENCE: i64 = 35 * SECOND;
+
+/// The bucket for a window of `span` drawn `width` pixels wide.
+pub(super) fn bucket_for(span: i64, width: f32) -> i64 {
+    let target = span as f64 / (f64::from(width) / PIXELS_PER_POINT).max(60.);
+    NICE.into_iter()
+        .find(|bucket| *bucket as f64 >= target)
+        .unwrap_or(NICE[NICE.len() - 1])
+}
+
+/// The narrowest window a range zooms to: a fifth of it, from 30 s to 10 min.
+pub(super) fn min_span(range: i64) -> i64 {
+    (range / 5).clamp(30 * SECOND, 10 * MINUTE)
+}
+
+/// Why nothing was recorded for a while.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum GapReason {
+    Sleep,
+    Shutdown,
+    NotRunning,
+    Off,
+    Unknown,
+}
+
+impl GapReason {
+    fn parse(text: &str) -> Self {
+        match text {
+            "sleep" => Self::Sleep,
+            "shutdown" => Self::Shutdown,
+            "notRunning" => Self::NotRunning,
+            "off" => Self::Off,
+            _ => Self::Unknown,
+        }
+    }
+    /// The locale key naming it.
+    pub(super) fn key(self) -> &'static str {
+        match self {
+            Self::Sleep => "history.gap.sleep",
+            Self::Shutdown => "history.gap.shutdown",
+            Self::NotRunning => "history.gap.notRunning",
+            Self::Off => "history.gap.off",
+            Self::Unknown => "history.gap.unknown",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Gap {
+    pub(super) from: i64,
+    pub(super) to: i64,
+    pub(super) reason: GapReason,
+}
+
+/// One reading's values, one per point.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Column {
+    pub(super) mean: Vec<Option<f64>>,
+    pub(super) low: Vec<Option<f64>>,
+    pub(super) high: Vec<Option<f64>>,
+}
+
+/// Which of a column's values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Part {
+    Mean,
+    Low,
+    High,
+}
+
+/// The answer to a points query, and the newer ones merged into it.
+#[derive(Clone, Debug, Default)]
+pub(super) struct Points {
+    /// The bucket width the points were asked for (wider ones from merged records
+    /// keep their own `span`).
+    pub(super) bucket: i64,
+    /// Bucket starts are `origin + k·bucket`.
+    pub(super) origin: i64,
+    /// What was asked for: the readings and the window.
+    pub(super) keys: Vec<String>,
+    pub(super) from: i64,
+    pub(super) to: i64,
+    /// Point start times, ascending.
+    pub(super) ts: Vec<i64>,
+    /// How long each point covers.
+    pub(super) span: Vec<i64>,
+    /// A recorded frame inside each point, whose processes can be shown (0: none yet).
+    pub(super) frame: Vec<i64>,
+    /// The frame with the highest CPU sample, per point.
+    pub(super) peak: Vec<Option<i64>>,
+    pub(super) columns: HashMap<String, Column>,
+    pub(super) gaps: Vec<Gap>,
+    /// Points before this time are final; later ones may still change.
+    pub(super) settled: i64,
+}
+
+fn number(value: &Value) -> Option<f64> {
+    value.as_f64().filter(|v| v.is_finite())
+}
+
+fn numbers(value: &Value) -> Vec<Option<f64>> {
+    value
+        .as_array()
+        .map(|list| list.iter().map(number).collect())
+        .unwrap_or_default()
+}
+
+fn times(value: &Value) -> Vec<i64> {
+    value
+        .as_array()
+        .map(|list| list.iter().map(|v| v.as_i64().unwrap_or(0)).collect())
+        .unwrap_or_default()
+}
+
+impl Points {
+    /// Reads an answer to `history_points` asked with `args`.
+    pub(super) fn parse(answer: &Value, args: &Value) -> Self {
+        let ts = times(&answer["ts"]);
+        let n = ts.len();
+        let fit = |mut list: Vec<Option<f64>>| {
+            list.resize(n, None);
+            list
+        };
+        let mut span = times(&answer["span"]);
+        let bucket = answer["bucket"]
+            .as_i64()
+            .or_else(|| args["bucket"].as_i64())
+            .unwrap_or(FRAME)
+            .max(1);
+        span.resize(n, bucket.max(SECOND));
+        let mut frame = times(&answer["frame"]);
+        frame.resize(n, 0);
+        let mut peak = answer["peak"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|v| v.as_i64().filter(|at| *at > 0))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        peak.resize(n, None);
+        let columns = answer["series"]
+            .as_object()
+            .map(|series| {
+                series
+                    .iter()
+                    .map(|(key, column)| {
+                        (
+                            key.clone(),
+                            Column {
+                                mean: fit(numbers(&column["mean"])),
+                                low: fit(numbers(&column["low"])),
+                                high: fit(numbers(&column["high"])),
+                            },
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let gaps = answer["gaps"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|gap| {
+                        Some(Gap {
+                            from: gap["from"].as_i64()?,
+                            to: gap["to"].as_i64()?,
+                            reason: GapReason::parse(gap["reason"].as_str().unwrap_or("")),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let keys = args["keys"]
+            .as_array()
+            .map(|keys| {
+                keys.iter()
+                    .filter_map(|k| k.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let from = args["from"].as_i64().unwrap_or(0);
+        let to = args["to"].as_i64().unwrap_or(from);
+        Self {
+            bucket,
+            origin: args["origin"].as_i64().unwrap_or(0),
+            keys,
+            from,
+            to,
+            settled: answer["settled"]
+                .as_i64()
+                .unwrap_or_else(|| ts.last().copied().unwrap_or(from)),
+            ts,
+            span,
+            frame,
+            peak,
+            columns,
+            gaps,
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.ts.is_empty()
+    }
+
+    /// Whether these points answer the same question as a query for `bucket`,
+    /// `origin` and `keys` (so a newer answer can be merged in).
+    pub(super) fn matches(&self, bucket: i64, origin: i64, keys: &[String]) -> bool {
+        self.bucket == bucket && self.origin == origin && self.keys == keys
+    }
+
+    /// Takes in an answer for a later part of the same query: its points replace
+    /// those from where it starts on, and its gaps those after its start.
+    pub(super) fn merge(&mut self, newer: Points) {
+        let start = newer
+            .ts
+            .first()
+            .copied()
+            .unwrap_or(newer.from)
+            .min(newer.from);
+        let keep = self.ts.partition_point(|at| *at < start);
+        self.ts.truncate(keep);
+        self.span.truncate(keep);
+        self.frame.truncate(keep);
+        self.peak.truncate(keep);
+        for column in self.columns.values_mut() {
+            column.mean.truncate(keep);
+            column.low.truncate(keep);
+            column.high.truncate(keep);
+        }
+        let added = newer.ts.len();
+        for (key, column) in &newer.columns {
+            let entry = self.columns.entry(key.clone()).or_insert_with(|| Column {
+                mean: vec![None; keep],
+                low: vec![None; keep],
+                high: vec![None; keep],
+            });
+            entry.mean.extend_from_slice(&column.mean);
+            entry.low.extend_from_slice(&column.low);
+            entry.high.extend_from_slice(&column.high);
+        }
+        for (key, column) in self.columns.iter_mut() {
+            if !newer.columns.contains_key(key) {
+                column.mean.resize(keep + added, None);
+                column.low.resize(keep + added, None);
+                column.high.resize(keep + added, None);
+            }
+        }
+        self.ts.extend_from_slice(&newer.ts);
+        self.span.extend_from_slice(&newer.span);
+        self.frame.extend_from_slice(&newer.frame);
+        self.peak.extend_from_slice(&newer.peak);
+        self.gaps.retain(|gap| gap.to <= start);
+        self.gaps.extend(newer.gaps);
+        self.to = self.to.max(newer.to);
+        self.settled = newer.settled.max(self.settled.min(start));
+    }
+
+    /// Forgets points that ended before `before`, so a window following the
+    /// clock for hours keeps a bounded list.
+    pub(super) fn trim(&mut self, before: i64) {
+        let drop = self
+            .ts
+            .iter()
+            .zip(&self.span)
+            .take_while(|(at, span)| *at + *span < before)
+            .count();
+        if drop == 0 {
+            return;
+        }
+        self.ts.drain(..drop);
+        self.span.drain(..drop);
+        self.frame.drain(..drop);
+        self.peak.drain(..drop);
+        for column in self.columns.values_mut() {
+            column.mean.drain(..drop.min(column.mean.len()));
+            column.low.drain(..drop.min(column.low.len()));
+            column.high.drain(..drop.min(column.high.len()));
+        }
+        self.gaps.retain(|gap| gap.to >= before);
+        self.from = self.from.max(before);
+    }
+
+    /// The newest time a reading was taken in: the end of the last point that
+    /// is settled, else the start of the one still filling.
+    pub(super) fn newest(&self) -> Option<i64> {
+        let last = self.ts.len().checked_sub(1)?;
+        let end = self.ts[last] + self.span[last];
+        Some(if end <= self.settled.max(self.ts[last]) {
+            end
+        } else {
+            self.settled.max(self.ts[last])
+        })
+    }
+
+    /// Whether point `i` aggregates several records (drawn at its middle) rather
+    /// than being one sample or frame (drawn at its start).
+    fn aggregated(&self, i: usize) -> bool {
+        self.span[i] > FRAME
+    }
+
+    /// Where point `i` is drawn: a sample or frame at its start, a bucket at its
+    /// middle, the bucket still filling no later than `end`.
+    pub(super) fn x_time(&self, i: usize, end: i64) -> i64 {
+        if !self.aggregated(i) {
+            return self.ts[i];
+        }
+        let middle = self.ts[i] + self.span[i] / 2;
+        if self.ts[i] + self.span[i] > self.settled {
+            middle.min(end.max(self.ts[i]))
+        } else {
+            middle
+        }
+    }
+
+    pub(super) fn value(&self, key: &str, part: Part, i: usize) -> Option<f64> {
+        let column = self.columns.get(key)?;
+        let list = match part {
+            Part::Mean => &column.mean,
+            Part::Low => &column.low,
+            Part::High => &column.high,
+        };
+        list.get(i).copied().flatten()
+    }
+
+    pub(super) fn has(&self, key: &str) -> bool {
+        self.columns
+            .get(key)
+            .is_some_and(|column| column.mean.iter().any(Option::is_some))
+    }
+
+    /// Whether the line joins point `i` to the next: not across a recorded gap,
+    /// nor across a hole wider than the slowest cadence and three points.
+    pub(super) fn joins(&self, i: usize) -> bool {
+        let Some(next) = self.ts.get(i + 1) else {
+            return false;
+        };
+        let end = self.ts[i] + self.span[i];
+        if self
+            .gaps
+            .iter()
+            .any(|gap| gap.from < *next && gap.to > end - 1)
+        {
+            return false;
+        }
+        let widest = self.span[i].max(self.span[i + 1]);
+        next - end <= (3 * widest).max(MAX_CADENCE)
+    }
+
+    /// The values of `key` as a time plot draws them: each at its point's place,
+    /// an unknown value between points the line does not join. `scale` maps a
+    /// value onto the plot's axis (a reading on the right axis).
+    pub(super) fn line(
+        &self,
+        key: &str,
+        part: Part,
+        end: i64,
+        scale: impl Fn(f64) -> f64,
+    ) -> Vec<(f64, Option<f64>)> {
+        let mut out = Vec::with_capacity(self.ts.len() + 8);
+        for i in 0..self.ts.len() {
+            let at = self.x_time(i, end) as f64;
+            out.push((at, self.value(key, part, i).map(&scale)));
+            if i + 1 < self.ts.len() && !self.joins(i) {
+                let next = self.x_time(i + 1, end) as f64;
+                out.push(((at + next) / 2., None));
+            }
+        }
+        out
+    }
+
+    /// A band's edges at each point, broken where the line breaks: the lowest
+    /// of `low` up to the highest of `high` (the highest samples of `cpuPeak`
+    /// above the lowest of `cpu`, say).
+    pub(super) fn band(&self, low: &str, high: &str, end: i64) -> Vec<(f64, Option<(f64, f64)>)> {
+        let mut out = Vec::with_capacity(self.ts.len() + 8);
+        for i in 0..self.ts.len() {
+            let at = self.x_time(i, end) as f64;
+            let below = self
+                .value(low, Part::Low, i)
+                .or_else(|| self.value(low, Part::Mean, i));
+            let above = self
+                .value(high, Part::High, i)
+                .or_else(|| self.value(high, Part::Mean, i));
+            out.push((at, below.zip(above)));
+            if i + 1 < self.ts.len() && !self.joins(i) {
+                let next = self.x_time(i + 1, end) as f64;
+                out.push(((at + next) / 2., None));
+            }
+        }
+        out
+    }
+
+    /// The point covering `at`, if the line passes there: the one whose span holds
+    /// it, else the nearest within half a point where the line joins.
+    pub(super) fn index_at(&self, at: i64) -> Option<usize> {
+        let after = self.ts.partition_point(|t| *t <= at);
+        let before = after.checked_sub(1);
+        if let Some(i) = before
+            && at < self.ts[i] + self.span[i]
+        {
+            return Some(i);
+        }
+        // In the hole between two points: the nearer one, if the line joins them.
+        let i = before?;
+        let next = self.ts.get(i + 1)?;
+        if !self.joins(i) {
+            return None;
+        }
+        let end = self.ts[i] + self.span[i];
+        Some(if at - end <= next - at { i } else { i + 1 })
+    }
+
+    /// The gap that holds `at`, if any.
+    pub(super) fn gap_at(&self, at: i64) -> Option<Gap> {
+        self.gaps
+            .iter()
+            .copied()
+            .find(|gap| gap.from <= at && at < gap.to)
+    }
+
+    /// Highest value of `key` among points drawn in `from..=to` (a bucket either side).
+    pub(super) fn highest(
+        &self,
+        key: &str,
+        part: Part,
+        from: i64,
+        to: i64,
+        end: i64,
+    ) -> Option<f64> {
+        self.fold(key, part, from, to, end, f64::max)
+    }
+
+    pub(super) fn lowest(
+        &self,
+        key: &str,
+        part: Part,
+        from: i64,
+        to: i64,
+        end: i64,
+    ) -> Option<f64> {
+        self.fold(key, part, from, to, end, f64::min)
+    }
+
+    fn fold(
+        &self,
+        key: &str,
+        part: Part,
+        from: i64,
+        to: i64,
+        end: i64,
+        f: impl Fn(f64, f64) -> f64,
+    ) -> Option<f64> {
+        let margin = self.bucket;
+        (0..self.ts.len())
+            .filter(|i| {
+                let at = self.x_time(*i, end);
+                at >= from - margin && at <= to + margin
+            })
+            .filter_map(|i| self.value(key, part, i))
+            .reduce(f)
+    }
+}
+
+/// The top of an axis: a round value just above `value`. Percentages stop at
+/// 10, 20, 25, 40, 50, 75 or 100.
+pub(super) fn nice_top(value: f64, percent: bool) -> f64 {
+    let value = if value > 0. && value.is_finite() {
+        value
+    } else if percent {
+        10.
+    } else {
+        1.
+    };
+    if percent {
+        return [10., 20., 25., 40., 50., 75., 100.]
+            .into_iter()
+            .find(|step| value * 1.06 <= *step)
+            .unwrap_or(100.);
+    }
+    let exponent = 10f64.powf(value.log10().floor());
+    [1., 1.5, 2., 2.5, 3., 4., 5., 6., 8., 10.]
+        .into_iter()
+        .map(|k| k * exponent)
+        .find(|step| value * 1.06 <= *step)
+        .unwrap_or(10. * exponent)
+}
+
+/// How many rows divide an axis of `range` into round steps: 25 in five, 40 in
+/// four, 75 in three.
+pub(super) fn rows_for(range: f64) -> u32 {
+    let range = (range * 1000.).round() / 1000.;
+    for rows in [4u32, 5, 3] {
+        let step = range / f64::from(rows);
+        if (step - step.round()).abs() < 1e-6
+            || (step < 1. && (step * 10. - (step * 10.).round()).abs() < 1e-6)
+        {
+            return rows;
+        }
+    }
+    4
+}
+
+/// Clock tick spacing for a window of `span` drawn `width` pixels wide: labels at
+/// least this far apart.
+const TICK_GAP: f32 = 86.;
+const TICK_STEPS: [i64; 18] = [
+    5 * SECOND,
+    10 * SECOND,
+    15 * SECOND,
+    30 * SECOND,
+    MINUTE,
+    2 * MINUTE,
+    5 * MINUTE,
+    10 * MINUTE,
+    15 * MINUTE,
+    30 * MINUTE,
+    HOUR,
+    2 * HOUR,
+    3 * HOUR,
+    6 * HOUR,
+    12 * HOUR,
+    DAY,
+    2 * DAY,
+    7 * DAY,
+];
+
+pub(super) fn tick_step(span: i64, width: f32) -> i64 {
+    let room = (width / TICK_GAP).max(1.) as f64;
+    TICK_STEPS
+        .into_iter()
+        .find(|step| span as f64 / *step as f64 <= room)
+        .unwrap_or(TICK_STEPS[TICK_STEPS.len() - 1])
+}
+
+/// Ticks on local clock boundaries inside the window.
+pub(super) fn ticks(from: i64, to: i64, step: i64) -> Vec<i64> {
+    crate::regional::clock_ticks(from, to, step)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DAY, FRAME, GapReason, HOUR, MINUTE, Part, Points, SECOND, bucket_for, min_span, nice_top,
+        rows_for, tick_step,
+    };
+    use serde_json::json;
+
+    fn args(from: i64, to: i64, bucket: i64) -> serde_json::Value {
+        json!({"from": from, "to": to, "bucket": bucket, "origin": 0, "keys": ["cpu"]})
+    }
+
+    #[test]
+    fn buckets_keep_about_one_point_per_few_pixels() {
+        assert_eq!(bucket_for(5 * MINUTE, 1000.), SECOND);
+        assert_eq!(bucket_for(HOUR, 1000.), 10 * SECOND);
+        assert_eq!(bucket_for(DAY, 1000.), 5 * MINUTE);
+        assert_eq!(bucket_for(30 * DAY, 1000.), 2 * HOUR);
+        assert_eq!(bucket_for(365 * DAY, 1000.), 6 * HOUR);
+        assert_eq!(min_span(5 * MINUTE), MINUTE);
+        assert_eq!(min_span(7 * DAY), 10 * MINUTE);
+    }
+
+    #[test]
+    fn axes_stop_on_round_values_and_rows_divide_them_evenly() {
+        assert_eq!(nice_top(8.9, true), 10.);
+        assert_eq!(nice_top(18., true), 20.);
+        assert_eq!(nice_top(19., true), 25., "six percent of headroom");
+        assert_eq!(nice_top(70., true), 75.);
+        assert_eq!(nice_top(99., true), 100.);
+        assert_eq!(nice_top(1.3e6, false), 1.5e6);
+        assert_eq!(nice_top(0., false), 1.5, "an empty axis still has a top");
+        assert_eq!(rows_for(100.), 4);
+        assert_eq!(rows_for(25.), 5);
+        assert_eq!(rows_for(75.), 5);
+        assert_eq!(rows_for(1.5), 5);
+        assert_eq!(rows_for(0.9), 3);
+        assert_eq!(tick_step(5 * MINUTE, 1000.), 30 * SECOND);
+    }
+
+    #[test]
+    fn a_newer_answer_replaces_the_points_from_its_start_on() {
+        let first = json!({"bucket": 1000, "ts": [0, 1000, 2000], "span": [1000, 1000, 1000],
+            "frame": [0, 0, 0], "series": {"cpu": {"mean": [1, 2, 3]}}, "settled": 2000});
+        let mut points = Points::parse(&first, &args(0, 3000, 1000));
+        let newer = json!({"bucket": 1000, "ts": [2000, 3000], "span": [1000, 1000],
+            "frame": [0, 0], "series": {"cpu": {"mean": [4, 5]}}, "settled": 3000});
+        points.merge(Points::parse(&newer, &args(2000, 4000, 1000)));
+        assert_eq!(points.ts, vec![0, 1000, 2000, 3000]);
+        assert_eq!(
+            points.columns["cpu"].mean,
+            vec![Some(1.), Some(2.), Some(4.), Some(5.)]
+        );
+        assert_eq!(points.settled, 3000);
+        points.trim(1500);
+        assert_eq!(points.ts, vec![1000, 2000, 3000]);
+        assert_eq!(points.columns["cpu"].mean.len(), 3);
+    }
+
+    #[test]
+    fn lines_break_at_recorded_gaps_and_wide_holes_only() {
+        let answer = json!({"bucket": FRAME, "ts": [0, FRAME, 2 * FRAME, 10 * MINUTE, 10 * MINUTE + FRAME, 30 * MINUTE],
+            "span": [FRAME, FRAME, FRAME, FRAME, FRAME, FRAME],
+            "series": {"cpu": {"mean": [1, 2, 3, 4, 5, 6]}},
+            "gaps": [{"from": 3 * FRAME, "to": 10 * MINUTE, "reason": "sleep"}], "settled": 40 * MINUTE});
+        let points = Points::parse(&answer, &args(0, 40 * MINUTE, FRAME));
+        assert!(points.joins(0) && points.joins(1));
+        assert!(!points.joins(2), "a recorded gap breaks the line");
+        assert!(points.joins(3));
+        assert!(
+            !points.joins(4),
+            "twenty minutes without a reading break it too"
+        );
+        let line = points.line("cpu", Part::Mean, 40 * MINUTE, |v| v);
+        assert_eq!(line.iter().filter(|(_, v)| v.is_none()).count(), 2);
+        assert_eq!(
+            points.gap_at(5 * MINUTE).map(|g| g.reason),
+            Some(GapReason::Sleep)
+        );
+        assert_eq!(points.index_at(FRAME + 10), Some(1));
+        assert_eq!(points.index_at(5 * MINUTE), None);
+    }
+
+    #[test]
+    fn buckets_sit_at_their_middle_and_the_filling_one_stays_inside_the_window() {
+        let answer = json!({"bucket": 10_000, "ts": [0, 10_000], "span": [10_000, 10_000],
+            "series": {"cpu": {"mean": [1, 2], "low": [0, 1], "high": [3, 4]}}, "settled": 10_000});
+        let points = Points::parse(&answer, &args(0, 20_000, 10_000));
+        assert_eq!(points.x_time(0, 12_000), 5_000);
+        assert_eq!(points.x_time(1, 12_000), 12_000);
+        assert_eq!(points.x_time(1, 19_000), 15_000);
+        assert_eq!(
+            points.highest("cpu", Part::High, 0, 20_000, 12_000),
+            Some(4.)
+        );
+        assert_eq!(points.lowest("cpu", Part::Low, 0, 20_000, 12_000), Some(0.));
+    }
+}

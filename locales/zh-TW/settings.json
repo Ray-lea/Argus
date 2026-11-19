@@ -85,8 +85,11 @@
     "history": "歷程折線取得焦點時",
     "time": "選取前一個 / 後一個時間點",
     "timeJump": "向前 / 向後移動較大範圍",
-    "timeEnds": "選取最早 / 最新的時間點",
-    "latest": "取消時間點選取，回到最新"
+    "timeFirst": "選取圖表中最早的時間點",
+    "latest": "回到最新讀數並繼續更新",
+    "zoom": "放大 / 縮小時間範圍",
+    "zoomReset": "顯示整個範圍",
+    "clearCursor": "清除游標與選取範圍"
   },
   "hotkey": {
     "title": "顯示或隱藏 Argus",

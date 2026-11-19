@@ -107,8 +107,11 @@
     "history": "历史曲线获得焦点时",
     "time": "选择前一个 / 后一个时间点",
     "timeJump": "向前 / 向后移动较大范围",
-    "timeEnds": "选择最早 / 最新的时间点",
-    "latest": "取消时间点选择，回到最新"
+    "timeFirst": "选择图表中最早的时间点",
+    "latest": "回到最新读数并继续更新",
+    "zoom": "放大 / 缩小时间范围",
+    "zoomReset": "显示整个范围",
+    "clearCursor": "清除游标与选区"
   },
   "hotkey": {
     "title": "显示或隐藏 Argus",

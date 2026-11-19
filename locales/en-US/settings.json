@@ -107,8 +107,11 @@
     "history": "When the history chart has focus",
     "time": "Select the previous / next point in time",
     "timeJump": "Move backward / forward by a larger amount",
-    "timeEnds": "Select the earliest / latest point in time",
-    "latest": "Clear the time selection and return to the latest data"
+    "timeFirst": "Select the earliest point on the chart",
+    "latest": "Go back to the latest readings and keep updating",
+    "zoom": "Zoom in / out",
+    "zoomReset": "Show the whole range",
+    "clearCursor": "Clear the cursor and selection"
   },
   "hotkey": {
     "title": "Show or hide Argus",

@@ -1,43 +1,13 @@
 {
-  "range": {
-    "hours": "{count} 小時",
-    "days": "{count} 天"
-  },
-  "latest": {
-    "label": "回到最新",
-    "title": "取消選取的時刻，顯示最新資料"
-  },
   "metric": {
-    "peak": "最高 {value}%",
-    "total": "共 {value} GB",
-    "charging": "充電 {value}",
-    "discharging": "放電 {value}",
-    "average": "平均 {value}%"
+    "peak": "最高 {value}"
   },
-  "exited": "{name}（PID {pid}）已經結束。",
   "copied": {
     "name": "名稱"
   },
-  "column": {
-    "cpuTitle": "記錄間隔內的平均值（通常為 5 秒）",
-    "memTitle": "專用工作集"
-  },
-  "noData": "無記錄",
-  "empty": {
-    "off": "歷程記錄已關閉",
-    "none": "此時間範圍內無記錄",
-    "offHint": "在設定中開啟後，Argus 每 5 秒記錄一次；最小化或背景常駐時的重新整理間隔更長時，依該間隔記錄。",
-    "hint": "Argus 執行時每 5 秒記錄一次，最小化或背景常駐時的重新整理間隔更長時依該間隔記錄，保留 7 天。"
-  },
-  "busiest": "最忙碌的處理程序",
-  "busiestAt": "{time} 最忙碌的處理程序",
-  "hint": {
-    "pick": "按一下圖表上的任意時刻，檢視當時的處理程序",
-    "move": "在圖表上按 ← → 前後移動，按 Esc 返回最新"
-  },
   "noRecordAt": "該時刻無記錄",
   "earliest": "最早的記錄",
-  "note": "每 5 秒記錄 CPU、記憶體、I/O、GPU 和網路佔用最高的處理程序（最小化或背景常駐時的重新整理間隔更長時依該間隔），保留 7 天。",
+  "note": "每 5 秒記錄一次讀數與使用量最高的處理程序，最近 10 分鐘另有每秒讀數；最小化或在背景常駐時的重新整理間隔更長時，按該間隔記錄。保留 7 天。",
   "off": "歷程記錄已關閉，不再記錄新的資料。<link>開啟設定</link>",
   "watch": {
     "title": "處理程序觀察",
@@ -82,6 +52,204 @@
     "unconfirmed": "有 {count} 個同名執行個體無法確認身分；每分鐘重試一次。"
   },
   "instanceUnavailable": "處理程序 {name}（PID {pid}）的記錄執行個體已結束，或無法確認其身分。",
-  "showCpuPeak": "檢視 CPU 峰值影格",
-  "cpuSummary": "區間 CPU 平均 {average}%，峰值 {peak}%；峰值記錄影格：{time}。影格內處理程序讀數為平均值，無法據此確定瞬間峰值的原因。"
+  "range": {
+    "5m": "5 分鐘",
+    "1h": "1 小時",
+    "6h": "6 小時",
+    "1d": "1 天",
+    "7d": "7 天",
+    "30d": "30 天",
+    "all": "全部"
+  },
+  "now": "現在",
+  "live": {
+    "on": "即時",
+    "onTitle": "顯示最新讀數：6 小時以內每秒更新，更長的範圍每分鐘更新。按一下可暫停",
+    "off": "回到最新",
+    "offTitle": "回到最新讀數並繼續更新（也可在圖表上按一下滑鼠右鍵或按 End）"
+  },
+  "toast": {
+    "latest": "已回到最新",
+    "paused": "已暫停自動更新"
+  },
+  "more": "更多",
+  "menu": {
+    "band": "顯示最低到最高的範圍",
+    "settings": "歷程記錄設定…",
+    "needsService": "需要特權服務",
+    "notRecorded": "暫無記錄"
+  },
+  "group": {
+    "cpu": "處理器",
+    "memory": "記憶體",
+    "disk": "存放裝置",
+    "network": "網路",
+    "gpu": "顯示卡",
+    "battery": "電池",
+    "system": "系統"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU 使用率",
+      "memUsed": "記憶體使用量",
+      "disk": "磁碟讀寫",
+      "network": "網路收發",
+      "gpu": "GPU 使用率",
+      "battery": "電池電量",
+      "cpuKernel": "CPU 核心時間",
+      "cpuClock": "CPU 速度",
+      "cpuPower": "CPU 封裝功耗",
+      "cpuTemp": "CPU 溫度",
+      "cpuVoltage": "CPU 核心電壓",
+      "commitUsed": "已認可記憶體",
+      "memCached": "已快取記憶體",
+      "memCompressed": "已壓縮記憶體",
+      "pagedPool": "分頁集區",
+      "nonpagedPool": "非分頁集區",
+      "batteryRate": "電池充放電功率",
+      "batteryVoltage": "電池電壓",
+      "batteryTemp": "電池溫度",
+      "processes": "處理程序數",
+      "threads": "執行緒數",
+      "handles": "控制代碼數"
+    },
+    "short": {
+      "cpuKernel": "核心時間",
+      "cpuClock": "CPU 速度",
+      "cpuPower": "CPU 功耗",
+      "cpuTemp": "CPU 溫度",
+      "cpuVoltage": "CPU 電壓",
+      "commitUsed": "已認可",
+      "memCached": "已快取",
+      "memCompressed": "已壓縮",
+      "pagedPool": "分頁集區",
+      "nonpagedPool": "非分頁集區",
+      "batteryRate": "電池功率",
+      "batteryVoltage": "電池電壓",
+      "batteryTemp": "電池溫度"
+    }
+  },
+  "device": {
+    "fan": "風扇 {name}",
+    "diskOf": "{name} 讀寫",
+    "nicOf": "{name} 收發",
+    "diskActive": "{name} 使用時間",
+    "diskResponse": "{name} 平均回應時間",
+    "deviceTemp": "{name} 溫度",
+    "gpuUtil": "{name} 使用率",
+    "gpuDedicated": "{name} 專用 GPU 記憶體",
+    "gpuShared": "{name} 共用 GPU 記憶體",
+    "gpuPower": "{name} 功耗",
+    "gpuClock": "{name} 速度",
+    "gpuFan": "{name} 風扇"
+  },
+  "part": {
+    "read": "讀取",
+    "write": "寫入",
+    "receive": "接收",
+    "send": "傳送"
+  },
+  "gap": {
+    "sleep": "睡眠",
+    "shutdown": "關機或重新啟動",
+    "notRunning": "Argus 未執行",
+    "off": "記錄已關閉",
+    "unknown": "無記錄",
+    "tip": "無記錄：{reason}"
+  },
+  "duration": {
+    "seconds": "{count} 秒",
+    "minutes": "{count} 分鐘",
+    "hoursMinutes": "{hours} 小時 {minutes} 分鐘",
+    "daysHours": "{days} 天 {hours} 小時"
+  },
+  "drop": {
+    "overlay": "疊加到此軌道（右側縱軸）",
+    "lane": "新增軌道",
+    "move": "移到此處"
+  },
+  "lane": {
+    "add": "軌道",
+    "addTitle": "新增軌道",
+    "grip": "拖曳可調整順序",
+    "remove": "移除此軌道"
+  },
+  "overlay": {
+    "add": "疊加",
+    "addTitle": "疊加第二個讀數，使用右側縱軸",
+    "shared": "共用左軸",
+    "right": "右軸"
+  },
+  "unrecorded": {
+    "title": "{name}暫無記錄",
+    "hint": "這部電腦沒有記錄此讀數，所需的裝置或計數器可能不存在。",
+    "serviceTitle": "{name}需要特權服務",
+    "serviceHint": "特權服務透過 PawnIO 固定模組讀取處理器感應器；安裝後從下一次取樣開始記錄，先前的時段保持空白。",
+    "install": "安裝特權服務…"
+  },
+  "tip": {
+    "second": "每秒讀數",
+    "frame": "5 秒記錄",
+    "average": "平均值",
+    "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除"
+  },
+  "tab": {
+    "add": "在新軌道中顯示",
+    "title": "按一下可在目前軌道顯示；拖曳到圖表上可疊加或新增軌道",
+    "more": "更多讀數"
+  },
+  "table": {
+    "latest": "最新 {time} 的處理程序",
+    "moment": "{time} 的處理程序",
+    "range": "{range} 的處理程序",
+    "pid": "PID {pid}",
+    "loading": "正在讀取…",
+    "modeMoment": "此刻",
+    "modeRange": "區間",
+    "columns": "欄"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "記憶體",
+      "disk": "磁碟",
+      "diskRead": "磁碟讀取",
+      "diskWrite": "磁碟寫入",
+      "io": "I/O",
+      "net": "網路",
+      "gpu": "GPU",
+      "gpuMem": "專用 GPU 記憶體",
+      "power": "電源使用量",
+      "threads": "執行緒",
+      "handles": "控制代碼"
+    },
+    "range": {
+      "cpu": "CPU 平均",
+      "cpuMax": "CPU 最高",
+      "mem": "記憶體最高",
+      "disk": "磁碟讀寫量",
+      "diskRead": "磁碟讀取量",
+      "diskWrite": "磁碟寫入量",
+      "io": "I/O 量",
+      "net": "網路收發量",
+      "gpu": "GPU 平均",
+      "gpuMem": "專用 GPU 記憶體最高",
+      "power": "電源使用量",
+      "seen": "記錄時長",
+      "threads": "執行緒",
+      "handles": "控制代碼"
+    },
+    "trend": "趨勢 · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "記憶體",
+    "disk": "磁碟",
+    "net": "網路",
+    "gpu": "GPU"
+  },
+  "clearCursor": "清除游標（Esc）",
+  "selection": {
+    "zoom": "放大到選取範圍"
+  }
 }

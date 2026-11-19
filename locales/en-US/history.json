@@ -1,49 +1,13 @@
 {
-  "range": {
-    "hours": {
-      "one": "{count} hour",
-      "other": "{count} hours"
-    },
-    "days": {
-      "one": "{count} day",
-      "other": "{count} days"
-    }
-  },
-  "latest": {
-    "label": "Back to latest",
-    "title": "Clear the selected moment and show the latest data"
-  },
   "metric": {
-    "peak": "Peak {value}%",
-    "total": "of {value} GB",
-    "charging": "Charging {value}",
-    "discharging": "Discharging {value}",
-    "average": "Average {value}%"
+    "peak": "Peak {value}"
   },
-  "exited": "{name} (PID {pid}) has exited.",
   "copied": {
     "name": "name"
   },
-  "column": {
-    "cpuTitle": "Average over the recording interval (usually 5 seconds)",
-    "memTitle": "Private working set"
-  },
-  "noData": "No data",
-  "empty": {
-    "off": "History recording is off",
-    "none": "No records in this period",
-    "offHint": "Once turned on in Settings, Argus records every 5 seconds, or at the minimized or tray refresh rate when that is slower.",
-    "hint": "Argus records every 5 seconds while running, or at the minimized or tray refresh rate when that is slower, and keeps 7 days."
-  },
-  "busiest": "Busiest processes",
-  "busiestAt": "Busiest processes at {time}",
-  "hint": {
-    "pick": "Click any moment on the charts to see the processes at that time",
-    "move": "Press ← → on the charts to step through time, Esc to return to the latest"
-  },
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
-  "note": "Records the top processes by CPU, memory, I/O, GPU and network every 5 seconds (or at the minimized or tray refresh rate when that is slower) and keeps them for 7 days.",
+  "note": "Readings and the busiest processes are recorded every 5 seconds, plus per-second readings for the last 10 minutes; at the minimized or tray refresh rate when that is slower. Kept for 7 days.",
   "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
@@ -88,6 +52,210 @@
     "unconfirmed": "Could not confirm {count} same-named instances; retrying once per minute."
   },
   "instanceUnavailable": "The recorded instance of {name} (PID {pid}) has exited or its identity cannot be confirmed.",
-  "showCpuPeak": "Show CPU peak frame",
-  "cpuSummary": "CPU average {average}%, peak {peak}%; peak frame: {time}. Process readings are frame averages and do not establish the cause of a brief peak."
+  "range": {
+    "5m": "5 minutes",
+    "1h": "1 hour",
+    "6h": "6 hours",
+    "1d": "1 day",
+    "7d": "7 days",
+    "30d": "30 days",
+    "all": "All"
+  },
+  "now": "Now",
+  "live": {
+    "on": "Live",
+    "onTitle": "Showing the latest readings: every second up to 6 hours, every minute for longer ranges. Click to pause",
+    "off": "Back to latest",
+    "offTitle": "Go back to the latest readings and keep updating (or right-click the chart, or press End)"
+  },
+  "toast": {
+    "latest": "Back to the latest",
+    "paused": "Updates paused"
+  },
+  "more": "More",
+  "menu": {
+    "band": "Show the range from lowest to highest",
+    "settings": "History settings…",
+    "needsService": "Needs the privileged service",
+    "notRecorded": "Not recorded"
+  },
+  "group": {
+    "cpu": "Processor",
+    "memory": "Memory",
+    "disk": "Storage",
+    "network": "Network",
+    "gpu": "Graphics",
+    "battery": "Battery",
+    "system": "System"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU utilization",
+      "memUsed": "Memory in use",
+      "disk": "Disk read and write",
+      "network": "Network send and receive",
+      "gpu": "GPU utilization",
+      "battery": "Battery charge",
+      "cpuKernel": "CPU kernel time",
+      "cpuClock": "CPU speed",
+      "cpuPower": "CPU package power",
+      "cpuTemp": "CPU temperature",
+      "cpuVoltage": "CPU core voltage",
+      "commitUsed": "Committed memory",
+      "memCached": "Cached memory",
+      "memCompressed": "Compressed memory",
+      "pagedPool": "Paged pool",
+      "nonpagedPool": "Non-paged pool",
+      "batteryRate": "Battery charge and discharge power",
+      "batteryVoltage": "Battery voltage",
+      "batteryTemp": "Battery temperature",
+      "processes": "Processes",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "short": {
+      "cpuKernel": "Kernel time",
+      "cpuClock": "CPU speed",
+      "cpuPower": "CPU power",
+      "cpuTemp": "CPU temp",
+      "cpuVoltage": "CPU voltage",
+      "commitUsed": "Committed",
+      "memCached": "Cached",
+      "memCompressed": "Compressed",
+      "pagedPool": "Paged pool",
+      "nonpagedPool": "Non-paged pool",
+      "batteryRate": "Battery power",
+      "batteryVoltage": "Battery voltage",
+      "batteryTemp": "Battery temp"
+    }
+  },
+  "device": {
+    "fan": "Fan {name}",
+    "diskOf": "{name} read and write",
+    "nicOf": "{name} send and receive",
+    "diskActive": "{name} active time",
+    "diskResponse": "{name} average response time",
+    "deviceTemp": "{name} temperature",
+    "gpuUtil": "{name} utilization",
+    "gpuDedicated": "{name} dedicated GPU memory",
+    "gpuShared": "{name} shared GPU memory",
+    "gpuPower": "{name} power",
+    "gpuClock": "{name} speed",
+    "gpuFan": "{name} fan"
+  },
+  "part": {
+    "read": "Read",
+    "write": "Write",
+    "receive": "Receive",
+    "send": "Send"
+  },
+  "gap": {
+    "sleep": "Sleep",
+    "shutdown": "Shut down or restarted",
+    "notRunning": "Argus not running",
+    "off": "Recording off",
+    "unknown": "No records",
+    "tip": "No records: {reason}"
+  },
+  "duration": {
+    "seconds": {
+      "one": "{count} second",
+      "other": "{count} seconds"
+    },
+    "minutes": {
+      "one": "{count} minute",
+      "other": "{count} minutes"
+    },
+    "hoursMinutes": "{hours} h {minutes} min",
+    "daysHours": "{days} d {hours} h"
+  },
+  "drop": {
+    "overlay": "Overlay on this lane (right axis)",
+    "lane": "New lane",
+    "move": "Move here"
+  },
+  "lane": {
+    "add": "Lane",
+    "addTitle": "Add a lane",
+    "grip": "Drag to reorder",
+    "remove": "Remove this lane"
+  },
+  "overlay": {
+    "add": "Overlay",
+    "addTitle": "Overlay a second reading on the right axis",
+    "shared": "Shares the left axis",
+    "right": "Right axis"
+  },
+  "unrecorded": {
+    "title": "No records of {name}",
+    "hint": "This reading is not recorded on this computer; the device or counter it needs may be missing.",
+    "serviceTitle": "{name} needs the privileged service",
+    "serviceHint": "The privileged service reads the processor sensors through the PawnIO fixed modules. Once installed, recording starts with the next sample; earlier periods stay blank.",
+    "install": "Install the privileged service…"
+  },
+  "tip": {
+    "second": "Per-second reading",
+    "frame": "5-second record",
+    "average": "Average",
+    "hint": "Click to pin · Right-click for the latest · Esc to clear"
+  },
+  "tab": {
+    "add": "Show in a new lane",
+    "title": "Click to show in the current lane; drag onto the chart to overlay or add a lane",
+    "more": "More readings"
+  },
+  "table": {
+    "latest": "Processes at {time} (latest)",
+    "moment": "Processes at {time}",
+    "range": "Processes from {range}",
+    "pid": "PID {pid}",
+    "loading": "Reading…",
+    "modeMoment": "Moment",
+    "modeRange": "Range",
+    "columns": "Columns"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "Memory",
+      "disk": "Disk",
+      "diskRead": "Disk read",
+      "diskWrite": "Disk write",
+      "io": "I/O",
+      "net": "Network",
+      "gpu": "GPU",
+      "gpuMem": "Dedicated GPU memory",
+      "power": "Power usage",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "range": {
+      "cpu": "Average CPU",
+      "cpuMax": "Peak CPU",
+      "mem": "Peak memory",
+      "disk": "Disk read and written",
+      "diskRead": "Disk read",
+      "diskWrite": "Disk written",
+      "io": "I/O transferred",
+      "net": "Network transferred",
+      "gpu": "Average GPU",
+      "gpuMem": "Peak dedicated GPU memory",
+      "power": "Power usage",
+      "seen": "Time recorded",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "trend": "Trend · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "Memory",
+    "disk": "Disk",
+    "net": "Network",
+    "gpu": "GPU"
+  },
+  "clearCursor": "Clear the cursor (Esc)",
+  "selection": {
+    "zoom": "Zoom to selection"
+  }
 }

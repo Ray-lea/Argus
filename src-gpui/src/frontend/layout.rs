@@ -30,7 +30,7 @@ const SEARCH_SHARE: f32 = 0.3;
 const INTERVALS: [u64; 4] = [500, 1000, 2000, 5000];
 /// Where a menu opens from its control.
 #[derive(Clone, Copy)]
-enum Side {
+pub(in crate::frontend) enum Side {
     /// Under its left edge.
     Under,
     /// Under it, by its right edge.
@@ -463,7 +463,7 @@ impl Desktop {
             .on_click(cx.listener(move |this, _, window, cx| this.act(action.clone(), window, cx)))
     }
     /// A toolbar button's face without what a click does.
-    fn tool_face(
+    pub(in crate::frontend) fn tool_face(
         &self,
         id: impl Into<SharedString>,
         text: impl Into<SharedString>,
@@ -957,7 +957,7 @@ impl Desktop {
     /// Opens `items` from the control recorded as `anchor`: under its left
     /// edge, or by its right edge (above or below it), turning toward the
     /// free side as menus do. Unrecorded, the menu opens at the pointer.
-    fn open_anchored(
+    pub(in crate::frontend) fn open_anchored(
         &mut self,
         items: Vec<MenuItem>,
         anchor: &str,
@@ -982,43 +982,6 @@ impl Desktop {
             None => self.open_popup(items, window, cx),
         }
         self.anchor_menu(anchor);
-    }
-    /// A choice between labelled options: segments, or (`compact`) a button
-    /// naming the chosen option that drops the list down.
-    pub(in crate::frontend) fn choice(
-        &self,
-        id: &'static str,
-        choices: Vec<(String, Option<&'static str>, Action, bool)>,
-        compact: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if !compact {
-            return self.segments(id, choices, cx);
-        }
-        let p = self.palette;
-        let chosen = choices.iter().position(|choice| choice.3).unwrap_or(0);
-        let (text, glyph) = choices
-            .get(chosen)
-            .map(|choice| (choice.0.clone(), choice.1))
-            .unwrap_or_default();
-        let items: Vec<MenuItem> = choices
-            .into_iter()
-            .map(|(name, _, action, chosen)| MenuItem::new(name, action).checked(chosen))
-            .collect();
-        let key: SharedString = format!("{id}-menu").into();
-        let anchor = key.clone();
-        div()
-            .relative()
-            .flex_shrink_0()
-            .child(
-                self.tool_face(key.clone(), text, glyph, false)
-                    .child(icon("ChevronDown", p.muted).size(px(14.)).mr(px(-4.)))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_anchored(items.clone(), &anchor, Side::Under, window, cx)
-                    })),
-            )
-            .child(anchor_probe(key, self.ui.anchors.clone()))
-            .into_any_element()
     }
     pub(in crate::frontend) fn has_search(&self) -> bool {
         matches!(
@@ -1080,8 +1043,8 @@ impl Desktop {
             self.font_size,
             self.nav_top,
             argus_core::i18n::locale() as u8,
-            // The history page's "Latest" button (`showsLatest`).
-            self.page == "history" && self.history_cursor.is_some()
+            // The history page's live button names what a click does.
+            self.page == "history" && self.history_follows()
         );
         let regions = *self.bar_regions.borrow();
         // The bar's room: the window, less the side navigation beside it.
@@ -1154,7 +1117,7 @@ impl Desktop {
     }
     /// Pages whose bar has labelled choices to fold into drop-downs (level 1).
     fn has_choices(&self) -> bool {
-        self.page == "history"
+        false
     }
     /// The page bar's height below its first row: the controls' own row at
     /// the last compact level.
@@ -1893,7 +1856,7 @@ fn track_bar(
 
 /// Records an element's bounds under `key`: a menu it opens hangs from them,
 /// and tests reach it there (`clickAnchor`).
-fn anchor_probe(
+pub(in crate::frontend) fn anchor_probe(
     key: impl Into<SharedString>,
     anchors: Rc<RefCell<HashMap<SharedString, Bounds<Pixels>>>>,
 ) -> impl IntoElement {

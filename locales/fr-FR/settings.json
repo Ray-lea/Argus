@@ -107,8 +107,11 @@
     "history": "Lorsque le graphique historique a le focus",
     "time": "Sélectionnez le moment précédent/suivant",
     "timeJump": "Reculer/avancer davantage",
-    "timeEnds": "Sélectionnez le moment le plus ancien/le plus récent",
-    "latest": "Effacez la sélection de l’heure et revenez aux dernières données"
+    "timeFirst": "Sélectionner le point le plus ancien du graphique",
+    "latest": "Revenir aux dernières mesures et continuer la mise à jour",
+    "zoom": "Zoomer / dézoomer",
+    "zoomReset": "Afficher toute la plage",
+    "clearCursor": "Effacer le curseur et la sélection"
   },
   "hotkey": {
     "title": "Afficher ou masquer Argus",

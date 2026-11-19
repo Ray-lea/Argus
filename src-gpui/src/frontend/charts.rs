@@ -38,11 +38,15 @@ pub struct Series {
     pub fill: f32,
     /// A layer over the chart's other series that comes and goes (`Line::layer`).
     layer: bool,
-    geometry: Arc<Vec<Vec<(f64, f64)>>>,
+    geometry: Runs,
+    /// A band's lower edge, run for run with `geometry` (its upper edge).
+    band: Option<Runs>,
     geometry_key: u64,
     /// Identifies the data shown (series key and transform); 0 when unnamed.
     source: u64,
 }
+/// A series' known samples, split into runs at its unknown ones.
+type Runs = Arc<Vec<Vec<(f64, f64)>>>;
 /// Default area opacity under a solid line.
 pub(in crate::frontend) const FILL: f32 = 0.3;
 /// Opacity of a compact chart's secondary series: a solid line, as dashes
@@ -213,9 +217,36 @@ impl Series {
             fill: FILL,
             layer: false,
             geometry,
+            band: None,
             geometry_key,
             source: 0,
         }
+    }
+    /// A band from the lower to the upper value at each time, filled evenly at
+    /// its `fill` opacity and drawn without a line (the history page's range
+    /// from lowest to highest). A time where either is unknown breaks it.
+    pub(in crate::frontend) fn band(
+        name: String,
+        points: Vec<(f64, Option<(f64, f64)>)>,
+        color: Hsla,
+        format: MetricFormat,
+    ) -> Self {
+        let known =
+            |v: Option<(f64, f64)>| v.filter(|(low, high)| low.is_finite() && high.is_finite());
+        let upper = points
+            .iter()
+            .map(|(at, v)| (*at, known(*v).map(|v| v.1)))
+            .collect::<Vec<_>>();
+        let lower = points
+            .iter()
+            .map(|(at, v)| (*at, known(*v).map(|v| v.0)))
+            .collect::<Vec<_>>();
+        let mut series = Self::new(name, upper, color, format);
+        let lower = Arc::new(segments(&lower));
+        series.geometry_key = hash_of((series.geometry_key, raster::geometry_key(&lower)));
+        series.band = Some(lower);
+        series.fill = 0.13;
+        series
     }
     /// Names the data shown: a texture drawn for other data is never shown for it.
     pub(in crate::frontend) fn source(mut self, source: u64) -> Self {

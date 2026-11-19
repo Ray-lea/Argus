@@ -4192,8 +4192,11 @@ impl Desktop {
                     ("← / →", "settings.shortcuts.time"),
                     ("Shift+← / Shift+→", "settings.shortcuts.timeJump"),
                     ("PageUp / PageDown", "settings.shortcuts.timeJump"),
-                    ("Home / End", "settings.shortcuts.timeEnds"),
-                    ("Esc", "settings.shortcuts.latest"),
+                    ("Home", "settings.shortcuts.timeFirst"),
+                    ("End", "settings.shortcuts.latest"),
+                    ("+ / −", "settings.shortcuts.zoom"),
+                    ("0", "settings.shortcuts.zoomReset"),
+                    ("Esc", "settings.shortcuts.clearCursor"),
                 ],
             ),
         ];

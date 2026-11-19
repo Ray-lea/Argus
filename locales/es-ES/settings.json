@@ -107,8 +107,11 @@
     "history": "Cuando el gráfico histórico tiene foco",
     "time": "Seleccione el punto anterior/siguiente en el tiempo",
     "timeJump": "Retroceder / avanzar en una cantidad mayor",
-    "timeEnds": "Seleccione el punto en el tiempo más antiguo o más reciente",
-    "latest": "Borrar la selección temporal y volver a los datos más recientes"
+    "timeFirst": "Seleccionar el punto más antiguo del gráfico",
+    "latest": "Volver a las lecturas más recientes y seguir actualizando",
+    "zoom": "Ampliar / reducir el intervalo",
+    "zoomReset": "Mostrar todo el intervalo",
+    "clearCursor": "Quitar el cursor y la selección"
   },
   "hotkey": {
     "title": "Mostrar u ocultar Argus",

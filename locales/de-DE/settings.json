@@ -107,8 +107,11 @@
     "history": "Wenn das Verlaufsdiagramm den Fokus hat",
     "time": "Wählen Sie den vorherigen / nächsten Zeitpunkt aus",
     "timeJump": "Um einen größeren Zeitraum zurück- oder vorwärtsgehen",
-    "timeEnds": "Wählen Sie den frühesten / spätesten Zeitpunkt aus",
-    "latest": "Löschen Sie die Zeitauswahl und kehren Sie zu den neuesten Daten zurück"
+    "timeFirst": "Frühesten Zeitpunkt im Diagramm auswählen",
+    "latest": "Zu den neuesten Werten zurückkehren und weiter aktualisieren",
+    "zoom": "Zeitbereich vergrößern / verkleinern",
+    "zoomReset": "Gesamten Bereich anzeigen",
+    "clearCursor": "Cursor und Auswahl entfernen"
   },
   "hotkey": {
     "title": "Argus ein- oder ausblenden",

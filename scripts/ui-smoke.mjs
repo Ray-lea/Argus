@@ -461,7 +461,7 @@ try {
     await sleep(250);
     await capture("sensor-full", false, false);
     assert(compare("sensor-partial", "sensor-full").maxChannelDelta <= 1, "sensor dependency paint differs");
-    if (fixture.historySeries?.length) {
+    if (fixture.historyPoints?.ts?.length) {
       send({ page: "history", pointerOutside: true, uiMotion: "off" });
       await sleep(1200);
       send({ inspectLayout: "history-plot" });

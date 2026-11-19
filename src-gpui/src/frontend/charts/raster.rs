@@ -1078,6 +1078,34 @@ fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_s
     path.finish()
 }
 
+/// The area between two edges of one band: the upper one left to right, the
+/// lower one back.
+fn band_path(upper: &[Cubic], lower: &[Cubic], smooth: bool) -> Option<tiny_skia::Path> {
+    let mut path = tiny_skia::PathBuilder::new();
+    let (x, y) = upper.first()?.0[0];
+    path.move_to(x as f32, y as f32);
+    for cubic in upper {
+        let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
+        if smooth {
+            path.cubic_to(c1.0, c1.1, c2.0, c2.1, end.0, end.1);
+        } else {
+            path.line_to(end.0, end.1);
+        }
+    }
+    let (x, y) = lower.last()?.0[3];
+    path.line_to(x as f32, y as f32);
+    for cubic in lower.iter().rev() {
+        let [start, c1, c2, _] = cubic.0.map(|(x, y)| (x as f32, y as f32));
+        if smooth {
+            path.cubic_to(c2.0, c2.1, c1.0, c1.1, start.0, start.1);
+        } else {
+            path.line_to(start.0, start.1);
+        }
+    }
+    path.close();
+    path.finish()
+}
+
 /// What a raster draws, built once and drawn into every band in order.
 enum Shape {
     /// A filled path; an area fades through the row mask.
@@ -1165,7 +1193,12 @@ fn extent(plot: &Input) -> Option<Extent> {
     let (mut first, mut last) = (0f32, width);
     let (mut top, mut bottom) = (f32::INFINITY, f32::NEG_INFINITY);
     for series in plot.series.iter() {
-        for run in series.geometry.iter() {
+        // A band's lower edge takes rows too.
+        let runs = series
+            .geometry
+            .iter()
+            .chain(series.band.iter().flat_map(|band| band.iter()));
+        for run in runs {
             let points = &run[visible_samples(run, time)];
             if points.len() < 2 {
                 continue;
@@ -1261,6 +1294,26 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
     for (index, series) in plot.series.iter().enumerate() {
         let color: Rgba = series.color.into();
         let solid = tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a)?;
+        if let Some(band) = &series.band {
+            let even = tiny_skia::Color::from_rgba(
+                color.r,
+                color.g,
+                color.b,
+                color.a * series.fill.clamp(0., 1.),
+            )?;
+            for (upper, lower) in series.geometry.iter().zip(band.iter()) {
+                let (upper, _) = clipped_run(plot, layout, upper);
+                let (lower, _) = clipped_run(plot, layout, lower);
+                if let Some(path) = band_path(&upper, &lower, plot.smooth) {
+                    shapes.push(Shape::Fill {
+                        path,
+                        color: even,
+                        faded: false,
+                    });
+                }
+            }
+            continue;
+        }
         let mut next_phases = HashMap::new();
         for run in series.geometry.iter() {
             let (cubics, times) = clipped_run(plot, layout, run);

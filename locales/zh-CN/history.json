@@ -1,43 +1,13 @@
 {
-  "range": {
-    "hours": "{count} 小时",
-    "days": "{count} 天"
-  },
-  "latest": {
-    "label": "回到最新",
-    "title": "取消选中的时刻，显示最新数据"
-  },
   "metric": {
-    "peak": "最高 {value}%",
-    "total": "共 {value} GB",
-    "charging": "充电 {value}",
-    "discharging": "放电 {value}",
-    "average": "平均 {value}%"
+    "peak": "最高 {value}"
   },
-  "exited": "{name}（PID {pid}）已经退出。",
   "copied": {
     "name": "名称"
   },
-  "column": {
-    "cpuTitle": "记录间隔内的平均值（通常为 5 秒）",
-    "memTitle": "专用工作集"
-  },
-  "noData": "无记录",
-  "empty": {
-    "off": "历史记录已关闭",
-    "none": "此时间段内无记录",
-    "offHint": "在设置中开启后，Argus 每 5 秒记录一次；最小化或后台常驻时的刷新间隔更长时，按该间隔记录。",
-    "hint": "Argus 运行时每 5 秒记录一次，最小化或后台常驻时的刷新间隔更长时按该间隔记录，保留 7 天。"
-  },
-  "busiest": "最忙的进程",
-  "busiestAt": "{time} 最忙的进程",
-  "hint": {
-    "pick": "单击图表上的任意时刻，查看当时的进程",
-    "move": "在图表上按 ← → 前后移动，按 Esc 返回最新"
-  },
   "noRecordAt": "该时刻无记录",
   "earliest": "最早的记录",
-  "note": "每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程（最小化或后台常驻时的刷新间隔更长时按该间隔），保留 7 天。",
+  "note": "每 5 秒记录一次读数与占用最高的进程，最近 10 分钟另有每秒读数；最小化或后台常驻时的刷新间隔更长时按该间隔记录。保留 7 天。",
   "off": "历史记录已关闭，不再记录新的数据。<link>打开设置</link>",
   "watch": {
     "title": "进程观察",
@@ -82,6 +52,204 @@
     "unconfirmed": "有 {count} 个同名实例无法确认身份；每分钟重试一次。"
   },
   "instanceUnavailable": "进程 {name}（PID {pid}）的记录实例已结束，或无法确认其身份。",
-  "showCpuPeak": "查看 CPU 峰值帧",
-  "cpuSummary": "区间 CPU 平均 {average}%，峰值 {peak}%；峰值记录帧：{time}。帧内进程读数为平均值，不能据此确定瞬时峰值的原因。"
+  "range": {
+    "5m": "5 分钟",
+    "1h": "1 小时",
+    "6h": "6 小时",
+    "1d": "1 天",
+    "7d": "7 天",
+    "30d": "30 天",
+    "all": "全部"
+  },
+  "now": "现在",
+  "live": {
+    "on": "实时",
+    "onTitle": "显示最新读数：6 小时以内每秒更新，更长的范围每分钟更新。单击可暂停",
+    "off": "回到最新",
+    "offTitle": "回到最新读数并继续更新（也可右键单击图表或按 End）"
+  },
+  "toast": {
+    "latest": "已回到最新",
+    "paused": "已暂停自动更新"
+  },
+  "more": "更多",
+  "menu": {
+    "band": "显示最低到最高的范围",
+    "settings": "历史记录设置…",
+    "needsService": "需要特权服务",
+    "notRecorded": "暂无记录"
+  },
+  "group": {
+    "cpu": "处理器",
+    "memory": "内存",
+    "disk": "存储",
+    "network": "网络",
+    "gpu": "显卡",
+    "battery": "电池",
+    "system": "系统"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU 使用率",
+      "memUsed": "内存使用量",
+      "disk": "磁盘读写",
+      "network": "网络收发",
+      "gpu": "GPU 使用率",
+      "battery": "电池电量",
+      "cpuKernel": "CPU 内核时间",
+      "cpuClock": "CPU 频率",
+      "cpuPower": "CPU 封装功耗",
+      "cpuTemp": "CPU 温度",
+      "cpuVoltage": "CPU 核心电压",
+      "commitUsed": "已提交内存",
+      "memCached": "已缓存内存",
+      "memCompressed": "已压缩内存",
+      "pagedPool": "分页缓冲池",
+      "nonpagedPool": "非分页缓冲池",
+      "batteryRate": "电池充放电功率",
+      "batteryVoltage": "电池电压",
+      "batteryTemp": "电池温度",
+      "processes": "进程数",
+      "threads": "线程数",
+      "handles": "句柄数"
+    },
+    "short": {
+      "cpuKernel": "内核时间",
+      "cpuClock": "CPU 频率",
+      "cpuPower": "CPU 功耗",
+      "cpuTemp": "CPU 温度",
+      "cpuVoltage": "CPU 电压",
+      "commitUsed": "已提交",
+      "memCached": "已缓存",
+      "memCompressed": "已压缩",
+      "pagedPool": "分页缓冲池",
+      "nonpagedPool": "非分页缓冲池",
+      "batteryRate": "电池功率",
+      "batteryVoltage": "电池电压",
+      "batteryTemp": "电池温度"
+    }
+  },
+  "device": {
+    "fan": "风扇 {name}",
+    "diskOf": "{name} 读写",
+    "nicOf": "{name} 收发",
+    "diskActive": "{name} 活动时间",
+    "diskResponse": "{name} 平均响应时间",
+    "deviceTemp": "{name} 温度",
+    "gpuUtil": "{name} 使用率",
+    "gpuDedicated": "{name} 专用 GPU 内存",
+    "gpuShared": "{name} 共享 GPU 内存",
+    "gpuPower": "{name} 功耗",
+    "gpuClock": "{name} 频率",
+    "gpuFan": "{name} 风扇"
+  },
+  "part": {
+    "read": "读取",
+    "write": "写入",
+    "receive": "接收",
+    "send": "发送"
+  },
+  "gap": {
+    "sleep": "睡眠",
+    "shutdown": "关机或重启",
+    "notRunning": "Argus 未运行",
+    "off": "记录已关闭",
+    "unknown": "无记录",
+    "tip": "无记录：{reason}"
+  },
+  "duration": {
+    "seconds": "{count} 秒",
+    "minutes": "{count} 分钟",
+    "hoursMinutes": "{hours} 小时 {minutes} 分钟",
+    "daysHours": "{days} 天 {hours} 小时"
+  },
+  "drop": {
+    "overlay": "叠加到此轨道（右侧纵轴）",
+    "lane": "新建轨道",
+    "move": "移到此处"
+  },
+  "lane": {
+    "add": "轨道",
+    "addTitle": "添加轨道",
+    "grip": "拖动可调整顺序",
+    "remove": "移除此轨道"
+  },
+  "overlay": {
+    "add": "叠加",
+    "addTitle": "叠加第二个读数，使用右侧纵轴",
+    "shared": "共用左轴",
+    "right": "右轴"
+  },
+  "unrecorded": {
+    "title": "{name}暂无记录",
+    "hint": "本机没有记录该读数，所需的设备或计数器可能不存在。",
+    "serviceTitle": "{name}需要特权服务",
+    "serviceHint": "特权服务通过 PawnIO 固定模块读取处理器传感器；安装后从下一次采样开始记录，此前的时段保持空白。",
+    "install": "安装特权服务…"
+  },
+  "tip": {
+    "second": "每秒读数",
+    "frame": "5 秒记录",
+    "average": "平均值",
+    "hint": "单击可固定 · 右键单击回到最新 · Esc 清除"
+  },
+  "tab": {
+    "add": "在新轨道中显示",
+    "title": "单击可在当前轨道显示；拖到图表上可叠加或新建轨道",
+    "more": "更多读数"
+  },
+  "table": {
+    "latest": "最新 {time} 的进程",
+    "moment": "{time} 的进程",
+    "range": "{range} 的进程",
+    "pid": "PID {pid}",
+    "loading": "正在读取…",
+    "modeMoment": "此刻",
+    "modeRange": "区间",
+    "columns": "列"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "内存",
+      "disk": "磁盘",
+      "diskRead": "磁盘读取",
+      "diskWrite": "磁盘写入",
+      "io": "I/O",
+      "net": "网络",
+      "gpu": "GPU",
+      "gpuMem": "专用 GPU 内存",
+      "power": "电源使用情况",
+      "threads": "线程",
+      "handles": "句柄"
+    },
+    "range": {
+      "cpu": "CPU 平均",
+      "cpuMax": "CPU 最高",
+      "mem": "内存最高",
+      "disk": "磁盘读写量",
+      "diskRead": "磁盘读取量",
+      "diskWrite": "磁盘写入量",
+      "io": "I/O 量",
+      "net": "网络收发量",
+      "gpu": "GPU 平均",
+      "gpuMem": "专用 GPU 内存最高",
+      "power": "电源使用情况",
+      "seen": "记录时长",
+      "threads": "线程",
+      "handles": "句柄"
+    },
+    "trend": "趋势 · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "内存",
+    "disk": "磁盘",
+    "net": "网络",
+    "gpu": "GPU"
+  },
+  "clearCursor": "清除游标（Esc）",
+  "selection": {
+    "zoom": "放大到所选"
+  }
 }

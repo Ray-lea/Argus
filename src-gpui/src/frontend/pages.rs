@@ -2,7 +2,7 @@
 mod about;
 pub(in crate::frontend) mod components;
 mod details;
-mod history;
+pub(in crate::frontend) mod history;
 pub(in crate::frontend) mod performance;
 mod process_watch;
 pub(in crate::frontend) mod section_rail;
@@ -278,54 +278,14 @@ impl Desktop {
     /// drop-down), and its "Latest".
     pub(in crate::frontend) fn page_controls(
         &self,
-        compact: bool,
+        _compact: bool,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut row = div().flex().items_center().gap_2();
         if self.page == "history" {
-            row = row.child(
-                self.choice(
-                    "history-range",
-                    history::RANGES
-                        .into_iter()
-                        .map(|(key, _)| {
-                            (
-                                history::range_label(key),
-                                None,
-                                Action::Preference("historyRange".into(), json!(key)),
-                                self.history_range == key,
-                            )
-                        })
-                        .collect(),
-                    compact,
-                    cx,
-                ),
-            );
-            if self.history_cursor.is_some() {
-                // A plain `.btn` whose text is not a `.btn-text`: it keeps its
-                // label at every compact level of the page bar.
-                row = row.child(
-                    self.btn(
-                        "history-latest",
-                        label("history.latest.label"),
-                        None,
-                        widgets::Tone::Plain,
-                    )
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.act(
-                            Action::Preference("historyLatest".into(), Value::Null),
-                            window,
-                            cx,
-                        )
-                    }))
-                    .tooltip(|window, cx| {
-                        widgets::tooltip(label("history.latest.title"), window, cx)
-                    }),
-                );
-            }
+            return self.history_controls(cx);
         }
-        row.into_any_element()
+        div().into_any_element()
     }
     pub(in crate::frontend) fn preference(
         &mut self,
@@ -512,11 +472,10 @@ impl Desktop {
             "navPosition" => self.nav_top = value.as_str() != Some("side"),
             "navExpanded" => self.nav_expanded = value.as_bool().unwrap_or(false),
             "historyRange" => {
-                self.history_range = value.as_str().unwrap_or("1h").into();
-                self.history_hover = None;
-                self.load_history(window, cx);
+                if let Some(id) = value.as_str() {
+                    self.history_range_preference(id, window, cx);
+                }
             }
-            "historyMetric" => self.history_metric = value.as_str().unwrap_or("cpu").into(),
             "watchProcess" => {
                 if self.pending.values().any(|pending| {
                     pending.command == "watch_process" && pending.args["action"]["op"] != "status"
@@ -542,23 +501,6 @@ impl Desktop {
                     cx,
                 );
                 return;
-            }
-            "historyPeak" => {
-                self.data.remove("historySelection");
-                if let Some(at) = value.as_i64() {
-                    self.history_hover = None;
-                    self.history_cursor = Some(at);
-                    self.data.insert("historyPeakAt".into(), json!(at));
-                    self.load_history(window, cx);
-                    cx.notify();
-                }
-                return;
-            }
-            "historyLatest" => {
-                self.data.remove("historyPeakAt");
-                self.history_cursor = None;
-                self.history_hover = None;
-                self.load_history(window, cx);
             }
             "goToService" => {
                 if let Some(name) = value.as_str() {

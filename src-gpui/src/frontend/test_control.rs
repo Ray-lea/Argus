@@ -727,7 +727,7 @@ impl Desktop {
                 "skippedRequest":self.data.get("skippedRequest"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
-                "history":{"cursor":self.history_cursor,"requestedFrame":self.data.get("historyMomentAt"),"frame":self.data.get("historyMoment").map(|m| &m["system"]["ts"])},
+                "history":self.history_inspect(),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,

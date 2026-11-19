@@ -104,20 +104,15 @@ impl Desktop {
         {
             return;
         }
-        // An answer for another range or moment is dropped. One history query of each
-        // kind is in flight at a time, so the one for what is shown now may have been
-        // held back while this one was read: forget it was sent and ask again.
-        if pending.command == "history_series" && pending.args["range"] != self.history_range {
-            self.data.remove("historyQuery");
-            self.load_history(window, cx);
-            return;
-        }
-        if pending.command == "history_moment"
-            && (pending.args["cursor"] != json!(self.history_cursor)
-                || self.data.get("historyMomentAt") != Some(&pending.args["ts"]))
-        {
-            self.data.remove("historyMomentAt");
-            self.load_history(window, cx);
+        // The history page keeps its answers itself.
+        if self.history_complete(
+            &pending.command,
+            pending.cache.as_deref(),
+            &pending.args,
+            &result,
+            window,
+            cx,
+        ) {
             return;
         }
         match result {
@@ -150,12 +145,6 @@ impl Desktop {
                 {
                     return;
                 }
-                if pending.command == "history_series" {
-                    self.data.insert(
-                        "historyWindow".into(),
-                        json!({"from":pending.args["from"],"to":pending.args["to"],"buckets":pending.args["buckets"]}),
-                    );
-                }
                 let settings = pending.cache.as_deref() == Some("settings")
                     || (pending.command.starts_with("set_") && value.get("closeToTray").is_some());
                 if let Some(key) = pending.cache {
@@ -164,9 +153,6 @@ impl Desktop {
                 if pending.command == "watch_process" {
                     self.data.remove("watchError");
                     self.data.insert("processWatch".into(), value.clone());
-                }
-                if pending.command == "history_series" {
-                    self.history_answered(&pending.args, window, cx);
                 }
                 if pending.command == "watch_process"
                     && matches!(
@@ -380,6 +366,7 @@ impl Desktop {
                             || this.snapshot["hardware"]["cpuSensors"]["state"]
                                 != model["hardware"]["cpuSensors"]["state"];
                         this.accept_snapshot_prepared(model, rows, open, window, cx);
+                        this.history_sampled(window, cx);
                         this.refresh_tray(cx);
                         this.refresh_monitors(cx);
                         super::trace_work("snapshot", None, started);
@@ -435,7 +422,7 @@ impl Desktop {
     ) {
         let status_only = matches!(
             self.page.as_str(),
-            "services" | "startup" | "network" | "components" | "about"
+            "services" | "startup" | "network" | "components" | "about" | "history"
         ) || (self.page == "settings"
             && values(&self.data["settings"]["rules"]).is_empty());
         let visible = self.host.get_window("main").is_some_and(|window| {
@@ -965,6 +952,7 @@ impl Desktop {
                     1800,
                 );
             }
+            Action::History(command) => self.history_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }

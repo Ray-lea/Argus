@@ -1,51 +1,13 @@
 {
-  "range": {
-    "hours": {
-      "one": "{count} heure",
-      "many": "{count} heures",
-      "other": "{count} heures"
-    },
-    "days": {
-      "one": "{count} jour",
-      "many": "{count} jours",
-      "other": "{count} jours"
-    }
-  },
-  "latest": {
-    "label": "Retour au dernier",
-    "title": "Effacez le moment sélectionné et affichez les dernières données"
-  },
   "metric": {
-    "peak": "Pic {value} %",
-    "total": "de {value} GB",
-    "charging": "Chargement {value}",
-    "discharging": "Décharge {value}",
-    "average": "Moyenne {value}%"
+    "peak": "Maximum {value}"
   },
-  "exited": "{name} (PID {pid}) s’est arrêté.",
   "copied": {
     "name": "nom"
   },
-  "column": {
-    "cpuTitle": "Moyenne sur l’intervalle d’enregistrement (généralement 5 secondes)",
-    "memTitle": "Plage de travail privée"
-  },
-  "noData": "Aucune donnée",
-  "empty": {
-    "off": "L’enregistrement de l’historique est désactivé",
-    "none": "Aucun enregistrement dans cette période",
-    "offHint": "Une fois l’enregistrement activé dans Paramètres, Argus enregistre toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification si celui-ci est plus long.",
-    "hint": "Argus enregistre toutes les 5 secondes pendant son exécution, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours."
-  },
-  "busiest": "Processus les plus chargés",
-  "busiestAt": "Processus les plus chargés à {time}",
-  "hint": {
-    "pick": "Cliquez à tout moment sur les graphiques pour voir les processus à ce moment-là",
-    "move": "Appuyez sur ← → sur les graphiques pour parcourir le temps, Esc pour revenir aux dernières"
-  },
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
-  "note": "Enregistre les processus utilisant le plus de CPU, mémoire, I/O, GPU et réseau toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données sont conservées 7 jours.",
+  "note": "Les mesures et les processus les plus actifs sont enregistrés toutes les 5 secondes, avec des mesures par seconde pour les 10 dernières minutes ; réduit ou dans la zone de notification, à l’intervalle de cet état s’il est plus long. Conservés 7 jours.",
   "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
   "watch": {
     "title": "Observation du processus",
@@ -90,6 +52,212 @@
     "unconfirmed": "Identité non confirmée pour {count} instances du même nom ; nouvel essai chaque minute."
   },
   "instanceUnavailable": "L’instance enregistrée de {name} (PID {pid}) est terminée ou son identité ne peut pas être confirmée.",
-  "showCpuPeak": "Voir la mesure du pic CPU",
-  "cpuSummary": "CPU : moyenne {average}%, pic {peak}% ; mesure du pic : {time}. Les valeurs des processus sont des moyennes par mesure et ne prouvent pas la cause d’un bref pic."
+  "range": {
+    "5m": "5 minutes",
+    "1h": "1 heure",
+    "6h": "6 heures",
+    "1d": "1 jour",
+    "7d": "7 jours",
+    "30d": "30 jours",
+    "all": "Tout"
+  },
+  "now": "Maintenant",
+  "live": {
+    "on": "En direct",
+    "onTitle": "Affiche les dernières mesures : chaque seconde jusqu’à 6 heures, chaque minute au-delà. Cliquer pour suspendre",
+    "off": "Revenir au plus récent",
+    "offTitle": "Revenir aux dernières mesures et continuer la mise à jour (aussi par clic droit sur le graphique ou avec Fin)"
+  },
+  "toast": {
+    "latest": "Retour au plus récent",
+    "paused": "Mise à jour suspendue"
+  },
+  "more": "Plus",
+  "menu": {
+    "band": "Afficher la plage du minimum au maximum",
+    "settings": "Paramètres de l’historique…",
+    "needsService": "Nécessite le service privilégié",
+    "notRecorded": "Non enregistré"
+  },
+  "group": {
+    "cpu": "Processeur",
+    "memory": "Mémoire",
+    "disk": "Stockage",
+    "network": "Réseau",
+    "gpu": "Graphiques",
+    "battery": "Batterie",
+    "system": "Système"
+  },
+  "reading": {
+    "long": {
+      "cpu": "Utilisation du CPU",
+      "memUsed": "Mémoire utilisée",
+      "disk": "Lecture et écriture disque",
+      "network": "Envoi et réception réseau",
+      "gpu": "Utilisation du GPU",
+      "battery": "Charge de la batterie",
+      "cpuKernel": "Temps du noyau du CPU",
+      "cpuClock": "Vitesse du CPU",
+      "cpuPower": "Puissance du boîtier CPU",
+      "cpuTemp": "Température du CPU",
+      "cpuVoltage": "Tension des cœurs du CPU",
+      "commitUsed": "Mémoire validée",
+      "memCached": "Mémoire en cache",
+      "memCompressed": "Mémoire compressée",
+      "pagedPool": "Pool paginé",
+      "nonpagedPool": "Pool non paginé",
+      "batteryRate": "Puissance de charge et de décharge",
+      "batteryVoltage": "Tension de la batterie",
+      "batteryTemp": "Température de la batterie",
+      "processes": "Processus",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "short": {
+      "cpuKernel": "Temps du noyau",
+      "cpuClock": "Vitesse CPU",
+      "cpuPower": "Puissance CPU",
+      "cpuTemp": "Temp. CPU",
+      "cpuVoltage": "Tension CPU",
+      "commitUsed": "Validée",
+      "memCached": "En cache",
+      "memCompressed": "Compressée",
+      "pagedPool": "Pool paginé",
+      "nonpagedPool": "Pool non paginé",
+      "batteryRate": "Puissance batterie",
+      "batteryVoltage": "Tension batterie",
+      "batteryTemp": "Temp. batterie"
+    }
+  },
+  "device": {
+    "fan": "Ventilateur {name}",
+    "diskOf": "Lecture et écriture de {name}",
+    "nicOf": "Envoi et réception de {name}",
+    "diskActive": "Temps d’activité de {name}",
+    "diskResponse": "Temps de réponse moyen de {name}",
+    "deviceTemp": "Température de {name}",
+    "gpuUtil": "Utilisation de {name}",
+    "gpuDedicated": "Mémoire GPU dédiée de {name}",
+    "gpuShared": "Mémoire GPU partagée de {name}",
+    "gpuPower": "Puissance de {name}",
+    "gpuClock": "Vitesse de {name}",
+    "gpuFan": "Ventilateur de {name}"
+  },
+  "part": {
+    "read": "Lecture",
+    "write": "Écriture",
+    "receive": "Réception",
+    "send": "Envoi"
+  },
+  "gap": {
+    "sleep": "Veille",
+    "shutdown": "Arrêt ou redémarrage",
+    "notRunning": "Argus ne s’exécutait pas",
+    "off": "Enregistrement désactivé",
+    "unknown": "Aucun enregistrement",
+    "tip": "Aucun enregistrement : {reason}"
+  },
+  "duration": {
+    "seconds": {
+      "one": "{count} seconde",
+      "many": "{count} secondes",
+      "other": "{count} secondes"
+    },
+    "minutes": {
+      "one": "{count} minute",
+      "many": "{count} minutes",
+      "other": "{count} minutes"
+    },
+    "hoursMinutes": "{hours} h {minutes} min",
+    "daysHours": "{days} j {hours} h"
+  },
+  "drop": {
+    "overlay": "Superposer sur cette piste (axe de droite)",
+    "lane": "Nouvelle piste",
+    "move": "Déplacer ici"
+  },
+  "lane": {
+    "add": "Piste",
+    "addTitle": "Ajouter une piste",
+    "grip": "Faire glisser pour réordonner",
+    "remove": "Supprimer cette piste"
+  },
+  "overlay": {
+    "add": "Superposer",
+    "addTitle": "Superposer une deuxième mesure sur l’axe de droite",
+    "shared": "Partage l’axe de gauche",
+    "right": "Axe de droite"
+  },
+  "unrecorded": {
+    "title": "Aucun enregistrement de {name}",
+    "hint": "Cette mesure n’est pas enregistrée sur cet ordinateur ; le périphérique ou le compteur nécessaire est peut-être absent.",
+    "serviceTitle": "{name} nécessite le service privilégié",
+    "serviceHint": "Le service privilégié lit les capteurs du processeur par les modules fixes PawnIO. Une fois installé, l’enregistrement commence à la mesure suivante ; les périodes antérieures restent vides.",
+    "install": "Installer le service privilégié…"
+  },
+  "tip": {
+    "second": "Mesure par seconde",
+    "frame": "Enregistrement de 5 secondes",
+    "average": "Moyenne",
+    "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer"
+  },
+  "tab": {
+    "add": "Afficher dans une nouvelle piste",
+    "title": "Cliquer pour l’afficher dans la piste active ; faire glisser sur le graphique pour la superposer ou ajouter une piste",
+    "more": "Plus de mesures"
+  },
+  "table": {
+    "latest": "Processus à {time} (plus récent)",
+    "moment": "Processus à {time}",
+    "range": "Processus de {range}",
+    "pid": "PID {pid}",
+    "loading": "Lecture…",
+    "modeMoment": "Instant",
+    "modeRange": "Plage",
+    "columns": "Colonnes"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "Mémoire",
+      "disk": "Disque",
+      "diskRead": "Lecture disque",
+      "diskWrite": "Écriture disque",
+      "io": "I/O",
+      "net": "Réseau",
+      "gpu": "GPU",
+      "gpuMem": "Mémoire GPU dédiée",
+      "power": "Consommation d’énergie",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "range": {
+      "cpu": "CPU moyen",
+      "cpuMax": "CPU maximal",
+      "mem": "Mémoire maximale",
+      "disk": "Disque lu et écrit",
+      "diskRead": "Disque lu",
+      "diskWrite": "Disque écrit",
+      "io": "I/O transférées",
+      "net": "Réseau transféré",
+      "gpu": "GPU moyen",
+      "gpuMem": "Mémoire GPU dédiée maximale",
+      "power": "Consommation d’énergie",
+      "seen": "Durée enregistrée",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "trend": "Tendance · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "Mémoire",
+    "disk": "Disque",
+    "net": "Réseau",
+    "gpu": "GPU"
+  },
+  "clearCursor": "Effacer le curseur (Échap)",
+  "selection": {
+    "zoom": "Zoomer sur la sélection"
+  }
 }

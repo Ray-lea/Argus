@@ -117,6 +117,8 @@ enum Action {
     Preference(String, Value),
     /// Text to copy and the locale key naming it in the confirmation.
     Copy(String, &'static str),
+    /// A command of the history page.
+    History(pages::history::Command),
     CloseOverlay,
     Confirm,
 }
@@ -417,10 +419,8 @@ struct Desktop {
     first_frame_at: Option<Instant>,
     prefetched: bool,
     welcome_checked: bool,
-    history_range: String,
-    history_metric: String,
-    history_cursor: Option<i64>,
-    history_hover: Option<i64>,
+    /// The history page (`pages::history`).
+    history: pages::history::HistoryState,
     /// The tray's open flyouts (`tray`).
     tray: tray::Flyouts,
     /// The desktop monitor's window (`monitors`).
@@ -598,10 +598,7 @@ impl Desktop {
             first_frame_at: None,
             prefetched: false,
             welcome_checked: false,
-            history_range: "1h".into(),
-            history_metric: "cpu".into(),
-            history_cursor: None,
-            history_hover: None,
+            history: Default::default(),
             tray: tray::Flyouts::default(),
             monitors: monitors::Monitors::default(),
             ui_scale: appearance::SCALE.load(&prefs),

@@ -1,49 +1,13 @@
 {
-  "range": {
-    "hours": {
-      "one": "{count} Stunde",
-      "other": "{count} Stunden"
-    },
-    "days": {
-      "one": "{count} Tag",
-      "other": "{count} Tage"
-    }
-  },
-  "latest": {
-    "label": "Zurück zum Neuesten",
-    "title": "Löschen Sie den ausgewählten Moment und zeigen Sie die neuesten Daten an"
-  },
   "metric": {
-    "peak": "Spitzenwert {value} %",
-    "total": "von {value} GB",
-    "charging": "Laden {value}",
-    "discharging": "Entladen {value}",
-    "average": "Mittel {value}%"
+    "peak": "Höchstens {value}"
   },
-  "exited": "{name} (PID {pid}) wurde beendet.",
   "copied": {
     "name": "Name"
   },
-  "column": {
-    "cpuTitle": "Durchschnitt über das Aufzeichnungsintervall (normalerweise 5 Sekunden)",
-    "memTitle": "Privater Arbeitssatz"
-  },
-  "noData": "Keine Daten",
-  "empty": {
-    "off": "Die Verlaufsaufzeichnung ist deaktiviert",
-    "none": "Keine Datensätze in diesem Zeitraum",
-    "offHint": "Nach dem Aktivieren in den Einstellungen zeichnet Argus alle 5 Sekunden auf. Ist das Intervall bei minimiertem Fenster oder im Infobereich länger, wird dieses verwendet.",
-    "hint": "Argus zeichnet während der Ausführung alle 5 Sekunden auf, bei längerem Intervall im minimierten Zustand oder im Infobereich entsprechend seltener. Die Daten bleiben 7 Tage erhalten."
-  },
-  "busiest": "Am stärksten ausgelastete Prozesse",
-  "busiestAt": "Am stärksten ausgelastete Prozesse bei {time}",
-  "hint": {
-    "pick": "Klicken Sie auf einen beliebigen Zeitpunkt in den Diagrammen, um die Prozesse zu diesem Zeitpunkt anzuzeigen",
-    "move": "Mit ← → im Diagramm durch die Zeit wechseln; mit Esc zu den neuesten Daten zurückkehren"
-  },
   "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
-  "note": "Zeichnet alle 5 Sekunden die Prozesse mit der höchsten CPU-, Arbeitsspeicher-, I/O-, GPU- und Netzwerkauslastung auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage erhalten.",
+  "note": "Werte und die aktivsten Prozesse werden alle 5 Sekunden aufgezeichnet, dazu Sekundenwerte der letzten 10 Minuten; im minimierten Zustand oder im Infobereich im dortigen Intervall, wenn es länger ist. 7 Tage aufbewahrt.",
   "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>",
   "watch": {
     "title": "Prozessbeobachtung",
@@ -88,6 +52,210 @@
     "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute."
   },
   "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden.",
-  "showCpuPeak": "CPU-Spitzenframe zeigen",
-  "cpuSummary": "CPU-Mittel {average}%, Spitze {peak}%; Spitzenframe: {time}. Prozesswerte sind Frame-Mittelwerte und belegen nicht die Ursache einer kurzen Spitze."
+  "range": {
+    "5m": "5 Minuten",
+    "1h": "1 Stunde",
+    "6h": "6 Stunden",
+    "1d": "1 Tag",
+    "7d": "7 Tage",
+    "30d": "30 Tage",
+    "all": "Alles"
+  },
+  "now": "Jetzt",
+  "live": {
+    "on": "Live",
+    "onTitle": "Zeigt die neuesten Werte: bis 6 Stunden jede Sekunde, längere Bereiche jede Minute aktualisiert. Klicken zum Anhalten",
+    "off": "Zu den neuesten",
+    "offTitle": "Zu den neuesten Werten zurückkehren und weiter aktualisieren (auch per Rechtsklick in das Diagramm oder mit Ende)"
+  },
+  "toast": {
+    "latest": "Zurück bei den neuesten Werten",
+    "paused": "Aktualisierung angehalten"
+  },
+  "more": "Mehr",
+  "menu": {
+    "band": "Bereich vom niedrigsten zum höchsten Wert anzeigen",
+    "settings": "Verlaufseinstellungen…",
+    "needsService": "Benötigt den privilegierten Dienst",
+    "notRecorded": "Nicht aufgezeichnet"
+  },
+  "group": {
+    "cpu": "Prozessor",
+    "memory": "Arbeitsspeicher",
+    "disk": "Speicher",
+    "network": "Netzwerk",
+    "gpu": "Grafik",
+    "battery": "Akku",
+    "system": "System"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU-Auslastung",
+      "memUsed": "Belegter Arbeitsspeicher",
+      "disk": "Datenträger lesen und schreiben",
+      "network": "Netzwerk senden und empfangen",
+      "gpu": "GPU-Auslastung",
+      "battery": "Akkustand",
+      "cpuKernel": "CPU-Kernelzeit",
+      "cpuClock": "CPU-Geschwindigkeit",
+      "cpuPower": "CPU-Paketleistung",
+      "cpuTemp": "CPU-Temperatur",
+      "cpuVoltage": "CPU-Kernspannung",
+      "commitUsed": "Zugesicherter Speicher",
+      "memCached": "Speicher im Cache",
+      "memCompressed": "Komprimierter Speicher",
+      "pagedPool": "Ausgelagerter Pool",
+      "nonpagedPool": "Nicht ausgelagerter Pool",
+      "batteryRate": "Lade- und Entladeleistung des Akkus",
+      "batteryVoltage": "Akkuspannung",
+      "batteryTemp": "Akkutemperatur",
+      "processes": "Prozesse",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "short": {
+      "cpuKernel": "Kernelzeit",
+      "cpuClock": "CPU-Takt",
+      "cpuPower": "CPU-Leistung",
+      "cpuTemp": "CPU-Temp.",
+      "cpuVoltage": "CPU-Spannung",
+      "commitUsed": "Zugesichert",
+      "memCached": "Im Cache",
+      "memCompressed": "Komprimiert",
+      "pagedPool": "Ausgel. Pool",
+      "nonpagedPool": "Nicht ausgel. Pool",
+      "batteryRate": "Akkuleistung",
+      "batteryVoltage": "Akkuspannung",
+      "batteryTemp": "Akkutemp."
+    }
+  },
+  "device": {
+    "fan": "Lüfter {name}",
+    "diskOf": "{name} lesen und schreiben",
+    "nicOf": "{name} senden und empfangen",
+    "diskActive": "{name} aktive Zeit",
+    "diskResponse": "{name} mittlere Antwortzeit",
+    "deviceTemp": "{name} Temperatur",
+    "gpuUtil": "{name} Auslastung",
+    "gpuDedicated": "{name} dedizierter GPU-Speicher",
+    "gpuShared": "{name} gemeinsamer GPU-Speicher",
+    "gpuPower": "{name} Leistung",
+    "gpuClock": "{name} Geschwindigkeit",
+    "gpuFan": "{name} Lüfter"
+  },
+  "part": {
+    "read": "Lesen",
+    "write": "Schreiben",
+    "receive": "Empfangen",
+    "send": "Senden"
+  },
+  "gap": {
+    "sleep": "Energiesparmodus",
+    "shutdown": "Heruntergefahren oder neu gestartet",
+    "notRunning": "Argus lief nicht",
+    "off": "Aufzeichnung aus",
+    "unknown": "Keine Aufzeichnungen",
+    "tip": "Keine Aufzeichnungen: {reason}"
+  },
+  "duration": {
+    "seconds": {
+      "one": "{count} Sekunde",
+      "other": "{count} Sekunden"
+    },
+    "minutes": {
+      "one": "{count} Minute",
+      "other": "{count} Minuten"
+    },
+    "hoursMinutes": "{hours} h {minutes} min",
+    "daysHours": "{days} T. {hours} h"
+  },
+  "drop": {
+    "overlay": "Auf dieser Spur überlagern (rechte Achse)",
+    "lane": "Neue Spur",
+    "move": "Hierher verschieben"
+  },
+  "lane": {
+    "add": "Spur",
+    "addTitle": "Spur hinzufügen",
+    "grip": "Ziehen, um die Reihenfolge zu ändern",
+    "remove": "Diese Spur entfernen"
+  },
+  "overlay": {
+    "add": "Überlagern",
+    "addTitle": "Einen zweiten Wert auf der rechten Achse überlagern",
+    "shared": "Teilt die linke Achse",
+    "right": "Rechte Achse"
+  },
+  "unrecorded": {
+    "title": "Keine Aufzeichnungen für {name}",
+    "hint": "Dieser Wert wird auf diesem Computer nicht aufgezeichnet; das nötige Gerät oder der Zähler fehlt möglicherweise.",
+    "serviceTitle": "{name} benötigt den privilegierten Dienst",
+    "serviceHint": "Der privilegierte Dienst liest die Prozessorsensoren über die festen PawnIO-Module. Nach der Installation beginnt die Aufzeichnung mit der nächsten Messung; frühere Zeiträume bleiben leer.",
+    "install": "Privilegierten Dienst installieren…"
+  },
+  "tip": {
+    "second": "Sekundenwert",
+    "frame": "5-Sekunden-Aufzeichnung",
+    "average": "Mittelwert",
+    "hint": "Klicken zum Fixieren · Rechtsklick zu den neuesten · Esc zum Löschen"
+  },
+  "tab": {
+    "add": "In einer neuen Spur anzeigen",
+    "title": "Klicken zeigt den Wert in der aktuellen Spur; ins Diagramm ziehen überlagert ihn oder fügt eine Spur hinzu",
+    "more": "Weitere Werte"
+  },
+  "table": {
+    "latest": "Prozesse um {time} (neueste)",
+    "moment": "Prozesse um {time}",
+    "range": "Prozesse {range}",
+    "pid": "PID {pid}",
+    "loading": "Wird gelesen…",
+    "modeMoment": "Zeitpunkt",
+    "modeRange": "Bereich",
+    "columns": "Spalten"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "Arbeitsspeicher",
+      "disk": "Datenträger",
+      "diskRead": "Datenträger lesen",
+      "diskWrite": "Datenträger schreiben",
+      "io": "I/O",
+      "net": "Netzwerk",
+      "gpu": "GPU",
+      "gpuMem": "Dedizierter GPU-Speicher",
+      "power": "Energieverbrauch",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "range": {
+      "cpu": "CPU (Mittel)",
+      "cpuMax": "CPU (Spitze)",
+      "mem": "Arbeitsspeicher (Spitze)",
+      "disk": "Datenträger gelesen und geschrieben",
+      "diskRead": "Datenträger gelesen",
+      "diskWrite": "Datenträger geschrieben",
+      "io": "I/O übertragen",
+      "net": "Netzwerk übertragen",
+      "gpu": "GPU (Mittel)",
+      "gpuMem": "Dedizierter GPU-Speicher (Spitze)",
+      "power": "Energieverbrauch",
+      "seen": "Aufgezeichnete Zeit",
+      "threads": "Threads",
+      "handles": "Handles"
+    },
+    "trend": "Verlauf · {name}"
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "Arbeitsspeicher",
+    "disk": "Datenträger",
+    "net": "Netzwerk",
+    "gpu": "GPU"
+  },
+  "clearCursor": "Cursor entfernen (Esc)",
+  "selection": {
+    "zoom": "Auf Auswahl zoomen"
+  }
 }
