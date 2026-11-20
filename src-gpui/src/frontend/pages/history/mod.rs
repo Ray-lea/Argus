@@ -1428,14 +1428,6 @@ impl Desktop {
             }
             return true;
         }
-        // The range picker takes the keys while it is open: Esc closes it.
-        if self.history.picker.is_some() {
-            if key == "escape" {
-                self.history_close_picker(cx);
-                return true;
-            }
-            return false;
-        }
         // Typing in the table's search box keeps its keys.
         if self.history_searching(window, cx) {
             return false;
@@ -1667,7 +1659,6 @@ impl Desktop {
             .child(table)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
-            .children(self.history_picker(window, cx))
             .children(self.history_chooser(window, cx))
             .into_any_element()
     }

@@ -300,7 +300,8 @@
     "clear": "No se pudo borrar el historial. Compruebe los permisos de la carpeta y si hay archivos en uso."
   },
   "picker": {
-    "presets": "Intervalos habituales",
+    "title": "Intervalo personalizado",
+    "last5m": "Últimos 5 minutos",
     "last15m": "Últimos 15 minutos",
     "last1h": "Última hora",
     "last6h": "Últimas 6 horas",

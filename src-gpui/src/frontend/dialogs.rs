@@ -583,6 +583,7 @@ impl Desktop {
                 None,
             ),
             "shortcuts" => (label("settings.shortcuts.title"), String::new(), None),
+            "historyRange" => (label("history.picker.title"), String::new(), None),
             "onboarding" => (
                 label("settings.about.onboarding.title"),
                 String::new(),
@@ -849,8 +850,11 @@ impl Desktop {
         }
         window.close_all_dialogs(cx);
         let closed = self.modal.take().into_iter().chain(self.ui.below.drain(..));
-        for id in closed.map(|modal| modal.id).collect::<Vec<_>>() {
-            self.forget_dialog(id);
+        for modal in closed.collect::<Vec<_>>() {
+            if modal.kind == "historyRange" {
+                self.history_picker_closed();
+            }
+            self.forget_dialog(modal.id);
         }
     }
 
@@ -890,6 +894,9 @@ impl Desktop {
         }
         if matches!(closed.kind.as_str(), "task" | "columns") {
             self.ui.input_subscriptions.clear();
+        }
+        if closed.kind == "historyRange" {
+            self.history_picker_closed();
         }
         if !self
             .modal
@@ -1318,6 +1325,11 @@ impl Desktop {
                 let dialog = self.surface(dialog, id, 420., 16., window, cx);
                 self.note_dialog(dialog, &modal, window, cx)
             }
+            "historyRange" => {
+                let width = self.history_range_width();
+                let dialog = self.surface(dialog, id, width, 16., window, cx);
+                self.history_range_dialog(dialog, &modal, window, cx)
+            }
             "visibility" => {
                 let dialog = self.surface(dialog, id, 580., 16., window, cx);
                 self.visibility_dialog(dialog, &modal, window, cx)
@@ -1451,6 +1463,7 @@ impl Desktop {
             "note" => self.confirm_dialog(window, cx),
             "onboarding" => self.onboarding_next(window, cx),
             "license" | "notices" | "shortcuts" | "whatsnew" => self.close_overlay(window, cx),
+            "historyRange" => self.history_picker_apply(window, cx),
             "filelock" | "update" => {}
             _ => self.act(Action::Confirm, window, cx),
         }

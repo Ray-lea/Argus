@@ -300,7 +300,8 @@
     "clear": "Impossible d’effacer l’historique. Vérifiez les autorisations du dossier et si des fichiers sont en cours d’utilisation."
   },
   "picker": {
-    "presets": "Plages courantes",
+    "title": "Plage personnalisée",
+    "last5m": "5 dernières minutes",
     "last15m": "15 dernières minutes",
     "last1h": "Dernière heure",
     "last6h": "6 dernières heures",

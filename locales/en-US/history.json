@@ -297,7 +297,8 @@
     "clear": "Could not clear the history. Check the folder’s permissions and whether its files are in use."
   },
   "picker": {
-    "presets": "Common ranges",
+    "title": "Custom time range",
+    "last5m": "Last 5 minutes",
     "last15m": "Last 15 minutes",
     "last1h": "Last hour",
     "last6h": "Last 6 hours",

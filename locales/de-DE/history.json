@@ -297,7 +297,8 @@
     "clear": "Der Verlauf konnte nicht gelöscht werden. Prüfen Sie die Ordnerberechtigungen und ob Dateien verwendet werden."
   },
   "picker": {
-    "presets": "Häufige Bereiche",
+    "title": "Benutzerdefinierter Zeitraum",
+    "last5m": "Letzte 5 Minuten",
     "last15m": "Letzte 15 Minuten",
     "last1h": "Letzte Stunde",
     "last6h": "Letzte 6 Stunden",

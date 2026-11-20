@@ -1,13 +1,17 @@
-//! The range picker, opened from the range pill's "Custom…": common ranges on
-//! the left; two months of days, each with how much of it was recorded; the
-//! exact start and end; and, folded away until asked for, the last 30 days
-//! hour by hour beside the events found in them. A common range applies at
-//! once, the rest on Apply; a click outside, Esc or Cancel leaves the range
-//! as it was.
+//! The custom range, a dialog of its own opened from the range pill's
+//! "Custom…" (the pill's menu keeps the common ranges for everyday use): the
+//! common ranges on the left; a month of days, each with how much of it was
+//! recorded, and the exact start and end; and, folded under them until asked
+//! for, the last 30 days hour by hour beside the events found in them. A
+//! common range applies at once; days, typed times, hours and events on
+//! Apply (a day's double click at once); Cancel or Esc leaves the range as
+//! it was.
 use super::series::{DAY, GapReason, HOUR, MINUTE, Part, Points};
 use super::state::Range;
 use super::*;
+use crate::frontend::dialogs::Modal;
 use crate::frontend::widgets::{Field, Tone};
+use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::input::{InputEvent, InputState};
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -21,16 +25,17 @@ enum Preset {
     Yesterday,
     All,
 }
-const PRESETS: [(&str, Preset); 9] = [
+const PRESETS: [(&str, Preset); 10] = [
+    ("last5m", Preset::Last(5 * MINUTE)),
     ("last15m", Preset::Last(15 * MINUTE)),
     ("last1h", Preset::Last(HOUR)),
     ("last6h", Preset::Last(6 * HOUR)),
     ("last24h", Preset::Last(DAY)),
-    ("today", Preset::Today),
-    ("yesterday", Preset::Yesterday),
     ("last7d", Preset::Last(7 * DAY)),
     ("last30d", Preset::Last(30 * DAY)),
     ("all", Preset::All),
+    ("today", Preset::Today),
+    ("yesterday", Preset::Yesterday),
 ];
 
 /// What the 30-day map can show, and the readings each needs.
@@ -53,13 +58,13 @@ const MAP_FOOT: f32 = 18.;
 const CELL_W: f32 = 30.;
 const CELL_H: f32 = 28.;
 const MONTH_W: f32 = 7. * CELL_W;
-/// The common ranges' column, and the picker's whole width.
-const PRESETS_W: f32 = 128.;
-const PANEL_W: f32 = PRESETS_W + 2. * MONTH_W + 14. + 20. + 2.;
-/// Wider with the overview open: room for 30 days of hours beside the events.
-const PANEL_WIDE: f32 = PANEL_W + 220.;
-/// The events list beside the map.
-const EVENTS_W: f32 = 230.;
+/// The common ranges' column, and the dialog's width: the columns, their
+/// border and the dialog's margins.
+const PRESETS_W: f32 = 132.;
+const PANEL_W: f32 = PRESETS_W + MONTH_W + 2. * 14. + 2. + 48.;
+/// Wider with the overview open: the events beside the calendar, and the
+/// 30 days of hours across the whole width under them.
+const PANEL_WIDE: f32 = 720.;
 /// The most events listed.
 const EVENTS_SHOWN: usize = 40;
 
@@ -71,7 +76,7 @@ pub(super) struct Picker {
     picking: bool,
     /// The range ends at the present and follows it.
     pub(super) follow: bool,
-    /// The right-hand month shown: year and month (1–12).
+    /// The month shown: year and month (1–12).
     month: (i32, u8),
     error: Option<String>,
     filter: &'static str,
@@ -194,6 +199,7 @@ impl Picker {
 impl Desktop {
     /// Opens the picker on the range shown, with the boxes filled in.
     pub(super) fn history_open_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_dialog("historyRange", json!({}), window, cx);
         let now = self.history_now();
         let (from, to) = self.history.extent;
         let picker = Picker::new(from, to.min(now), self.history.follow);
@@ -204,9 +210,20 @@ impl Desktop {
         cx.notify();
     }
 
-    pub(super) fn history_close_picker(&mut self, cx: &mut Context<Self>) {
-        if self.history.picker.take().is_some() {
-            cx.notify();
+    /// The dialog closed (Cancel, Esc, a range applied): the pending range goes.
+    pub(in crate::frontend) fn history_picker_closed(&mut self) {
+        self.history.picker = None;
+    }
+
+    /// Closes the dialog once a range is applied.
+    fn history_end_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.history.picker = None;
+        if self
+            .modal
+            .as_ref()
+            .is_some_and(|m| m.kind == "historyRange")
+        {
+            self.close_overlay(window, cx);
         }
     }
 
@@ -261,13 +278,8 @@ impl Desktop {
         picker.to = to.min(now).max(picker.from + MINUTE);
         picker.follow = picker.to >= now - MINUTE;
         picker.error = None;
-        if let Some(end) = date_of(picker.to) {
-            let shown = picker.month;
-            let left = shift_month(shown, -1);
-            let month = (end.year(), u8::from(end.month()));
-            if month != shown && month != left {
-                picker.month = month;
-            }
+        if let Some(end) = date_of(picker.to - 1) {
+            picker.month = (end.year(), u8::from(end.month()));
         }
         self.history_picker_fill(window, cx);
         self.history_picker_load(window, cx);
@@ -284,8 +296,8 @@ impl Desktop {
             return;
         };
         let today = date_of(now);
-        let left = shift_month(picker.month, -1);
-        let from = month_days(left.0, left.1).map(|(first, _)| midnight(first));
+        let shown = picker.month;
+        let from = month_days(shown.0, shown.1).map(|(first, _)| midnight(first));
         let start = today.map(|d| midnight(d - time::Duration::days(OVERVIEW_DAYS as i64 - 1)));
         let (Some(from), Some(start)) = (from, start) else {
             return;
@@ -364,13 +376,17 @@ impl Desktop {
                 self.prefs.set("historyRange", "all");
             }
         }
-        self.history.picker = None;
+        self.history_end_picker(window, cx);
         self.load_history(window, cx);
         cx.notify();
     }
 
     /// Applies the times in the boxes, or says what is wrong with them.
-    fn history_picker_apply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::frontend) fn history_picker_apply(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(follow) = self.history.picker.as_ref().map(|p| p.follow) else {
             return;
         };
@@ -424,7 +440,7 @@ impl Desktop {
         } else {
             self.history.set_fixed(a, b.min(now));
         }
-        self.history.picker = None;
+        self.history_end_picker(window, cx);
         self.load_history(window, cx);
         cx.notify();
     }
@@ -516,84 +532,106 @@ impl Desktop {
         ));
     }
 
-    /// The picker over the page, under the range pill, while it is open.
-    pub(super) fn history_picker(
+    /// The custom range as a dialog (`historyRange`), opened from the range
+    /// pill's "Custom…": the common ranges, a month of days with the exact
+    /// ends, and folded under them the last 30 days with their events; Cancel
+    /// and Apply in its footer.
+    pub(in crate::frontend) fn history_range_dialog(
         &mut self,
+        dialog: Dialog,
+        modal: &Modal,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        self.history.picker.as_ref()?;
+    ) -> Dialog {
+        let id = modal.id;
+        if self.history.picker.is_none() {
+            return dialog;
+        }
         self.history_picker_derive();
         let p = self.palette;
-        let viewport = window.viewport_size();
-        let pill = self
-            .ui
-            .anchors
-            .borrow()
-            .get("history-range")
-            .copied()
-            .unwrap_or_default();
         let overview = self.prefs.get::<bool>("history.overview", false);
-        let margin = px(8.);
-        let width = if overview { PANEL_WIDE } else { PANEL_W };
-        let left = pill
-            .left()
-            .min(viewport.width - px(width) - margin)
-            .max(margin);
-        // Over the pill when there is room above it, else under it.
-        let tall = px(if overview { 540. } else { 330. });
-        let above = pill.top() - px(4.) - tall >= margin;
-        let panel = div()
-            .id("history-picker")
-            .absolute()
-            .left(left)
-            .when(above, |d| d.bottom(viewport.height - pill.top() + px(4.)))
-            .when(!above, |d| {
-                d.top(
-                    (pill.bottom() + px(4.))
-                        .min(viewport.height - tall - margin)
-                        .max(margin),
-                )
-            })
-            .w(px(width))
+        let body = div()
+            .pt(px(22.))
+            .px(px(24.))
+            .pb(px(12.))
             .flex()
-            .border_1()
-            .border_color(p.stroke_strong)
-            .rounded(px(8.))
-            .bg(widgets::solid(p.flyout))
+            .flex_col()
+            .gap(px(12.))
             .text_size(theme::font(13.))
-            .text_color(p.ink)
             .line_height(relative(1.4))
-            .occlude()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .on_scroll(|_, _, cx| cx.stop_propagation())
-            .child(self.history_picker_presets(cx))
-            .child(self.history_picker_main(overview, window, cx));
-        Some(
-            deferred(
-                anchored().position(point(px(0.), px(0.))).child(
-                    div()
-                        .id("history-picker-layer")
-                        .w(viewport.width)
-                        .h(viewport.height)
-                        .occlude()
-                        // A press anywhere else closes the picker.
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| this.history_close_picker(cx)),
+            .child(self.dialog_title(modal.title.clone()))
+            .child(
+                div()
+                    .flex()
+                    .border_1()
+                    .border_color(p.stroke)
+                    .rounded(px(6.))
+                    .child(self.history_picker_presets(cx))
+                    .child(
+                        div()
+                            .flex()
+                            .when(overview, |d| d.w(px(MONTH_W + 28.)).flex_shrink_0())
+                            .when(!overview, |d| d.flex_1().min_w_0())
+                            .child(self.history_picker_main(window, cx)),
+                    )
+                    .when(overview, |d| {
+                        d.child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .px(px(12.))
+                                .pt(px(8.))
+                                .pb(px(10.))
+                                .border_l_1()
+                                .border_color(p.stroke)
+                                .child(self.history_events_list(window, cx)),
                         )
-                        .on_mouse_down(
-                            MouseButton::Right,
-                            cx.listener(|this, _, _, cx| this.history_close_picker(cx)),
-                        )
-                        .on_scroll(|_, _, cx| cx.stop_propagation())
-                        .child(panel),
-                ),
+                    }),
             )
-            .with_priority(gpui_kit::base::POPUP_PRIORITY - 1)
-            .into_any_element(),
+            .child(self.history_picker_fold(overview, cx))
+            .when(overview, |d| d.child(self.history_overview(cx)));
+        dialog.child(self.dialog_body(id).child(body)).footer(
+            self.measure(id, 1).child(
+                self.dialog_footer()
+                    .child(
+                        self.btn(
+                            "history-picker-cancel",
+                            label("common.cancel"),
+                            None,
+                            Tone::Plain,
+                        )
+                        .min_w(px(96.))
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.close_overlay(window, cx)),
+                        ),
+                    )
+                    .child(
+                        self.btn(
+                            "history-picker-apply",
+                            label("history.picker.apply"),
+                            None,
+                            Tone::Accent,
+                        )
+                        .min_w(px(96.))
+                        .track_focus(&self.primary_focus(id, cx))
+                        .on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.history_picker_apply(window, cx)
+                            }),
+                        ),
+                    ),
+            ),
         )
+    }
+
+    /// The dialog's width: wider with the 30 days open.
+    pub(in crate::frontend) fn history_range_width(&self) -> f32 {
+        if self.prefs.get::<bool>("history.overview", false) {
+            PANEL_WIDE
+        } else {
+            PANEL_W
+        }
     }
 
     /// The common ranges, the one in force marked.
@@ -615,19 +653,13 @@ impl Desktop {
             .gap(px(1.))
             .border_r_1()
             .border_color(p.stroke)
-            .child(
-                div()
-                    .px(px(10.))
-                    .pt(px(6.))
-                    .pb(px(2.))
-                    .text_size(theme::font(11.5))
-                    .text_color(p.faint)
-                    .child(label("history.picker.presets")),
-            )
             .children(PRESETS.iter().map(|(key, preset)| {
                 let preset = *preset;
                 let on = current(preset);
                 div()
+                    .when(*key == "today", |d| {
+                        d.mt(px(4.)).border_t_1().border_color(p.stroke).pt(px(4.))
+                    })
                     .id(SharedString::from(format!("history-preset-{key}")))
                     .flex()
                     .items_center()
@@ -648,13 +680,8 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// The calendars, the boxes, the overview and the buttons.
-    fn history_picker_main(
-        &mut self,
-        overview: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    /// The month, the exact ends, following and Apply.
+    fn history_picker_main(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let Some(picker) = &self.history.picker else {
             return div().into_any_element();
@@ -662,145 +689,126 @@ impl Desktop {
         let month = picker.month;
         let follow = picker.follow;
         let error = picker.error.clone();
-        let calendars = div()
+        let field =
+            |this: &Self, key: &str, name: &str, enabled: bool, window: &Window, cx: &App| {
+                let input = this.ui.inputs.get(key).cloned()?;
+                Some(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(div().flex_shrink_0().text_color(p.muted).child(label(name)))
+                        .child(div().flex_1().min_w_0().child(this.text_field(
+                            &input,
+                            widgets::input(&input),
+                            Field::Boxed,
+                            format_local(0).into(),
+                            enabled,
+                            window,
+                            cx,
+                        ))),
+                )
+            };
+        let follow_box = div()
+            .id("history-picker-follow")
             .flex()
-            .justify_center()
-            .gap(px(14.))
-            .child(self.history_month(shift_month(month, -1), true, cx))
-            .child(self.history_month(month, false, cx));
-        let field = |this: &Self, key: &str, enabled: bool, window: &Window, cx: &App| {
-            let input = this.ui.inputs.get(key).cloned()?;
-            Some(div().flex_1().min_w_0().child(this.text_field(
-                &input,
-                widgets::input(&input),
-                Field::Boxed,
-                format_local(0).into(),
-                enabled,
+            .items_start()
+            .gap(px(8.))
+            .cursor_pointer()
+            .text_color(p.muted)
+            .child(self.check_box(follow, false))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(label("history.picker.follow")),
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                let now = this.history_now();
+                if let Some(picker) = &mut this.history.picker {
+                    picker.follow = !follow;
+                    if picker.follow {
+                        picker.to = now;
+                    }
+                }
+                this.history_picker_fill(window, cx);
+                cx.notify();
+            }));
+        div()
+            .flex_1()
+            .min_w_0()
+            .px(px(14.))
+            .pt(px(8.))
+            .pb(px(12.))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .text_size(theme::font(12.5))
+            .child(self.history_month(month, cx))
+            .children(field(
+                self,
+                "historyFrom",
+                "history.picker.start",
+                true,
                 window,
                 cx,
-            )))
-        };
-        let times = div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .text_size(theme::font(12.5))
-            .child(
-                div()
-                    .text_color(p.muted)
-                    .child(label("history.picker.start")),
-            )
-            .children(field(self, "historyFrom", true, window, cx))
-            .child(div().text_color(p.muted).child(label("history.picker.end")))
-            .children(field(self, "historyTo", !follow, window, cx));
-        let check = |id: &'static str, on: bool, text: String| {
-            div()
-                .id(id)
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .cursor_pointer()
-                .child(self.check_box(on, false))
-                .child(text)
-        };
-        let foot = div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .text_size(theme::font(12.5))
-            .text_color(p.muted)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .child(
-                        check(
-                            "history-picker-overview",
-                            overview,
-                            label("history.picker.overview"),
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.prefs.set("history.overview", !overview);
-                                this.history_picker_load(window, cx);
-                                cx.notify();
-                            },
-                        )),
-                    )
-                    .child(
-                        check(
-                            "history-picker-follow",
-                            follow,
-                            label("history.picker.follow"),
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                let now = this.history_now();
-                                if let Some(picker) = &mut this.history.picker {
-                                    picker.follow = !follow;
-                                    if picker.follow {
-                                        picker.to = now;
-                                    }
-                                }
-                                this.history_picker_fill(window, cx);
-                                cx.notify();
-                            },
-                        )),
-                    ),
-            )
-            .child(div().flex_1())
+            ))
+            .children(field(
+                self,
+                "historyTo",
+                "history.picker.end",
+                !follow,
+                window,
+                cx,
+            ))
+            .child(follow_box)
             .when_some(error, |d, error| {
                 d.child(
                     div()
-                        .max_w(px(180.))
                         .text_size(theme::font(12.))
                         .text_color(p.danger)
                         .child(error),
                 )
             })
-            .child(
-                self.btn(
-                    "history-picker-cancel",
-                    label("common.cancel"),
-                    None,
-                    Tone::Plain,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.history_close_picker(cx))),
-            )
-            .child(
-                self.btn(
-                    "history-picker-apply",
-                    label("history.picker.apply"),
-                    None,
-                    Tone::Accent,
-                )
-                .on_click(cx.listener(|this, _, window, cx| this.history_picker_apply(window, cx))),
-            );
+            .into_any_element()
+    }
+
+    /// The fold over the last 30 days and their events.
+    fn history_picker_fold(&self, overview: bool, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
         div()
-            .flex_1()
-            .min_w_0()
-            .px(px(10.))
-            .pt(px(8.))
-            .pb(px(10.))
+            .id("history-picker-overview")
             .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(calendars)
-            .child(times)
-            .when(overview, |d| d.child(self.history_overview(window, cx)))
-            .child(foot)
+            .items_center()
+            .gap(px(6.))
+            .h(px(24.))
+            .text_size(theme::font(12.5))
+            .text_color(p.muted)
+            .cursor_pointer()
+            .hover(move |s| s.text_color(p.ink))
+            .child(
+                icon(
+                    if overview {
+                        "ChevronDown"
+                    } else {
+                        "ChevronRight"
+                    },
+                    p.muted,
+                )
+                .size(px(14.)),
+            )
+            .child(label("history.picker.overview"))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.prefs.set("history.overview", !overview);
+                this.history_picker_load(window, cx);
+                cx.notify();
+            }))
             .into_any_element()
     }
 
     /// A month of days, each with how much of it was recorded and how busy
-    /// the CPU was; the range marked. The arrows move both months.
-    fn history_month(
-        &self,
-        (year, month): (i32, u8),
-        first: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    /// the CPU was; the range marked. The arrows go a month either way.
+    fn history_month(&self, (year, month): (i32, u8), cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let Some(picker) = &self.history.picker else {
             return div().into_any_element();
@@ -846,17 +854,13 @@ impl Desktop {
             .mb(px(2.))
             .text_size(theme::font(12.5))
             .font_weight(FontWeight::SEMIBOLD)
-            .when(first, |d| {
-                d.child(arrow("history-month-previous", "ChevronLeft", -1))
-            })
+            .child(arrow("history-month-previous", "ChevronLeft", -1))
             .child(div().flex_1().text_center().child(tr!(
                 "history.picker.month",
                 year = year,
                 month = month_name
             )))
-            .when(!first, |d| {
-                d.child(arrow("history-month-next", "ChevronRight", 1))
-            });
+            .child(arrow("history-month-next", "ChevronRight", 1));
         let weekdays = label("history.picker.weekdays");
         let week = div()
             .flex()
@@ -959,8 +963,14 @@ impl Desktop {
                     .cursor_pointer()
                     .when(!ends, |d| d.hover(move |s| s.bg(p.hover_strong)))
                     .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
-                    .on_click(cx.listener(move |this, _, window, cx| {
+                    .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                         let next = date.next_day().map_or(at + DAY, midnight);
+                        // A double click shows that day at once.
+                        if event.click_count() >= 2 {
+                            this.history_picker_set(at, next, window, cx);
+                            this.history_picker_apply(window, cx);
+                            return;
+                        }
                         let (from, picking) = this
                             .history
                             .picker
@@ -991,8 +1001,8 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// The last 30 days hour by hour, beside the events found in them.
-    fn history_overview(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// The last 30 days hour by hour, the reading they show chosen over them.
+    fn history_overview(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let heat = self.history_heat();
         let select = self.select(
@@ -1058,15 +1068,7 @@ impl Desktop {
                     .child(select),
             )
             .child(self.history_map(heat, cx));
-        div()
-            .flex()
-            .gap(px(14.))
-            .pt(px(10.))
-            .border_t_1()
-            .border_color(p.stroke)
-            .child(map)
-            .child(self.history_events_list(window, cx))
-            .into_any_element()
+        map.into_any_element()
     }
 
     /// The map: a column a day, a row an hour, shaded by the reading; the
@@ -1447,7 +1449,6 @@ impl Desktop {
                                     div()
                                         .flex_1()
                                         .min_w_0()
-                                        .truncate()
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_size(theme::font(12.5))
                                         .child(name),
@@ -1461,8 +1462,8 @@ impl Desktop {
                                 ),
                         )
                         .child(
+                            // Wrapped rather than cut: the busiest process ends it.
                             div()
-                                .truncate()
                                 .text_size(theme::font(11.5))
                                 .text_color(p.muted)
                                 .child(detail),
@@ -1479,10 +1480,10 @@ impl Desktop {
             count = shown.len()
         );
         div()
+            .flex_1()
+            .min_w_0()
             .flex()
             .flex_col()
-            .w(px(EVENTS_W))
-            .flex_shrink_0()
             .gap(px(4.))
             .child(
                 div()
@@ -1508,7 +1509,8 @@ impl Desktop {
             .child(
                 div()
                     .id("history-events")
-                    .h(px(MAP_HEIGHT + MAP_FOOT - 56.))
+                    .flex_1()
+                    .min_h_0()
                     .overflow_y_scroll()
                     .children(rows)
                     .when(shown.is_empty(), |d| {
