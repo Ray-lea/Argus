@@ -284,6 +284,7 @@ struct Input {
     phases: DashPhases,
     content: u64,
     ticks: Option<(Arc<Vec<f64>>, Hsla)>,
+    corner: f32,
 }
 impl Input {
     fn new(plot: &TimePlot, size: Size<Pixels>, density: f32) -> Self {
@@ -301,6 +302,7 @@ impl Input {
             phases: plot.dash_phases.clone(),
             content: plot.content(),
             ticks: plot.ticks.clone(),
+            corner: plot.corner,
         }
     }
 }
@@ -337,6 +339,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     }
     plot.fill.hash(&mut key);
     plot.smooth.hash(&mut key);
+    plot.corner.to_bits().hash(&mut key);
     plot.content().hash(&mut key);
     if let Some((ticks, color)) = &plot.ticks {
         for tick in ticks.iter() {
@@ -1189,7 +1192,12 @@ fn clipped_run(plot: &Input, layout: Extent, run: &[(f64, f64)]) -> (Vec<Cubic>,
     (pieces, times)
 }
 
-fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
+fn curve(
+    cubics: &[Cubic],
+    baseline: Option<f32>,
+    smooth: bool,
+    corner: f32,
+) -> Option<tiny_skia::Path> {
     let mut path = tiny_skia::PathBuilder::new();
     let (x, y) = cubics.first()?.0[0];
     if let Some(base) = baseline {
@@ -1198,12 +1206,42 @@ fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_s
     } else {
         path.move_to(x as f32, y as f32);
     }
-    for cubic in cubics {
-        let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
-        if smooth {
+    if smooth {
+        for cubic in cubics {
+            let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
             path.cubic_to(c1.0, c1.1, c2.0, c2.1, end.0, end.1);
-        } else {
-            path.line_to(end.0, end.1);
+        }
+    } else {
+        // Straight segments, each bend rounded by `corner` at most and by no
+        // more than half of either side: steps a few pixels wide keep their
+        // flats.
+        let ends = cubics
+            .iter()
+            .map(|cubic| (cubic.0[3].0 as f32, cubic.0[3].1 as f32))
+            .collect::<Vec<_>>();
+        let mut previous = (x as f32, y as f32);
+        for (index, &point) in ends.iter().enumerate() {
+            let next = ends.get(index + 1).filter(|_| corner > 0.);
+            let rounded = next.and_then(|&next| {
+                let (ax, ay) = (point.0 - previous.0, point.1 - previous.1);
+                let (bx, by) = (next.0 - point.0, next.1 - point.1);
+                let (a, b) = (ax.hypot(ay), bx.hypot(by));
+                let radius = corner.min(a / 2.).min(b / 2.);
+                (radius > 0.01 && (ax * by - ay * bx).abs() > 1e-4 * a * b).then(|| {
+                    (
+                        (point.0 - ax / a * radius, point.1 - ay / a * radius),
+                        (point.0 + bx / b * radius, point.1 + by / b * radius),
+                    )
+                })
+            });
+            match rounded {
+                Some((into, out)) => {
+                    path.line_to(into.0, into.1);
+                    path.quad_to(point.0, point.1, out.0, out.1);
+                }
+                None => path.line_to(point.0, point.1),
+            }
+            previous = point;
         }
     }
     if let Some(base) = baseline {
@@ -1493,7 +1531,7 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
             }
             if fill
                 && series.fill > 0.
-                && let Some(path) = curve(&cubics, Some(height), plot.smooth)
+                && let Some(path) = curve(&cubics, Some(height), plot.smooth, plot.corner)
             {
                 shapes.push(Shape::Fill {
                     path,
@@ -1524,7 +1562,7 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
                 );
                 dashes(&segments, &phases)
             } else {
-                curve(&cubics, None, plot.smooth)
+                curve(&cubics, None, plot.smooth, plot.corner)
             };
             if let Some(path) = line {
                 let line = tiny_skia::Stroke {
@@ -1792,6 +1830,7 @@ mod tests {
             readout: Default::default(),
             captions: None,
             redraw_alone: false,
+            corner: 0.,
         }
     }
     #[test]

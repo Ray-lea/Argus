@@ -3,7 +3,7 @@
 //! drawn on it as a box to drag, and the range's ends. Dragging only ever
 //! pauses: the range is held as it was when the drag began, and returning to
 //! the latest is up to the live button, End or a right click on the lanes.
-use super::series::{Part, Points, min_span};
+use super::series::{Part, Points, STEP_CORNER, min_span};
 use super::state::{Brush, Drag, Glide, PRESETS, Range};
 use super::*;
 
@@ -159,6 +159,7 @@ impl Desktop {
                 readout: Default::default(),
                 captions: None,
                 redraw_alone: true,
+                corner: STEP_CORNER,
             };
             let mut track = div()
                 .absolute()

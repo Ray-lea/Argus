@@ -427,6 +427,9 @@ pub struct TimePlot {
     /// (the history page's chart card), not the views around it: drawing
     /// the whole page for it held the page's entrance still.
     pub(in crate::frontend) redraw_alone: bool,
+    /// How far each bend of a straight line is rounded, in pixels: the
+    /// history page's steps; none elsewhere.
+    pub(in crate::frontend) corner: f32,
 }
 /// How often a hover readout's text follows a curve gliding under a resting
 /// pointer, as the interface's text timer: its dots ride the curve on every
@@ -1772,6 +1775,7 @@ impl Desktop {
             readout,
             captions: None,
             redraw_alone: false,
+            corner: 0.,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
             *entry.plot.borrow_mut() = plot;
@@ -2081,6 +2085,7 @@ mod tests {
             readout: Default::default(),
             captions: None,
             redraw_alone: false,
+            corner: 0.,
         }
     }
     #[test]

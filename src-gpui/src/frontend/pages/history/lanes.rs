@@ -3,7 +3,7 @@
 //! the navigator below.
 use super::bar::ReadingMenu;
 use super::readings::Reading;
-use super::series::{BANDED, FRAME, Part, Points, rows_for, tick_step, ticks};
+use super::series::{BANDED, FRAME, Part, Points, STEP_CORNER, rows_for, tick_step, ticks};
 use super::state::{Drag, Drop, Glide, Hover, Lane};
 use super::*;
 
@@ -795,6 +795,7 @@ impl Desktop {
                 readout: Default::default(),
                 captions: None,
                 redraw_alone: true,
+                corner: STEP_CORNER,
             };
             if self.history.flow_origin.is_some() {
                 // The plot fills the box: its bounds are the box's.

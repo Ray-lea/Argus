@@ -34,6 +34,8 @@ pub(super) const NICE: [i64; 16] = [
 const PIXELS_PER_POINT: f64 = 2.6;
 /// Buckets this wide or wider carry their lowest and highest readings too.
 pub(super) const BANDED: i64 = 10 * SECOND;
+/// How far the corners of the steps (`Points::line`) are rounded, in pixels.
+pub(super) const STEP_CORNER: f32 = 2.5;
 /// The widest spacing of readings recorded while running: the slowest background
 /// refresh plus a frame. Points further apart than this break the line.
 const MAX_CADENCE: i64 = 35 * SECOND;
@@ -331,14 +333,16 @@ impl Points {
         })
     }
 
-    /// Whether point `i` aggregates several records (drawn at its middle) rather
-    /// than being one sample or frame (drawn at its start).
+    /// Whether point `i` aggregates several records (placed at its middle)
+    /// rather than being one sample or frame (placed at its start).
     fn aggregated(&self, i: usize) -> bool {
         self.span[i] > FRAME
     }
 
-    /// Where point `i` is drawn: a sample or frame at its start, a bucket at its
-    /// middle, the bucket still filling no later than `end`.
+    /// The moment point `i` stands for, to tell whether it is in a window (the
+    /// axes, moving to a point): a sample or frame at its start, a bucket at
+    /// its middle, the bucket still filling no later than `end`. Its step is
+    /// drawn across its whole span (`steps`).
     pub(super) fn x_time(&self, i: usize, end: i64) -> i64 {
         if !self.aggregated(i) {
             return self.ts[i];
@@ -418,12 +422,11 @@ impl Points {
             .filter(move |gap| next.is_some_and(|next| gap.from < next && gap.to > end - 1))
     }
 
-    /// Where the line through point `i` (drawn at `at`) stops when it breaks
-    /// after it: where the recorded gap after it begins, so that the line
-    /// meets the gap's hatching, else at the end of what the point covers. A
-    /// point is drawn at its start (or its middle), so the line and its fill
-    /// would otherwise stop short. The per-second readings of the last minutes
-    /// cover less than the frame a gap is counted from: the last one holds on.
+    /// Where the step of point `i` (beginning at `at`) stops when the line
+    /// breaks after it: where the recorded gap after it begins, so that the
+    /// line meets the gap's hatching, else at the end of what the point
+    /// covers. The per-second readings of the last minutes cover less than
+    /// the frame a gap is counted from: the last one holds on.
     fn run_end(&self, i: usize, at: f64) -> f64 {
         let Some(&next) = self.ts.get(i + 1) else {
             return at;
@@ -435,9 +438,9 @@ impl Points {
         (stop as f64).max(at)
     }
 
-    /// Where the line through point `i` (drawn at `at`) begins when it
-    /// resumes after a recorded gap: where the gap ends, so that it meets
-    /// the hatching there too, the point's value held back to it.
+    /// Where the step of point `i` (at `at`) begins when the line resumes
+    /// after a recorded gap: where the gap ends, so that it meets the
+    /// hatching there too, the point's value held back to it.
     fn run_start(&self, i: usize, at: f64) -> f64 {
         let Some(previous) = i.checked_sub(1) else {
             return at;
@@ -448,10 +451,12 @@ impl Points {
             .map_or(at, |to| (to as f64).min(at))
     }
 
-    /// The values of `key` as a time plot draws them: each at its point's place,
-    /// an unknown value between points the line does not join. Where it breaks,
-    /// the last value holds to the end of what its point covers. `scale` maps
-    /// a value onto the plot's axis (a reading on the right axis).
+    /// The values of `key` as a time plot draws them, in steps: each point's
+    /// value flat across what it covers (a sample until the next one, a bucket
+    /// across its span), rising or falling straight to the next value where
+    /// that begins. An unknown value, and a break where the line does not join
+    /// the next point, leave it out. `scale` maps a value onto the plot's axis
+    /// (a reading on the right axis).
     pub(super) fn line(
         &self,
         key: &str,
@@ -459,80 +464,89 @@ impl Points {
         end: i64,
         scale: impl Fn(f64) -> f64,
     ) -> Vec<(f64, Option<f64>)> {
-        let mut out = Vec::with_capacity(self.ts.len() + 8);
-        for i in 0..self.ts.len() {
-            let at = self.x_time(i, end) as f64;
-            let value = self.value(key, part, i).map(&scale);
-            if i > 0 && !self.joins(i - 1) {
-                let start = self.run_start(i, at);
-                if start < at {
-                    out.push((start, value));
-                }
-            }
-            out.push((at, value));
-            if i + 1 < self.ts.len() && !self.joins(i) {
-                let stop = self.run_end(i, at);
-                if stop > at {
-                    out.push((stop, value));
-                }
-                let next = self.x_time(i + 1, end) as f64;
-                out.push(((stop + self.run_start(i + 1, next)) / 2., None));
-            }
-        }
-        out
+        self.steps(end, |i| self.value(key, part, i).map(&scale))
     }
 
-    /// A band's edges at each point, broken where the line breaks: the lowest
-    /// of `low` up to the highest of `high` (the highest samples of `cpuPeak`
-    /// above the lowest of `cpu`, say).
+    /// A band's edges in steps as the line's, broken where it breaks: the
+    /// lowest of `low` up to the highest of `high` (the highest samples of
+    /// `cpuPeak` above the lowest of `cpu`, say).
     pub(super) fn band(&self, low: &str, high: &str, end: i64) -> Vec<(f64, Option<(f64, f64)>)> {
-        let mut out = Vec::with_capacity(self.ts.len() + 8);
-        for i in 0..self.ts.len() {
-            let at = self.x_time(i, end) as f64;
+        self.steps(end, |i| {
             let below = self
                 .value(low, Part::Low, i)
                 .or_else(|| self.value(low, Part::Mean, i));
             let above = self
                 .value(high, Part::High, i)
                 .or_else(|| self.value(high, Part::Mean, i));
-            let edges = below.zip(above);
-            if i > 0 && !self.joins(i - 1) {
-                let start = self.run_start(i, at);
-                if start < at {
-                    out.push((start, edges));
-                }
+            below.zip(above)
+        })
+    }
+
+    /// Each point's `value` held from where the point begins to where the
+    /// next one does: across a sample's or a bucket's own span, a point that
+    /// breaks the line held to the gap after it (`run_end`) and one resuming
+    /// after a gap held back to where it ends (`run_start`), the newest up to
+    /// the newest reading (`end`).
+    fn steps<T: Copy>(
+        &self,
+        end: i64,
+        value: impl Fn(usize) -> Option<T>,
+    ) -> Vec<(f64, Option<T>)> {
+        let count = self.ts.len();
+        let mut out = Vec::with_capacity(2 * count + 8);
+        for i in 0..count {
+            let start = self.ts[i] as f64;
+            let begin = if i > 0 && !self.joins(i - 1) {
+                self.run_start(i, start)
+            } else {
+                start
+            };
+            let stop = if i + 1 == count {
+                self.ts[i]
+                    .saturating_add(self.span[i])
+                    .min(end.max(self.ts[i])) as f64
+            } else if self.joins(i) {
+                self.ts[i + 1] as f64
+            } else {
+                self.run_end(i, start)
+            };
+            let held = value(i);
+            out.push((begin, held));
+            if stop > begin {
+                out.push((stop, held));
             }
-            out.push((at, edges));
-            if i + 1 < self.ts.len() && !self.joins(i) {
-                let stop = self.run_end(i, at);
-                if stop > at {
-                    out.push((stop, edges));
-                }
-                let next = self.x_time(i + 1, end) as f64;
-                out.push(((stop + self.run_start(i + 1, next)) / 2., None));
+            if i + 1 < count && !self.joins(i) {
+                let next = self.run_start(i + 1, self.ts[i + 1] as f64);
+                out.push(((stop + next) / 2., None));
             }
         }
         out
     }
 
-    /// The point covering `at`, if the line passes there: the one whose span holds
-    /// it, else the nearest within half a point where the line joins.
+    /// The point whose step the line draws at `at` (`steps`): each point from
+    /// where it begins to where the next one does, one before a break up to
+    /// the gap after it and one after a break from where that gap ends, the
+    /// newest across its own span. None where the line breaks.
     pub(super) fn index_at(&self, at: i64) -> Option<usize> {
+        let count = self.ts.len();
         let after = self.ts.partition_point(|t| *t <= at);
-        let before = after.checked_sub(1);
-        if let Some(i) = before
-            && at < self.ts[i] + self.span[i]
+        // Held back to the end of the gap before it.
+        if after > 0
+            && after < count
+            && !self.joins(after - 1)
+            && self.run_start(after, self.ts[after] as f64) <= at as f64
         {
-            return Some(i);
+            return Some(after);
         }
-        // In the hole between two points: the nearer one, if the line joins them.
-        let i = before?;
-        let next = self.ts.get(i + 1)?;
-        if !self.joins(i) {
-            return None;
-        }
-        let end = self.ts[i] + self.span[i];
-        Some(if at - end <= next - at { i } else { i + 1 })
+        let i = after.checked_sub(1)?;
+        let stop = if i + 1 == count {
+            self.ts[i].saturating_add(self.span[i]) as f64
+        } else if self.joins(i) {
+            self.ts[i + 1] as f64
+        } else {
+            self.run_end(i, self.ts[i] as f64)
+        };
+        ((at as f64) < stop).then_some(i)
     }
 
     /// The gap that holds `at`, if any.
@@ -759,8 +773,9 @@ mod tests {
             line.contains(&(held, Some(2.))),
             "the value holds to where the gap begins"
         );
-        // The newest point is not drawn past its own place: its successor is not in yet.
-        assert_eq!(line.last(), Some(&((10 * MINUTE) as f64, Some(3.))));
+        // The newest point holds across its own frame, no further: its successor
+        // is not in yet.
+        assert_eq!(line.last(), Some(&((10 * MINUTE + FRAME) as f64, Some(3.))));
         // Without a recorded gap, the value holds to the end of its frame.
         let answer = json!({"bucket": SECOND, "ts": [0, 30 * MINUTE], "span": [FRAME, FRAME],
             "series": {"cpu": {"mean": [1, 2]}}, "settled": 40 * MINUTE});
@@ -768,6 +783,49 @@ mod tests {
         let line = points.line("cpu", Part::Mean, 40 * MINUTE, |v| v);
         assert_eq!(line[1], (FRAME as f64, Some(1.)));
         assert_eq!(line[2].1, None);
+    }
+
+    #[test]
+    fn values_hold_flat_across_their_points_in_steps() {
+        // Seconds: each value flat until the next begins, rising or falling
+        // straight there; the newest up to the newest reading.
+        let answer = json!({"bucket": SECOND, "ts": [0, SECOND, 2 * SECOND],
+            "span": [SECOND, SECOND, SECOND],
+            "series": {"cpu": {"mean": [1, 3, 2]}}, "settled": 2_500});
+        let points = Points::parse(&answer, &args(0, MINUTE, SECOND));
+        let line = points.line("cpu", Part::Mean, 2_500, |v| v);
+        let second = SECOND as f64;
+        assert_eq!(
+            line,
+            vec![
+                (0., Some(1.)),
+                (second, Some(1.)),
+                (second, Some(3.)),
+                (2. * second, Some(3.)),
+                (2. * second, Some(2.)),
+                (2_500., Some(2.)),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_point_at_a_moment_is_the_step_drawn_there() {
+        // Samples at 0 and 1.3 s (one late), then Argus stopped from 2.3 s to
+        // 9.5 s and the next came at 10 s.
+        let answer = json!({"bucket": SECOND, "ts": [0, 1_300, 10_000],
+            "span": [SECOND, SECOND, SECOND], "series": {"cpu": {"mean": [1, 2, 3]}},
+            "gaps": [{"from": 2_300, "to": 9_500, "reason": "notRunning"}], "settled": 11_000});
+        let points = Points::parse(&answer, &args(0, MINUTE, SECOND));
+        // Held until the next sample begins, not handed to the nearer one.
+        assert_eq!(points.index_at(1_200), Some(0));
+        assert_eq!(points.index_at(1_300), Some(1));
+        // Up to the gap, none in it, the next held back to where it ends.
+        assert_eq!(points.index_at(2_299), Some(1));
+        assert_eq!(points.index_at(5_000), None);
+        assert_eq!(points.index_at(9_600), Some(2));
+        // The newest across its own span, no further.
+        assert_eq!(points.index_at(10_999), Some(2));
+        assert_eq!(points.index_at(11_000), None);
     }
 
     #[test]
