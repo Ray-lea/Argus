@@ -12,10 +12,7 @@ use super::*;
 use gpui_kit::component::input::{InputEvent, InputState};
 use std::rc::Rc;
 
-/// The chooser's width, its group rail's, and the most its list shows
-/// before it scrolls.
-const WIDTH: f32 = 520.;
-const RAIL: f32 = 136.;
+/// The most its list shows before it scrolls.
 const LIST_MAX: f32 = 352.;
 /// A reading's line, and how far a device's readings stand in.
 const ROW: f32 = 30.;
@@ -329,7 +326,47 @@ impl Desktop {
             .get(chooser.anchor.as_str())
             .copied()
             .unwrap_or_default();
-        let width = px(WIDTH).min(viewport.width - margin * 2.);
+        // As wide as what it lists, in any language: the rail as its widest
+        // group with its count, the list as its widest reading with its marks
+        // and its + (over every reading, so that choosing a group or typing
+        // leaves the width alone); a long device name wraps.
+        let readings = self.history_chooser_readings(chooser);
+        let measure = |text: &str, size: f32| {
+            f32::from(theme::text_width(text, theme::font(size), window, cx))
+        };
+        let rail_width = std::iter::once(label("history.chooser.all"))
+            .chain(Group::ALL.into_iter().map(Group::label))
+            .map(|name| measure(&name, 13.) + 8. + measure("00", 11.5) + 20.)
+            .fold(0., f32::max)
+            + 8.
+            + 1.;
+        let list_width = readings
+            .iter()
+            .map(|r| {
+                let (text, indent) = match (&r.device, &r.part) {
+                    (Some(_), Some(part)) => (part.as_str(), INDENT),
+                    _ => (r.long.as_str(), 0.),
+                };
+                let marks = match (r.service, r.recorded) {
+                    (true, true) => 13. + 8.,
+                    (true, false) => 13. + 8.,
+                    (false, false) => 0.,
+                    (false, true) => 0.,
+                };
+                10. + indent + 8. + 8. + measure(text, 13.) + 8. + marks + 16.
+            })
+            .chain(
+                chooser
+                    .none
+                    .is_some()
+                    .then(|| 10. + 16. + measure(&label("history.menu.none"), 13.) + 24.),
+            )
+            .fold(0., f32::max)
+            + if chooser.add { 8. + 24. } else { 0. }
+            + 4.
+            + 8.
+            + scrollbar::SIZE;
+        let width = px(rail_width + list_width + 2.).min(viewport.width - margin * 2.);
         let left = anchor
             .left()
             .min(viewport.width - width - margin)
@@ -340,7 +377,6 @@ impl Desktop {
             || anchor.top() - px(4.) - tall < margin;
 
         // The rail: every group, how many readings each has (that match).
-        let readings = self.history_chooser_readings(chooser);
         let count = |group: Option<Group>| {
             readings
                 .iter()
@@ -394,7 +430,7 @@ impl Desktop {
         };
         let mut rail = div()
             .flex_shrink_0()
-            .w(px(RAIL))
+            .w(px(rail_width))
             .p(px(4.))
             .flex()
             .flex_col()
@@ -444,6 +480,7 @@ impl Desktop {
                     continue;
                 }
                 Line::Device(name) => {
+                    // Wrapped when longer than the readings under it.
                     list = list.child(
                         div()
                             .flex_shrink_0()
@@ -452,7 +489,6 @@ impl Desktop {
                             .pb(px(2.))
                             .text_color(p.muted)
                             .font_weight(theme::LABEL_WEIGHT)
-                            .truncate()
                             .child(name.clone()),
                     );
                     continue;
@@ -519,27 +555,30 @@ impl Desktop {
                         .text_color(if recorded { p.ink } else { p.muted })
                         .child(label_text),
                 );
-            // Whether it is recorded, and whether the privileged service reads it.
-            if service && recorded {
-                row = row.child(icon("ShieldCheckIcon", p.faint).size(px(13.)));
-            } else if service {
-                row = row
-                    .child(icon("ShieldAlertIcon", p.io).size(px(13.)))
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_size(theme::font(11.5))
-                            .text_color(p.faint)
-                            .child(label("history.menu.needsService")),
-                    );
+            // Whether the privileged service reads it, and whether anything
+            // was recorded: a mark, and its words on hover.
+            let missing = if service && !recorded {
+                Some("history.menu.needsService")
             } else if !recorded {
+                Some("history.menu.notRecorded")
+            } else {
+                None
+            };
+            if service {
                 row = row.child(
-                    div()
-                        .flex_shrink_0()
-                        .text_size(theme::font(11.5))
-                        .text_color(p.faint)
-                        .child(label("history.menu.notRecorded")),
+                    icon(
+                        if recorded {
+                            "ShieldCheckIcon"
+                        } else {
+                            "ShieldAlertIcon"
+                        },
+                        if recorded { p.faint } else { p.io },
+                    )
+                    .size(px(13.)),
                 );
+            }
+            if let Some(missing) = missing {
+                row = row.tooltip(move |window, cx| widgets::tooltip(label(missing), window, cx));
             }
             row = row.child(div().w(px(16.)).flex_shrink_0().when(current, |d| {
                 d.child(icon("CheckIcon", p.accent).size(px(14.)))
