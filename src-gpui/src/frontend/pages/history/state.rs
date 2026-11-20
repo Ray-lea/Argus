@@ -897,6 +897,25 @@ impl HistoryState {
         self.follow = false;
     }
 
+    /// Zooms by `factor` about `at` (the time under the pointer), which keeps
+    /// its place, and holds the window there: the wheel, following or not.
+    /// Whether the window changed (at the whole range, zooming out does not).
+    pub(super) fn zoom_at(&mut self, factor: f64, at: i64, duration: Duration) -> bool {
+        let length = self.length();
+        let narrowest = min_span(length);
+        let span = ((self.span() as f64 * factor).round() as i64).clamp(narrowest, length);
+        let (a, b) = self.view;
+        let at = at.clamp(a, b);
+        let ratio = (at - a) as f64 / (b - a).max(1) as f64;
+        let from = (at - (span as f64 * ratio).round() as i64)
+            .clamp(self.extent.0, (self.extent.1 - span).max(self.extent.0));
+        if (from, from + span) == (a, b) {
+            return false;
+        }
+        self.set_window(from, from + span, duration);
+        true
+    }
+
     /// Zooms by `factor` around `at`; while following the end stays on the clock.
     pub(super) fn zoom(&mut self, factor: f64, at: i64, duration: Duration) {
         let length = self.length();

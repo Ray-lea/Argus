@@ -1986,6 +1986,11 @@ impl Desktop {
     /// A click on the lanes at `at`: pins the point there, or selects its bucket
     /// when points stand for more than a frame.
     fn history_click(&mut self, at: i64, window: &Window) {
+        // The window holds still at what was clicked.
+        if self.history.follow {
+            self.history.pause();
+            self.history_toast("history.toast.paused");
+        }
         let Some(points) = self.history.points.as_ref() else {
             return;
         };

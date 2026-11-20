@@ -1601,8 +1601,16 @@ impl Desktop {
                     this.history
                         .pan(-(span as f64 * f64::from(step) / 600.) as i64, state::FAST);
                 } else if let Some(at) = this.history_time_at(event.position.x, true) {
-                    this.history
-                        .zoom(1.0018f64.powf(-f64::from(dy)), at, state::FAST);
+                    // About the pointer, following or not: the window holds
+                    // still there (the live button resumes following).
+                    let following = this.history.follow;
+                    if this
+                        .history
+                        .zoom_at(1.0018f64.powf(-f64::from(dy)), at, state::FAST)
+                        && following
+                    {
+                        this.history_toast("history.toast.paused");
+                    }
                 }
                 this.load_history(window, cx);
                 cx.notify();
