@@ -19,6 +19,8 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 
 终端显示进程 ID、编译结果和退出状态，并持续监听源文件。默认显示主窗口，传入 `--hidden` 可隐藏启动。按 Ctrl+C 结束开发会话。
 
+数据格式与协议的版本号自上一个发布以来最多变更一次，同一周期内的后续不兼容改动沿用该版本号。此前的开发构建写下的文件因此无法读取，由开发脚本清除，应用本身不删除：`scripts/dev-data.json` 为每类数据记录一个修订号，开发脚本每次启动新构建前，比对开发配置目录中 `dev-data.json` 记下的修订号，删除有变化的类别在历史目录中的文件（`history` 为日文件及其旁文件，`watch` 为观察文件）。脚本只处理以发布标识为前缀的开发标识，历史目录与已安装的 Argus 相同时不删除。`node scripts/dev-data.mjs` 在不经开发脚本时执行同样的比对；`node scripts/dev-data.mjs clear <类别>` 立即清除指定类别，执行前需退出使用该标识的 Argus。
+
 安装程序使用 NSIS 3.13。可安装到默认目录，或通过 `ARGUS_NSIS` 指定 `makensis.exe`。构建产物和验证结果位于 `target/`，详见[构建与缓存](build.md)。
 
 README 预览在启用透明效果的 Windows 11 上生成。探针保持测试窗口位于底层，通过 `WM_NCACTIVATE` 让 Windows 绘制激活态 Mica，并与同一主题的失活截图对照。导出时，用 16 位浮点窗口采样补足云母底色的渐变，以有序抖动写入 sRGB PNG。底色以原生 SDR 读数为准，其余区域直接使用窗口原始像素。键盘焦点保留在当前应用。

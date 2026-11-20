@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, mkdirSync, copyFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { developmentProfile, launchIdentifier, prepare } from "./dev-data.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 process.chdir(root);
@@ -37,6 +38,16 @@ if (mode === "dev") {
     for (let n = 0; n < 160 && application.exitCode === null; n++) await sleep(50);
     return application.exitCode !== null;
   }
+  // Files a format change within this release cycle left unreadable (scripts/dev-data.mjs).
+  // Runs while no instance holds them open.
+  function clearStaleData() {
+    try {
+      const { stale, removed } = prepare(developmentProfile(launchIdentifier(launchArgs, root)));
+      if (stale.length) console.log(`数据格式已变更，已清除开发数据：${stale.join("、")}（${removed.length} 个文件）。`);
+    } catch (error) {
+      console.error(`未能清除格式已变更的开发数据：${error.message}`);
+    }
+  }
   async function fingerprint() {
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(executable)) hash.update(chunk);
@@ -63,6 +74,7 @@ if (mode === "dev") {
         console.error("当前实例未完成退出，保留该实例，未启动新版本。");
         return;
       }
+      clearStaleData();
       const directory = resolve(runs, `run-${Date.now()}`);
       mkdirSync(directory, { recursive: true });
       const image = resolve(directory, "argus.exe");
