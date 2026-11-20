@@ -90,6 +90,11 @@ impl AxisEase {
         }
     }
 
+    /// The axes it goes to.
+    pub(super) fn target(&self) -> Axes {
+        self.to
+    }
+
     /// How far the latest change has come, eased out (1 when done).
     fn progress(&self, now: Instant) -> f32 {
         let Some(started) = self.started else {
@@ -105,7 +110,8 @@ impl AxisEase {
 
     /// The axes of a lane showing `readings` at `now`, easing towards
     /// `target`: a new target eases on from the ranges shown, the rows shown
-    /// more fading out. Other readings start at their own axes.
+    /// more fading out. Another reading starts at its own axes; an overlay
+    /// coming or going eases them.
     pub(super) fn toward(
         &mut self,
         target: Axes,
@@ -113,7 +119,7 @@ impl AxisEase {
         now: Instant,
         motion: bool,
     ) -> Eased {
-        if !motion || readings != self.readings {
+        if !motion || readings.0 != self.readings.0 {
             *self = Self::new(target, readings);
         } else if self.to != target {
             let e = self.progress(now);
@@ -457,6 +463,8 @@ impl Desktop {
     fn history_lane_series(
         &self,
         lane: &Lane,
+        // The overlay drawn (one going included) and how opaque it is.
+        overlay: Option<(&str, f32)>,
         points: &Points,
         axes: &Axes,
         bucket: i64,
@@ -519,23 +527,21 @@ impl Desktop {
                 .source(source("second")),
             );
         }
-        if let Some(overlay) = lane
-            .overlay
-            .as_deref()
-            .and_then(|id| self.history_reading(id))
+        if let Some((overlay, alpha)) =
+            overlay.and_then(|(id, alpha)| Some((self.history_reading(id)?, alpha)))
             && let Some(right) = axes.right
         {
             let left = axes.left;
             // A pair's parts as in a lane of its own, the second dimmer.
             let mut lines = vec![(
                 overlay.main_key(points).to_owned(),
-                overlay.color,
+                overlay.color.opacity(alpha),
                 "overlay",
             )];
             if overlay.is_pair() && points.has(&overlay.keys[1]) {
                 lines.push((
                     overlay.keys[1].clone(),
-                    overlay.color.opacity(0.5),
+                    overlay.color.opacity(0.5 * alpha),
                     "overlay-second",
                 ));
             }
@@ -548,12 +554,10 @@ impl Desktop {
                         format,
                     )
                     .fill(0.)
-                    .source(charts::hash_of((
-                        "history",
-                        lane.id,
-                        &overlay.id,
-                        part,
-                    ))),
+                    .source(charts::hash_of(("history", lane.id, &overlay.id, part)))
+                    // Coming and going with the overlay, it leaves the lane's
+                    // curve on screen while its texture is drawn.
+                    .layer(true),
                 );
             }
         }
@@ -805,6 +809,53 @@ impl Desktop {
                     alpha: 1. - fade.alpha,
                 }
             });
+            // An overlay that comes in or goes fades (`OverlayFade`); the right
+            // axis one goes with is kept for its fading curve.
+            let seen = self
+                .history
+                .overlays_seen
+                .insert(lane.id, lane.overlay.clone());
+            if let Some(was) = seen
+                && was != lane.overlay
+            {
+                let fade = match (&was, &lane.overlay) {
+                    _ if !motion => None,
+                    (_, Some(id)) => Some(state::OverlayFade {
+                        id: id.clone(),
+                        right: None,
+                        coming: true,
+                        started: now,
+                    }),
+                    (Some(id), None) => Some(state::OverlayFade {
+                        id: id.clone(),
+                        right: self
+                            .history
+                            .axes
+                            .get(&lane.id)
+                            .and_then(|ease| ease.target().right),
+                        coming: false,
+                        started: now,
+                    }),
+                    (None, None) => None,
+                };
+                match fade {
+                    Some(fade) => {
+                        self.history.overlay_fades.insert(lane.id, fade);
+                    }
+                    None => {
+                        self.history.overlay_fades.remove(&lane.id);
+                    }
+                }
+            }
+            let overlay_fade = self
+                .history
+                .overlay_fades
+                .get(&lane.id)
+                .and_then(|fade| fade.alpha(now).map(|alpha| (fade.clone(), alpha)));
+            if overlay_fade.is_none() {
+                self.history.overlay_fades.remove(&lane.id);
+            }
+            axes_moving |= overlay_fade.is_some();
             let readings = (lane.reading.clone(), lane.overlay.clone());
             let mut eased = self
                 .history
@@ -839,6 +890,7 @@ impl Desktop {
                     points
                 },
                 fade,
+                overlay_fade.as_ref(),
                 bucket,
                 (from, to),
                 width,
@@ -1086,6 +1138,8 @@ impl Desktop {
         points: Option<&Points>,
         // A range switch: the curves fading out, and how opaque the new ones are.
         fade: Option<(&Points, &Leaving, f32)>,
+        // The overlay coming in or going, and how opaque it is.
+        overlay_fade: Option<&(state::OverlayFade, f32)>,
         bucket: i64,
         (from, to): (f64, f64),
         // The plot's width as laid out last: measured before the lanes
@@ -1101,16 +1155,28 @@ impl Desktop {
     ) -> AnyElement {
         let p = self.palette;
         let id = lane.id;
-        let axes = &eased.axes;
         let span = (to - from).max(1.);
         let reading = self.history_reading(&lane.reading).cloned();
-        let overlay = lane
-            .overlay
+        // The overlay drawn: the lane's, or one going, on the axis it went with.
+        let going = overlay_fade.filter(|(fade, _)| !fade.coming);
+        let overlay_id = going.map_or(lane.overlay.clone(), |(fade, _)| Some(fade.id.clone()));
+        let overlay_alpha = overlay_fade.map_or(1., |(_, alpha)| *alpha);
+        let overlay = overlay_id
             .as_deref()
             .and_then(|id| self.history_reading(id))
             .cloned();
+        let drawn_axes = Axes {
+            right: eased.axes.right.or(going.and_then(|(fade, _)| fade.right)),
+            ..eased.axes
+        };
+        let axes = &drawn_axes;
+        let going_marks = going
+            .and_then(|(fade, _)| fade.right)
+            .filter(|_| eased.axes.right.is_none())
+            .map(|right| marks(right, (right, eased.axes.rows), None, 1.));
         let bits = self.history_bits();
-        let header = self.history_lane_header(lane, presence, multi, axes, read_index, window, cx);
+        let header =
+            self.history_lane_header(lane, presence, multi, &eased.axes, read_index, window, cx);
         let geometry = self.history.geometry.clone();
         let lane_id = lane.id;
         // The plot: its grid, the curves, the gaps and the marks.
@@ -1225,7 +1291,13 @@ impl Desktop {
         let generation = self.history.drawn_generation();
         if let (Some((old, leaving, _)), Some(_)) = (fade, &reading) {
             // The window's curves before the switch, as drawn for it, fading out.
-            let series = self.history_lane_series(lane, old, &leaving.axes, leaving.bucket);
+            let series = self.history_lane_series(
+                lane,
+                lane.overlay.as_deref().map(|id| (id, 1.)),
+                old,
+                &leaving.axes,
+                leaving.bucket,
+            );
             let curve = history_curve(
                 format!("history-lane-{id}-{}", generation.wrapping_sub(1)),
                 series,
@@ -1243,7 +1315,13 @@ impl Desktop {
             );
         }
         if let (Some(points), Some(_)) = (&points, &reading) {
-            let series = self.history_lane_series(lane, points, axes, bucket);
+            let series = self.history_lane_series(
+                lane,
+                overlay_id.as_deref().map(|id| (id, overlay_alpha)),
+                points,
+                axes,
+                bucket,
+            );
             let (view_from, view_to) = self.history.view;
             let curve = history_curve(
                 format!("history-lane-{id}-{generation}"),
@@ -1662,12 +1740,30 @@ impl Desktop {
             column
         };
         let left_labels = label_column(&eased.left, reading.as_ref(), p.faint, false);
-        let right_labels = label_column(
-            if axes.shared { &[] } else { &eased.right },
-            overlay.as_ref(),
-            overlay.as_ref().map_or(p.faint, |o| o.color),
-            true,
-        );
+        // The right side labels the overlay's axis, fading with it; without a
+        // second axis it repeats the left one's labels, in the same unit.
+        let right_marks: Vec<Mark> = match (&overlay, going_marks) {
+            (Some(_), Some(going)) => going,
+            (Some(_), None) if !axes.shared && !eased.right.is_empty() => eased.right.clone(),
+            _ => Vec::new(),
+        };
+        let right_labels = if right_marks.is_empty() {
+            label_column(&eased.left, reading.as_ref(), p.faint, true)
+        } else {
+            let faded: Vec<Mark> = right_marks
+                .iter()
+                .map(|mark| Mark {
+                    alpha: mark.alpha * overlay_alpha,
+                    ..*mark
+                })
+                .collect();
+            label_column(
+                &faded,
+                overlay.as_ref(),
+                overlay.as_ref().map_or(p.faint, |o| o.color),
+                true,
+            )
+        };
         let weight = lane.shown.max(0.);
         let geometry_lane = geometry.clone();
         div()

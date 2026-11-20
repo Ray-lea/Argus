@@ -297,6 +297,31 @@ pub(super) enum TipList {
     Nothing,
 }
 
+/// How long an overlay takes to come in or go (`OverlayFade`).
+pub(super) const OVERLAY: Duration = Duration::from_millis(300);
+
+/// A lane's overlay coming in or going: which reading, the right axis it went
+/// with (for one going), whether it comes, and since when.
+#[derive(Clone, Debug)]
+pub(super) struct OverlayFade {
+    pub(super) id: String,
+    pub(super) right: Option<(f64, f64)>,
+    pub(super) coming: bool,
+    pub(super) started: Instant,
+}
+
+impl OverlayFade {
+    /// How opaque it is at `now`; none once it has come or gone.
+    pub(super) fn alpha(&self, now: Instant) -> Option<f32> {
+        let t = now.saturating_duration_since(self.started).as_secs_f32() / OVERLAY.as_secs_f32();
+        if t >= 1. {
+            return None;
+        }
+        let e = ease_in_out(t);
+        Some(if self.coming { e } else { 1. - e })
+    }
+}
+
 /// Eases in and out (cubic).
 fn ease_in_out(t: f32) -> f32 {
     if t < 0.5 {
@@ -333,6 +358,9 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) pin_lane: Option<u64>,
     /// What the tooltip asked for lists (`TipList`).
     pub(super) tip_kind: TipList,
+    /// Each lane's overlay as last drawn, and those coming in or going.
+    pub(super) overlays_seen: std::collections::HashMap<u64, Option<String>>,
+    pub(super) overlay_fades: std::collections::HashMap<u64, OverlayFade>,
     pub(super) selection: Option<(i64, i64)>,
     pub(super) mode: TableMode,
     pub(super) hover: Option<Hover>,
@@ -561,6 +589,8 @@ impl Default for HistoryState {
             pin: None,
             pin_lane: None,
             tip_kind: TipList::Nothing,
+            overlays_seen: Default::default(),
+            overlay_fades: Default::default(),
             selection: None,
             mode: TableMode::Moment,
             hover: None,
