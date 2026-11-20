@@ -1176,10 +1176,38 @@ impl Desktop {
             } else {
                 div().child(label("history.note")).into_any_element()
             });
+        // Room for three rows under the head and over the foot, as tall as
+        // they wrapped last (a narrow window wraps both); the page scrolls
+        // beyond. Measured, as the card clips and would let the foot cover
+        // the rows.
+        let (head_height, foot_height) = {
+            let geometry = self.history.geometry.borrow();
+            (
+                f32::from(geometry.table_head).max(36.),
+                f32::from(geometry.table_foot).max(34.),
+            )
+        };
+        let probe = |foot: bool| {
+            let geometry = self.history.geometry.clone();
+            canvas(
+                move |bounds, _, _| {
+                    let mut geometry = geometry.borrow_mut();
+                    if foot {
+                        geometry.table_foot = bounds.size.height;
+                    } else {
+                        geometry.table_head = bounds.size.height;
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        let foot = foot.relative().child(probe(true));
         div()
             .id("history-table-card")
             .flex_1()
-            .min_h(px(36. + 30. + ROW * 3. + 34.))
+            .min_h(px(head_height + 30. + ROW * 3. + foot_height + 2.))
             .flex()
             .flex_col()
             .border_1()
@@ -1187,8 +1215,13 @@ impl Desktop {
             .rounded(px(8.))
             .bg(p.layer)
             .overflow_hidden()
-            .child(heading)
-            .when_some(notice, |d, notice| d.child(notice))
+            .child(
+                div()
+                    .relative()
+                    .child(probe(false))
+                    .child(heading)
+                    .when_some(notice, |d, notice| d.child(notice)),
+            )
             .child(
                 div()
                     .flex_1()

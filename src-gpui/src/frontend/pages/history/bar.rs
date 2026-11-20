@@ -322,6 +322,6 @@ impl Desktop {
                     this.history_open_readings(menu, Command::Show, "history-tab-more", window, cx);
                 })),
         );
-        row.into_any_element()
+        row.child(self.history_add_lane(cx)).into_any_element()
     }
 }

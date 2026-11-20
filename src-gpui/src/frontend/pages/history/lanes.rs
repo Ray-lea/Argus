@@ -578,13 +578,7 @@ impl Desktop {
             .flex_none()
             .h(px(AXIS) + theme::text_growth(11., 1.4))
             .flex()
-            .child(
-                div()
-                    .w(px(GUTTER))
-                    .flex_shrink_0()
-                    .relative()
-                    .child(self.history_add_lane(cx)),
-            )
+            .child(div().w(px(GUTTER)).flex_shrink_0())
             .child({
                 // Painted at their times to the fraction of a pixel (glyphs
                 // take quarter pixels), not laid out on whole device pixels:
@@ -1244,11 +1238,14 @@ impl Desktop {
                         let f = row as f32 / axes.rows as f32;
                         let value = high - (high - low) * f64::from(f);
                         let text = reading.axis_label(value, high, bits);
+                        // Centred on its line; the lowest just above it, so it
+                        // stays in the lane and clear of the time axis below.
+                        let lift = if row == axes.rows { -16. } else { -8. };
                         column = column.child(
                             div()
                                 .absolute()
                                 .top(relative(f))
-                                .mt(px(-8.))
+                                .mt(px(lift))
                                 .h(px(16.))
                                 .when(!right, |d| d.right(px(6.)))
                                 .when(right, |d| d.left(px(6.)))
@@ -1281,8 +1278,10 @@ impl Desktop {
                 d.style().flex_basis = Some(px(0.).into());
                 d
             })
-            .overflow_hidden()
             .min_h(px(state::MIN_LANE * presence))
+            // Clipped only while it comes or goes: settled, a long axis label
+            // reaches past the gutter into the card's padding.
+            .when(presence < 1., |d| d.overflow_hidden())
             .flex()
             .flex_col()
             // Where it is, for a drag arranging the lanes.
@@ -1406,25 +1405,25 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// The button under the lanes adding one.
-    fn history_add_lane(&self, cx: &mut Context<Self>) -> AnyElement {
+    /// The button at the end of the reading tabs adding a lane.
+    pub(super) fn history_add_lane(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         div()
             .id("history-add-lane")
-            .absolute()
-            .top(px(2.))
-            .left(px(0.))
+            .relative()
+            .flex_shrink_0()
             .flex()
             .items_center()
-            .gap(px(3.))
-            .px(px(6.))
-            .h(px(20.))
-            .rounded(px(5.))
-            .text_size(theme::font(11.5))
-            .text_color(p.faint)
+            .gap(px(4.))
+            .px(px(10.))
+            .h(px(30.))
+            .rounded(px(6.))
+            .text_size(theme::font(13.))
+            .text_color(p.muted)
+            .whitespace_nowrap()
             .cursor_pointer()
             .hover(move |s| s.bg(p.hover_strong).text_color(p.ink))
-            .child(icon("PlusIcon", p.faint).size(px(12.)))
+            .child(icon("PlusIcon", p.muted).size(px(13.)))
             .child(label("history.lane.add"))
             .child(layout::anchor_probe(
                 "history-add-lane",

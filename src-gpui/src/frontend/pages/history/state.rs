@@ -178,6 +178,10 @@ pub(super) struct Geometry {
     pub(super) track: Bounds<Pixels>,
     /// The chart card and the page's content, for the splitter.
     pub(super) content: Bounds<Pixels>,
+    /// The table card's head (title, notice) and foot, as tall as they
+    /// wrapped: the card keeps room for them and three rows.
+    pub(super) table_head: Pixels,
+    pub(super) table_foot: Pixels,
 }
 
 impl Geometry {
