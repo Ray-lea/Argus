@@ -1542,16 +1542,25 @@ impl Desktop {
         const GAP: f32 = 4.;
         const MARGIN: f32 = 8.;
         let reduce = cx.reduce_motion();
-        // A closed list rolls up toward its control over 83 ms, without taking
-        // input. It does not fade out: see `menus::rolled`.
+        // The list unrolls from its control over 167 ms, decelerating, and a
+        // closed one rolls back up toward it over 83 ms, from as far as it had
+        // come, without taking input. Neither fades: see `menus::rolled`.
+        let unrolled = |open: &OpenSelect, at: Instant| {
+            if reduce {
+                1.
+            } else {
+                let elapsed = at.saturating_duration_since(open.opened).as_secs_f32();
+                theme::ease_out((elapsed / 0.167).min(1.))
+            }
+        };
         let leaving = self.ui.select_leaving.as_ref().and_then(|(open, at)| {
             let left = 1. - at.elapsed().as_secs_f32() / 0.083;
-            (!reduce && left > 0.).then_some((open, left))
+            (!reduce && left > 0.).then(|| (open, left * unrolled(open, *at)))
         });
         let interactive = self.ui.select.is_some();
         let (open, shown) = match (&self.ui.select, leaving) {
-            (Some(open), _) => (open, 1.),
-            (None, Some((open, left))) => (open, left),
+            (Some(open), _) => (open, unrolled(open, Instant::now())),
+            (None, Some((open, shown))) => (open, shown),
             (None, None) => return None,
         };
         // Grows in over 167 ms, decelerating (`flyout-in`; its slight scale is
@@ -1590,15 +1599,15 @@ impl Desktop {
             .max_h(px(max_height))
             .overflow_y_scroll()
             .p(px(4.))
-            // The gutter is kept (`scrollbar-gutter: stable`).
-            .pr(px(4. + scrollbar::SIZE))
+            // The gutter is kept while the list scrolls (`scrollbar-gutter:
+            // stable`); one that fits leaves no room on the right.
+            .pr(px(4. + if scrolls { scrollbar::SIZE } else { 0. }))
             .border_1()
             .border_color(p.stroke_strong)
             .rounded(px(8.))
             // No shadow, as the interface's menus and lists (window.md); opaque,
             // to keep the flyout readable over other content.
             .bg(solid(p.flyout))
-            .opacity(opacity)
             .text_size(theme::font(13.))
             .text_color(p.ink)
             .on_scroll(|_, _, cx| cx.stop_propagation())
@@ -1612,6 +1621,7 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .rounded(px(4.))
+        let scrolls = wanted > max_height;
                     .whitespace_nowrap()
                     .when(index == open.active, |d| d.bg(p.hover))
                     .active(move |s| s.bg(p.press))
@@ -1643,8 +1653,9 @@ impl Desktop {
             }))
             .child(scrollbar::scrollbar("select-scrollbar", &open.scroll, p.dark).border(1.));
         let list = if shown < 1. {
-            // What is left of the list, from the edge at its control (the
-            // bottom of a list above it), with the list drawn where it was.
+            // As much of the list as has unrolled, or is left, from the edge
+            // at its control (the bottom of a list above it), the list drawn
+            // where it stands open.
             let clip = px(height * shown);
             let hidden = if up { px(height) - clip } else { px(0.) };
             div()
