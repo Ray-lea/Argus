@@ -4,13 +4,13 @@
 //! average finite samples independently; CPU peak is their maximum. Process
 //! working set, dedicated GPU memory, threads and handles are frame maxima.
 //!
-//! Sealed days use ARGH v5. The minute packets keep independent system and
+//! Sealed days use ARGH v4. The minute packets keep independent system and
 //! process blocks, the observed intervals, and exact gap evidence. See the
 //! minute module for the reader and atomic writer.
 //!
-//! # Version 4
+//! # Version 3
 //!
-//! `YYYY-MM-DD.hist` begins with `ARGH\x04`. Each record is a u8 tag, u32
+//! `YYYY-MM-DD.hist` begins with `ARGH\x03`. Each record is a u8 tag, u32
 //! payload length and payload. Fixed-width numbers are little endian.
 //!
 //! * 3, channel definition: UTF-8 JSON pair [local index, HistoryChannel].
@@ -67,8 +67,8 @@
 //! case-folded FNV-1a 64. Board fans use the controller channel, batteries are
 //! aggregated across packs. All device data comes from the collected snapshot.
 //!
-//! Day files of other versions (the v2/v3 of releases before 0.6) are not
-//! read, and a day begun in one starts over in v4. Legacy queries project v4
+//! Day files of other versions (the v1/v2 of releases before 0.6) are not
+//! read, and a day begun in one starts over in v3. Legacy queries project v3
 //! back into the original JSON structures.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -100,13 +100,16 @@ pub use options::*;
 mod maintenance;
 pub use maintenance::{maintain, maintain_until, move_records, validate_directory};
 mod minute;
-use minute::{MINUTE_MAGIC, MINUTE_MS, Minute};
+use minute::{MINUTE_MAGIC, MINUTE_MS, MINUTE_VERSION, Minute};
 
-/// The day file format written and read: v4 (frames, with process rows in
-/// a `.proc` sidecar). Sealed days may be v5 (`minute::MINUTE_MAGIC`).
-/// Files of other versions, such as the v2/v3 days of releases before 0.6,
+/// The day file format written and read: v3 (frames, with process rows in
+/// a `.proc` sidecar). Sealed days may be v4 (`minute::MINUTE_MAGIC`).
+/// Files of other versions, such as the v1/v2 days of releases before 0.6,
 /// are not read: as if nothing had been recorded that day.
-const MAGIC: &[u8; 5] = b"ARGH\x04";
+const MAGIC: &[u8; 5] = b"ARGH\x03";
+/// The version byte of `MAGIC`, which also tells a raw day (`Index::version`)
+/// from a sealed one (`MINUTE_VERSION`).
+const VERSION: u8 = MAGIC[4];
 const DAY_MS: i64 = 86_400_000;
 // A normal day holds 17,280 frames. Reject oversized files before allocating or repairing.
 const MAX_FILE_BYTES: usize = 128 << 20;
@@ -269,7 +272,7 @@ struct Window {
 struct DayFile {
     day: i64,
     out: BufWriter<File>,
-    v4: Writer4,
+    writer: DayWriter,
 }
 
 pub struct HistoryRecorder {
@@ -639,7 +642,7 @@ impl HistoryRecorder {
             },
             |p| (p.pid, p.create_time),
         );
-        let size = file.v4.frame(
+        let size = file.writer.frame(
             &mut file.out,
             &self.catalog,
             w,
@@ -1349,7 +1352,7 @@ pub struct HistoryFrame {
 const CHANNEL: u8 = 3;
 const INSTANCE: u8 = 4;
 const MARKER: u8 = 5;
-const V4_FRAME: u8 = 6;
+const FRAME: u8 = 6;
 /// A program's entry in the day's dictionary: `(id, name)`, before the first
 /// frame that counts it.
 const PROGRAM: u8 = 14;
@@ -1438,7 +1441,7 @@ struct Identity {
     pid: u32,
     created: i64,
 }
-struct Writer4 {
+struct DayWriter {
     checkpoints: Option<Checkpoints>,
     presence: Vec<u8>,
     system: SystemRoll,
@@ -1497,7 +1500,7 @@ impl<'a> Stored<'a> {
         .unwrap_or(f64::NEG_INFINITY)
     }
 }
-impl Writer4 {
+impl DayWriter {
     fn frame(
         &mut self,
         out: &mut impl Write,
@@ -1692,7 +1695,7 @@ impl Writer4 {
                 frame.extend((v as f32).to_le_bytes());
             }
         }
-        packet(&mut metadata, V4_FRAME, &frame)?;
+        packet(&mut metadata, FRAME, &frame)?;
         let mut programs = [0u8; PROGRAMS_LEN];
         let small = |v: u32| u16::try_from(v).unwrap_or(u16::MAX).to_le_bytes();
         programs[..2].copy_from_slice(&small(w.program_count));
@@ -1726,7 +1729,7 @@ impl Writer4 {
         Ok((metadata.len() + rows.len()) as u64 + index_bytes + summary_bytes)
     }
 }
-impl Drop for Writer4 {
+impl Drop for DayWriter {
     fn drop(&mut self) {
         if let Some(cp) = &mut self.checkpoints
             && let Err(e) = cp.commit()
@@ -2033,9 +2036,9 @@ impl Index {
             CHANNEL => p.len() > MAX_METADATA_BYTES || self.labels.len() >= MAX_FRAMES,
             INSTANCE => p.len() > MAX_METADATA_BYTES || self.ids.len() >= MAX_INSTANCES,
             PROGRAM => p.len() > MAX_METADATA_BYTES || self.programs.len() >= MAX_INSTANCES,
-            minute::MINUTE if self.version == 5 => self.frames.len() >= 1440,
-            minute::GAP if self.version == 5 => self.gaps.len() >= MAX_FRAMES,
-            V4_FRAME => self.frames.len() >= MAX_FRAMES,
+            minute::MINUTE if self.version == MINUTE_VERSION => self.frames.len() >= 1440,
+            minute::GAP if self.version == MINUTE_VERSION => self.gaps.len() >= MAX_FRAMES,
+            FRAME => self.frames.len() >= MAX_FRAMES,
             PRESENCE => self.masks.len() >= MAX_FRAMES,
             _ => false,
         };
@@ -2106,7 +2109,7 @@ impl Index {
                     self.summaries.push(r);
                 }
             }
-            minute::MINUTE if self.version == 5 => {
+            minute::MINUTE if self.version == MINUTE_VERSION => {
                 let minute = Minute::parse(p, self.day)?;
                 if self.last.is_some_and(|s| s.ts >= minute.ts) {
                     return None;
@@ -2122,7 +2125,7 @@ impl Index {
                     .push((stamp.ts.rem_euclid(DAY_MS) as u32, at as u32));
                 self.process_bytes += minute.process_bytes();
             }
-            minute::EDGES if self.version == 5 && p.len() <= 512 => {
+            minute::EDGES if self.version == MINUTE_VERSION && p.len() <= 512 => {
                 let edges: [Stamp; 2] = serde_json::from_slice(p).ok()?;
                 if edges[1].ts < edges[0].ts
                     || edges.iter().any(|s| {
@@ -2135,15 +2138,15 @@ impl Index {
                 }
                 self.edges = Some(edges);
             }
-            minute::SEALED if self.version == 5 && p == minute::SEAL => (),
-            minute::GAP if self.version == 5 => {
+            minute::SEALED if self.version == MINUTE_VERSION && p == minute::SEAL => (),
+            minute::GAP if self.version == MINUTE_VERSION => {
                 let g = minute::parse_gap(p, self.day)?;
                 if self.gaps.last().is_some_and(|prev| prev.to > g.from) {
                     return None;
                 }
                 self.gaps.push(g);
             }
-            V4_FRAME if self.version != 5 && !checkpoint => {
+            FRAME if self.version != MINUTE_VERSION && !checkpoint => {
                 let f = Stored::parse(p)?;
                 let end = f.offset.checked_add(f.len as u64)?;
                 if f.offset != self.proc_end
@@ -2191,7 +2194,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     let path = day_path(dir, day);
     let mut file = open_writable(&path)?;
     let mut bytes = read_bounded(&mut file)?;
-    // A day begun by a release writing another version (v2/v3, no longer
+    // A day begun by a release writing another version (v1/v2, no longer
     // read) starts over in this one, as an empty or torn header does.
     let other = bytes.starts_with(b"ARGH")
         && bytes.len() >= 5
@@ -2214,7 +2217,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     if !bytes.starts_with(MAGIC) {
         return Err(invalid());
     }
-    let v4 = {
+    let writer = {
         let side = path.with_extension("proc");
         let mut proc = open_writable(&side)?;
         idx.scan(&bytes[5..], proc.metadata()?.len(), None);
@@ -2241,7 +2244,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
         let checkpoints = Checkpoints::open(idx_path.clone(), &bytes[..idx.valid])
             .inspect_err(|e| crate::diagnostics::file_failure("history index open", &idx_path, e))
             .ok();
-        Writer4 {
+        DayWriter {
             checkpoints,
             presence: Vec::new(),
             system: SystemRoll::default(),
@@ -2270,7 +2273,7 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     file.seek(SeekFrom::End(0))?;
     Ok(DayFile {
         out: BufWriter::new(file),
-        v4,
+        writer,
         day,
     })
 }
@@ -2334,14 +2337,14 @@ fn index(path: &Path) -> Option<Arc<Index>> {
     if data.valid == 0 {
         let mut magic = [0; 5];
         f.read_exact(&mut magic).ok()?;
-        // Other versions (the v2/v3 days of earlier releases) are not read.
+        // Other versions (the v1/v2 days of earlier releases) are not read.
         if &magic != MAGIC && &magic != MINUTE_MAGIC {
             return None;
         }
         data.day = day_of(path.file_name()?)?;
         data.version = magic[4];
         data.valid = 5;
-        if data.version == 4 {
+        if data.version == VERSION {
             data.load_checkpoints(path, len);
         }
     }
@@ -2491,7 +2494,7 @@ impl DayRead {
             proc_path: None,
             range: first..last,
         };
-        if processes && d.idx.version == 4 {
+        if processes && d.idx.version == VERSION {
             let side = path.with_extension("proc");
             let slice = d.stored(first).zip(d.stored(last - 1)).and_then(|(a, b)| {
                 let len =
@@ -2515,7 +2518,7 @@ impl DayRead {
     fn stored(&self, i: usize) -> Option<Stored<'_>> {
         let (tag, payload) = next_packet(self.bytes(i)?)?;
         let f = Stored::parse(payload)?;
-        (tag == V4_FRAME
+        (tag == FRAME
             && f.ts.div_euclid(DAY_MS) == self.idx.day
             && f.ts.rem_euclid(DAY_MS) == i64::from(self.idx.frames.get(i)?.0)
             && f.values.len() <= self.idx.catalog.bytes)
@@ -2556,14 +2559,14 @@ impl DayRead {
             .then_some(m)
     }
     fn row(&self, i: usize) -> Option<Reading<'_>> {
-        if self.idx.version == 5 {
+        if self.idx.version == MINUTE_VERSION {
             let m = self.minute(i)?;
             return Some(Reading::Minute(m.ts, m.bands(self.idx.catalog.rows.len())?));
         }
         Some(Reading::New(self.stored(i)?, &self.idx.catalog))
     }
     fn processes(&self, i: usize) -> Vec<FrameProcess> {
-        if self.idx.version == 5 {
+        if self.idx.version == MINUTE_VERSION {
             return self
                 .minute(i)
                 .map(|m| m.processes(&self.idx))
@@ -2766,7 +2769,7 @@ pub fn usage_with(dir: &Path, options: HistoryOptions) -> HistoryUsage {
             .and_then(|b| serde_json::from_slice::<Measurement>(&b).ok())
             .filter(|m| m.frames > 0 && m.bytes > 0);
         let candidate = saved.or_else(|| {
-            (idx.version != 5).then(|| Measurement {
+            (idx.version != MINUTE_VERSION).then(|| Measurement {
                 recording: Recording::default(),
                 frames: idx.frames.len() as u64,
                 bytes: ["idx", "proc", "roll"].iter().fold(bytes, |sum, ext| {
@@ -3050,7 +3053,7 @@ pub fn series(
         {
             let path = day_path(dir, day);
             let Some(idx) = index(&path) else { continue };
-            let first_ts = if idx.version == 5 && bucket < MINUTE_MS {
+            let first_ts = if idx.version == MINUTE_VERSION && bucket < MINUTE_MS {
                 align(first, 0, MINUTE_MS)
             } else {
                 first
@@ -3059,7 +3062,7 @@ pub fn series(
             if range.is_empty() {
                 continue;
             }
-            if idx.version == 5 {
+            if idx.version == MINUTE_VERSION {
                 out.merged_days.push(day * DAY_MS);
             }
             let ids = indices(&idx.catalog);
@@ -3078,13 +3081,13 @@ pub fn series(
                 for i in d.range.clone() {
                     let Some(r) = d.row(i) else { continue };
                     let ts = r.ts();
-                    let resolution = if idx.version == 5 {
+                    let resolution = if idx.version == MINUTE_VERSION {
                         MINUTE_MS
                     } else {
                         FRAME_MS
                     };
                     let raw = bucket < resolution;
-                    if raw && ts < from && idx.version != 5 {
+                    if raw && ts < from && idx.version != MINUTE_VERSION {
                         continue;
                     }
                     let bin = bucket_at(
@@ -3222,7 +3225,7 @@ pub fn channels(dir: &Path, from: i64, to: i64) -> Vec<HistoryChannel> {
             continue;
         };
         let start = day * DAY_MS;
-        let from = if idx.version == 5 {
+        let from = if idx.version == MINUTE_VERSION {
             align(from, 0, MINUTE_MS)
         } else {
             from
@@ -3659,7 +3662,7 @@ impl TableQuery<'_> {
         if end <= start {
             return;
         }
-        let resolution = if idx.version == 5 {
+        let resolution = if idx.version == MINUTE_VERSION {
             MINUTE_MS
         } else {
             FRAME_MS
@@ -3678,7 +3681,7 @@ impl TableQuery<'_> {
             if self.exhausted {
                 return;
             }
-            if d.idx.version == 5 {
+            if d.idx.version == MINUTE_VERSION {
                 if let Some(m) = d.minute(i) {
                     m.table(self, &d.idx, start, end);
                 }
@@ -3716,7 +3719,7 @@ impl TableQuery<'_> {
         let mut start = self.from.max(day * DAY_MS);
         let end = self.to.min((day + 1) * DAY_MS);
         if end - start >= PROCESS_ROLL_MS
-            && idx.version == 4
+            && idx.version == VERSION
             && let Ok(bytes) =
                 File::open(path.with_extension("roll")).and_then(|mut f| read_bounded(&mut f))
         {
@@ -4050,7 +4053,7 @@ impl Checkpoints {
             .filter(|&v| v <= MAX_FILE_BYTES)
             .ok_or_else(invalid)?;
         let used = packets(main, 0, |at, tag, p| {
-            if tag == V4_FRAME {
+            if tag == FRAME {
                 let Some(f) = Stored::parse(p) else {
                     return false;
                 };
@@ -4109,7 +4112,7 @@ impl Checkpoints {
         Ok(())
     }
 }
-impl Writer4 {
+impl DayWriter {
     fn index_append(&mut self, bytes: &[u8]) {
         if let Some(cp) = &mut self.checkpoints
             && let Err(e) = cp.capture(bytes)
@@ -4125,7 +4128,7 @@ impl DayFile {
         write_marker(&mut bytes, kind, ts, boot, awake)?;
         self.out.write_all(&bytes)?;
         self.out.flush()?;
-        self.v4.index_append(&bytes);
+        self.writer.index_append(&bytes);
         Ok(())
     }
 }
@@ -4163,7 +4166,7 @@ impl Index {
         if bad {
             *self = Self {
                 day: self.day,
-                version: 4,
+                version: VERSION,
                 valid: 5,
                 ..Default::default()
             };
@@ -4427,7 +4430,7 @@ mod tests {
     #[test]
     fn days_of_other_versions_are_not_read_and_restart_when_recorded() {
         let base = 20_737 * DAY_MS;
-        for version in [2u8, 3] {
+        for version in [1u8, 2] {
             let dir = temp_dir(&format!("other-version-{version}"));
             fs::create_dir_all(&dir).unwrap();
             let path = day_path(&dir, 20_737);
@@ -4774,7 +4777,7 @@ mod tests {
             .append(true)
             .open(&path)
             .unwrap()
-            .write_all(&[V4_FRAME, 1, 2, 3])
+            .write_all(&[FRAME, 1, 2, 3])
             .unwrap();
         let mut rec = HistoryRecorder::new(dir.clone());
         for i in 20..26 {
@@ -4865,8 +4868,8 @@ mod tests {
     }
 
     #[test]
-    fn v4_adds_channels_and_preserves_unknowns_across_midnight() {
-        let dir = temp_dir("v4-channels");
+    fn adds_channels_and_preserves_unknowns_across_midnight() {
+        let dir = temp_dir("channels");
         let midnight = 20_738 * DAY_MS;
         let mut rec = HistoryRecorder::new(dir.clone());
         for n in 0..20 {

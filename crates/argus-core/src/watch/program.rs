@@ -404,7 +404,7 @@ impl ProgramWatch {
         let start = end.saturating_sub(PREVIEW_RUNS);
         let runs = runs[start..end].to_vec();
         WatchView {
-            version: 2,
+            version: super::VERSION,
             pid: key.0,
             create_time: key.1,
             name: self.store.meta.name.clone(),

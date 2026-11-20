@@ -95,7 +95,7 @@ impl Day {
                 payload.extend((v as f32).to_le_bytes());
             }
         }
-        packet(&mut self.main, V4_FRAME, &payload).unwrap();
+        packet(&mut self.main, FRAME, &payload).unwrap();
         self.proc.extend(rows);
     }
     fn save(&self, dir: &Path) {
@@ -269,14 +269,14 @@ fn paired_frame_readings_and_sealed_peak_resolution() {
 
 #[test]
 fn restarted_and_sealed_days_join_at_midnight_and_keep_only_available_channels() {
-    for (version, sealed_first) in [(2, false), (3, true), (4, true), (4, false)] {
+    for (version, sealed_first) in [(1, false), (2, true), (VERSION, true), (VERSION, false)] {
         let dir = temp_dir(&format!("event-cross-{version}-{sealed_first}"));
         fs::create_dir_all(&dir).unwrap();
         let raw_day = DAY + i64::from(sealed_first);
         let sealed_day = DAY + i64::from(!sealed_first);
         for day in [raw_day, sealed_day] {
             // A day begun by a release writing an older version starts over.
-            if day == raw_day && version < 4 {
+            if day == raw_day && version != VERSION {
                 fs::write(day_path(&dir, day), [b'A', b'R', b'G', b'H', version]).unwrap();
             }
             let mut rec = HistoryRecorder::new(dir.clone());

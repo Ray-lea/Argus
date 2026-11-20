@@ -215,7 +215,7 @@ impl Observation {
 }
 
 fn scan_day(path: &Path, idx: &Arc<Index>, from: i64, to: i64) -> Option<Arc<[EventMinute]>> {
-    let resolution = if idx.version == 5 {
+    let resolution = if idx.version == MINUTE_VERSION {
         MINUTE_MS
     } else {
         FRAME_MS
@@ -255,7 +255,7 @@ fn scan_day(path: &Path, idx: &Arc<Index>, from: i64, to: i64) -> Option<Arc<[Ev
         if start >= end {
             continue;
         }
-        if idx.version == 5
+        if idx.version == MINUTE_VERSION
             && (start != row.ts() || end != row.ts() + MINUTE_MS)
             && !day
                 .minute(i)

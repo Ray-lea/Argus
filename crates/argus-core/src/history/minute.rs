@@ -1,5 +1,5 @@
-//! A sealed day is a single ARGH v5 file. Metadata uses the same dictionaries
-//! as v4. Each minute has independently checksummed zlib streams for its
+//! A sealed day is a single ARGH v4 file. Metadata uses the same dictionaries
+//! as v3. Each minute has independently checksummed zlib streams for its
 //! system bands and process totals. Curve queries never inflate processes.
 use super::*;
 use miniz_oxide::{
@@ -7,7 +7,8 @@ use miniz_oxide::{
     inflate::{decompress_slice_iter_to_slice, decompress_to_vec_zlib_with_limit},
 };
 
-pub(super) const MINUTE_MAGIC: &[u8; 5] = b"ARGH\x05";
+pub(super) const MINUTE_MAGIC: &[u8; 5] = b"ARGH\x04";
+pub(super) const MINUTE_VERSION: u8 = MINUTE_MAGIC[4];
 pub(super) const MINUTE_MS: i64 = 60_000;
 pub(super) const MINUTE: u8 = 10;
 pub(super) const GAP: u8 = 11;
@@ -15,7 +16,7 @@ pub(super) const SEALED: u8 = 12;
 pub(super) const EDGES: u8 = 13;
 pub(super) const SEAL: &[u8] = b"minute-day";
 
-/// Whether a day file is in the format still written (v4), the one a day is
+/// Whether a day file is in the format still written (v3), the one a day is
 /// merged from: a day of another version is neither read nor merged.
 pub(super) fn is_current(path: &Path) -> bool {
     let mut magic = [0; 5];

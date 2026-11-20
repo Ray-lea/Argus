@@ -39,7 +39,7 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     f.extend(0u64.to_le_bytes());
     f.extend((rows.len() as u32).to_le_bytes());
     f.extend(1f32.to_le_bytes());
-    packet(&mut main, V4_FRAME, &f).unwrap();
+    packet(&mut main, FRAME, &f).unwrap();
     let mut programs = [0; PROGRAMS_LEN];
     programs[..6].copy_from_slice(&[1, 0, 0, 0, 3, 0]);
     packet(&mut main, PROGRAMS, &programs).unwrap();
@@ -314,7 +314,7 @@ fn a_corrupt_process_frame_never_replaces_the_source_day() {
     let duplicated = [rows.as_slice(), rows.as_slice()].concat();
     packets(&main, 5, |_, tag, p| {
         let mut payload = p.to_vec();
-        if tag == V4_FRAME {
+        if tag == FRAME {
             payload[28..32].copy_from_slice(&(duplicated.len() as u32).to_le_bytes());
         }
         packet(&mut invalid_main, tag, &payload).unwrap();
@@ -357,7 +357,7 @@ fn days_of_other_versions_are_neither_read_nor_merged() {
     let dir = temp_dir("other-version-merge");
     fs::create_dir_all(&dir).unwrap();
     let path = day_path(&dir, DAY);
-    fs::write(&path, b"ARGH\x03\x02\x00\x00\x00\x00").unwrap();
+    fs::write(&path, b"ARGH\x02\x02\x00\x00\x00\x00").unwrap();
     assert!(!minute::is_current(&path));
     assert!(minute::merge(&dir, DAY, 0).is_err());
     assert!(!path.with_extension("merge-tmp").exists());
@@ -372,7 +372,7 @@ fn days_of_other_versions_are_neither_read_nor_merged() {
         || false,
     )
     .unwrap();
-    assert_eq!(fs::read(&path).unwrap(), b"ARGH\x03\x02\x00\x00\x00\x00");
+    assert_eq!(fs::read(&path).unwrap(), b"ARGH\x02\x02\x00\x00\x00\x00");
     assert!(frame(&dir, TS).is_none());
     assert!(table(&dir, TS, TS + 60_000, "cpu", 0).processes.is_empty());
     fs::remove_dir_all(dir).unwrap();

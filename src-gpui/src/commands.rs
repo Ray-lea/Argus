@@ -1670,7 +1670,7 @@ mod tests {
         assert!(ask("clear_history", json!({})).is_null());
         assert_eq!(ask("history_usage", json!({}))["bytes"], 0);
         let expired = other.join("2001-01-01.hist");
-        std::fs::write(&expired, b"ARGH\x04").unwrap();
+        std::fs::write(&expired, b"ARGH\x03").unwrap();
         ask("set_history_options", json!({"options":{"keepDays":1}}));
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while expired.exists() && std::time::Instant::now() < deadline {
