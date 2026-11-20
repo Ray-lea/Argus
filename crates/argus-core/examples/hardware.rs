@@ -1,4 +1,4 @@
-//! Prints device telemetry (CPU, sensors, memory, disks, NICs, GPUs, batteries) to verify the collectors.
+//! Prints device telemetry (CPU, sensors, memory, disks, NICs, GPUs, NPUs, batteries) to verify the collectors.
 //! `cargo run -p argus-core --example hardware --release`
 
 use std::time::{Duration, Instant};
