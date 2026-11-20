@@ -1,10 +1,10 @@
-//! The reading tabs over the chart, and the menu of every reading. A tab shows
+//! The reading tabs over the chart, and what opens the reading chooser. A tab shows
 //! its reading's value at the moment the page describes, in a slot as wide as
 //! the reading's widest value, so that the tabs never move while values
 //! change. Clicked, a tab shows its reading in the active lane; its + adds a
 //! lane; dragged onto a lane it overlays it there, between lanes it adds one.
 use super::lanes::slot_width;
-use super::readings::{Group, tab_ids};
+use super::readings::tab_ids;
 use super::state::Drag;
 use super::*;
 
@@ -12,7 +12,7 @@ use super::*;
 /// and the border.
 const TAB_PARTS: f32 = 10. + 8. + 7. + 7. + 7. + 18. + 4. + 2.;
 
-/// What a menu of readings is for.
+/// What the reading chooser is opened for (`chooser`).
 pub(super) struct ReadingMenu<'a> {
     /// Its title (a locale key), if it needs one.
     pub(super) title: Option<&'static str>,
@@ -29,82 +29,6 @@ pub(super) struct ReadingMenu<'a> {
 }
 
 impl Desktop {
-    /// Every reading, grouped (the groups side by side), each with its colour
-    /// and whether it needs the privileged service, for `make` to turn the
-    /// chosen one into a command.
-    pub(super) fn history_reading_menu(
-        &self,
-        menu: ReadingMenu<'_>,
-        make: impl Fn(String) -> Command,
-    ) -> Vec<MenuItem> {
-        let p = self.palette;
-        let mut items = Vec::new();
-        if let Some(title) = menu.title {
-            items.push(MenuItem::title(label(title)));
-        }
-        if let Some(none) = menu.none {
-            items.push(
-                MenuItem::new(label("history.menu.none"), Action::History(none))
-                    .checked(menu.current.is_none()),
-            );
-        }
-        for group in Group::ALL {
-            let readings = self
-                .history
-                .readings
-                .iter()
-                .filter(|r| r.group == group)
-                .filter(|r| !menu.exclude.contains(&r.id))
-                .filter(|r| menu.pairs || !r.is_pair())
-                .filter(|r| r.recorded || r.service || r.group != Group::Battery)
-                .collect::<Vec<_>>();
-            if readings.is_empty() {
-                continue;
-            }
-            items.push(MenuItem::heading(group.label()));
-            for r in readings {
-                let mut item = MenuItem::new(r.long.clone(), Action::History(make(r.id.clone())))
-                    .checked(menu.current == Some(r.id.as_str()))
-                    .swatch(r.color);
-                if r.service && r.recorded {
-                    item = item.badge("ShieldCheckIcon", p.faint);
-                } else if r.service {
-                    item = item
-                        .badge("ShieldAlertIcon", p.io)
-                        .detail(label("history.menu.needsService"));
-                } else if !r.recorded {
-                    item = item.detail(label("history.menu.notRecorded"));
-                }
-                if menu.add {
-                    item = item.side(
-                        "PlusIcon",
-                        Action::History(Command::AddLane(r.id.clone())),
-                        label("history.tab.add"),
-                    );
-                }
-                items.push(item);
-            }
-        }
-        if menu.add {
-            items.push(MenuItem::note(label("history.menu.foot")));
-        }
-        items
-    }
-
-    /// Opens a menu of readings under the control recorded as `anchor`.
-    pub(super) fn history_open_readings(
-        &mut self,
-        menu: ReadingMenu<'_>,
-        make: impl Fn(String) -> Command,
-        anchor: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let items = self.history_reading_menu(menu, make);
-        self.open_anchored(items, anchor, layout::Side::Under, window, cx);
-        self.menu_columns(2);
-    }
-
     pub(super) fn history_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let bits = self.history_bits();

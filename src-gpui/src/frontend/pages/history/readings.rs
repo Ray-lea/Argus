@@ -107,6 +107,10 @@ pub(super) struct Reading {
     pub(super) process: Option<&'static str>,
     /// Recorded in the history at hand, or one of the base readings.
     pub(super) recorded: bool,
+    /// A device's reading: the device's name, and the reading's own short
+    /// name ("Active time"), which the chooser lists under the device.
+    pub(super) device: Option<String>,
+    pub(super) part: Option<String>,
 }
 
 /// The channels one query needs to draw `reading`.
@@ -144,7 +148,15 @@ impl Reading {
             service: false,
             process: None,
             recorded: false,
+            device: None,
+            part: None,
         }
+    }
+    /// A reading of device `name`, `part` its locale key under `history.devicePart`.
+    fn of_device(mut self, name: &str, part: &str) -> Self {
+        self.device = Some(name.to_owned());
+        self.part = Some(label(&format!("history.devicePart.{part}")));
+        self
     }
     fn pair(mut self, a: &str, b: &str, parts: (&str, &str)) -> Self {
         self.keys = vec![a.into(), b.into()];
@@ -585,7 +597,8 @@ pub(super) fn catalogue(channels: &[Channel], p: &Palette) -> Vec<Reading> {
                 &key("write"),
                 ("history.part.read", "history.part.write"),
             )
-            .process("disk");
+            .process("disk")
+            .of_device(&name, "diskOf");
             pair.recorded = true;
             out.push(pair);
         }
@@ -622,7 +635,8 @@ pub(super) fn catalogue(channels: &[Channel], p: &Palette) -> Vec<Reading> {
                     color,
                     unit,
                     axis,
-                );
+                )
+                .of_device(&name, text.trim_start_matches("history.device."));
                 reading.recorded = true;
                 out.push(reading);
             }
@@ -661,7 +675,7 @@ pub(super) fn catalogue(channels: &[Channel], p: &Palette) -> Vec<Reading> {
         let mut pair = Reading::new(
             &format!("nic.{id}"),
             name.clone(),
-            tr!("history.device.nicOf", name = name),
+            tr!("history.device.nicOf", name = name.clone()),
             Group::Network,
             p.network,
             Unit::NetworkRate,
@@ -672,7 +686,8 @@ pub(super) fn catalogue(channels: &[Channel], p: &Palette) -> Vec<Reading> {
             &format!("nic.{id}.send"),
             ("history.part.receive", "history.part.send"),
         )
-        .process("net");
+        .process("net")
+        .of_device(&name, "nicOf");
         pair.recorded = true;
         out.push(pair);
     }
@@ -785,7 +800,11 @@ pub(super) fn catalogue(channels: &[Channel], p: &Palette) -> Vec<Reading> {
                 unit,
                 axis,
             )
-            .process("gpu");
+            .process("gpu")
+            .of_device(
+                &adapter.map_or_else(|| number.clone(), |adapter| format!("{number} · {adapter}")),
+                text.trim_start_matches("history.device."),
+            );
             reading.total = total.map(&key);
             reading.recorded = true;
             out.push(reading);

@@ -360,5 +360,23 @@
       "disk": "Busy disk"
     },
     "eventPeak": "{time} · peak {peak}"
+  },
+  "chooser": {
+    "search": "Search readings",
+    "all": "All",
+    "empty": "No matching readings"
+  },
+  "devicePart": {
+    "diskOf": "Read and write",
+    "diskActive": "Active time",
+    "diskResponse": "Average response time",
+    "deviceTemp": "Temperature",
+    "nicOf": "Send and receive",
+    "gpuUtil": "Utilization",
+    "gpuDedicated": "Dedicated GPU memory",
+    "gpuShared": "Shared GPU memory",
+    "gpuPower": "Power",
+    "gpuClock": "Speed",
+    "gpuFan": "Fan"
   }
 }

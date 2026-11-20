@@ -12,8 +12,14 @@ impl Desktop {
         if self.options.fixture.is_some()
             && let Some(fields) = control["formValues"].as_object()
         {
+            // A dialog's fields, or the page's own boxes (`historyReadingSearch`).
             for (key, value) in fields {
-                if let (Some(input), Some(value)) = (self.forms.get(key).cloned(), value.as_str()) {
+                let input = self
+                    .forms
+                    .get(key)
+                    .or_else(|| self.ui.inputs.get(key))
+                    .cloned();
+                if let (Some(input), Some(value)) = (input, value.as_str()) {
                     input.update(cx, |state, cx| state.set_value(value, window, cx));
                 }
             }
@@ -727,7 +733,7 @@ impl Desktop {
                 "skippedRequest":self.data.get("skippedRequest"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
-                "history":self.history_inspect(),
+                "history":self.history_inspect(cx),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,

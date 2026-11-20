@@ -360,5 +360,23 @@
       "disk": "Datenträger ausgelastet"
     },
     "eventPeak": "{time} · Spitze {peak}"
+  },
+  "chooser": {
+    "search": "Werte suchen",
+    "all": "Alle",
+    "empty": "Keine passenden Werte"
+  },
+  "devicePart": {
+    "diskOf": "Lesen und Schreiben",
+    "diskActive": "Aktive Zeit",
+    "diskResponse": "Mittlere Antwortzeit",
+    "deviceTemp": "Temperatur",
+    "nicOf": "Senden und Empfangen",
+    "gpuUtil": "Auslastung",
+    "gpuDedicated": "Dedizierter GPU-Speicher",
+    "gpuShared": "Gemeinsamer GPU-Speicher",
+    "gpuPower": "Leistung",
+    "gpuClock": "Geschwindigkeit",
+    "gpuFan": "Lüfter"
   }
 }

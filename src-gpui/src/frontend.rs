@@ -173,18 +173,6 @@ struct MenuItem {
     stay: bool,
     separator: bool,
     children: Vec<MenuItem>,
-    /// A colour square before the label, as in a chart's legend.
-    swatch: Option<Hsla>,
-    /// An icon before the detail, in its own colour.
-    badge: Option<(&'static str, Hsla)>,
-    /// A second button at the row's end: its icon, what it does, and its name.
-    side: Option<(&'static str, Action, String)>,
-    /// A group's title over its items; it takes no input.
-    heading: bool,
-    /// The menu's own title, over everything else; it takes no input.
-    title: bool,
-    /// A quiet line at the menu's foot; it takes no input.
-    note: bool,
 }
 impl MenuItem {
     fn new(label: impl Into<String>, action: Action) -> Self {
@@ -200,12 +188,6 @@ impl MenuItem {
             stay: false,
             separator: false,
             children: Vec::new(),
-            swatch: None,
-            badge: None,
-            side: None,
-            heading: false,
-            title: false,
-            note: false,
         }
     }
     fn checked(mut self, checked: bool) -> Self {

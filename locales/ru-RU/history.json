@@ -370,5 +370,23 @@
       "disk": "Диск занят"
     },
     "eventPeak": "{time} · пик {peak}"
+  },
+  "chooser": {
+    "search": "Поиск показаний",
+    "all": "Все",
+    "empty": "Нет подходящих показаний"
+  },
+  "devicePart": {
+    "diskOf": "Чтение и запись",
+    "diskActive": "Время активности",
+    "diskResponse": "Среднее время отклика",
+    "deviceTemp": "Температура",
+    "nicOf": "Отправка и получение",
+    "gpuUtil": "Загрузка",
+    "gpuDedicated": "Выделенная память GPU",
+    "gpuShared": "Общая память GPU",
+    "gpuPower": "Мощность",
+    "gpuClock": "Частота",
+    "gpuFan": "Вентилятор"
   }
 }

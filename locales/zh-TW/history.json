@@ -345,5 +345,23 @@
       "disk": "磁碟忙碌"
     },
     "eventPeak": "{time} · 最高 {peak}"
+  },
+  "chooser": {
+    "search": "搜尋讀數",
+    "all": "全部",
+    "empty": "沒有符合的讀數"
+  },
+  "devicePart": {
+    "diskOf": "讀寫",
+    "diskActive": "使用時間",
+    "diskResponse": "平均回應時間",
+    "deviceTemp": "溫度",
+    "nicOf": "收發",
+    "gpuUtil": "使用率",
+    "gpuDedicated": "專用 GPU 記憶體",
+    "gpuShared": "共用 GPU 記憶體",
+    "gpuPower": "功耗",
+    "gpuClock": "速度",
+    "gpuFan": "風扇"
   }
 }

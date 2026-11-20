@@ -345,5 +345,23 @@
       "disk": "ディスクの高負荷"
     },
     "eventPeak": "{time} · 最大 {peak}"
+  },
+  "chooser": {
+    "search": "読み取り値を検索",
+    "all": "すべて",
+    "empty": "一致する読み取り値はありません"
+  },
+  "devicePart": {
+    "diskOf": "読み取りと書き込み",
+    "diskActive": "アクティブな時間",
+    "diskResponse": "平均応答時間",
+    "deviceTemp": "温度",
+    "nicOf": "送受信",
+    "gpuUtil": "使用率",
+    "gpuDedicated": "専用 GPU メモリ",
+    "gpuShared": "共有 GPU メモリ",
+    "gpuPower": "消費電力",
+    "gpuClock": "速度",
+    "gpuFan": "ファン"
   }
 }

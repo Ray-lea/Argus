@@ -8,6 +8,7 @@
 use super::*;
 
 mod bar;
+mod chooser;
 mod lanes;
 mod navigator;
 mod picker;
@@ -1416,6 +1417,17 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // The reading chooser keeps typing in its search box: Up and Down
+        // move through the readings, Enter chooses, Esc closes it.
+        if self.history.chooser.is_some() {
+            match key {
+                "escape" => self.history_close_chooser(cx),
+                "up" | "down" => self.history_chooser_step(if key == "up" { -1 } else { 1 }, cx),
+                "enter" => self.history_chooser_enter(window, cx),
+                _ => return false,
+            }
+            return true;
+        }
         // The range picker takes the keys while it is open: Esc closes it.
         if self.history.picker.is_some() {
             if key == "escape" {
@@ -1576,11 +1588,12 @@ impl Desktop {
     }
 
     /// The page's state for the test controls (`inspectLayout.history`).
-    pub(in crate::frontend) fn history_inspect(&self) -> Value {
+    pub(in crate::frontend) fn history_inspect(&self, cx: &App) -> Value {
         let h = &self.history;
         json!({
             "follow": h.follow,
             "picker": h.picker.is_some(),
+            "chooser": self.history_chooser_state(cx),
             "range": format!("{:?}", h.range),
             "view": [h.view.0, h.view.1],
             "extent": [h.extent.0, h.extent.1],
@@ -1655,6 +1668,7 @@ impl Desktop {
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
             .children(self.history_picker(window, cx))
+            .children(self.history_chooser(window, cx))
             .into_any_element()
     }
 

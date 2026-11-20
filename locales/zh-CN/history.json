@@ -345,5 +345,23 @@
       "disk": "磁盘繁忙"
     },
     "eventPeak": "{time} · 最高 {peak}"
+  },
+  "chooser": {
+    "search": "搜索读数",
+    "all": "全部",
+    "empty": "没有匹配的读数"
+  },
+  "devicePart": {
+    "diskOf": "读写",
+    "diskActive": "活动时间",
+    "diskResponse": "平均响应时间",
+    "deviceTemp": "温度",
+    "nicOf": "收发",
+    "gpuUtil": "使用率",
+    "gpuDedicated": "专用 GPU 内存",
+    "gpuShared": "共享 GPU 内存",
+    "gpuPower": "功耗",
+    "gpuClock": "频率",
+    "gpuFan": "风扇"
   }
 }

@@ -365,5 +365,23 @@
       "disk": "Disque occupé"
     },
     "eventPeak": "{time} · pic {peak}"
+  },
+  "chooser": {
+    "search": "Rechercher une mesure",
+    "all": "Toutes",
+    "empty": "Aucune mesure correspondante"
+  },
+  "devicePart": {
+    "diskOf": "Lecture et écriture",
+    "diskActive": "Temps d’activité",
+    "diskResponse": "Temps de réponse moyen",
+    "deviceTemp": "Température",
+    "nicOf": "Envoi et réception",
+    "gpuUtil": "Utilisation",
+    "gpuDedicated": "Mémoire GPU dédiée",
+    "gpuShared": "Mémoire GPU partagée",
+    "gpuPower": "Puissance",
+    "gpuClock": "Vitesse",
+    "gpuFan": "Ventilateur"
   }
 }

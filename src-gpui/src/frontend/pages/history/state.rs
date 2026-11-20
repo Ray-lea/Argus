@@ -256,6 +256,8 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) toast: Option<(String, Instant)>,
     /// The range picker, while it is open.
     pub(super) picker: Option<super::picker::Picker>,
+    /// The reading chooser, while it is open.
+    pub(super) chooser: Option<super::chooser::Chooser>,
     /// While the window glides with the clock: where the curves' textures
     /// start (lanes, navigator), the window drawn when the newest reading came
     /// in; the window on screen is a little ahead and moves them.
@@ -450,6 +452,7 @@ impl Default for HistoryState {
             first: None,
             toast: None,
             picker: None,
+            chooser: None,
             flow_origin: None,
             flow: None,
             glides: Vec::new(),
