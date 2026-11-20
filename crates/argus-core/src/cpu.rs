@@ -100,6 +100,23 @@ impl SystemCycles {
         (!values.is_empty() && values.len() == logical_cpus as usize).then_some(Self(values))
     }
 
+    /// Each processor's idle cycles since `previous`, in the same (group,
+    /// processor) order; none after a reset or a change of processors.
+    pub fn idle_deltas(&self, previous: &Self) -> Option<Vec<u64>> {
+        if self.0.len() != previous.0.len() {
+            return None;
+        }
+        self.0
+            .iter()
+            .zip(&previous.0)
+            .map(|(n, p)| {
+                ((n.group, n.processor) == (p.group, p.processor))
+                    .then(|| n.idle.checked_sub(p.idle))
+                    .flatten()
+            })
+            .collect()
+    }
+
     /// Idle plus interrupt/DPC cycles. Process cycles are accounted separately.
     pub fn delta(&self, previous: &Self) -> Option<SystemCycleDelta> {
         if self.0.len() != previous.0.len() {
@@ -118,6 +135,36 @@ impl SystemCycles {
                 })
             })
     }
+}
+
+/// CPU usage from idle cycles, total and per logical processor, in percent.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CycleUsage {
+    pub total: f32,
+    pub cores: Vec<f32>,
+}
+
+/// The share of the processors' clock cycles their idle threads did not use:
+/// counted cycle by cycle, so short bursts between clock ticks are busy (the
+/// time counters sample them away), while the idle loop's own cycles count as
+/// idle, as in Windows' time accounting and Task Manager (the independent
+/// idle counter puts them with the work). `capacity` is the validated clock
+/// over the interval for every processor together; each had an equal part.
+pub(crate) fn cycle_usage(capacity: f64, idle: &[u64]) -> Option<CycleUsage> {
+    if idle.is_empty() || !(capacity.is_finite() && capacity > 0.) {
+        return None;
+    }
+    let each = capacity / idle.len() as f64;
+    // Adjacent native queries can put idle a little over the clock: none busy.
+    let busy = |idle: f64, of: f64| ((1. - idle / of) * 100.).clamp(0., 100.) as f32;
+    let total = idle.iter().map(|cycles| *cycles as f64).sum::<f64>();
+    Some(CycleUsage {
+        total: busy(total, capacity),
+        cores: idle
+            .iter()
+            .map(|cycles| busy(*cycles as f64, each))
+            .collect(),
+    })
 }
 
 pub(crate) struct ClockInterval {
@@ -442,6 +489,42 @@ mod tests {
         large.add(Some(u64::MAX));
         assert!(large.total().unwrap().is_finite());
         assert!(large.total().unwrap() > u64::MAX as f64);
+    }
+
+    #[test]
+    fn usage_is_the_clock_the_idle_threads_left_whole_and_per_processor() {
+        // Four processors, 1000 cycles each: idle 1000, 750, 400 and 0.
+        let usage = cycle_usage(4000., &[1000, 750, 400, 0]).unwrap();
+        assert_eq!(usage.cores, [0., 25., 60., 100.]);
+        assert!((usage.total - 46.25).abs() < 1e-5);
+        // Skewed adjacent queries put idle past the clock: none busy, not negative.
+        let skewed = cycle_usage(2000., &[1010, 1030]).unwrap();
+        assert_eq!(skewed.cores, [0., 0.]);
+        assert_eq!(skewed.total, 0.);
+        assert_eq!(cycle_usage(0., &[0]), None);
+        assert_eq!(cycle_usage(f64::NAN, &[0]), None);
+        assert_eq!(cycle_usage(1000., &[]), None);
+    }
+
+    #[test]
+    fn idle_deltas_follow_each_processor_and_reject_resets() {
+        let at = |group, processor, idle| ProcessorCycles {
+            group,
+            processor,
+            idle,
+            interrupts: 0,
+        };
+        let previous = SystemCycles(vec![at(0, 0, 100), at(0, 1, 200), at(1, 0, 50)]);
+        let current = SystemCycles(vec![at(0, 0, 160), at(0, 1, 200), at(1, 0, 90)]);
+        assert_eq!(current.idle_deltas(&previous), Some(vec![60, 0, 40]));
+        let reset = SystemCycles(vec![at(0, 0, 160), at(0, 1, 10), at(1, 0, 90)]);
+        assert_eq!(reset.idle_deltas(&previous), None);
+        let moved = SystemCycles(vec![at(0, 0, 160), at(0, 1, 200), at(1, 1, 90)]);
+        assert_eq!(moved.idle_deltas(&previous), None);
+        assert_eq!(
+            SystemCycles(vec![at(0, 0, 160)]).idle_deltas(&previous),
+            None
+        );
     }
 
     #[test]

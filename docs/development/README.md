@@ -40,6 +40,7 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 
 ```bash
 cargo run -p argus-core --example dump --release       # 进程（按 CPU 排序）
+cargo run -p argus-core --example cpu_idle --release -- 30 # CPU 占用与旧空闲计数、% Processor Time、Utility、进程合计、空闲周期逐秒对照
 cargo run -p argus-core --example process_columns --release # 新增进程计数与采样耗时
 cargo run -p argus-core --example sampling_cadence -- 120 --trace # 快照间隔、分项耗时与过期进程计数
 cargo build -p argus-core --example process_sources --release # 构建普通权限进程来源对照工具

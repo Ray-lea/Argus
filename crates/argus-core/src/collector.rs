@@ -100,6 +100,12 @@ impl Collector {
                 self.system.precise_idle_fraction(),
             )
         });
+        // Where the processor clock checks out, total and per-processor usage
+        // come from idle cycles over the processes' own interval: the time
+        // counters' figures stay only where it does not.
+        if let Some(usage) = self.processes.cycle_usage() {
+            system.apply_cycle_usage(usage);
+        }
         let mut hardware = self.hardware.sample();
         sample_phase("gpu-processes", || {
             self.attach_gpu_usage(&mut processes, &mut hardware)

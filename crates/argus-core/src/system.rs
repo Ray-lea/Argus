@@ -52,6 +52,27 @@ pub struct SystemStats {
     pub io_other: u64,
 }
 
+impl SystemStats {
+    /// Takes the usage worked out from idle cycles (`cpu::cycle_usage`) in
+    /// place of the time counters', with the kernel parts kept within it.
+    pub(crate) fn apply_cycle_usage(&mut self, usage: &crate::cpu::CycleUsage) {
+        if usage.cores.len() != self.cores.len() {
+            return;
+        }
+        self.cpu = usage.total;
+        self.cpu_kernel = self.cpu_kernel.min(self.cpu);
+        for ((core, kernel), value) in self
+            .cores
+            .iter_mut()
+            .zip(self.core_kernel.iter_mut())
+            .zip(&usage.cores)
+        {
+            *core = Some(*value);
+            *kernel = kernel.map(|kernel| kernel.min(*value));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryLists {
@@ -476,6 +497,31 @@ mod tests {
             idle: Some(idle),
             ..times(legacy_idle, kernel, user)
         }
+    }
+
+    #[test]
+    fn cycle_usage_replaces_the_time_counters_and_bounds_their_kernel_time() {
+        let mut stats = SystemStats {
+            cpu: 50.,
+            cpu_kernel: 30.,
+            cores: vec![Some(60.), None],
+            core_kernel: vec![Some(40.), None],
+            ..Default::default()
+        };
+        stats.apply_cycle_usage(&crate::cpu::CycleUsage {
+            total: 20.,
+            cores: vec![35., 5.],
+        });
+        assert_eq!(stats.cpu, 20.);
+        assert_eq!(stats.cpu_kernel, 20.);
+        assert_eq!(stats.cores, [Some(35.), Some(5.)]);
+        assert_eq!(stats.core_kernel, [Some(35.), None]);
+        // Another set of processors is left alone.
+        stats.apply_cycle_usage(&crate::cpu::CycleUsage {
+            total: 90.,
+            cores: vec![90.],
+        });
+        assert_eq!(stats.cpu, 20.);
     }
 
     #[test]
