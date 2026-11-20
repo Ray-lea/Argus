@@ -283,6 +283,20 @@ impl Reveal {
     }
 }
 
+/// What a lane's tooltip lists under its readings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum TipList {
+    /// The processes busiest by the reading's share of each
+    /// (`table::process_value`).
+    Processes(&'static str),
+    /// The programs with the most processes (the process count).
+    Programs,
+    /// Nothing: no reading of each process adds up to it (a battery's
+    /// charge, a temperature).
+    #[default]
+    Nothing,
+}
+
 /// Eases in and out (cubic).
 fn ease_in_out(t: f32) -> f32 {
     if t < 0.5 {
@@ -315,6 +329,10 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) active: u64,
     next_lane: u64,
     pub(super) pin: Option<i64>,
+    /// The lane the moment was pinned in: its line and mark are drawn there.
+    pub(super) pin_lane: Option<u64>,
+    /// What the tooltip asked for lists (`TipList`).
+    pub(super) tip_kind: TipList,
     pub(super) selection: Option<(i64, i64)>,
     pub(super) mode: TableMode,
     pub(super) hover: Option<Hover>,
@@ -541,6 +559,8 @@ impl Default for HistoryState {
             active: 1,
             next_lane: 2,
             pin: None,
+            pin_lane: None,
+            tip_kind: TipList::Nothing,
             selection: None,
             mode: TableMode::Moment,
             hover: None,

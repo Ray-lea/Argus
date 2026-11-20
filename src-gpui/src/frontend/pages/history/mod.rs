@@ -965,6 +965,20 @@ impl Desktop {
 
     /// The trend column follows the topmost lane's reading.
     /// The process value that goes with a lane's reading (the tooltip ranks by it).
+    /// What a lane's tooltip lists: the processes by the reading's share of
+    /// each, the programs by their processes for the process count, nothing
+    /// for readings no process adds to (a battery's charge, a temperature):
+    /// ranked by CPU instead, they read as their cause.
+    fn history_tip_list(&self, lane: &state::Lane) -> state::TipList {
+        match self.history_reading(&lane.reading) {
+            Some(reading) if reading.id == "processes" => state::TipList::Programs,
+            Some(reading) => reading
+                .process
+                .map_or(state::TipList::Nothing, state::TipList::Processes),
+            None => state::TipList::Nothing,
+        }
+    }
+
     fn history_trend_of(&self, lane: &state::Lane) -> &'static str {
         self.history_reading(&lane.reading)
             .and_then(|reading| reading.process)
@@ -1016,14 +1030,27 @@ impl Desktop {
             return;
         };
         let point = (points.ts[index], points.span[index]);
-        if self.history.tip_for == Some(point) {
+        let list = self
+            .history
+            .lanes
+            .iter()
+            .find(|l| l.id == hover.lane)
+            .map_or(state::TipList::Nothing, |lane| self.history_tip_list(lane));
+        if self.history.tip_for == Some(point) && self.history.tip_kind == list {
             return;
         }
         self.history.tip_for = Some(point);
+        self.history.tip_kind = list;
+        if list == state::TipList::Nothing {
+            return;
+        }
+        // The programs' processes are counted in each frame: a bucket shows
+        // those of a frame inside it.
+        let frame_of = point.1 <= FRAME || list == state::TipList::Programs;
         let frame = points.frame[index];
         if self.options.fixture.is_some() {
             // A fixture holds one frame and one range table.
-            let answer = if point.1 <= FRAME {
+            let answer = if frame_of {
                 self.data.get("historyFrame")
             } else {
                 self.data.get("historyTable")
@@ -1031,7 +1058,7 @@ impl Desktop {
             self.history.tip = answer.map(|answer| (point, answer.clone()));
             return;
         }
-        if point.1 <= FRAME {
+        if frame_of {
             let ts = if frame > 0 { frame } else { point.0 };
             self.request(
                 "history_frame",
@@ -1986,6 +2013,7 @@ impl Desktop {
     /// A click on the lanes at `at`: pins the point there, or selects its bucket
     /// when points stand for more than a frame.
     fn history_click(&mut self, at: i64, window: &Window) {
+        self.history.pin_lane = self.history.hover.map(|hover| hover.lane);
         // The window holds still at what was clicked.
         if self.history.follow {
             self.history.pause();

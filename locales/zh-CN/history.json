@@ -206,7 +206,8 @@
     "second": "每秒读数",
     "frame": "5 秒记录",
     "average": "平均值",
-    "hint": "单击可固定 · 右键单击回到最新 · Esc 清除"
+    "hint": "单击可固定 · 右键单击回到最新 · Esc 清除",
+    "otherPrograms": "其余 {count} 个程序"
   },
   "tab": {
     "add": "在新轨道中显示",

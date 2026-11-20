@@ -212,7 +212,11 @@
     "second": "Per-second reading",
     "frame": "5-second record",
     "average": "Average",
-    "hint": "Click to pin · Right-click for the latest · Esc to clear"
+    "hint": "Click to pin · Right-click for the latest · Esc to clear",
+    "otherPrograms": {
+      "one": "{count} other program",
+      "other": "{count} other programs"
+    }
   },
   "tab": {
     "add": "Show in a new lane",

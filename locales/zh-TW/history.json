@@ -206,7 +206,8 @@
     "second": "每秒讀數",
     "frame": "5 秒記錄",
     "average": "平均值",
-    "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除"
+    "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除",
+    "otherPrograms": "其餘 {count} 個程式"
   },
   "tab": {
     "add": "在新軌道中顯示",

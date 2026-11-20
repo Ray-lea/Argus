@@ -214,7 +214,12 @@
     "second": "Mesure par seconde",
     "frame": "Enregistrement de 5 secondes",
     "average": "Moyenne",
-    "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer"
+    "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer",
+    "otherPrograms": {
+      "one": "{count} autre programme",
+      "many": "{count} autres programmes",
+      "other": "{count} autres programmes"
+    }
   },
   "tab": {
     "add": "Afficher dans une nouvelle piste",

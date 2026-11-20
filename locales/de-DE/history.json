@@ -212,7 +212,11 @@
     "second": "Sekundenwert",
     "frame": "5-Sekunden-Aufzeichnung",
     "average": "Mittelwert",
-    "hint": "Klicken zum Fixieren · Rechtsklick zu den neuesten · Esc zum Löschen"
+    "hint": "Klicken zum Fixieren · Rechtsklick zu den neuesten · Esc zum Löschen",
+    "otherPrograms": {
+      "one": "{count} weiteres Programm",
+      "other": "{count} weitere Programme"
+    }
   },
   "tab": {
     "add": "In einer neuen Spur anzeigen",

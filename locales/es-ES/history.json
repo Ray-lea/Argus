@@ -214,7 +214,12 @@
     "second": "Lectura por segundo",
     "frame": "Registro de 5 segundos",
     "average": "Promedio",
-    "hint": "Clic para fijar · Clic derecho para lo último · Esc para borrar"
+    "hint": "Clic para fijar · Clic derecho para lo último · Esc para borrar",
+    "otherPrograms": {
+      "one": "{count} programa más",
+      "many": "{count} programas más",
+      "other": "{count} programas más"
+    }
   },
   "tab": {
     "add": "Mostrar en una nueva pista",

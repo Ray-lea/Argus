@@ -1314,7 +1314,12 @@ impl Desktop {
             }
         }
         let first = self.history.live_lanes().next().map(|l| l.id) == Some(id);
-        if let Some(pin) = self.history.pin {
+        // The pinned moment in the lane it was pinned in (else the first).
+        let pinned_here = match self.history.pin_lane {
+            Some(lane) if self.history.live_lanes().any(|l| l.id == lane) => lane == id,
+            _ => first,
+        };
+        if let Some(pin) = self.history.pin.filter(|_| pinned_here) {
             let f = ((pin as f64 - from) / span) as f32;
             if (0. ..=1.).contains(&f) {
                 plot = plot.child(place(
@@ -1323,8 +1328,8 @@ impl Desktop {
                     f,
                     -0.75,
                 ));
-                // Over the first lane, the pin: pointed at, it clears the cursor.
-                if first {
+                // Its mark: pointed at, it clears the cursor.
+                {
                     let mark = |name: &str| {
                         div()
                             .absolute()
@@ -1433,12 +1438,16 @@ impl Desktop {
         // read again with every draw, so the line keeps still on the pointer's
         // device pixel while the curves glide under it, its dots taking the
         // values that pass.
-        let cursor = self.history.hover.and_then(|hover| {
-            let scale = window.scale_factor();
-            let x = ((hover.at as f64 - from) / span) as f32 * plot_width;
-            let x = (x * scale).round() / scale;
-            (0. ..plot_width).contains(&x).then_some((hover.at, x))
-        });
+        let cursor = self
+            .history
+            .hover
+            .filter(|hover| hover.lane == id)
+            .and_then(|hover| {
+                let scale = window.scale_factor();
+                let x = ((hover.at as f64 - from) / span) as f32 * plot_width;
+                let x = (x * scale).round() / scale;
+                (0. ..plot_width).contains(&x).then_some((hover.at, x))
+            });
         if let Some((at, x)) = cursor {
             plot = plot.child(
                 div()
@@ -1553,8 +1562,16 @@ impl Desktop {
                     }
                 }),
             )
-            .on_hover(cx.listener(|this, hovered: &bool, window, cx| {
-                if !*hovered && this.history.hover.is_some() && this.history.drag.is_none() {
+            .on_hover(cx.listener(move |this, hovered: &bool, window, cx| {
+                // Only its own: leaving for the next lane can come after that
+                // lane took the pointer.
+                if !*hovered
+                    && this
+                        .history
+                        .hover
+                        .is_some_and(|hover| hover.lane == lane_id)
+                    && this.history.drag.is_none()
+                {
                     this.history.hover = None;
                     this.history_redraw(window, cx);
                 }
@@ -2073,43 +2090,134 @@ impl Desktop {
                         );
                     }
                 }
-                // The processes busiest by the lane's reading then: the frame's, or
-                // the bucket's averages. Their rows stay while fewer are known,
-                // and a long name ends in an ellipsis.
-                let key = self.history_trend_of(lane);
-                let ranked = self.history_tip_ranking(key);
+                // Under the readings, what made them: the processes busiest by
+                // the lane's reading (the frame's, or the bucket's averages), or
+                // for the process count the programs with the most processes.
+                // The rows stay while fewer are known, and a long name ends in
+                // an ellipsis. Readings no process adds to list nothing.
                 let live = values(&self.snapshot["processes"]);
-                let mut list = div()
-                    .mt(px(3.))
-                    .pt(px(6.))
-                    .border_t_1()
-                    .border_color(p.stroke)
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.));
-                for slot in 0..TIP_PROCESSES {
-                    let row = div().flex().items_center().gap_2();
-                    list = list.child(match ranked.get(slot) {
-                        Some((name, value)) => {
-                            let icon_of = live
-                                .iter()
-                                .find(|process| text(process, "name").eq_ignore_ascii_case(name));
-                            row.child(self.process_icon(icon_of, 16., cx))
-                                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
-                                .child(
-                                    div()
-                                        .flex_shrink_0()
-                                        .text_color(p.muted)
-                                        .font_features(theme::tabular())
-                                        .child(table::format_process(key, *value, bits)),
-                                )
+                let icon_of = |name: &str| {
+                    live.iter()
+                        .find(|process| text(process, "name").eq_ignore_ascii_case(name))
+                };
+                let list = || {
+                    div()
+                        .mt(px(3.))
+                        .pt(px(6.))
+                        .border_t_1()
+                        .border_color(p.stroke)
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.))
+                };
+                let entry = |name: &str, value: String| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(self.process_icon(icon_of(name), 16., cx))
+                        .child(div().flex_1().min_w_0().truncate().child(name.to_owned()))
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .text_color(p.muted)
+                                .font_features(theme::tabular())
+                                .child(value),
+                        )
+                };
+                let blank = || {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().size(px(16.)).flex_shrink_0())
+                        .child("\u{a0}")
+                };
+                match self.history_tip_list(lane) {
+                    state::TipList::Processes(key) => {
+                        let ranked = self.history_tip_ranking(key);
+                        let mut column = list();
+                        for slot in 0..TIP_PROCESSES {
+                            column = column.child(match ranked.get(slot) {
+                                Some((name, value)) => {
+                                    entry(name, table::format_process(key, *value, bits))
+                                }
+                                None => blank(),
+                            });
                         }
-                        None => row
-                            .child(div().size(px(16.)).flex_shrink_0())
-                            .child("\u{a0}"),
-                    });
+                        rows.push(column.into_any_element());
+                    }
+                    state::TipList::Programs => {
+                        // The frame asked for at this point (`history_ask_tip`).
+                        let answer = self
+                            .history
+                            .tip
+                            .as_ref()
+                            .filter(|(at, answer)| {
+                                *at == (start, length) && answer["system"].is_object()
+                            })
+                            .map(|(_, answer)| answer);
+                        let programs: Vec<(String, u64)> = answer
+                            .map(|answer| {
+                                values(&answer["programs"])
+                                    .iter()
+                                    .filter_map(|program| {
+                                        Some((
+                                            text(program, "name").to_owned(),
+                                            program["count"].as_u64()?,
+                                        ))
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        // A frame recorded without the counts lists nothing.
+                        if answer.is_none() || !programs.is_empty() {
+                            let shown = programs.len().min(TIP_PROCESSES);
+                            let mut column = list();
+                            for slot in 0..TIP_PROCESSES {
+                                column = column.child(match programs.get(slot) {
+                                    Some((name, count)) if slot < shown => {
+                                        entry(name, crate::regional::count(*count as f64))
+                                    }
+                                    _ => blank(),
+                                });
+                            }
+                            // The other programs, and the processes they have.
+                            if let Some(answer) = answer {
+                                let distinct = answer["programCount"].as_u64().unwrap_or(0);
+                                let total = answer["system"]["processes"].as_f64().unwrap_or(0.);
+                                let listed: u64 = programs[..shown].iter().map(|(_, n)| n).sum();
+                                if distinct > shown as u64 {
+                                    column = column.child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .text_color(p.muted)
+                                            .child(div().size(px(16.)).flex_shrink_0())
+                                            .child(div().flex_1().min_w_0().truncate().child(
+                                                theme::counted(
+                                                    "history.tip.otherPrograms",
+                                                    distinct - shown as u64,
+                                                    &[],
+                                                ),
+                                            ))
+                                            .child(
+                                                div()
+                                                    .flex_shrink_0()
+                                                    .font_features(theme::tabular())
+                                                    .child(crate::regional::count(
+                                                        (total - listed as f64).max(0.),
+                                                    )),
+                                            ),
+                                    );
+                                }
+                            }
+                            rows.push(column.into_any_element());
+                        }
+                    }
+                    state::TipList::Nothing => {}
                 }
-                rows.push(list.into_any_element());
             }
         }
         rows.push(
