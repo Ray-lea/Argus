@@ -73,6 +73,7 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
 
 fn exercise(dir: &Path) {
     let keys = ["cpu".into(), "missing".into()];
+    std::hint::black_box(super::super::events(dir, TS, TS + ROLL_MS));
     std::hint::black_box(series(dir, TS, TS + ROLL_MS, ROLL_MS, TS, &keys));
     std::hint::black_box(channels(dir, TS, TS + ROLL_MS));
     std::hint::black_box(frame(dir, TS));

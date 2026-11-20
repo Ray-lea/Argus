@@ -802,6 +802,13 @@ pub fn history_points(
 ) -> history::HistorySeries {
     history::series(&dir.read(), from, to, bucket, origin, &keys)
 }
+pub fn history_events(
+    dir: State<'_, HistoryDir>,
+    from: i64,
+    to: i64,
+) -> Result<history::HistoryEvents, String> {
+    history::events(&dir.read(), from, to).ok_or_else(|| tr!("app.invalidRequest"))
+}
 pub fn history_channels(
     dir: State<'_, HistoryDir>,
     from: i64,
@@ -1446,6 +1453,8 @@ mod tests {
                 timestamp: base + n * 1000,
                 system: argus_core::SystemStats {
                     cpu: 25.,
+                    mem_used: 85,
+                    mem_total: 100,
                     ..Default::default()
                 },
                 hardware: Default::default(),
@@ -1466,6 +1475,32 @@ mod tests {
         drop(rec);
         let query = |name, args| invoke(&host, name, args).unwrap();
         let interval = json!({"from":base,"to":base+10000});
+        assert_eq!(
+            query("history_events", interval.clone()),
+            json!({"events":[], "truncated":false})
+        );
+        assert_eq!(
+            query("history_events", json!({"from":base,"to":base+60_000})),
+            json!({"events":[{"kind":"mem","from":base,"to":base+60_000,"peak":85.0,"peakAt":base,"top":null}],"truncated":false})
+        );
+        for invalid in [
+            json!({"from":base,"to":base}),
+            json!({"from":2,"to":1}),
+            json!({"from":0,"to":34_560_000_001i64}),
+            json!({"from":i64::MIN,"to":i64::MAX}),
+            json!({"from":"0","to":1}),
+            json!({"to":1}),
+        ] {
+            assert!(invoke(&host, "history_events", invalid).is_err());
+        }
+        assert!(
+            invoke(
+                &host,
+                "history_events",
+                json!({"from":0,"to":34_560_000_000i64})
+            )
+            .is_ok()
+        );
         assert_eq!(
             query("history_range", json!({})),
             json!([base, base + 5000])

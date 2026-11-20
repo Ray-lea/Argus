@@ -301,6 +301,15 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<Vec<String>>(&args, "keys")?,
         ))
         .expect("serializable command response")),
+        "history_events" => serde_json::to_value(
+            crate::commands::history_events(
+                host.state(),
+                argument::<i64>(&args, "from")?,
+                argument::<i64>(&args, "to")?,
+            )
+            .map_err(Value::String)?,
+        )
+        .map_err(|_| Value::String(argus_core::tr!("app.invalidRequest"))),
         "history_channels" => Ok(serde_json::to_value(crate::commands::history_channels(
             host.state(),
             argument::<i64>(&args, "from")?,

@@ -94,6 +94,8 @@ use crate::collector::Snapshot;
 
 /// Length of one frame.
 pub const FRAME_MS: i64 = 5_000;
+mod events;
+pub use events::{HistoryEvent, HistoryEvents, HistoryTop, ResourceKind, events};
 mod options;
 pub use options::*;
 mod maintenance;
@@ -2983,7 +2985,14 @@ fn align(ts: i64, origin: i64, bucket: i64) -> i64 {
     ts.saturating_sub((ts.rem_euclid(bucket) - origin.rem_euclid(bucket)).rem_euclid(bucket))
 }
 fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
-    let all = days(dir);
+    let mut out = Vec::new();
+    visit_gaps(dir, &days(dir), from, to, |g| {
+        out.push(g);
+        out.len() < MAX_BUCKETS
+    });
+    out
+}
+fn visit_gaps(dir: &Path, all: &[i64], from: i64, to: i64, mut visit: impl FnMut(Gap) -> bool) {
     let first = all.partition_point(|&d| d < from.div_euclid(DAY_MS));
     let end = all.partition_point(|&d| d <= to.div_euclid(DAY_MS));
     let older = || {
@@ -2993,13 +3002,9 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
             .find_map(|&d| index(&day_path(dir, d))?.gap_end())
     };
     let mut prev = None;
-    let mut out = Vec::new();
     let crossing =
         |a: Option<Stamp>, b: Option<Stamp>| gap(a?, b?).filter(|g| g.from <= to && g.to >= from);
     for &day in all.get(first..end).unwrap_or_default() {
-        if out.len() >= MAX_BUCKETS {
-            break;
-        }
         let Some(idx) = index(&day_path(dir, day)) else {
             continue;
         };
@@ -3007,18 +3012,19 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
             if prev.is_none() && s.ts >= from {
                 prev = older();
             }
-            if let Some(g) = crossing(prev, Some(s)) {
-                out.push(g);
+            if let Some(g) = crossing(prev, Some(s))
+                && !visit(g)
+            {
+                return;
             }
             prev = idx.gap_end();
         }
         let begin = idx.gaps.partition_point(|g| g.to < from);
-        out.extend(
-            idx.gaps[begin..]
-                .iter()
-                .take_while(|g| g.from <= to)
-                .take(MAX_BUCKETS.saturating_sub(out.len())),
-        );
+        for &g in idx.gaps[begin..].iter().take_while(|g| g.from <= to) {
+            if !visit(g) {
+                return;
+            }
+        }
     }
     if let Some(a) = prev.or_else(older).filter(|s| s.ts + s.span <= to) {
         let next = all[end..]
@@ -3029,16 +3035,15 @@ fn gaps(dir: &Path, from: i64, to: i64) -> Vec<Gap> {
             .filter(|s| next.is_none_or(|b| s.ts < b.ts))
             .or(next);
         if let Some(g) = crossing(Some(a), next) {
-            out.push(g);
+            visit(g);
         } else if next.is_none() && a.stop == 2 && a.ts + a.span < to {
-            out.push(Gap {
+            visit(Gap {
                 from: a.ts + a.span,
                 to,
                 reason: "off",
             });
         }
     }
-    out
 }
 pub fn series(
     dir: &Path,
@@ -3683,6 +3688,19 @@ struct Instance {
     trend: Vec<(usize, f64, i64)>,
 }
 impl TableQuery<'_> {
+    fn new(from: i64, to: i64, key: &str, points: usize) -> TableQuery<'_> {
+        TableQuery {
+            from,
+            to,
+            key,
+            points,
+            cells: 0,
+            name_bytes: 0,
+            exhausted: false,
+            recorded: 0,
+            rows: HashMap::new(),
+        }
+    }
     fn bin(&self, ts: i64) -> usize {
         (((i128::from(ts) - i128::from(self.from)) * self.points as i128
             / (i128::from(self.to) - i128::from(self.from))) as usize)
@@ -3856,17 +3874,7 @@ pub fn table(dir: &Path, from: i64, to: i64, trend_key: &str, trend_points: usiz
     if from >= to || trend_points > MAX_POINTS {
         return HistoryTable::default();
     }
-    let mut q = TableQuery {
-        from,
-        to,
-        key: trend_key,
-        points: trend_points,
-        cells: 0,
-        name_bytes: 0,
-        exhausted: false,
-        recorded: 0,
-        rows: HashMap::new(),
-    };
+    let mut q = TableQuery::new(from, to, trend_key, trend_points);
     for day in days(dir)
         .into_iter()
         .filter(|&d| d >= from.div_euclid(DAY_MS) && d <= (to - 1).div_euclid(DAY_MS))
@@ -4353,6 +4361,7 @@ impl Index {
 #[cfg(test)]
 mod tests {
     mod damage;
+    mod events;
     mod retention;
     use super::*;
     use crate::hardware::Hardware;

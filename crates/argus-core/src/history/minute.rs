@@ -2,7 +2,10 @@
 //! as v4. Each minute has independently checksummed zlib streams for its
 //! system bands and process totals. Curve queries never inflate processes.
 use super::*;
-use miniz_oxide::{deflate::compress_to_vec_zlib, inflate::decompress_to_vec_zlib_with_limit};
+use miniz_oxide::{
+    deflate::compress_to_vec_zlib,
+    inflate::{decompress_slice_iter_to_slice, decompress_to_vec_zlib_with_limit},
+};
 
 pub(super) const MINUTE_MAGIC: &[u8; 5] = b"ARGH\x05";
 pub(super) const MINUTE_MS: i64 = 60_000;
@@ -63,7 +66,7 @@ impl<'a> Minute<'a> {
     pub(super) fn process_bytes(&self) -> u64 {
         self.processes.len() as u64
     }
-    fn intervals(&self) -> impl Iterator<Item = (i64, i64)> + '_ {
+    pub(super) fn intervals(&self) -> impl Iterator<Item = (i64, i64)> + '_ {
         self.coverage
             .as_chunks::<4>()
             .0
@@ -76,8 +79,13 @@ impl<'a> Minute<'a> {
             })
     }
     pub(super) fn bands(&self, count: usize) -> Option<Vec<Band>> {
-        let bytes = decompress_to_vec_zlib_with_limit(self.system, count * 28).ok()?;
-        if bytes.len() != count * 28 {
+        // The catalog gives the exact output size. A month contains tens of
+        // thousands of these short streams. Avoid repeatedly growing each one.
+        let mut bytes = vec![0; count * 28];
+        let len =
+            decompress_slice_iter_to_slice(&mut bytes, std::iter::once(self.system), true, false)
+                .ok()?;
+        if len != bytes.len() {
             return None;
         }
         bytes

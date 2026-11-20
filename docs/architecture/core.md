@@ -52,6 +52,8 @@
 
 历史曲线单次最多查询 100,000 个时间桶，区间进程表每行最多 4,096 个趋势点。正常退出和启动更新安装程序后的退出路径均给采样线程两秒保存末帧。若采集仍阻塞，宿主继续退出，尚未提交的末帧可能丢失。
 
+历史事件按 UTC 自然分钟汇总已落盘的帧。CPU、温度、内存占用率、GPU、接收速率和磁盘读写合计各自按持续时间触发，阈值集中在 `history/events.rs` 的 `RULES`。两段均达标且中间相隔至多三分钟时合并，峰值和进程归属覆盖合并后的整个区间。十分钟及以上的记录空档沿用会话标记，逐段返回。扫描复用日索引，完整日期的分钟判定保存在有界内存缓存中。最近 500 个事件确定后，按需读取对应时段的进程汇总或明细，按进程名合并实例。
+
 ## 进程附加计数
 
 进程列的附加计数来自同一次 `SystemProcessInformation`：用户态／内核态 CPU 时间按 100 ns 转为毫秒，工作集峰值、虚拟地址空间与累计 I/O 保持字节，缺页保留次数。虚拟地址空间包含预留与已提交范围；它和工作集峰值均按单进程展示。`ProcessCounters` 展平到进程 JSON 中，采样不增加逐进程系统调用。界面仍以 PID 与创建时间关联进程实例。结构字段与单位可参考 [Windows 进程快照](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation)及[内存计数](https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters)。
