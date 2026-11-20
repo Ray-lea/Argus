@@ -423,6 +423,10 @@ pub struct TimePlot {
     pub readout: Rc<Cell<ReadoutClock>>,
     /// Captions drawn inside the frame, over the curve (set by the chart layer).
     pub(in crate::frontend) captions: Option<Rc<FrameCaptions>>,
+    /// A texture that lands draws only the cached view the plot is drawn in
+    /// (the history page's chart card), not the views around it: drawing
+    /// the whole page for it held the page's entrance still.
+    pub(in crate::frontend) redraw_alone: bool,
 }
 /// How often a hover readout's text follows a curve gliding under a resting
 /// pointer, as the interface's text timer: its dots ride the curve on every
@@ -1767,6 +1771,7 @@ impl Desktop {
             rescale,
             readout,
             captions: None,
+            redraw_alone: false,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
             *entry.plot.borrow_mut() = plot;
@@ -2075,6 +2080,7 @@ mod tests {
             rescale: Default::default(),
             readout: Default::default(),
             captions: None,
+            redraw_alone: false,
         }
     }
     #[test]

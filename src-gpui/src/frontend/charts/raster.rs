@@ -84,6 +84,9 @@ struct Cache {
     requested_content: Option<u64>,
     pending: Option<Pending>,
     texture: Option<Texture>,
+    /// The view that draws the plot, when a landed texture draws it alone
+    /// (`TimePlot::redraw_alone`).
+    alone: Option<EntityId>,
 }
 /// The raster in flight.
 #[derive(Clone)]
@@ -460,7 +463,9 @@ pub(super) fn prepare(
         density(window)
     };
     let revision = key(plot, bounds.size, density);
+    let alone = plot.redraw_alone.then(|| window.current_view());
     cache.update(cx, |cache, cx| {
+        cache.alone = alone;
         if reduced != cache.reduced {
             cache.pending = None;
             cache.key = None;
@@ -538,7 +543,10 @@ pub(super) fn prepare(
             task.await;
             let _ = cache.update_in(cx, |cache, window, cx| {
                 cache.settle(&slot, window);
-                cx.notify();
+                match cache.alone {
+                    Some(view) => window.request_isolated_view_redraw(view),
+                    None => cx.notify(),
+                }
             });
         })
         .detach();
@@ -1783,6 +1791,7 @@ mod tests {
             rescale: Default::default(),
             readout: Default::default(),
             captions: None,
+            redraw_alone: false,
         }
     }
     #[test]

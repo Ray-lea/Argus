@@ -395,6 +395,12 @@ impl Desktop {
             self.history.gliding = None;
             return;
         }
+        // While the page slides in, the curves move with it as drawn: every
+        // frame of the slide draws the window, and moving the textures would
+        // draw the card again in each.
+        if self.page_enter_pending || self.page_entering(cx) {
+            return;
+        }
         let Some(gliding) = &self.history.gliding else {
             return;
         };
@@ -514,6 +520,7 @@ impl Desktop {
         let saved = self.prefs.get::<String>("historyRange", "5m".into());
         let clock = self.history_clock();
         self.history.set_range(Range::parse(&saved), clock);
+        self.history.settle();
         self.history
             .restore_lanes(&self.prefs.get::<Value>("history.lanes", Value::Null));
         self.history.band = self.prefs.get::<bool>("history.band", true);
@@ -624,6 +631,31 @@ impl Desktop {
         self.history_ask_points(window, cx);
         self.history_ask_overview(window, cx);
         self.history_ask_table(window, cx);
+    }
+
+    /// The pointer reached the page's tab: the page's readings are asked for
+    /// now, so that it enters with its curves rather than drawing them in
+    /// after its slide.
+    pub(in crate::frontend) fn history_prefetch(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.page != "history" && self.options.fixture.is_none() {
+            self.load_history(window, cx);
+        }
+    }
+
+    /// The page comes into view: a following window ends at the present at
+    /// once (`HistoryState::settle`), with no pointer or drag left over from
+    /// when the page was last shown.
+    pub(in crate::frontend) fn history_enter(&mut self) {
+        self.history_restore();
+        let clock = self.history_clock();
+        self.history.anchor(clock);
+        self.history.settle();
+        self.history.hover = None;
+        self.history.drag = None;
     }
 
     /// A sample arrived: while following, the newest readings are asked for.
@@ -1151,7 +1183,18 @@ impl Desktop {
     /// Draws the page again, not the window around it: what the page's data,
     /// the pointer and the page's own controls change shows only there. The
     /// live button in the page bar changes with commands, which draw everything.
-    fn history_redraw(&self, window: &Window, cx: &mut Context<Self>) {
+    /// Not for answers that come while another page is shown (a prefetch), and
+    /// not while the page enters: it draws once its slide is over, as the list
+    /// pages do. Drawing the whole page mid-entrance held the slide still for
+    /// as long as that took.
+    fn history_redraw(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.page != "history" {
+            return;
+        }
+        if self.page_enter_pending || self.page_entering(cx) {
+            self.after_entrance(cx);
+            return;
+        }
         if self.has_region(regions::RegionKind::Page) {
             self.refresh_region(regions::RegionKind::Page, cx);
             window.request_view_redraw(cx.entity_id());

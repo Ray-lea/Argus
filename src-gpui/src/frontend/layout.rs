@@ -260,6 +260,13 @@ impl Desktop {
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.act(Action::Page(page.into()), window, cx);
                 }))
+                .when(page == "history", |tab| {
+                    tab.on_hover(cx.listener(|this, hovered: &bool, window, cx| {
+                        if *hovered {
+                            this.history_prefetch(window, cx);
+                        }
+                    }))
+                })
                 .when(top, |tab| {
                     // Reserve the selected weight so choosing a tab never moves its neighbors.
                     tab.h(px(32.)).child(

@@ -199,6 +199,12 @@ impl Desktop {
         if self.modal.is_some() {
             window.refresh();
         }
+        if self.page == "history" && (self.page_enter_pending || self.page_entering(cx)) {
+            // As the page's own answers (`history_redraw`): drawn once its
+            // slide is over, which drawing the whole page would hold still.
+            self.after_entrance(cx);
+            return;
+        }
         cx.notify();
     }
     pub(in crate::frontend) fn notifications(
@@ -807,6 +813,9 @@ impl Desktop {
                     item_ix: 0,
                     offset_in_item: px(0.),
                 });
+                if self.page == "history" {
+                    self.history_enter();
+                }
                 self.last_poll = Instant::now();
                 self.poll_page(window, cx);
             }

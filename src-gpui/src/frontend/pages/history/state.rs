@@ -417,6 +417,21 @@ impl HistoryState {
         (self.shown, self.tween.is_some())
     }
 
+    /// Puts the window and the lanes where they are going, without easing:
+    /// for a page coming into view. Eased from where it was when the page was
+    /// last shown, or from nowhere the first time, the window swept the time
+    /// axis across all that lies between while the page slid in.
+    pub(super) fn settle(&mut self) {
+        self.tween = None;
+        self.shown = (self.view.0 as f64, self.view.1 as f64);
+        self.lanes.retain(|lane| !lane.removing);
+        for lane in &mut self.lanes {
+            lane.shown = lane.weight;
+            lane.from = lane.weight;
+            lane.started = None;
+        }
+    }
+
     /// Moves the target, the drawn window easing there from where it is.
     fn retarget(&mut self, duration: Duration) {
         self.tween = (!duration.is_zero()).then(|| Tween {

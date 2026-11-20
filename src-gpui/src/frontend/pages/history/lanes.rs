@@ -774,6 +774,7 @@ impl Desktop {
                 rescale: Default::default(),
                 readout: Default::default(),
                 captions: None,
+                redraw_alone: true,
             };
             if self.history.flow_origin.is_some() {
                 // The plot fills the box: its bounds are the box's.
