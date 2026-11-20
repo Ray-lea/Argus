@@ -2378,8 +2378,15 @@ struct CachedIndex {
     created: Option<SystemTime>,
     len: u64,
     cost: usize,
+    /// When it was last read (`INDEX_USES`), to drop the least recently used first.
+    used: u64,
     idx: Arc<Index>,
 }
+/// What the day indexes kept between queries may cost. A day's index is about
+/// 0.6 MiB in the current format and 2.2 MiB in the older ones: a week of the
+/// older ones fits, so that a week's range read again is not read from disk.
+const INDEX_CACHE_BYTES: usize = 24 * 1024 * 1024;
+static INDEX_USES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static CLEAR_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static INDEXES: LazyLock<Mutex<HashMap<PathBuf, CachedIndex>>> = LazyLock::new(Default::default);
 fn history_read<T>(path: &Path, result: io::Result<T>) -> Option<T> {
@@ -2404,12 +2411,13 @@ fn index(path: &Path) -> Option<Arc<Index>> {
     let modified = meta.modified().ok();
     let created = meta.created().ok();
     let mut cache = INDEXES.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(c) = cache.get(path)
+    if let Some(c) = cache.get_mut(path)
         && c.generation == generation
         && c.created == created
         && c.modified == modified
         && c.len == len
     {
+        c.used = INDEX_USES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return Some(c.idx.clone());
     }
     let mut idx = cache
@@ -2446,7 +2454,7 @@ fn index(path: &Path) -> Option<Arc<Index>> {
     } else {
         data.legacy(&mut f, usize::try_from(len).ok()?).ok()?;
     }
-    // The normal 30-day frame index is about 4 MiB. Bound uncommon catalogs and churn too.
+    // Bound uncommon catalogs and churn too (`INDEX_CACHE_BYTES`).
     let cost = |i: &Index| {
         i.frames.capacity() * 8
             + i.headers.capacity() * FRAME_HEAD
@@ -2474,11 +2482,28 @@ fn index(path: &Path) -> Option<Arc<Index>> {
     };
     let size = cost(&idx).max(512);
     let mut cache = INDEXES.lock().unwrap_or_else(|e| e.into_inner());
-    if size <= 12 * 1024 * 1024
+    if size <= INDEX_CACHE_BYTES
         && generation == CLEAR_GENERATION.load(std::sync::atomic::Ordering::Acquire)
     {
-        if cache.values().map(|c| c.cost).sum::<usize>() + size > 12 * 1024 * 1024 {
-            cache.clear();
+        // The days read longest ago go first: a long range read once leaves
+        // the recent days that the shorter ranges read.
+        let mut total = cache
+            .iter()
+            .filter(|(p, _)| p.as_path() != path)
+            .map(|(_, c)| c.cost)
+            .sum::<usize>();
+        while total + size > INDEX_CACHE_BYTES {
+            let Some(oldest) = cache
+                .iter()
+                .filter(|(p, _)| p.as_path() != path)
+                .min_by_key(|(_, c)| c.used)
+                .map(|(p, _)| p.clone())
+            else {
+                break;
+            };
+            if let Some(dropped) = cache.remove(&oldest) {
+                total = total.saturating_sub(dropped.cost);
+            }
         }
         cache.insert(
             path.into(),
@@ -2488,6 +2513,7 @@ fn index(path: &Path) -> Option<Arc<Index>> {
                 cost: size,
                 created,
                 len,
+                used: INDEX_USES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 idx: idx.clone(),
             },
         );

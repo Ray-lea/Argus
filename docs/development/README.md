@@ -58,6 +58,7 @@ cargo run -p argus-core --example gpu_compute --release     # NVIDIA Turing 及�
 cargo run -p argus-core --example app_windows --release     # 归入“应用”的进程（拥有任务栏窗口）与查找耗时
 cargo run -p argus-core --example sessions --release        # 有用户登录的会话、各会话的进程数与枚举耗时
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
+cargo run -p argus-core --example history_switch --release -- <历史目录的副本>  # 历史页各时间范围（5 分钟至 7 天）按图表宽度查询的耗时
 ```
 
 `disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。
