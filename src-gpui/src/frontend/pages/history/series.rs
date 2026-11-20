@@ -152,9 +152,13 @@ fn times(value: &Value) -> Vec<i64> {
         .unwrap_or_default()
 }
 
+    /// The recorded gaps, by when they begin.
 impl Points {
     /// Reads an answer to `history_points` asked with `args`.
     pub(super) fn parse(answer: &Value, args: &Value) -> Self {
+    /// The latest end among the gaps up to each one (`gaps_across`), made
+    /// when first asked for and again after the gaps change.
+    reach: std::cell::OnceCell<Vec<i64>>,
         let ts = times(&answer["ts"]);
         let n = ts.len();
         let fit = |mut list: Vec<Option<f64>>| {
@@ -216,7 +220,7 @@ impl Points {
             .map(|keys| {
                 keys.iter()
                     .filter_map(|k| k.as_str().map(str::to_owned))
-                    .collect()
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
         let from = args["from"].as_i64().unwrap_or(0);
@@ -234,6 +238,8 @@ impl Points {
             span,
             frame,
             peak,
+        let mut gaps = gaps;
+        gaps.sort_by_key(|gap| gap.from);
             columns,
             gaps,
         }
@@ -259,6 +265,7 @@ impl Points {
             .unwrap_or(newer.from)
             .min(newer.from);
         let keep = self.ts.partition_point(|at| *at < start);
+            reach: Default::default(),
         self.ts.truncate(keep);
         self.span.truncate(keep);
         self.frame.truncate(keep);
@@ -315,6 +322,8 @@ impl Points {
         for column in self.columns.values_mut() {
             column.mean.drain(..drop.min(column.mean.len()));
             column.low.drain(..drop.min(column.low.len()));
+        self.gaps.sort_by_key(|gap| gap.from);
+        self.reach = Default::default();
             column.high.drain(..drop.min(column.high.len()));
         }
         self.gaps.retain(|gap| gap.to >= before);
@@ -378,11 +387,7 @@ impl Points {
             return false;
         };
         let end = self.ts[i] + self.span[i];
-        if self
-            .gaps
-            .iter()
-            .any(|gap| gap.from < *next && gap.to > end - 1)
-        {
+        if self.gaps_across(end - 1, *next).next().is_some() {
             return false;
         }
         let widest = self.span[i].max(self.span[i + 1]);
@@ -402,24 +407,22 @@ impl Points {
         };
         self.gaps
             .iter()
-            .filter(|gap| {
-                gap.to <= first
-                    || gap.from >= last + last_span
-                    || (0..self.ts.len() - 1).any(|i| {
-                        !self.joins(i) && self.gaps_after(i).any(|after| std::ptr::eq(after, *gap))
-                    })
-            })
+            .enumerate()
+            .filter(|(at, gap)| gap.to <= first || gap.from >= last + last_span || broken[*at])
+            .map(|(_, gap)| gap)
             .collect()
     }
 
     /// The recorded gaps between point `i` and the next: those the line
-    /// breaks across (`joins`).
-    fn gaps_after(&self, i: usize) -> impl Iterator<Item = &Gap> {
-        let next = self.ts.get(i + 1).copied();
+    /// breaks across (`joins`), by where they are in `gaps`.
+    fn gaps_after_at(&self, i: usize) -> impl Iterator<Item = usize> + '_ {
+        let before = self.ts.get(i + 1).copied().unwrap_or(i64::MIN);
         let end = self.ts[i] + self.span[i];
-        self.gaps
-            .iter()
-            .filter(move |gap| next.is_some_and(|next| gap.from < next && gap.to > end - 1))
+        self.gaps_across_at(end - 1, before)
+    }
+
+    fn gaps_after(&self, i: usize) -> impl Iterator<Item = &Gap> {
+        self.gaps_after_at(i).map(|at| &self.gaps[at])
     }
 
     /// Where the step of point `i` (beginning at `at`) stops when the line
@@ -472,6 +475,7 @@ impl Points {
     /// `cpuPeak` above the lowest of `cpu`, say).
     pub(super) fn band(&self, low: &str, high: &str, end: i64) -> Vec<(f64, Option<(f64, f64)>)> {
         self.steps(end, |i| {
+        self.reach = Default::default();
             let below = self
                 .value(low, Part::Low, i)
                 .or_else(|| self.value(low, Part::Mean, i));
@@ -554,6 +558,14 @@ impl Points {
         self.gaps
             .iter()
             .copied()
+        let mut broken = vec![false; self.gaps.len()];
+        for i in 0..self.ts.len() - 1 {
+            if !self.joins(i) {
+                for at in self.gaps_after_at(i) {
+                    broken[at] = true;
+                }
+            }
+        }
             .find(|gap| gap.from <= at && at < gap.to)
     }
 
@@ -566,6 +578,29 @@ impl Points {
         to: i64,
         end: i64,
     ) -> Option<f64> {
+    /// Where in `gaps` the gaps are that begin before `before` and end after
+    /// `after`: the gaps are sorted by start, and the latest end among those
+    /// up to each one rises with them, so both bounds are found by halving.
+    fn gaps_across_at(&self, after: i64, before: i64) -> impl Iterator<Item = usize> + '_ {
+        let reach = self.reach.get_or_init(|| {
+            let mut latest = i64::MIN;
+            self.gaps
+                .iter()
+                .map(|gap| {
+                    latest = latest.max(gap.to);
+                    latest
+                })
+                .collect()
+        });
+        let upto = self.gaps.partition_point(|gap| gap.from < before);
+        let first = reach[..upto].partition_point(|end| *end <= after);
+        (first..upto).filter(move |at| self.gaps[*at].to > after)
+    }
+
+    fn gaps_across(&self, after: i64, before: i64) -> impl Iterator<Item = &Gap> {
+        self.gaps_across_at(after, before).map(|at| &self.gaps[at])
+    }
+
         self.fold(key, part, from, to, end, f64::max)
     }
 
