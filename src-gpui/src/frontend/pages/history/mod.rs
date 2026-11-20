@@ -320,6 +320,18 @@ impl Desktop {
         if !toast {
             self.history.toast = None;
         }
+        // A pointer resting over the lanes keeps its place while the window
+        // moves under it: the time under it is read again with every draw, so
+        // that the cursor, the readings and the tip follow the curves there.
+        // (Read before the lanes record their places anew.)
+        if self.history.drag.is_none()
+            && let Some(hover) = self.history.hover
+            && let Some(at) = self.history_time_at(hover.position.x, false)
+            && at != hover.at
+        {
+            self.history.hover = Some(state::Hover { at, ..hover });
+            self.history_ask_tip(window, cx);
+        }
         self.history.glides.clear();
         let chart = self.history_chart(shown, window, cx);
         let glides = std::mem::take(&mut self.history.glides);

@@ -958,25 +958,30 @@ impl Desktop {
                 );
             }
         }
-        if let Some(hover) = self.history.hover
-            && let Some(points) = &points
-            && let Some(index) = points.index_at(hover.at)
-        {
-            let end = self.history_clock();
-            let at = points.x_time(index, end) as f64;
-            let f = ((at - from) / span) as f32;
-            if (-0.002..=1.002).contains(&f) {
-                plot = plot.child(place(
-                    nudge,
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .w(px(1.))
-                        .bg(p.ink.opacity(0.4)),
-                    f,
-                    0.,
-                ));
+        // The cursor: a line where the pointer is, through a dot on each curve
+        // at the value its step holds there. The time under the pointer is
+        // read again with every draw, so the line keeps still on the pointer's
+        // device pixel while the curves glide under it, its dots taking the
+        // values that pass.
+        let cursor = self.history.hover.and_then(|hover| {
+            let scale = window.scale_factor();
+            let x = ((hover.at as f64 - from) / span) as f32 * plot_width;
+            let x = (x * scale).round() / scale;
+            (0. ..plot_width).contains(&x).then_some((hover.at, x))
+        });
+        if let Some((at, x)) = cursor {
+            plot = plot.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left(px(x))
+                    .w(px(1.))
+                    .bg(p.ink.opacity(0.4)),
+            );
+            if let Some(points) = &points
+                && let Some(index) = points.index_at(at)
+            {
                 let mut dots = Vec::new();
                 if let Some(reading) = &reading {
                     let main = reading.value(points, index).map(|v| {
@@ -1004,10 +1009,11 @@ impl Desktop {
                     let Some(value) = value else { continue };
                     let y = (1. - ((value - low) / (high - low).max(f64::EPSILON)).clamp(0., 1.))
                         as f32;
-                    plot = plot.child(place(
-                        nudge,
+                    // Centred on the line.
+                    plot = plot.child(
                         div()
                             .absolute()
+                            .left(px(x - 4.))
                             .top(relative(y))
                             .mt(px(-4.5))
                             .size(px(9.))
@@ -1015,9 +1021,7 @@ impl Desktop {
                             .border_2()
                             .border_color(p.tip)
                             .bg(color),
-                        f,
-                        -4.5,
-                    ));
+                    );
                 }
             }
         }
