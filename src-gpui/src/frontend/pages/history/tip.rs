@@ -348,15 +348,16 @@ impl Desktop {
                         rows.push(column.into_any_element());
                     }
                     TipList::Programs => {
-                        // The frame asked for at this point (`history_ask_tip`).
+                        // The latest frame answered (`history_ask_tip`): kept
+                        // while the one for this point is on its way, as the
+                        // processes' ranking is, so the rows do not empty and
+                        // fill again with every step of the pointer.
                         let answer = self
                             .history
                             .tip
                             .as_ref()
-                            .filter(|(at, answer)| {
-                                *at == (start, length) && answer["system"].is_object()
-                            })
-                            .map(|(_, answer)| answer);
+                            .map(|(_, answer)| answer)
+                            .filter(|answer| answer["system"].is_object());
                         let programs: Vec<(String, u64)> = answer
                             .map(|answer| {
                                 values(&answer["programs"])
@@ -382,37 +383,35 @@ impl Desktop {
                                     _ => blank(),
                                 });
                             }
-                            // The other programs, and the processes they have.
-                            if let Some(answer) = answer {
+                            // The other programs, and the processes they have:
+                            // a row of its own, kept while not known, so the
+                            // tooltip keeps its height.
+                            let rest = answer.and_then(|answer| {
                                 let distinct = answer["programCount"].as_u64().unwrap_or(0);
                                 let total = answer["system"]["processes"].as_f64().unwrap_or(0.);
                                 let listed: u64 = programs[..shown].iter().map(|(_, n)| n).sum();
-                                if distinct > shown as u64 {
-                                    column = column.child(
+                                (distinct > shown as u64).then(|| {
+                                    (distinct - shown as u64, (total - listed as f64).max(0.))
+                                })
+                            });
+                            column = column.child(match rest {
+                                Some((others, processes)) => div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_color(p.muted)
+                                    .child(div().size(px(16.)).flex_shrink_0())
+                                    .child(div().flex_1().min_w_0().truncate().child(
+                                        theme::counted("history.tip.otherPrograms", others, &[]),
+                                    ))
+                                    .child(
                                         div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .text_color(p.muted)
-                                            .child(div().size(px(16.)).flex_shrink_0())
-                                            .child(div().flex_1().min_w_0().truncate().child(
-                                                theme::counted(
-                                                    "history.tip.otherPrograms",
-                                                    distinct - shown as u64,
-                                                    &[],
-                                                ),
-                                            ))
-                                            .child(
-                                                div()
-                                                    .flex_shrink_0()
-                                                    .font_features(theme::tabular())
-                                                    .child(crate::regional::count(
-                                                        (total - listed as f64).max(0.),
-                                                    )),
-                                            ),
-                                    );
-                                }
-                            }
+                                            .flex_shrink_0()
+                                            .font_features(theme::tabular())
+                                            .child(crate::regional::count(processes)),
+                                    ),
+                                None => blank(),
+                            });
                             rows.push(column.into_any_element());
                         }
                     }
