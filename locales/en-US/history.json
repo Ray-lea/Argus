@@ -60,7 +60,9 @@
     "1d": "1 day",
     "7d": "7 days",
     "30d": "30 days",
-    "all": "All"
+    "all": "All",
+    "custom": "Custom",
+    "customMenu": "Custom…"
   },
   "now": "Now",
   "live": {
@@ -236,7 +238,8 @@
     },
     "search": "Search processes",
     "emptyRange": "No processes recorded in this range",
-    "netService": "Per-process network readings need the privileged service; Argus runs with standard rights, so the Network column has no records."
+    "netService": "Per-process network readings need the privileged service; Argus runs with standard rights, so the Network column has no records.",
+    "live": "Latest processes"
   },
   "column": {
     "moment": {
@@ -292,5 +295,70 @@
     "save": "Could not save the history settings.",
     "open": "Could not open the history folder in File Explorer.",
     "clear": "Could not clear the history. Check the folder’s permissions and whether its files are in use."
+  },
+  "picker": {
+    "presets": "Common ranges",
+    "last15m": "Last 15 minutes",
+    "last1h": "Last hour",
+    "last6h": "Last 6 hours",
+    "last24h": "Last 24 hours",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "last7d": "Last 7 days",
+    "last30d": "Last 30 days",
+    "all": "All records",
+    "month": "{month} {year}",
+    "weekdays": "Mo Tu We Th Fr Sa Su",
+    "start": "Start",
+    "end": "End",
+    "apply": "Apply",
+    "follow": "Follow the latest records when ending now",
+    "overview": "Show the 30-day overview and events",
+    "dayTip": {
+      "one": "{date} · {count} hour recorded · CPU average {cpu}",
+      "other": "{date} · {count} hours recorded · CPU average {cpu}"
+    },
+    "error": {
+      "format": "Enter times as {example}",
+      "order": "The end must be later than the start",
+      "none": "Nothing was recorded then (the first record is from {first})",
+      "empty": "No records yet"
+    },
+    "heatTitle": "30-day overview",
+    "heatHint": "One cell per hour",
+    "noRecord": "No records",
+    "heat": {
+      "cpu": "CPU usage",
+      "gpu": "GPU usage",
+      "mem": "Memory usage",
+      "temp": "CPU temperature",
+      "net": "Network receive"
+    },
+    "eventsTitle": "Events",
+    "eventsCount": {
+      "one": "{range} · {count} event",
+      "other": "{range} · {count} events"
+    },
+    "noEvents": "No events on the days picked",
+    "eventsLoading": "Looking for events…",
+    "filter": {
+      "all": "All",
+      "cpu": "CPU",
+      "temp": "Temperature",
+      "mem": "Memory",
+      "gpu": "GPU",
+      "net": "Network",
+      "disk": "Disk",
+      "gap": "No records"
+    },
+    "event": {
+      "cpu": "High CPU load",
+      "temp": "CPU too hot",
+      "mem": "Memory pressure",
+      "gpu": "Long high GPU load",
+      "net": "Heavy download",
+      "disk": "Busy disk"
+    },
+    "eventPeak": "{time} · peak {peak}"
   }
 }

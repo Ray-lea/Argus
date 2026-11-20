@@ -60,7 +60,9 @@
     "1d": "1 jour",
     "7d": "7 jours",
     "30d": "30 jours",
-    "all": "Tout"
+    "all": "Tout",
+    "custom": "Personnalisée",
+    "customMenu": "Personnalisée…"
   },
   "now": "Maintenant",
   "live": {
@@ -239,7 +241,8 @@
     },
     "search": "Rechercher des processus",
     "emptyRange": "Aucun processus enregistré dans cette plage",
-    "netService": "Les mesures réseau par processus nécessitent le service privilégié ; Argus s’exécute avec des droits standard, la colonne « Réseau » n’a donc aucun enregistrement."
+    "netService": "Les mesures réseau par processus nécessitent le service privilégié ; Argus s’exécute avec des droits standard, la colonne « Réseau » n’a donc aucun enregistrement.",
+    "live": "Processus les plus récents"
   },
   "column": {
     "moment": {
@@ -295,5 +298,72 @@
     "save": "Impossible d’enregistrer les paramètres de l’historique.",
     "open": "Impossible d’ouvrir le dossier de l’historique dans l’Explorateur de fichiers.",
     "clear": "Impossible d’effacer l’historique. Vérifiez les autorisations du dossier et si des fichiers sont en cours d’utilisation."
+  },
+  "picker": {
+    "presets": "Plages courantes",
+    "last15m": "15 dernières minutes",
+    "last1h": "Dernière heure",
+    "last6h": "6 dernières heures",
+    "last24h": "24 dernières heures",
+    "today": "Aujourd’hui",
+    "yesterday": "Hier",
+    "last7d": "7 derniers jours",
+    "last30d": "30 derniers jours",
+    "all": "Tous les enregistrements",
+    "month": "{month} {year}",
+    "weekdays": "lu ma me je ve sa di",
+    "start": "Début",
+    "end": "Fin",
+    "apply": "Appliquer",
+    "follow": "Suivre les derniers enregistrements si la fin est maintenant",
+    "overview": "Afficher l’aperçu sur 30 jours et les événements",
+    "dayTip": {
+      "one": "{date} · {count} heure enregistrée · CPU en moyenne {cpu}",
+      "many": "{date} · {count} heures enregistrées · CPU en moyenne {cpu}",
+      "other": "{date} · {count} heures enregistrées · CPU en moyenne {cpu}"
+    },
+    "error": {
+      "format": "Saisissez les heures au format {example}",
+      "order": "La fin doit être postérieure au début",
+      "none": "Aucun enregistrement sur cette période (le premier date du {first})",
+      "empty": "Aucun enregistrement pour l’instant"
+    },
+    "heatTitle": "Aperçu sur 30 jours",
+    "heatHint": "Une case par heure",
+    "noRecord": "Aucun enregistrement",
+    "heat": {
+      "cpu": "Utilisation du CPU",
+      "gpu": "Utilisation du GPU",
+      "mem": "Utilisation de la mémoire",
+      "temp": "Température du CPU",
+      "net": "Réception réseau"
+    },
+    "eventsTitle": "Événements",
+    "eventsCount": {
+      "one": "{range} · {count} événement",
+      "many": "{range} · {count} événements",
+      "other": "{range} · {count} événements"
+    },
+    "noEvents": "Aucun événement les jours choisis",
+    "eventsLoading": "Recherche des événements…",
+    "filter": {
+      "all": "Tous",
+      "cpu": "CPU",
+      "temp": "Température",
+      "mem": "Mémoire",
+      "gpu": "GPU",
+      "net": "Réseau",
+      "disk": "Disque",
+      "gap": "Aucun enregistrement"
+    },
+    "event": {
+      "cpu": "Forte charge du CPU",
+      "temp": "CPU trop chaud",
+      "mem": "Mémoire saturée",
+      "gpu": "Forte charge prolongée du GPU",
+      "net": "Téléchargement important",
+      "disk": "Disque occupé"
+    },
+    "eventPeak": "{time} · pic {peak}"
   }
 }

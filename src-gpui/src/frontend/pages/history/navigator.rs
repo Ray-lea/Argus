@@ -12,12 +12,16 @@ const EDGE: f32 = 7.;
 
 impl Desktop {
     fn history_range_name(&self) -> String {
+        if let Some(name) = self.history.range_name {
+            return label(name);
+        }
         match self.history.range {
             Range::Last(length) => match PRESETS.iter().find(|(_, l)| *l == length) {
                 Some((id, _)) => label(&format!("history.range.{id}")),
                 None => duration_label(length),
             },
             Range::All => label("history.range.all"),
+            Range::Fixed(..) => label("history.range.custom"),
         }
     }
 
@@ -72,6 +76,11 @@ impl Desktop {
                             )
                             .checked(checked == Some("all")),
                         );
+                        items.push(MenuItem::separator());
+                        items.push(MenuItem::new(
+                            label("history.range.customMenu"),
+                            Action::History(Command::Picker),
+                        ));
                         this.open_anchored(items, "history-range", layout::Side::Above, window, cx);
                     })),
             )
@@ -145,7 +154,10 @@ impl Desktop {
                         background_separate: false,
                         smooth: false,
                         ticks: None,
-                        geometry_start: a as f64,
+                        geometry_start: self
+                            .history
+                            .flow_origin
+                            .map_or(a as f64, |(_, navigator)| navigator),
                         measured_width: Rc::new(Cell::new(1.)),
                         live_clock: None,
                         image_surface: Default::default(),

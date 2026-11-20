@@ -60,7 +60,9 @@
     "1d": "1 Tag",
     "7d": "7 Tage",
     "30d": "30 Tage",
-    "all": "Alles"
+    "all": "Alles",
+    "custom": "Benutzerdefiniert",
+    "customMenu": "Benutzerdefiniert…"
   },
   "now": "Jetzt",
   "live": {
@@ -236,7 +238,8 @@
     },
     "search": "Prozesse suchen",
     "emptyRange": "In diesem Bereich sind keine Prozesse aufgezeichnet",
-    "netService": "Netzwerkwerte je Prozess benötigen den privilegierten Dienst; Argus läuft mit Standardrechten, daher hat die Spalte „Netzwerk“ keine Aufzeichnungen."
+    "netService": "Netzwerkwerte je Prozess benötigen den privilegierten Dienst; Argus läuft mit Standardrechten, daher hat die Spalte „Netzwerk“ keine Aufzeichnungen.",
+    "live": "Neueste Prozesse"
   },
   "column": {
     "moment": {
@@ -292,5 +295,70 @@
     "save": "Die Verlaufseinstellungen konnten nicht gespeichert werden.",
     "open": "Der Verlaufsordner konnte nicht im Datei-Explorer geöffnet werden.",
     "clear": "Der Verlauf konnte nicht gelöscht werden. Prüfen Sie die Ordnerberechtigungen und ob Dateien verwendet werden."
+  },
+  "picker": {
+    "presets": "Häufige Bereiche",
+    "last15m": "Letzte 15 Minuten",
+    "last1h": "Letzte Stunde",
+    "last6h": "Letzte 6 Stunden",
+    "last24h": "Letzte 24 Stunden",
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "last7d": "Letzte 7 Tage",
+    "last30d": "Letzte 30 Tage",
+    "all": "Alle Aufzeichnungen",
+    "month": "{month} {year}",
+    "weekdays": "Mo Di Mi Do Fr Sa So",
+    "start": "Beginn",
+    "end": "Ende",
+    "apply": "Anwenden",
+    "follow": "Beim Ende jetzt den neuesten Aufzeichnungen folgen",
+    "overview": "30-Tage-Übersicht und Ereignisse anzeigen",
+    "dayTip": {
+      "one": "{date} · {count} Stunde aufgezeichnet · CPU im Mittel {cpu}",
+      "other": "{date} · {count} Stunden aufgezeichnet · CPU im Mittel {cpu}"
+    },
+    "error": {
+      "format": "Zeiten im Format {example} eingeben",
+      "order": "Das Ende muss nach dem Beginn liegen",
+      "none": "In diesem Zeitraum gibt es keine Aufzeichnungen (die erste stammt vom {first})",
+      "empty": "Noch keine Aufzeichnungen"
+    },
+    "heatTitle": "30-Tage-Übersicht",
+    "heatHint": "Eine Zelle pro Stunde",
+    "noRecord": "Keine Aufzeichnungen",
+    "heat": {
+      "cpu": "CPU-Auslastung",
+      "gpu": "GPU-Auslastung",
+      "mem": "Speicherauslastung",
+      "temp": "CPU-Temperatur",
+      "net": "Netzwerkempfang"
+    },
+    "eventsTitle": "Ereignisse",
+    "eventsCount": {
+      "one": "{range} · {count} Ereignis",
+      "other": "{range} · {count} Ereignisse"
+    },
+    "noEvents": "An den gewählten Tagen gibt es keine Ereignisse",
+    "eventsLoading": "Ereignisse werden gesucht…",
+    "filter": {
+      "all": "Alle",
+      "cpu": "CPU",
+      "temp": "Temperatur",
+      "mem": "Speicher",
+      "gpu": "GPU",
+      "net": "Netzwerk",
+      "disk": "Datenträger",
+      "gap": "Keine Aufzeichnungen"
+    },
+    "event": {
+      "cpu": "Hohe CPU-Last",
+      "temp": "CPU zu heiß",
+      "mem": "Speicher knapp",
+      "gpu": "Lange hohe GPU-Last",
+      "net": "Großer Download",
+      "disk": "Datenträger ausgelastet"
+    },
+    "eventPeak": "{time} · Spitze {peak}"
   }
 }

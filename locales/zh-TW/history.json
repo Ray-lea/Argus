@@ -60,7 +60,9 @@
     "1d": "1 天",
     "7d": "7 天",
     "30d": "30 天",
-    "all": "全部"
+    "all": "全部",
+    "custom": "自訂",
+    "customMenu": "自訂…"
   },
   "now": "現在",
   "live": {
@@ -227,7 +229,8 @@
     "rest": "其餘 {count} 個處理程序",
     "search": "搜尋處理程序",
     "emptyRange": "此範圍內暫無處理程序記錄",
-    "netService": "每個處理程序的網路讀數需要特權服務；目前以標準權限執行，「網路」欄暫無記錄。"
+    "netService": "每個處理程序的網路讀數需要特權服務；目前以標準權限執行，「網路」欄暫無記錄。",
+    "live": "最新的處理程序"
   },
   "column": {
     "moment": {
@@ -283,5 +286,64 @@
     "save": "無法儲存歷程記錄設定。",
     "open": "無法在檔案總管中開啟歷程記錄資料夾。",
     "clear": "無法清除歷程記錄。請檢查資料夾權限以及檔案是否正在使用中。"
+  },
+  "picker": {
+    "presets": "常用範圍",
+    "last15m": "最近 15 分鐘",
+    "last1h": "最近 1 小時",
+    "last6h": "最近 6 小時",
+    "last24h": "最近 24 小時",
+    "today": "今天",
+    "yesterday": "昨天",
+    "last7d": "最近 7 天",
+    "last30d": "最近 30 天",
+    "all": "全部記錄",
+    "month": "{year} 年 {month} 月",
+    "weekdays": "一 二 三 四 五 六 日",
+    "start": "開始",
+    "end": "結束",
+    "apply": "套用",
+    "follow": "結束於目前時間時跟隨最新記錄",
+    "overview": "顯示 30 天概覽與事件",
+    "dayTip": "{date} · 記錄 {count} 小時 · 平均 CPU {cpu}",
+    "error": {
+      "format": "時間格式應為 {example}",
+      "order": "結束時間應晚於開始時間",
+      "none": "所選時間內沒有記錄（最早記錄於 {first}）",
+      "empty": "暫無記錄"
+    },
+    "heatTitle": "30 天概覽",
+    "heatHint": "每格 1 小時",
+    "noRecord": "無記錄",
+    "heat": {
+      "cpu": "CPU 使用率",
+      "gpu": "GPU 使用率",
+      "mem": "記憶體使用率",
+      "temp": "CPU 溫度",
+      "net": "網路接收"
+    },
+    "eventsTitle": "事件",
+    "eventsCount": "{range} · {count} 項",
+    "noEvents": "所選日期內沒有事件",
+    "eventsLoading": "正在尋找事件…",
+    "filter": {
+      "all": "全部",
+      "cpu": "CPU",
+      "temp": "溫度",
+      "mem": "記憶體",
+      "gpu": "GPU",
+      "net": "網路",
+      "disk": "磁碟",
+      "gap": "無記錄"
+    },
+    "event": {
+      "cpu": "CPU 高負載",
+      "temp": "CPU 溫度過高",
+      "mem": "記憶體吃緊",
+      "gpu": "GPU 長時間高負載",
+      "net": "大量下載",
+      "disk": "磁碟忙碌"
+    },
+    "eventPeak": "{time} · 最高 {peak}"
   }
 }

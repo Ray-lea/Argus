@@ -10,6 +10,7 @@ use super::*;
 mod bar;
 mod lanes;
 mod navigator;
+mod picker;
 mod readings;
 mod series;
 mod settings;
@@ -53,6 +54,8 @@ pub(in crate::frontend) enum Command {
     Curve(Option<String>),
     /// Opens the history settings.
     Settings,
+    /// Opens the range picker.
+    Picker,
 }
 
 /// Old frames have no creation time: a matching PID and name cannot establish
@@ -190,6 +193,9 @@ fn duration_label(ms: i64) -> String {
 
 /// Points in a process's curve laid over the lanes.
 const CURVE_POINTS: usize = 160;
+/// The widest window that glides with the clock: wider ones move less than
+/// a pixel a second.
+const FLOW_SPAN: i64 = 15 * MINUTE;
 
 /// How often the newest readings are asked for while following: every second
 /// up to six hours on screen, every minute beyond.
@@ -232,6 +238,89 @@ impl Desktop {
         !cx.reduce_motion()
     }
 
+    /// Whether the window glides with the clock: while it follows a short
+    /// window (the newest readings move across it a pixel at a time), with
+    /// motion on. Longer windows move a second or a minute at a time.
+    fn history_flowing(&self, cx: &App) -> bool {
+        self.history.follow
+            && self.history.span() <= FLOW_SPAN
+            && self.history_motion(cx)
+            && self.chart_clock.borrow().mode != crate::frontend::motion::Mode::Off
+            && self.options.fixture.is_none()
+    }
+
+    /// The chart card, drawn on its own: while the window glides, every
+    /// device pixel it moves draws this region alone, the page around it
+    /// replaying; eased zooms and lanes do the same.
+    pub(in crate::frontend) fn history_chart_region(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let motion = self.history_motion(cx);
+        let now = Instant::now();
+        let flowing = self.history_flowing(cx);
+        // The window ends a second behind the present while it glides, so
+        // that the newest reading is in before the edge reaches it; the
+        // curves keep the texture drawn for the readings' own window and move it.
+        let data = self.history_clock();
+        let clock = if flowing {
+            self.history_now() - SECOND
+        } else {
+            data
+        };
+        self.history.anchor(clock);
+        self.history.flow_origin = flowing.then(|| {
+            // The newest reading is usually ahead of the window on screen: the
+            // texture keeps the readings' own window, a little ahead of it.
+            let shift = clock - data;
+            (
+                (self.history.view.0 - shift) as f64,
+                (self.history.extent.0 - shift) as f64,
+            )
+        });
+        let (shown, easing) = self.history.shown(now, motion);
+        let lanes_moving = self.history.step_lanes(now, motion);
+        let toast = self
+            .history
+            .toast
+            .as_ref()
+            .is_some_and(|(_, until)| *until > now);
+        if !toast {
+            self.history.toast = None;
+        }
+        if easing || lanes_moving || toast {
+            window.request_isolated_animation_frame();
+        } else if flowing {
+            let width = self.history_plot_width(window) * window.scale_factor();
+            let step = self.history.span() as f32 / width.max(1.);
+            let delay = Duration::from_secs_f32((step / 1000.).clamp(0.016, 1.));
+            self.history_flow_later(delay, window, cx);
+        }
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(self.history_chart(shown, window, cx))
+            .into_any_element()
+    }
+
+    /// Draws the chart again once the window has moved a device pixel.
+    fn history_flow_later(&mut self, delay: Duration, window: &mut Window, cx: &mut Context<Self>) {
+        if self.history.flow.is_some() {
+            return;
+        }
+        self.history.flow = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let _ = this.update_in(cx, |this, window, _| {
+                this.history.flow = None;
+                if this.page == "history" {
+                    this.redraw_region_alone(regions::RegionKind::HistoryChart, window);
+                }
+            });
+        }));
+    }
+
     /// Whether the window follows the newest readings (the live button says so).
     pub(in crate::frontend) fn history_follows(&self) -> bool {
         self.history.follow
@@ -249,6 +338,49 @@ impl Desktop {
         self.history.set_range(Range::parse(id), clock);
         self.load_history(window, cx);
         cx.notify();
+    }
+
+    /// Whether the table lists the running processes: in moment mode, while
+    /// the window follows the newest readings and no moment is pinned.
+    fn history_table_live(&self) -> bool {
+        self.history.mode == TableMode::Moment && self.history.follow && self.history.pin.is_none()
+    }
+
+    /// The running processes in the recorded frames' terms: private working
+    /// set as memory, all I/O, sent and received together, dedicated GPU memory.
+    fn history_live_processes(&self) -> Vec<Value> {
+        let sum = |process: &Value, keys: &[&str]| -> Value {
+            let parts = keys
+                .iter()
+                .filter_map(|key| process[*key].as_f64())
+                .collect::<Vec<_>>();
+            if parts.is_empty() {
+                Value::Null
+            } else {
+                json!(parts.iter().sum::<f64>())
+            }
+        };
+        values(&self.snapshot["processes"])
+            .iter()
+            .map(|process| {
+                json!({
+                    "name": process["name"],
+                    "pid": process["pid"],
+                    "createTime": process["createTime"],
+                    "cpu": process["cpu"],
+                    "mem": process["privateWs"],
+                    "io": sum(process, &["ioRead", "ioWrite", "ioOther"]),
+                    "gpu": process["gpu"],
+                    "net": sum(process, &["netSent", "netReceived"]),
+                    "diskRead": process["diskRead"],
+                    "diskWrite": process["diskWrite"],
+                    "gpuMem": process["gpuDedicated"],
+                    "power": process["power"],
+                    "threads": process["threads"],
+                    "handles": process["handles"],
+                })
+            })
+            .collect()
     }
 
     /// The network unit the readings use.
@@ -622,6 +754,8 @@ impl Desktop {
 
     fn history_ask_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.history.mode {
+            // The running processes need no query: the table reads the sample.
+            TableMode::Moment if self.history_table_live() => {}
             TableMode::Moment => {
                 let moment = self.history_moment();
                 if self.history.frame_at == Some(moment) {
@@ -769,10 +903,22 @@ impl Desktop {
     ) -> bool {
         if !matches!(
             command,
-            "history_points" | "history_channels" | "history_frame" | "history_table"
+            "history_points"
+                | "history_channels"
+                | "history_frame"
+                | "history_table"
+                | "history_events"
         ) && !(command == "history_range" && cache == Some("historyRange"))
         {
             return false;
+        }
+        // The range picker's hours and events: kept for it as they come.
+        if let Some(key @ ("historyDays" | "historyEvents")) = cache {
+            if let Ok(answer) = result {
+                self.data.insert(key.into(), answer.clone());
+            }
+            self.history_redraw(window, cx);
+            return true;
         }
         if cache == Some("historyTip") {
             let point = (
@@ -999,6 +1145,10 @@ impl Desktop {
                 self.act(Action::Page("settings".into()), window, cx);
                 return;
             }
+            Command::Picker => {
+                self.history_open_picker(window, cx);
+                return;
+            }
         }
         self.history_save_lanes();
         self.load_history(window, cx);
@@ -1015,6 +1165,14 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // The range picker takes the keys while it is open: Esc closes it.
+        if self.history.picker.is_some() {
+            if key == "escape" {
+                self.history_close_picker(cx);
+                return true;
+            }
+            return false;
+        }
         // Typing in the table's search box keeps its keys.
         if self.history_searching(window, cx) {
             return false;
@@ -1171,6 +1329,8 @@ impl Desktop {
         let h = &self.history;
         json!({
             "follow": h.follow,
+            "picker": h.picker.is_some(),
+            "range": format!("{:?}", h.range),
             "view": [h.view.0, h.view.1],
             "extent": [h.extent.0, h.extent.1],
             "pin": h.pin,
@@ -1193,34 +1353,31 @@ impl Desktop {
         if self.history.catalogue_key != (self.palette.dark, argus_core::i18n::locale() as u8) {
             self.history_catalogue();
         }
-        let motion = self.history_motion(cx);
-        let now = Instant::now();
+        // The chart region draws the window as it moves; the page reads it
+        // as the newest readings leave it.
         let clock = self.history_clock();
         self.history.anchor(clock);
-        let (shown, easing) = self.history.shown(now, motion);
-        let lanes_moving = self.history.step_lanes(now, motion);
-        if easing || lanes_moving {
-            window.request_animation_frame();
-        }
-        if self
-            .history
-            .toast
-            .as_ref()
-            .is_some_and(|(_, until)| *until > now)
-        {
-            window.request_animation_frame();
-        } else {
-            self.history.toast = None;
-        }
         let p = self.palette;
-        let bar = self.history_bar(window, cx);
-        let chart = self.history_chart(shown, window, cx);
-        let table = self.history_table(window, cx);
         let page = window
             .use_keyed_state("history-scroll", cx, |_, _| ScrollHandle::new())
             .read(cx)
             .clone();
-        let geometry = self.history.geometry.clone();
+        // The page's room, as laid out last: the chart takes its share of it.
+        // (A probe filling the scroller would count its padding as overflow.)
+        let room = page.bounds();
+        if room.size.height > px(0.) {
+            self.history.geometry.borrow_mut().content = room;
+        }
+        let bar = self.history_bar(window, cx);
+        let chart = self.region(
+            regions::RegionKind::HistoryChart,
+            StyleRefinement::default()
+                .w_full()
+                .h(px(self.history_chart_height(window)))
+                .flex_shrink_0(),
+            cx,
+        );
+        let table = self.history_table(window, cx);
         let dragging = self.history.drag.is_some();
         div()
             .id("history-content")
@@ -1235,14 +1392,6 @@ impl Desktop {
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
-            .child(
-                canvas(
-                    move |bounds, _, _| geometry.borrow_mut().content = bounds,
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .inset_0(),
-            )
             .when(
                 self.data.get("processWatch").is_some_and(Value::is_object)
                     || self.data.contains_key("watchError"),
@@ -1254,6 +1403,7 @@ impl Desktop {
             .child(table)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
+            .children(self.history_picker(window, cx))
             .into_any_element()
     }
 

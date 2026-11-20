@@ -12,6 +12,8 @@ pub(super) const TREND_POINTS: usize = 32;
 const ROW: f32 = 28.;
 /// The trend column, beside the name.
 const TREND_WIDTH: f32 = 96.;
+/// The groups listed while the table follows the running processes.
+const LIVE_GROUPS: usize = 40;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -167,6 +169,9 @@ impl Desktop {
     /// The title over the table: whose processes these are.
     fn history_table_title(&self) -> String {
         match self.history.mode {
+            // Following the latest readings, the table lists the processes as
+            // they are now, every second: no moment to name.
+            TableMode::Moment if self.history_table_live() => label("history.table.live"),
             TableMode::Moment => {
                 let at = self
                     .history
@@ -215,17 +220,28 @@ impl Desktop {
             .filter(|c| shown_keys.contains(&c.key))
             .copied()
             .collect::<Vec<_>>();
+        let live = mode == TableMode::Moment && self.history_table_live();
         let answer = match mode {
+            TableMode::Moment if live => None,
             TableMode::Moment => self.history.frame.clone(),
             TableMode::Range => self.history.table.clone(),
         };
-        let processes = answer
-            .as_ref()
-            .map(|a| values(&a["processes"]).to_vec())
-            .unwrap_or_default();
-        let frame = answer
-            .as_ref()
-            .and_then(|a| a["ts"].as_i64().or_else(|| a["system"]["ts"].as_i64()));
+        let processes = if live {
+            self.history_live_processes()
+        } else {
+            answer
+                .as_ref()
+                .map(|a| values(&a["processes"]).to_vec())
+                .unwrap_or_default()
+        };
+        // Live processes are the running ones: any of them can be gone to.
+        let frame = if live {
+            self.snapshot["timestamp"].as_i64()
+        } else {
+            answer
+                .as_ref()
+                .and_then(|a| a["ts"].as_i64().or_else(|| a["system"]["ts"].as_i64()))
+        };
         let seconds = match mode {
             TableMode::Moment => 1.,
             TableMode::Range => {
@@ -373,6 +389,10 @@ impl Desktop {
             };
             if descending { order.reverse() } else { order }
         });
+        // Every running process is at hand live: the busiest are listed.
+        if live {
+            groups.truncate(LIVE_GROUPS);
+        }
         let format = |column: &Column, value: Option<f64>| -> String {
             if column.key == "net" && net_missing {
                 return label("format.missing");
@@ -427,13 +447,20 @@ impl Desktop {
                 .entry(text(process, "name").to_lowercase())
                 .or_insert(process);
         }
-        let cell = |width: f32| {
+        // A value with its heat filling the whole cell, as on the process
+        // page: busy cells of neighbouring rows and columns meet without seams.
+        let cell = |width: f32, alpha: f32, quiet: bool, text: String| {
             div()
-                .px(px(8.))
+                .h_full()
                 .w(px(width))
                 .flex_shrink_0()
-                .text_right()
-                .truncate()
+                .px(px(8.))
+                .flex()
+                .items_center()
+                .justify_end()
+                .when(alpha > 0., |d| d.bg(p.heat.opacity(alpha)))
+                .when(quiet, |d| d.text_color(p.faint))
+                .child(div().min_w_0().truncate().child(text))
         };
         let column_name = |key: &str| label(&format!("history.column.{mode_key}.{key}"));
         // The head: name, the trend, the shown columns.
@@ -651,15 +678,12 @@ impl Desktop {
                 line = line.child(sparkline(group.trend.clone(), trend_color));
             }
             for (column, value) in shown.iter().zip(&group.values) {
-                let alpha = heat(column, *value);
-                line = line.child(
-                    cell(column.width)
-                        .when(alpha > 0., |d| d.bg(p.heat.opacity(alpha)))
-                        .when(column.key == "net" && net_missing, |d| {
-                            d.text_color(p.faint)
-                        })
-                        .child(format(column, *value)),
-                );
+                line = line.child(cell(
+                    column.width,
+                    heat(column, *value),
+                    column.key == "net" && net_missing,
+                    format(column, *value),
+                ));
             }
             let target = single.and_then(|process| recorded_target(process, frame, live));
             let running = target.is_some();
@@ -738,7 +762,12 @@ impl Desktop {
                     }
                     for column in &shown {
                         let value = value_of(process, column.key);
-                        line = line.child(cell(column.width).child(format(column, value)));
+                        line = line.child(cell(
+                            column.width,
+                            heat(column, value),
+                            column.key == "net" && net_missing,
+                            format(column, value),
+                        ));
                     }
                     let target = recorded_target(process, frame, live);
                     let menu = row_menu(&group.name, &[process["pid"].to_string()], target);
@@ -771,7 +800,12 @@ impl Desktop {
                         line = line.child(div().w(px(TREND_WIDTH)).flex_shrink_0());
                     }
                     for (column, value) in shown.iter().zip(&values) {
-                        line = line.child(cell(column.width).child(format(column, *value)));
+                        line = line.child(cell(
+                            column.width,
+                            heat(column, *value),
+                            column.key == "net" && net_missing,
+                            format(column, *value),
+                        ));
                     }
                     body = body.child(line);
                 }

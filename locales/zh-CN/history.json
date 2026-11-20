@@ -60,7 +60,9 @@
     "1d": "1 天",
     "7d": "7 天",
     "30d": "30 天",
-    "all": "全部"
+    "all": "全部",
+    "custom": "自定义",
+    "customMenu": "自定义…"
   },
   "now": "现在",
   "live": {
@@ -227,7 +229,8 @@
     "rest": "其余 {count} 个进程",
     "search": "搜索进程",
     "emptyRange": "此范围内暂无进程记录",
-    "netService": "每进程网络读数需要特权服务；当前以标准权限运行，“网络”列暂无记录。"
+    "netService": "每进程网络读数需要特权服务；当前以标准权限运行，“网络”列暂无记录。",
+    "live": "最新的进程"
   },
   "column": {
     "moment": {
@@ -283,5 +286,64 @@
     "save": "无法保存历史记录设置。",
     "open": "无法在文件资源管理器中打开历史记录文件夹。",
     "clear": "无法清除历史记录。请检查文件夹权限以及文件是否正被占用。"
+  },
+  "picker": {
+    "presets": "常用范围",
+    "last15m": "最近 15 分钟",
+    "last1h": "最近 1 小时",
+    "last6h": "最近 6 小时",
+    "last24h": "最近 24 小时",
+    "today": "今天",
+    "yesterday": "昨天",
+    "last7d": "最近 7 天",
+    "last30d": "最近 30 天",
+    "all": "全部记录",
+    "month": "{year} 年 {month} 月",
+    "weekdays": "一 二 三 四 五 六 日",
+    "start": "开始",
+    "end": "结束",
+    "apply": "应用",
+    "follow": "结束于当前时间时跟随最新记录",
+    "overview": "显示 30 天概览与事件",
+    "dayTip": "{date} · 记录 {count} 小时 · 平均 CPU {cpu}",
+    "error": {
+      "format": "时间格式应为 {example}",
+      "order": "结束时间应晚于开始时间",
+      "none": "所选时间内没有记录（最早记录于 {first}）",
+      "empty": "暂无记录"
+    },
+    "heatTitle": "30 天概览",
+    "heatHint": "每格 1 小时",
+    "noRecord": "无记录",
+    "heat": {
+      "cpu": "CPU 使用率",
+      "gpu": "GPU 使用率",
+      "mem": "内存使用率",
+      "temp": "CPU 温度",
+      "net": "网络接收"
+    },
+    "eventsTitle": "事件",
+    "eventsCount": "{range} · {count} 项",
+    "noEvents": "所选日期内没有事件",
+    "eventsLoading": "正在查找事件…",
+    "filter": {
+      "all": "全部",
+      "cpu": "CPU",
+      "temp": "温度",
+      "mem": "内存",
+      "gpu": "GPU",
+      "net": "网络",
+      "disk": "磁盘",
+      "gap": "无记录"
+    },
+    "event": {
+      "cpu": "CPU 高负载",
+      "temp": "CPU 温度过高",
+      "mem": "内存紧张",
+      "gpu": "GPU 长时间高负载",
+      "net": "大量下载",
+      "disk": "磁盘繁忙"
+    },
+    "eventPeak": "{time} · 最高 {peak}"
   }
 }

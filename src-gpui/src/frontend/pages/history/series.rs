@@ -62,7 +62,7 @@ pub(super) enum GapReason {
 }
 
 impl GapReason {
-    fn parse(text: &str) -> Self {
+    pub(super) fn parse(text: &str) -> Self {
         match text {
             "sleep" => Self::Sleep,
             "shutdown" => Self::Shutdown,
@@ -385,9 +385,29 @@ impl Points {
         next - end <= (3 * widest).max(MAX_CADENCE)
     }
 
+    /// Where the line through point `i` (drawn at `at`) stops when it breaks
+    /// after it: at the end of what the point covers, or where the gap after
+    /// it begins if that is sooner. A point is drawn at its start (or its
+    /// middle), so the line and its fill would otherwise stop short of the gap.
+    fn run_end(&self, i: usize, at: f64) -> f64 {
+        let Some(&next) = self.ts.get(i + 1) else {
+            return at;
+        };
+        let cover = self.ts[i].saturating_add(self.span[i]).min(next);
+        let gap = self
+            .gaps
+            .iter()
+            .map(|gap| gap.from)
+            .filter(|from| (*from as f64) >= at && *from < next)
+            .min()
+            .unwrap_or(cover);
+        (cover.min(gap) as f64).max(at)
+    }
+
     /// The values of `key` as a time plot draws them: each at its point's place,
-    /// an unknown value between points the line does not join. `scale` maps a
-    /// value onto the plot's axis (a reading on the right axis).
+    /// an unknown value between points the line does not join. Where it breaks,
+    /// the last value holds to the end of what its point covers. `scale` maps
+    /// a value onto the plot's axis (a reading on the right axis).
     pub(super) fn line(
         &self,
         key: &str,
@@ -398,10 +418,15 @@ impl Points {
         let mut out = Vec::with_capacity(self.ts.len() + 8);
         for i in 0..self.ts.len() {
             let at = self.x_time(i, end) as f64;
-            out.push((at, self.value(key, part, i).map(&scale)));
+            let value = self.value(key, part, i).map(&scale);
+            out.push((at, value));
             if i + 1 < self.ts.len() && !self.joins(i) {
+                let stop = self.run_end(i, at);
+                if stop > at {
+                    out.push((stop, value));
+                }
                 let next = self.x_time(i + 1, end) as f64;
-                out.push(((at + next) / 2., None));
+                out.push(((stop + next) / 2., None));
             }
         }
         out
@@ -420,10 +445,15 @@ impl Points {
             let above = self
                 .value(high, Part::High, i)
                 .or_else(|| self.value(high, Part::Mean, i));
-            out.push((at, below.zip(above)));
+            let edges = below.zip(above);
+            out.push((at, edges));
             if i + 1 < self.ts.len() && !self.joins(i) {
+                let stop = self.run_end(i, at);
+                if stop > at {
+                    out.push((stop, edges));
+                }
                 let next = self.x_time(i + 1, end) as f64;
-                out.push(((at + next) / 2., None));
+                out.push(((stop + next) / 2., None));
             }
         }
         out
@@ -657,6 +687,31 @@ mod tests {
         );
         assert_eq!(points.index_at(FRAME + 10), Some(1));
         assert_eq!(points.index_at(5 * MINUTE), None);
+    }
+
+    #[test]
+    fn a_broken_line_holds_its_last_value_up_to_the_gap() {
+        // Frames at 0 and 5 s; Argus stopped 2.5 s into the second one.
+        let answer = json!({"bucket": SECOND, "ts": [0, FRAME, 10 * MINUTE], "span": [FRAME, FRAME, FRAME],
+            "series": {"cpu": {"mean": [1, 2, 3]}},
+            "gaps": [{"from": FRAME + 2_500, "to": 10 * MINUTE, "reason": "notRunning"}],
+            "settled": 20 * MINUTE});
+        let points = Points::parse(&answer, &args(0, 20 * MINUTE, SECOND));
+        let line = points.line("cpu", Part::Mean, 20 * MINUTE, |v| v);
+        let held = (FRAME + 2_500) as f64;
+        assert!(
+            line.contains(&(held, Some(2.))),
+            "the value holds to where the gap begins"
+        );
+        // The newest point is not drawn past its own place: its successor is not in yet.
+        assert_eq!(line.last(), Some(&((10 * MINUTE) as f64, Some(3.))));
+        // Without a recorded gap, the value holds to the end of its frame.
+        let answer = json!({"bucket": SECOND, "ts": [0, 30 * MINUTE], "span": [FRAME, FRAME],
+            "series": {"cpu": {"mean": [1, 2]}}, "settled": 40 * MINUTE});
+        let points = Points::parse(&answer, &args(0, 40 * MINUTE, SECOND));
+        let line = points.line("cpu", Part::Mean, 40 * MINUTE, |v| v);
+        assert_eq!(line[1], (FRAME as f64, Some(1.)));
+        assert_eq!(line[2].1, None);
     }
 
     #[test]

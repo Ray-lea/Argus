@@ -285,16 +285,9 @@ impl Desktop {
         )
     }
 
-    /// The chart card: the lanes over the time axis, and the navigator.
-    pub(super) fn history_chart(
-        &mut self,
-        shown: (f64, f64),
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let p = self.palette;
-        let geometry = self.history.geometry.clone();
-        let content = geometry.borrow().content.size.height;
+    /// The chart card's height: its share of the page, enough for every lane.
+    pub(super) fn history_chart_height(&self, window: &Window) -> f32 {
+        let content = self.history.geometry.borrow().content.size.height;
         let content = if content > px(0.) {
             f32::from(content)
         } else {
@@ -308,13 +301,24 @@ impl Desktop {
             + NAV
             + 2. * PAD
             + 8.;
-        let height = (content * self.history.split).max(260.).max(least);
+        (content * self.history.split).max(260.).max(least)
+    }
+
+    /// The chart card: the lanes over the time axis, and the navigator,
+    /// filling the region it is drawn in.
+    pub(super) fn history_chart(
+        &mut self,
+        shown: (f64, f64),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
         let lanes = self.history_lanes(shown, window, cx);
         let navigator = self.history_navigator(window, cx);
         div()
             .id("history-chart")
             .flex_none()
-            .h(px(height))
+            .size_full()
             .flex()
             .flex_col()
             .gap(px(6.))
@@ -645,7 +649,9 @@ impl Desktop {
                 background_separate: false,
                 smooth: false,
                 ticks: None,
-                geometry_start: from,
+                // While the window glides, the texture stays the one drawn for
+                // the newest reading's window, moved under the window on screen.
+                geometry_start: self.history.flow_origin.map_or(from, |(lanes, _)| lanes),
                 measured_width: Rc::new(Cell::new(1.)),
                 live_clock: None,
                 image_surface: Default::default(),

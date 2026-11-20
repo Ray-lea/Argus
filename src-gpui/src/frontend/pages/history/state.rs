@@ -22,6 +22,8 @@ pub(super) enum Range {
     Last(i64),
     /// Everything recorded, following the clock.
     All,
+    /// Fixed ends, picked in the range picker.
+    Fixed(i64, i64),
 }
 
 pub(super) const PRESETS: [(&str, i64); 6] = [
@@ -52,6 +54,7 @@ impl Range {
                 .find(|(_, l)| *l == length)
                 .map(|(id, _)| *id),
             Self::All => Some("all"),
+            Self::Fixed(..) => None,
         }
     }
 }
@@ -228,6 +231,17 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) first: Option<i64>,
     /// A short note over the lanes ("Back to the latest"), and when it shows until.
     pub(super) toast: Option<(String, Instant)>,
+    /// The range picker, while it is open.
+    pub(super) picker: Option<super::picker::Picker>,
+    /// While the window glides with the clock: where the curves' textures
+    /// start (lanes, navigator), the window drawn when the newest reading came
+    /// in; the window on screen is a little ahead and moves them.
+    pub(super) flow_origin: Option<(f64, f64)>,
+    /// The redraw waiting for the window to move a device pixel.
+    pub(super) flow: Option<gpui_kit::gpui::Task<()>>,
+    /// What the range pill says for a range picked by name (today, yesterday,
+    /// custom ends), a locale key; none for the menu's ranges.
+    pub(super) range_name: Option<&'static str>,
     /// Restored from the preferences once.
     pub(super) restored: bool,
     /// Theme and language the readings' names and colours were made for.
@@ -287,6 +301,10 @@ impl Default for HistoryState {
             table: None,
             first: None,
             toast: None,
+            picker: None,
+            flow_origin: None,
+            flow: None,
+            range_name: None,
             restored: false,
             catalogue_key: (false, u8::MAX),
             channels_asked: None,
@@ -395,6 +413,7 @@ impl HistoryState {
     /// clock; or fixed ends, unless they reach the present.
     pub(super) fn set_range(&mut self, range: Range, clock: i64) {
         self.range = range;
+        self.range_name = None;
         self.pin = None;
         self.selection = None;
         self.mode = TableMode::Moment;
@@ -410,14 +429,29 @@ impl HistoryState {
                 self.extent = (first, clock);
                 self.view = self.extent;
             }
+            Range::Fixed(from, to) => {
+                self.follow = false;
+                self.extent = (from, to.max(from + MINUTE));
+                self.view = self.extent;
+            }
         }
         self.retarget(SLOW);
+    }
+
+    /// Fixed ends from the range picker, not following the clock.
+    pub(super) fn set_fixed(&mut self, from: i64, to: i64) {
+        self.set_range(Range::Fixed(from, to), to);
     }
 
     /// Back to the newest readings, following them, at the width shown.
     pub(super) fn go_latest(&mut self, clock: i64) {
         let span = self.span().min(self.length());
         let length = self.length();
+        // Fixed ends give way to as long a range following the clock.
+        if let Range::Fixed(..) = self.range {
+            self.range = Range::Last(length);
+            self.range_name = None;
+        }
         self.follow = true;
         self.pin = None;
         self.selection = None;
