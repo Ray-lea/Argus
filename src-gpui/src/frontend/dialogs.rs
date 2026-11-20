@@ -204,6 +204,10 @@ impl DialogFrame {
     }
 }
 
+/// How much taller than its room a dialog's content may be and still be
+/// drawn without a scrollbar: less than any body's bottom padding.
+const OVERFLOW_TOLERANCE: f32 = 4.;
+
 /// Dialogs that open over whatever is open.
 const STACKING: [&str; 9] = [
     "confirm",
@@ -989,12 +993,21 @@ impl Desktop {
             .when(clipping, |d| d.overflow_hidden())
             .when(!clipping, |d| d.overflow_y_scroll())
             // Bound the inner native viewport so the component's outer scroller
-            // stays at rest and wheel notches use the shared GPUI glide.
-            .child(scrollbar::scrollbar(
-                format!("dialog-{id}-scrollbar"),
-                &scroll,
-                self.palette.dark,
-            ))
+            // stays at rest and wheel notches use the shared GPUI glide. A body
+            // held to its content (clipped 1 px short) has nothing to scroll:
+            // it shows no bar. The first child stays the bar's place either way:
+            // the measurement above skips it.
+            .map(|d| {
+                if clipping {
+                    d.child(div().absolute().size_0())
+                } else {
+                    d.child(scrollbar::scrollbar(
+                        format!("dialog-{id}-scrollbar"),
+                        &scroll,
+                        self.palette.dark,
+                    ))
+                }
+            })
     }
 
     /// Drops what was kept for a dialog that closed.
@@ -1102,9 +1115,11 @@ impl Desktop {
                     window.request_animation_frame();
                 }
                 // 1 px short of the body's room, so that rounding to device
-                // pixels never leaves a fraction of a pixel to scroll.
-                frame.clip =
-                    (easing || natural <= cap).then(|| (height - footer - px(3.)).max(px(0.)));
+                // pixels never leaves a fraction of a pixel to scroll. Content a
+                // few pixels taller than the room fits too: what is cut off is
+                // the body's empty bottom padding, not worth a scrollbar.
+                frame.clip = (easing || natural <= cap + px(OVERFLOW_TOLERANCE))
+                    .then(|| (height - footer - px(3.)).max(px(0.)));
                 frame.body_height = (height - footer - px(2.)).max(px(0.));
                 if let Some(ms) = scrollbar::trace_ms() {
                     println!(
