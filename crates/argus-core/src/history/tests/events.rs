@@ -268,19 +268,16 @@ fn paired_frame_readings_and_sealed_peak_resolution() {
 }
 
 #[test]
-fn legacy_and_sealed_days_join_at_midnight_and_keep_only_available_channels() {
+fn restarted_and_sealed_days_join_at_midnight_and_keep_only_available_channels() {
     for (version, sealed_first) in [(2, false), (3, true), (4, true), (4, false)] {
         let dir = temp_dir(&format!("event-cross-{version}-{sealed_first}"));
         fs::create_dir_all(&dir).unwrap();
         let raw_day = DAY + i64::from(sealed_first);
         let sealed_day = DAY + i64::from(!sealed_first);
         for day in [raw_day, sealed_day] {
+            // A day begun by a release writing an older version starts over.
             if day == raw_day && version < 4 {
-                fs::write(
-                    day_path(&dir, day),
-                    if version == 2 { LEGACY_MAGIC } else { MAGIC_V3 },
-                )
-                .unwrap();
+                fs::write(day_path(&dir, day), [b'A', b'R', b'G', b'H', version]).unwrap();
             }
             let mut rec = HistoryRecorder::new(dir.clone());
             let start = if day == DAY { DAY_MS - 2 * M } else { 0 };
@@ -436,33 +433,14 @@ fn damaged_process_blocks_preserve_events_and_damaged_system_minutes_break_runs(
 }
 
 #[test]
-fn legacy_combined_disk_survives_compaction_and_network_direction_stays_unknown() {
-    for magic in [LEGACY_MAGIC, MAGIC_V3] {
-        let dir = temp_dir(&format!("event-legacy-rates-{}", magic[4]));
-        fs::create_dir_all(&dir).unwrap();
-        let mut bytes = magic.to_vec();
-        for n in 0..3 {
-            bytes.push(TAG_FRAME);
-            let mut h = [0; FRAME_HEAD];
-            h[..8].copy_from_slice(&(BASE + n * M).to_le_bytes());
-            h[36..44].copy_from_slice(&(80_u64 << 20).to_le_bytes());
-            h[44..52].copy_from_slice(&(100_u64 << 20).to_le_bytes());
-            bytes.extend(h);
-        }
-        fs::write(day_path(&dir, DAY), bytes).unwrap();
-        for sealed in [false, true] {
-            if sealed {
-                minute::merge(&dir, DAY, 0).unwrap();
-            }
-            assert_eq!(
-                query(&dir, BASE, BASE + 3 * M),
-                [
-                    json!({"kind":"disk","from":BASE,"to":BASE+3*M,"peak":80.*MB,"peakAt":BASE,"top":null})
-                ]
-            );
-        }
-        fs::remove_dir_all(dir).unwrap();
-    }
+fn days_of_other_versions_give_no_events() {
+    let dir = temp_dir("event-other-version");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(day_path(&dir, DAY), b"ARGH\x02\x02\x00\x00\x00\x00").unwrap();
+    assert!(query(&dir, BASE, BASE + 3 * M).is_empty());
+    assert!(minute::merge(&dir, DAY, 0).is_err());
+    assert!(query(&dir, BASE, BASE + 3 * M).is_empty());
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

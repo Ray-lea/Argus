@@ -3,17 +3,6 @@ use super::*;
 const DAY: i64 = 20_737;
 const TS: i64 = DAY * DAY_MS;
 
-fn legacy(magic: &[u8; 5], entry: usize) -> Vec<u8> {
-    let mut bytes = magic.to_vec();
-    bytes.extend([TAG_NAME, 0, 0, 1, b'p', TAG_FRAME]);
-    let mut head = [0; FRAME_HEAD];
-    head[..8].copy_from_slice(&TS.to_le_bytes());
-    head[60] = 1;
-    bytes.extend(head);
-    bytes.resize(bytes.len() + entry, 0);
-    bytes
-}
-
 fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     let path = day_path(dir, DAY);
     let mut main = MAGIC.to_vec();
@@ -332,38 +321,36 @@ fn a_corrupt_process_frame_never_replaces_the_source_day() {
 }
 
 #[test]
-fn merged_legacy_frames_keep_identity_and_cover_a_minute_boundary() {
-    for (magic, entry, created) in [
-        (LEGACY_MAGIC, ENTRY, None),
-        (MAGIC_V3, ENTRY_V3, Some(123_i64)),
-    ] {
-        let dir = temp_dir(&format!("merge-legacy-{}", magic[4]));
-        fs::create_dir_all(&dir).unwrap();
-        let mut bytes = legacy(magic, entry);
-        let ts = TS + 58_000;
-        let head = 11;
-        bytes[head..head + 8].copy_from_slice(&ts.to_le_bytes());
-        if let Some(created) = created {
-            let at = head + FRAME_HEAD + ENTRY;
-            bytes[at..at + 8].copy_from_slice(&created.to_le_bytes());
-        }
-        fs::write(day_path(&dir, DAY), bytes).unwrap();
-        minute::merge(&dir, DAY, 0).unwrap();
-        assert_eq!(frame(&dir, TS).unwrap().processes[0].create_time, created);
-        assert_eq!(
-            table(&dir, TS + 59_000, TS + 61_000, "cpu", 0).recorded,
-            2000
-        );
-        assert_eq!(legacy_series(&dir, TS + 61_000, TS + 62_000, 2).len(), 1);
-        fs::remove_dir_all(dir).unwrap();
-    }
+fn days_of_other_versions_are_neither_read_nor_merged() {
+    let dir = temp_dir("other-version-merge");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    fs::write(&path, b"ARGH\x03\x02\x00\x00\x00\x00").unwrap();
+    assert!(!minute::is_current(&path));
+    assert!(minute::merge(&dir, DAY, 0).is_err());
+    assert!(!path.with_extension("merge-tmp").exists());
+    maintenance::maintain_at(
+        &dir,
+        HistoryOptions {
+            detail: HistoryDetail::Minute7,
+            ..Default::default()
+        },
+        DAY + 8,
+        DAY + 8,
+        || false,
+    )
+    .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"ARGH\x03\x02\x00\x00\x00\x00");
+    assert!(frame(&dir, TS).is_none());
+    assert!(table(&dir, TS, TS + 60_000, "cpu", 0).processes.is_empty());
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
 fn damaged_files_through_queries_and_reopen() {
     let disk_only = std::env::var("ARGUS_HISTORY_TEST_REAL_FILES").is_ok_and(|v| v == "1");
     std::thread::scope(|scope| {
-        for kind in 0usize..7 {
+        for kind in 2usize..7 {
             for lane in 0..2 {
                 scope.spawn(move || {
                     let dir = temp_dir(&format!("damage-{kind}-{lane}"));
@@ -371,13 +358,6 @@ fn damaged_files_through_queries_and_reopen() {
                     let path = day_path(&dir, DAY);
                     let mut files = v4_files(&dir);
                     let which = if kind == 6 { 0 } else { kind.saturating_sub(2) };
-                    if kind < 2 {
-                        files[0] = if kind == 0 {
-                            legacy(LEGACY_MAGIC, ENTRY)
-                        } else {
-                            legacy(MAGIC_V3, ENTRY_V3)
-                        };
-                    }
                     let paths = ["hist", "proc", "idx", "roll"].map(|ext| path.with_extension(ext));
                     if kind == 6 {
                         for (p, b) in paths.iter().zip(&files) {
@@ -397,15 +377,11 @@ fn damaged_files_through_queries_and_reopen() {
                         for (i, p) in paths.iter().enumerate() {
                             let bytes = if i == which {
                                 rng.damage(&files[i], case)
-                            } else if kind >= 2 {
+                            } else if kind == 2 && i == 2 {
                                 // Exercise primary damage without an intact checkpoint masking it.
-                                if kind == 2 && i == 2 {
-                                    Vec::new()
-                                } else {
-                                    files[i].clone()
-                                }
+                                Vec::new()
                             } else {
-                                continue;
+                                files[i].clone()
                             };
                             let mut file = open_writable(p).unwrap();
                             file.set_len(0).unwrap();

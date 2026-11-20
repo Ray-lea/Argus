@@ -15,6 +15,16 @@ pub(super) const SEALED: u8 = 12;
 pub(super) const EDGES: u8 = 13;
 pub(super) const SEAL: &[u8] = b"minute-day";
 
+/// Whether a day file is in the format still written (v4), the one a day is
+/// merged from: a day of another version is neither read nor merged.
+pub(super) fn is_current(path: &Path) -> bool {
+    let mut magic = [0; 5];
+    fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut magic))
+        .is_ok()
+        && &magic == MAGIC
+}
+
 pub(super) fn is_merged(path: &Path) -> io::Result<bool> {
     let mut magic = [0; 5];
     let mut f = fs::File::open(path)?;
@@ -357,19 +367,16 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
         valid: 5,
         ..Default::default()
     };
-    if &magic == MAGIC {
-        let mut bytes = Vec::new();
-        (&mut primary).take(len as u64).read_to_end(&mut bytes)?;
-        idx.scan(
-            &bytes,
-            fs::metadata(path.with_extension("proc"))?.len(),
-            None,
-        );
-    } else if &magic == LEGACY_MAGIC || &magic == MAGIC_V3 {
-        idx.legacy(&mut primary, len)?;
-    } else {
+    if &magic != MAGIC {
         return Err(invalid());
     }
+    let mut bytes = Vec::new();
+    (&mut primary).take(len as u64).read_to_end(&mut bytes)?;
+    idx.scan(
+        &bytes,
+        fs::metadata(path.with_extension("proc"))?.len(),
+        None,
+    );
     drop(primary);
     if idx.valid != len || idx.limited || idx.frames.is_empty() {
         return Err(invalid());
@@ -390,11 +397,10 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
                 packet(&mut out, CHANNEL, &serde_json::to_vec(&(i, c))?)?;
             }
         }
-        let mut ids = idx.ids.clone();
+        let ids = idx.ids.clone();
         for (i, id) in ids.iter().enumerate() {
             packet(&mut out, INSTANCE, &serde_json::to_vec(&(i, id))?)?;
         }
-        let mut legacy_ids = HashMap::new();
         let mut agg = Aggregate {
             bands: vec![Band::default(); idx.catalog.rows.len()],
             present: vec![0; idx.catalog.rows.len().div_ceil(8)],
@@ -422,42 +428,10 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
                     return Err(invalid());
                 }
                 let frame_end = (ts + row.span()).min(next);
-                let rows = if let Reading::New(f, _) = &row {
-                    d.metrics(f).ok_or_else(invalid)?
-                } else {
-                    let mut rows = Vec::new();
-                    for p in d.processes(i) {
-                        let id = Identity {
-                            name: p.name.into(),
-                            pid: p.pid,
-                            created: p.create_time.unwrap_or_default(),
-                        };
-                        let local = if let Some(&i) = legacy_ids.get(&id) {
-                            i
-                        } else {
-                            if ids.len() >= MAX_INSTANCES {
-                                return Err(invalid());
-                            }
-                            let i = ids.len();
-                            packet(&mut out, INSTANCE, &serde_json::to_vec(&(i, &id))?)?;
-                            ids.push(id.clone());
-                            legacy_ids.insert(id, i);
-                            i
-                        };
-                        rows.push((
-                            local,
-                            Metrics {
-                                cpu: p.cpu.into(),
-                                gpu: p.gpu.into(),
-                                mem: p.mem,
-                                io: p.io,
-                                net: p.net,
-                                ..Default::default()
-                            },
-                        ));
-                    }
-                    rows
+                let Reading::New(f, _) = &row else {
+                    return Err(invalid());
                 };
+                let rows = d.metrics(f).ok_or_else(invalid)?;
                 let mut ts = ts;
                 while ts < frame_end {
                     let slot = align(ts, 0, MINUTE_MS);

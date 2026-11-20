@@ -78,7 +78,12 @@ pub(super) fn maintain_at(
         remove_if_exists(&path.with_extension("merge-tmp"))?;
         match minute::is_merged(&path) {
             Ok(true) => remove_sidecars(&path)?,
-            Ok(false) if age.is_some_and(|n| day < today.saturating_sub(n)) => candidates.push(day),
+            Ok(false)
+                if age.is_some_and(|n| day < today.saturating_sub(n))
+                    && minute::is_current(&path) =>
+            {
+                candidates.push(day)
+            }
             Ok(false) => (),
             Err(e) => crate::diagnostics::file_failure("history minute recovery", &path, &e),
         }
