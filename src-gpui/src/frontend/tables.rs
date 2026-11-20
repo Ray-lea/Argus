@@ -4,6 +4,9 @@ mod body;
 mod cell_text;
 mod cells;
 mod groups;
+/// A category heading's tint and its count's, for lists drawn like the
+/// process list's groups (the history page's table).
+pub(in crate::frontend) use groups::{COUNT_TINT, HEADING_TINT};
 mod header;
 pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};

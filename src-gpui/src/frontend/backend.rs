@@ -516,6 +516,7 @@ impl Desktop {
             .collect();
         self.tree_expanded
             .retain(|key| self.first_seen.contains_key(key));
+        self.history_learn_kinds();
         if !previous.is_null() {
             cx.background_executor()
                 .spawn(async move { drop(previous) })

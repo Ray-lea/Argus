@@ -3,7 +3,7 @@
 //! columns chosen for each mode, a search, and a trend over the window that
 //! follows the topmost lane's reading. A row's menu lays its curve over the
 //! lanes, goes to the live process or copies its name and PIDs.
-use super::state::TableMode;
+use super::state::{Section, TableMode};
 use super::*;
 use widgets::Tone;
 
@@ -155,6 +155,13 @@ pub(super) fn format_process(key: &str, value: f64, bits: bool) -> String {
         "net" => charts::net_rate(value, bits),
         _ => format!("{}%", theme::cpu(value)),
     }
+}
+
+/// A line of the table: a category's heading (its groups, whether it is
+/// open), or a group.
+enum Entry {
+    Heading(Section, Vec<usize>, bool),
+    Row(usize),
 }
 
 /// A group of instances with one name, and its values in the shown columns.
@@ -380,6 +387,20 @@ impl Desktop {
             }
         };
         let sort_index = shown.iter().position(|c| c.key == sort_key);
+        // Every running process is at hand live: the busiest are listed, by
+        // the column sorted on (by CPU when sorted by name), in its order.
+        if live && groups.len() > LIVE_GROUPS {
+            let busy = |group: &Group| match sort_index {
+                Some(i) => group.values[i].unwrap_or(f64::NEG_INFINITY),
+                None => group
+                    .instances
+                    .iter()
+                    .filter_map(|process| value_of(process, "cpu"))
+                    .sum(),
+            };
+            groups.sort_by(|a, b| busy(b).total_cmp(&busy(a)));
+            groups.truncate(LIVE_GROUPS);
+        }
         groups.sort_by(|a, b| {
             let order = match sort_index {
                 Some(i) => a.values[i]
@@ -389,9 +410,44 @@ impl Desktop {
             };
             if descending { order.reverse() } else { order }
         });
-        // Every running process is at hand live: the busiest are listed.
-        if live {
-            groups.truncate(LIVE_GROUPS);
+        // Sorted by name, as on the process page, the rows fall under its
+        // categories, each under a heading that folds it (a search shows every
+        // match). Running instances say what they are; records are sorted by
+        // what their names were seen to be (`state::Kinds`).
+        let section_of = |group: &Group| {
+            if live {
+                Section::of(
+                    group
+                        .instances
+                        .iter()
+                        .any(|process| boolean(process, "appWindow")),
+                    group
+                        .instances
+                        .iter()
+                        .all(|process| boolean(process, "windowsProcess")),
+                )
+            } else {
+                self.history.kinds.section(&group.name)
+            }
+        };
+        let searching = !search.is_empty();
+        let mut entries = Vec::new();
+        if sort_index.is_none() {
+            for section in Section::ALL {
+                let members = (0..groups.len())
+                    .filter(|i| section_of(&groups[*i]) == section)
+                    .collect::<Vec<_>>();
+                if members.is_empty() {
+                    continue;
+                }
+                let open = searching || !self.history.folded.contains(section.key());
+                entries.push(Entry::Heading(section, members.clone(), open));
+                if open {
+                    entries.extend(members.into_iter().map(Entry::Row));
+                }
+            }
+        } else {
+            entries.extend((0..groups.len()).map(Entry::Row));
         }
         let format = |column: &Column, value: Option<f64>| -> String {
             if column.key == "net" && net_missing {
@@ -578,7 +634,107 @@ impl Desktop {
                 ),
             ]
         };
-        for group in &groups {
+        for entry in entries {
+            let group = match entry {
+                Entry::Row(index) => &groups[index],
+                Entry::Heading(section, members, open) => {
+                    // The category's colour, name and count, and its totals.
+                    let key = section.key();
+                    let tone = match section {
+                        Section::Apps => p.group_apps,
+                        Section::Background => p.group_background,
+                        Section::Windows => p.group_windows,
+                    };
+                    let instances = members
+                        .iter()
+                        .flat_map(|i| groups[*i].instances.iter().copied())
+                        .collect::<Vec<_>>();
+                    let mut line = div()
+                        .id(SharedString::from(format!("history-section-{key}")))
+                        .flex()
+                        .flex_shrink_0()
+                        .h(px(ROW))
+                        .items_center()
+                        .px(px(6.))
+                        .bg(tone.opacity(tables::HEADING_TINT))
+                        .when(!searching, |d| d.cursor_pointer())
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(200.))
+                                .px(px(8.))
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .w(px(16.))
+                                        .h(px(16.))
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .when(searching, |d| d.opacity(0.4))
+                                        .child(
+                                            icon(
+                                                if open { "ChevronDown" } else { "ChevronRight" },
+                                                p.muted,
+                                            )
+                                            .size(px(13.)),
+                                        ),
+                                )
+                                .child(div().size(px(8.)).flex_shrink_0().rounded(px(2.)).bg(tone))
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .font_weight(theme::LABEL_WEIGHT)
+                                        .text_color(p.ink)
+                                        .child(label(&format!("processes.section.{key}"))),
+                                )
+                                .child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .min_w(px(22.))
+                                        .px(px(7.))
+                                        .rounded_full()
+                                        .bg(tone.opacity(tables::COUNT_TINT))
+                                        .text_color(tone.blend(p.ink.opacity(0.22)))
+                                        .text_size(theme::font(11.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .line_height(px(18.))
+                                        .flex()
+                                        .justify_center()
+                                        .child(members.len().to_string()),
+                                ),
+                        );
+                    if has_trend {
+                        line = line.child(div().w(px(TREND_WIDTH)).flex_shrink_0());
+                    }
+                    for (column, value) in shown.iter().zip(aggregate(&instances)) {
+                        line = line.child(cell(
+                            column.width,
+                            0.,
+                            column.key == "net" && net_missing,
+                            format(column, value),
+                        ));
+                    }
+                    body = body.child(line.on_click(cx.listener(move |this, _, window, cx| {
+                        // A search shows every match: nothing folds meanwhile.
+                        if searching {
+                            return;
+                        }
+                        if !this.history.folded.remove(key) {
+                            this.history.folded.insert(key.to_owned());
+                        }
+                        let mut folded = this.history.folded.iter().cloned().collect::<Vec<_>>();
+                        folded.sort();
+                        this.prefs.set("history.foldedSections", folded);
+                        this.history_redraw(window, cx);
+                    })));
+                    continue;
+                }
+            };
             let expandable = group.instances.len() > 1;
             let expanded = expandable && self.history.expanded.contains(&group.name);
             let icon_process = by_name.get(&group.name.to_lowercase()).copied();

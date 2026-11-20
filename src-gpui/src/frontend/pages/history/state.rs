@@ -282,6 +282,10 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) frame_at: Option<i64>,
     /// Table rows expanded to their instances, by name.
     pub(super) expanded: std::collections::HashSet<String>,
+    /// What each process name is, for the table's categories, and the
+    /// categories folded (`history.foldedSections`).
+    pub(super) kinds: Kinds,
+    pub(super) folded: std::collections::HashSet<String>,
     /// The table's selected row (name, or name and PID).
     pub(super) selected: Option<String>,
     /// The processes the tooltip ranks, for the point (start, span) they were asked for.
@@ -300,6 +304,113 @@ pub(in crate::frontend) struct HistoryState {
 /// A range-table query's window and trend: from, to, the trend's reading and
 /// how many points it has.
 pub(super) type RangeAsked = (i64, i64, &'static str, usize);
+
+/// The process page's categories, which the table takes when sorted by name.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Section {
+    Apps,
+    Background,
+    Windows,
+}
+
+impl Section {
+    pub(super) const ALL: [Section; 3] = [Section::Apps, Section::Background, Section::Windows];
+
+    pub(super) fn key(self) -> &'static str {
+        match self {
+            Section::Apps => "apps",
+            Section::Background => "background",
+            Section::Windows => "windows",
+        }
+    }
+
+    /// The category of running instances, as the process page decides it:
+    /// an app when one owns a taskbar window, Windows' own when all are.
+    pub(super) fn of(app: bool, windows: bool) -> Self {
+        if app {
+            Section::Apps
+        } else if windows {
+            Section::Windows
+        } else {
+            Section::Background
+        }
+    }
+}
+
+/// What the process names seen running are, so that the table sorts records
+/// into the process page's categories, which they do not keep: names that
+/// owned a taskbar window at some point, and names whose running instances
+/// were all Windows' own when last seen. Learned from the samples and kept
+/// in the preferences (`history.kinds`), so that programs no longer running
+/// sort the same; a name never seen counts as a background process.
+#[derive(Default)]
+pub(super) struct Kinds {
+    apps: std::collections::HashSet<String>,
+    windows: std::collections::HashSet<String>,
+    pub(super) loaded: bool,
+}
+
+impl Kinds {
+    /// The most names kept of each kind.
+    const MOST: usize = 2000;
+
+    pub(super) fn from_saved(saved: &Value) -> Self {
+        let names = |key: &str| {
+            saved[key]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .take(Self::MOST)
+                .map(str::to_lowercase)
+                .collect()
+        };
+        Self {
+            apps: names("apps"),
+            windows: names("windows"),
+            loaded: true,
+        }
+    }
+
+    pub(super) fn saved(&self) -> Value {
+        let sorted = |set: &std::collections::HashSet<String>| {
+            let mut names = set.iter().cloned().collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        json!({"apps": sorted(&self.apps), "windows": sorted(&self.windows)})
+    }
+
+    /// Notes what the instances of `name` running now are. True when that
+    /// changed what the name is.
+    pub(super) fn note(&mut self, name: &str, app: bool, windows: bool) -> bool {
+        let name = name.to_lowercase();
+        let mut changed = false;
+        if app && !self.apps.contains(&name) && self.apps.len() < Self::MOST {
+            self.apps.insert(name.clone());
+            changed = true;
+        }
+        if windows {
+            if !self.windows.contains(&name) && self.windows.len() < Self::MOST {
+                self.windows.insert(name);
+                changed = true;
+            }
+        } else {
+            changed |= self.windows.remove(&name);
+        }
+        changed
+    }
+
+    pub(super) fn section(&self, name: &str) -> Section {
+        let name = name.to_lowercase();
+        Section::of(self.apps.contains(&name), self.windows.contains(&name))
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.apps.clear();
+        self.windows.clear();
+    }
+}
 
 impl Default for HistoryState {
     fn default() -> Self {
@@ -346,6 +457,8 @@ impl Default for HistoryState {
             overview_asked: None,
             frame_at: None,
             expanded: Default::default(),
+            kinds: Kinds::default(),
+            folded: Default::default(),
             selected: None,
             tip: None,
             tip_for: None,
@@ -776,11 +889,31 @@ impl HistoryState {
 
 #[cfg(test)]
 mod tests {
-    use super::{HistoryState, Range, TableMode};
+    use super::{HistoryState, Kinds, Range, Section, TableMode};
     use crate::frontend::pages::history::series::{HOUR, MINUTE, SECOND};
     use std::time::Duration;
 
     const NOW: i64 = 1_800_000_000_000;
+
+    #[test]
+    fn names_keep_the_category_they_were_seen_in() {
+        let mut kinds = Kinds::default();
+        assert!(kinds.note("Code.exe", true, false));
+        assert!(kinds.note("svchost.exe", false, true));
+        assert!(
+            !kinds.note("code.exe", false, false),
+            "an app stays one once it had a window"
+        );
+        assert_eq!(kinds.section("CODE.EXE"), Section::Apps);
+        assert_eq!(kinds.section("svchost.exe"), Section::Windows);
+        assert_eq!(kinds.section("never-seen.exe"), Section::Background);
+        // Windows' own only while every instance seen is.
+        assert!(kinds.note("svchost.exe", false, false));
+        assert_eq!(kinds.section("svchost.exe"), Section::Background);
+        let restored = Kinds::from_saved(&kinds.saved());
+        assert_eq!(restored.section("code.exe"), Section::Apps);
+        assert!(restored.loaded);
+    }
 
     #[test]
     fn following_ties_the_window_to_the_clock_and_zoom_keeps_its_end() {

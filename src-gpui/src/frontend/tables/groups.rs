@@ -19,8 +19,8 @@ const NAME_HEIGHT: f32 = 24.;
 const NAME_HOLD: Duration = Duration::from_secs(1);
 const NAME_FADE: Duration = Duration::from_millis(180);
 /// A heading's tint over the list, and of the count beside its title.
-pub(super) const HEADING_TINT: f32 = 0.08;
-pub(super) const COUNT_TINT: f32 = 0.18;
+pub(in crate::frontend) const HEADING_TINT: f32 = 0.08;
+pub(in crate::frontend) const COUNT_TINT: f32 = 0.18;
 
 /// A heading's colour.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

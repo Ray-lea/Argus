@@ -513,6 +513,8 @@ impl Desktop {
                     "power": process["power"],
                     "threads": process["threads"],
                     "handles": process["handles"],
+                    "appWindow": process["appWindow"],
+                    "windowsProcess": process["windowsProcess"],
                 })
             })
             .collect()
@@ -540,7 +542,49 @@ impl Desktop {
             .prefs
             .get::<f64>("history.split", 0.6)
             .clamp(0.34, 0.82) as f32;
+        self.history.folded = self
+            .prefs
+            .get::<Vec<String>>("history.foldedSections", Vec::new())
+            .into_iter()
+            .collect();
         self.history_catalogue();
+    }
+
+    /// Notes what the running programs are (`state::Kinds`) for the table's
+    /// categories, keeping the names when that changed: with every sample, as
+    /// a program may open its first window at any time.
+    pub(in crate::frontend) fn history_learn_kinds(&mut self) {
+        if !self.history.kinds.loaded {
+            self.history.kinds =
+                state::Kinds::from_saved(&self.prefs.get::<Value>("history.kinds", Value::Null));
+        }
+        // Per name: whether one instance owns a taskbar window, whether all
+        // are Windows' own.
+        let mut by_name: HashMap<&str, (bool, bool)> = HashMap::new();
+        for process in values(&self.snapshot["processes"]) {
+            let name = text(process, "name");
+            if name.is_empty() {
+                continue;
+            }
+            let entry = by_name.entry(name).or_insert((false, true));
+            entry.0 |= boolean(process, "appWindow");
+            entry.1 &= boolean(process, "windowsProcess");
+        }
+        let mut changed = false;
+        for (name, (app, windows)) in by_name {
+            changed |= self.history.kinds.note(name, app, windows);
+        }
+        if changed {
+            self.prefs.set("history.kinds", self.history.kinds.saved());
+        }
+    }
+
+    /// Forgets the names learned (history cleared); the running programs are
+    /// learned again from the next sample.
+    pub(in crate::frontend) fn history_forget_kinds(&mut self) {
+        self.history.kinds.clear();
+        self.history.kinds.loaded = true;
+        self.prefs.set("history.kinds", Value::Null);
     }
 
     /// The readings there are, from what was recorded.

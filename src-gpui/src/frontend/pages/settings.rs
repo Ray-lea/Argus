@@ -3714,6 +3714,8 @@ impl Desktop {
             }
             "clear_history" => {
                 self.ui.busy.remove("clearHistory");
+                // What the programs seen were goes with the records.
+                self.history_forget_kinds();
                 let generation = self
                     .data
                     .get("watchGeneration")
