@@ -8,7 +8,7 @@
   },
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
-  "note": "Las lecturas y los procesos más activos se registran cada 5 segundos, con lecturas por segundo de los últimos 10 minutos; minimizado o en la bandeja, al intervalo de actualización de allí si es más largo. Se conservan 7 días.",
+  "note": "Las lecturas y los procesos más activos se registran cada 5 segundos, con lecturas por segundo de los últimos 10 minutos; minimizado o en la bandeja, al intervalo de actualización de allí si es más largo.",
   "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
   "watch": {
     "title": "Observación de proceso",
@@ -85,7 +85,8 @@
     "showTitle": "Mostrar en la pista actual",
     "addTitle": "Agregar una pista",
     "overlayTitle": "Superponer una segunda lectura (eje derecho)",
-    "foot": "Haga clic para mostrarla en esta pista; haga clic en + o arrástrela al gráfico para agregar una pista"
+    "foot": "Haga clic para mostrarla en esta pista; haga clic en + o arrástrela al gráfico para agregar una pista",
+    "byService": "Lo proporciona el servicio privilegiado"
   },
   "group": {
     "cpu": "Procesador",
@@ -287,5 +288,12 @@
   },
   "copy": {
     "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Elija una carpeta con permiso de escritura indicada con su ruta completa; la ubicación nueva y la actual no pueden contenerse entre sí.",
+    "move": "No se pudo mover el historial. Compruebe si el destino tiene archivos con el mismo nombre y los permisos de acceso de ambas carpetas.",
+    "save": "No se pudo guardar la configuración del historial.",
+    "open": "No se pudo abrir la carpeta del historial en el Explorador de archivos.",
+    "clear": "No se pudo borrar el historial. Compruebe los permisos de la carpeta y si hay archivos en uso."
   }
 }

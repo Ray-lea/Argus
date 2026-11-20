@@ -8,7 +8,7 @@
   },
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
-  "note": "Readings and the busiest processes are recorded every 5 seconds, plus per-second readings for the last 10 minutes; at the minimized or tray refresh rate when that is slower. Kept for 7 days.",
+  "note": "Readings and the busiest processes are recorded every 5 seconds, plus per-second readings for the last 10 minutes; at the minimized or tray refresh rate when that is slower.",
   "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
@@ -85,7 +85,8 @@
     "showTitle": "Show in the current lane",
     "addTitle": "Add a lane",
     "overlayTitle": "Overlay a second reading (right axis)",
-    "foot": "Click to show in this lane; click + or drag a reading onto the chart to add a lane"
+    "foot": "Click to show in this lane; click + or drag a reading onto the chart to add a lane",
+    "byService": "Provided by the privileged service"
   },
   "group": {
     "cpu": "Processor",
@@ -284,5 +285,12 @@
   },
   "copy": {
     "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Choose a writable folder given by its full path; the new and the current location cannot contain each other.",
+    "move": "Could not move the history. Check whether the destination has files with the same names, and the access rights of both folders.",
+    "save": "Could not save the history settings.",
+    "open": "Could not open the history folder in File Explorer.",
+    "clear": "Could not clear the history. Check the folder’s permissions and whether its files are in use."
   }
 }

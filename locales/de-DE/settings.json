@@ -310,8 +310,8 @@
     },
     "history": {
       "title": "Verlauf aufzeichnen",
-      "on": "Zeichnet die Ressourcennutzung und die am stärksten ausgelasteten Prozesse alle 5 Sekunden auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben 7 Tage ausschließlich auf diesem PC und sind unter „Verlauf“ verfügbar.",
-      "off": "Aus. Vorhandene Datensätze verfallen nach 7 Tagen oder können jetzt gelöscht werden.",
+      "on": "Zeichnet die Ressourcennutzung und die am stärksten ausgelasteten Prozesse alle 5 Sekunden auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben ausschließlich auf diesem PC und sind unter „Verlauf“ verfügbar.",
+      "off": "Aus. Vorhandene Datensätze werden weiterhin nach den Aufbewahrungsgrenzen entfernt oder können jetzt gelöscht werden.",
       "error": "Die Verlaufseinstellung konnte nicht geändert werden: {error}",
       "saved": "Gespeicherter Verlauf",
       "counting": "Berechnung…",
@@ -324,7 +324,97 @@
         "body": "Der gesamte aufgezeichnete Verlauf ({size}) wird gelöscht. Dies kann nicht rückgängig gemacht werden."
       },
       "cleared": "Verlauf gelöscht.",
-      "clearError": "Der Verlauf konnte nicht gelöscht werden: {error}"
+      "clearError": "Der Verlauf konnte nicht gelöscht werden: {error}",
+      "record": {
+        "title": "Aufgezeichnete Werte",
+        "desc": "Alles, was aufgezeichnet werden kann, ist standardmäßig aktiv; Werte, die den privilegierten Dienst benötigen, werden aufgezeichnet, sobald er verfügbar ist.",
+        "always": "Systemwerte",
+        "alwaysDesc": "Gesamtwerte von CPU, Arbeitsspeicher, Datenträgern, Netzwerk, GPU und Akku",
+        "alwaysBadge": "Immer aufgezeichnet",
+        "cpuExtra": "Prozessor",
+        "cpuExtraDesc": "Kernelzeit, Geschwindigkeit, Paketleistung",
+        "sensors": "Sensoren",
+        "sensorsDesc": "CPU-Temperatur, Kernspannung, Lüfterdrehzahlen und Gerätetemperaturen",
+        "memoryDetail": "Arbeitsspeicher im Detail",
+        "memoryDetailDesc": "Zugesichert, im Cache, komprimiert, ausgelagerter und nicht ausgelagerter Pool",
+        "counts": "Systemzähler",
+        "countsDesc": "Prozesse, Threads, Handles",
+        "disks": "Jeder Datenträger",
+        "disksDesc": "Lese- und Schreibrate, Aktivzeit, durchschnittliche Antwortzeit",
+        "nics": "Jeder Netzwerkadapter",
+        "nicsDesc": "Empfangs- und Senderate",
+        "gpus": "Jede GPU",
+        "gpusDesc": "Auslastung, dedizierter GPU-Speicher, Leistung",
+        "batteryDetail": "Akku im Detail",
+        "batteryDetailDesc": "Spannung und Temperatur",
+        "processDisk": "Prozesse: Datenträger",
+        "processDiskDesc": "Lese- und Schreibrate jedes aufgezeichneten Prozesses",
+        "processNetwork": "Prozesse: Netzwerk",
+        "processNetworkDesc": "Sende- und Empfangsrate jedes aufgezeichneten Prozesses",
+        "processGpu": "Prozesse: GPU-Speicher und Zähler",
+        "processGpuDesc": "Dedizierter GPU-Speicher, Threads, Handles",
+        "processes": "Prozesse pro Frame",
+        "processesDesc": "Mehr Prozesse machen Bereichsranglisten vollständiger und die Aufzeichnung größer",
+        "processes20": "Etwa 20 (Standard)",
+        "processes40": "Etwa 40",
+        "processes0": "Alle aktiven Prozesse",
+        "estimate": "Mit dieser Auswahl belegt ein ganzer Tag Aufzeichnung etwa {size}; solange Argus nicht läuft oder der PC im Energiesparmodus ist, wird nichts aufgezeichnet."
+      },
+      "limit": {
+        "title": "Aufbewahrungsgrenzen",
+        "time": "Zeit",
+        "space": "Speicherplatz",
+        "none": "Unbegrenzt",
+        "year": "1 Jahr",
+        "days": {
+          "one": "{count} Tag",
+          "other": "{count} Tage"
+        },
+        "desc": "Sind beide gesetzt, gilt die zuerst erreichte Grenze; die ältesten Tage werden zuerst entfernt.",
+        "estimate": {
+          "one": "Mit der aktuellen Aufzeichnung wird etwa {count} Tag aufbewahrt ({by}, etwa {size}).",
+          "other": "Mit der aktuellen Aufzeichnung werden etwa {count} Tage aufbewahrt ({by}, etwa {size})."
+        },
+        "byTime": "durch die Zeit begrenzt",
+        "bySpace": "durch den Speicherplatz begrenzt",
+        "unbounded": "Ohne beide Grenzen wächst der Verlauf unbegrenzt.",
+        "confirmTitle": "Aufbewahrungsgrenze verringern?",
+        "confirmBody": "Verlauf jenseits der neuen Grenze wird entfernt, die ältesten Tage zuerst. Dies kann nicht rückgängig gemacht werden.",
+        "apply": "Anwenden"
+      },
+      "detail": {
+        "title": "Genauigkeit älterer Aufzeichnungen",
+        "full": "Alle 5-Sekunden-Aufzeichnungen behalten",
+        "minute7": "Nach 7 Tagen eine pro Minute",
+        "minute30": "Nach 30 Tagen eine pro Minute",
+        "fullDesc": "Jeder 5-Sekunden-Frame bleibt erhalten.",
+        "mergedDesc": "Zusammengefasste Tage behalten Mittelwert, Höchstwert und die aktivsten Prozesse jeder Minute bei etwa einem Achtel der Größe; kurze Schwankungen innerhalb einer Minute bleiben nicht erhalten.",
+        "confirmTitle": "Ältere Aufzeichnungen zusammenfassen?",
+        "confirmBody": {
+          "one": "Aufzeichnungen, die älter als {count} Tag sind, werden zu einem Frame pro Minute zusammengefasst; nur Mittelwerte, Höchstwerte und die aktivsten Prozesse bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
+          "other": "Aufzeichnungen, die älter als {count} Tage sind, werden zu einem Frame pro Minute zusammengefasst; nur Mittelwerte, Höchstwerte und die aktivsten Prozesse bleiben erhalten. Dies kann nicht rückgängig gemacht werden."
+        },
+        "merge": "Zusammenfassen"
+      },
+      "place": {
+        "title": "Speicherort",
+        "default": "(Standard)",
+        "open": "Öffnen",
+        "change": "Ändern…",
+        "reset": "Standard wiederherstellen",
+        "new": "Neuer Speicherort",
+        "records": "Vorhandene Aufzeichnungen ({size}) mitverschieben; sonst beginnt die Aufzeichnung am neuen Ort neu",
+        "pause": "Während des Verschiebens wird die Aufzeichnung angehalten und danach fortgesetzt.",
+        "moveAndChange": "Verschieben und ändern",
+        "changeOnly": "Speicherort ändern",
+        "moved": "Der Speicherort des Verlaufs wurde geändert."
+      },
+      "part": "{name} {size}",
+      "parts": {
+        "system": "Systemwerte",
+        "processes": "Prozesse",
+        "watch": "Beobachtungen"
+      }
     }
   },
   "rules": {

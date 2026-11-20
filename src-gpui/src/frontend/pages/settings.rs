@@ -45,7 +45,7 @@ const HOTKEY_QUIET_MS: u64 = 1_500;
 const HOTKEY_DONE_MS: u64 = 1_600;
 
 /// A short local time for "last checked" (month-day hour:minute).
-fn short_time(ms: i64) -> String {
+pub(super) fn short_time(ms: i64) -> String {
     let Ok(value) = time::OffsetDateTime::from_unix_timestamp(ms.div_euclid(1000)) else {
         return label("format.missing");
     };
@@ -242,7 +242,7 @@ impl Desktop {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn setting_card(
+    pub(in crate::frontend) fn setting_card(
         &self,
         id: &str,
         glyph: AnyElement,
@@ -1846,62 +1846,7 @@ impl Desktop {
             "settings.data.netUnit.desc",
             vec![units],
         ));
-        let history = boolean(settings, "history");
-        let toggle = self.setting_toggle(
-            "history",
-            history,
-            "set_history_enabled",
-            "enabled",
-            window,
-            cx,
-        );
-        cards.push(self.setting_text(
-            "history",
-            "HistoryIcon",
-            "settings.data.history.title",
-            if history {
-                "settings.data.history.on"
-            } else {
-                "settings.data.history.off"
-            },
-            vec![toggle],
-        ));
-        let usage = self.data.get("historyUsage").cloned();
-        let bytes = usage.as_ref().map(|u| number(u, "bytes")).unwrap_or(0.);
-        let usage_text = match &usage {
-            None => label("settings.data.history.counting"),
-            Some(_) if bytes <= 0. => label("settings.data.history.empty"),
-            Some(usage) => {
-                let size = theme::bytes(bytes, false);
-                match usage["first"].as_i64().filter(|t| *t > 0) {
-                    Some(first) => tr!(
-                        "settings.data.history.sizeSince",
-                        size = size,
-                        date = short_time(first)
-                    ),
-                    None => tr!("settings.data.history.size", size = size),
-                }
-            }
-        };
-        let clearing = self.ui.busy.contains("clearHistory");
-        let clear = self
-            .btn(
-                "clear-history",
-                label("settings.data.history.clear"),
-                Some("TrashIcon"),
-                Tone::Plain,
-            )
-            .inert(clearing || bytes <= 0.)
-            .on_click(cx.listener(|this, _, window, cx| this.clear_history(window, cx)))
-            .into_any_element();
-        cards.push(self.setting(
-            "savedHistory",
-            self.glyph("StorageIcon"),
-            label("settings.data.history.saved"),
-            Some(usage_text.into_any_element()),
-            None,
-            vec![clear],
-        ));
+        self.history_setting_cards(settings, cards, window, cx);
     }
 
     pub(in crate::frontend) fn clear_history(
@@ -3787,6 +3732,19 @@ impl Desktop {
                 self.data.remove("historyUsage");
                 self.request("history_usage", json!({}), Some("historyUsage"), window, cx);
             }
+            // What a day takes and what is kept follow the options.
+            "set_history_options" => {
+                self.request("history_usage", json!({}), Some("historyUsage"), window, cx);
+            }
+            "history_move" | "history_reset_dir" => {
+                self.ui.busy.remove("historyMove");
+                self.data.remove("historyMoveTo");
+                self.notify_toast(
+                    ToastKind::Success,
+                    label("settings.data.history.place.moved"),
+                );
+                self.request("history_usage", json!({}), Some("historyUsage"), window, cx);
+            }
             "set_hotkey" => {
                 if self.ui.hotkey.mode == HotkeyMode::Saving {
                     let saved = text(value, "hotkey").to_owned();
@@ -3955,9 +3913,16 @@ impl Desktop {
             "set_background_intervals" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.data.background.error"))
             }
-            "set_history_enabled" => {
+            "set_history_enabled" | "set_history_options" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.data.history.error"))
             }
+            // The host's message says what to check.
+            "history_move" | "history_reset_dir" => {
+                self.ui.busy.remove("historyMove");
+                self.notify_toast(ToastKind::Error, message.to_owned());
+                self.request("history_usage", json!({}), Some("historyUsage"), window, cx);
+            }
+            "history_open_dir" => self.notify_toast(ToastKind::Error, message.to_owned()),
             "set_rules" => self.notify_toast(ToastKind::Error, wrapped("settings.rules.error")),
             "set_update_settings" | "set_whats_new" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.update.error"))

@@ -12,6 +12,7 @@ mod lanes;
 mod navigator;
 mod readings;
 mod series;
+mod settings;
 mod state;
 mod table;
 

@@ -310,8 +310,8 @@
     },
     "history": {
       "title": "Registrar historial",
-      "on": "Registra el uso de recursos y los procesos de mayor consumo cada 5 segundos, o según el intervalo al minimizar o permanecer en la bandeja si es mayor. Los datos se guardan solo en este equipo durante 7 días y pueden consultarse en Historial.",
-      "off": "Desactivado. Los registros existentes caducan después de 7 días y también pueden borrarse ahora.",
+      "on": "Registra el uso de recursos y los procesos de mayor consumo cada 5 segundos, o según el intervalo al minimizar o permanecer en la bandeja si es mayor. Los datos se guardan solo en este equipo y pueden consultarse en Historial.",
+      "off": "Desactivado. Los registros existentes se siguen eliminando según los límites de conservación y también pueden borrarse ahora.",
       "error": "No se pudo cambiar la configuración del historial: {error}",
       "saved": "Historial guardado",
       "counting": "Calculando…",
@@ -324,7 +324,100 @@
         "body": "Se eliminará todo el historial registrado ({size}). Esta operación no se puede deshacer."
       },
       "cleared": "Historial borrado.",
-      "clearError": "No se pudo borrar el historial: {error}"
+      "clearError": "No se pudo borrar el historial: {error}",
+      "record": {
+        "title": "Qué registrar",
+        "desc": "Todo lo que puede registrarse está activado de forma predeterminada; las lecturas que requieren el servicio privilegiado se registran cuando está disponible.",
+        "always": "Lecturas del sistema",
+        "alwaysDesc": "Totales de CPU, memoria, discos, red, GPU y batería",
+        "alwaysBadge": "Siempre se registra",
+        "cpuExtra": "Procesador",
+        "cpuExtraDesc": "Tiempo de kernel, velocidad, potencia del paquete",
+        "sensors": "Sensores",
+        "sensorsDesc": "Temperatura de la CPU, voltaje de los núcleos, velocidad de los ventiladores y temperaturas de los dispositivos",
+        "memoryDetail": "Detalle de memoria",
+        "memoryDetailDesc": "Confirmada, en caché, comprimida, grupo paginado y no paginado",
+        "counts": "Recuentos del sistema",
+        "countsDesc": "Procesos, subprocesos, identificadores",
+        "disks": "Cada disco",
+        "disksDesc": "Velocidad de lectura y escritura, tiempo activo, tiempo medio de respuesta",
+        "nics": "Cada adaptador de red",
+        "nicsDesc": "Velocidad de recepción y envío",
+        "gpus": "Cada GPU",
+        "gpusDesc": "Uso, memoria de GPU dedicada, potencia",
+        "batteryDetail": "Detalle de batería",
+        "batteryDetailDesc": "Voltaje y temperatura",
+        "processDisk": "Procesos: disco",
+        "processDiskDesc": "Velocidad de lectura y escritura en disco de cada proceso registrado",
+        "processNetwork": "Procesos: red",
+        "processNetworkDesc": "Velocidad de envío y recepción de cada proceso registrado",
+        "processGpu": "Procesos: memoria de GPU y recuentos",
+        "processGpuDesc": "Memoria de GPU dedicada, subprocesos, identificadores",
+        "processes": "Procesos por fotograma",
+        "processesDesc": "Más procesos completan las clasificaciones por intervalo y agrandan el registro",
+        "processes20": "Unos 20 (predeterminado)",
+        "processes40": "Unos 40",
+        "processes0": "Todos los procesos activos",
+        "estimate": "Con esta selección, un día completo de registro ocupa unos {size}; no se registra nada mientras Argus no se ejecuta o el equipo está en suspensión."
+      },
+      "limit": {
+        "title": "Límites de conservación",
+        "time": "Tiempo",
+        "space": "Espacio",
+        "none": "Sin límite",
+        "year": "1 año",
+        "days": {
+          "one": "{count} día",
+          "many": "{count} días",
+          "other": "{count} días"
+        },
+        "desc": "Con ambos definidos, se aplica el primer límite alcanzado; se eliminan primero los días más antiguos.",
+        "estimate": {
+          "one": "Con el registro actual se conserva aproximadamente {count} día ({by}, unos {size}).",
+          "many": "Con el registro actual se conservan aproximadamente {count} días ({by}, unos {size}).",
+          "other": "Con el registro actual se conservan aproximadamente {count} días ({by}, unos {size})."
+        },
+        "byTime": "limitado por el tiempo",
+        "bySpace": "limitado por el espacio",
+        "unbounded": "Sin límite en ninguno de los dos, el historial sigue creciendo.",
+        "confirmTitle": "¿Reducir el límite de conservación?",
+        "confirmBody": "El historial que supere el nuevo límite se eliminará, empezando por los días más antiguos. No se puede deshacer.",
+        "apply": "Aplicar"
+      },
+      "detail": {
+        "title": "Detalle de los registros antiguos",
+        "full": "Conservar todos los registros de 5 segundos",
+        "minute7": "Uno por minuto tras 7 días",
+        "minute30": "Uno por minuto tras 30 días",
+        "fullDesc": "Se conservan todos los fotogramas de 5 segundos.",
+        "mergedDesc": "Los días combinados conservan el promedio, el máximo y los procesos más activos de cada minuto, con aproximadamente una octava parte del tamaño; los cambios breves dentro de un minuto ya no se conservan.",
+        "confirmTitle": "¿Combinar los registros antiguos?",
+        "confirmBody": {
+          "one": "Los registros de hace más de {count} día se combinarán en un fotograma por minuto y solo conservarán promedios, máximos y los procesos más activos. No se puede deshacer.",
+          "many": "Los registros de hace más de {count} días se combinarán en un fotograma por minuto y solo conservarán promedios, máximos y los procesos más activos. No se puede deshacer.",
+          "other": "Los registros de hace más de {count} días se combinarán en un fotograma por minuto y solo conservarán promedios, máximos y los procesos más activos. No se puede deshacer."
+        },
+        "merge": "Combinar"
+      },
+      "place": {
+        "title": "Ubicación",
+        "default": "(predeterminada)",
+        "open": "Abrir",
+        "change": "Cambiar…",
+        "reset": "Restaurar la predeterminada",
+        "new": "Nueva ubicación",
+        "records": "Mover también los registros existentes ({size}); si no, el registro empieza de nuevo en la nueva ubicación",
+        "pause": "El registro se pausa durante el traslado y se reanuda después.",
+        "moveAndChange": "Mover y cambiar",
+        "changeOnly": "Cambiar ubicación",
+        "moved": "Se cambió la ubicación del historial."
+      },
+      "part": "{name} {size}",
+      "parts": {
+        "system": "Lecturas del sistema",
+        "processes": "Procesos",
+        "watch": "Observaciones"
+      }
     }
   },
   "rules": {

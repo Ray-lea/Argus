@@ -828,11 +828,29 @@ pub fn history_moment(dir: State<'_, HistoryDir>, ts: i64) -> Option<HistoryMome
     history::moment(&dir.read(), ts)
 }
 
+/// What the history keeps, and where: the settings show the folder and
+/// whether it is the default one.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryUsageView {
+    #[serde(flatten)]
+    usage: HistoryUsage,
+    dir: String,
+    default_dir: String,
+    custom: bool,
+}
+
 pub fn history_usage(
     dir: State<'_, HistoryDir>,
     settings: State<'_, SettingsStore>,
-) -> HistoryUsage {
-    history::usage_with(&dir.read(), settings.get().history_options())
+) -> HistoryUsageView {
+    let path = dir.read().clone();
+    HistoryUsageView {
+        usage: history::usage_with(&path, settings.get().history_options()),
+        dir: path.display().to_string(),
+        default_dir: dir.default.display().to_string(),
+        custom: path != dir.default,
+    }
 }
 
 /// Explicit observation runs on the sampler, where its file and instance handle live.

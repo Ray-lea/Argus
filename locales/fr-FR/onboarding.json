@@ -105,7 +105,7 @@
     "pages": "{keys} change de page ; {search} recherche des processus",
     "menu": "Faites un clic droit sur un processus pour le terminer, changer sa priorité, activer le mode d’efficacité ou ajouter une règle",
     "drop": "Déposez un fichier ou un dossier sur la fenêtre pour trouver les processus qui l’utilisent",
-    "history": "La page Historique conserve les 7 derniers jours d’utilisation des ressources et les processus les plus actifs à chaque instant",
+    "history": "La page Historique conserve l’utilisation des ressources et les processus les plus actifs à chaque instant",
     "reopen": "Ce guide peut être rouvert à tout moment depuis la page À propos."
   },
   "administrator": "Autoriser l’exécution automatique d’Argus en tant qu’administrateur pour gérer les processus et éléments de démarrage d’autres utilisateurs. Désactivé par défaut ; Windows demande une autorisation lors de la première activation."

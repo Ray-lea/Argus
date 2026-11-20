@@ -105,7 +105,7 @@
     "pages": "{keys} wechselt die Seite, {search} öffnet die Prozesssuche",
     "menu": "Ein Rechtsklick auf einen Prozess bietet Beenden, Priorität, Effizienzmodus und Regeln an",
     "drop": "Eine Datei oder einen Ordner auf das Fenster ziehen, um die verwendenden Prozesse zu finden",
-    "history": "Der Verlauf enthält die Ressourcennutzung der letzten 7 Tage und die jeweils aktivsten Prozesse",
+    "history": "Der Verlauf enthält die Ressourcennutzung und die jeweils aktivsten Prozesse",
     "reopen": "Diese Einführung lässt sich jederzeit auf der Seite Info erneut öffnen."
   },
   "administrator": "Argus automatisch als Administrator ausführen, um Prozesse und Autostart-Einträge anderer Benutzer zu verwalten. Standardmäßig deaktiviert; bei der ersten Aktivierung fordert Windows eine Freigabe an."

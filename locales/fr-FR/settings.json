@@ -310,8 +310,8 @@
     },
     "history": {
       "title": "Enregistrer l’historique",
-      "on": "Enregistre les ressources utilisées et les processus les plus chargés toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données restent uniquement sur ce PC pendant 7 jours et sont consultables dans Historique.",
-      "off": "Désactivé. Les enregistrements existants expirent après 7 jours ou peuvent être effacés maintenant.",
+      "on": "Enregistre les ressources utilisées et les processus les plus chargés toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données restent uniquement sur ce PC et sont consultables dans Historique.",
+      "off": "Désactivé. Les enregistrements existants sont toujours supprimés selon les limites de conservation, ou peuvent être effacés maintenant.",
       "error": "Impossible de modifier le paramètre d’historique : {error}",
       "saved": "Historique enregistré",
       "counting": "Calcul…",
@@ -324,7 +324,100 @@
         "body": "Tout l’historique enregistré ({size}) sera supprimé. Cela ne peut pas être annulé."
       },
       "cleared": "Historique effacé.",
-      "clearError": "Impossible d’effacer l’historique : {error}"
+      "clearError": "Impossible d’effacer l’historique : {error}",
+      "record": {
+        "title": "Éléments enregistrés",
+        "desc": "Tout ce qui peut être enregistré est activé par défaut ; les mesures qui nécessitent le service privilégié sont enregistrées dès qu’il est disponible.",
+        "always": "Mesures du système",
+        "alwaysDesc": "Totaux du CPU, de la mémoire, des disques, du réseau, du GPU et de la batterie",
+        "alwaysBadge": "Toujours enregistré",
+        "cpuExtra": "Processeur",
+        "cpuExtraDesc": "Temps noyau, vitesse, puissance du boîtier",
+        "sensors": "Capteurs",
+        "sensorsDesc": "Température du CPU, tension des cœurs, vitesse des ventilateurs et températures des périphériques",
+        "memoryDetail": "Détail de la mémoire",
+        "memoryDetailDesc": "Validée, en cache, compressée, réserve paginée et non paginée",
+        "counts": "Compteurs système",
+        "countsDesc": "Processus, threads, handles",
+        "disks": "Chaque disque",
+        "disksDesc": "Débit de lecture et d’écriture, temps d’activité, temps de réponse moyen",
+        "nics": "Chaque carte réseau",
+        "nicsDesc": "Débit de réception et d’envoi",
+        "gpus": "Chaque GPU",
+        "gpusDesc": "Utilisation, mémoire GPU dédiée, puissance",
+        "batteryDetail": "Détail de la batterie",
+        "batteryDetailDesc": "Tension et température",
+        "processDisk": "Processus : disque",
+        "processDiskDesc": "Débit de lecture et d’écriture disque de chaque processus enregistré",
+        "processNetwork": "Processus : réseau",
+        "processNetworkDesc": "Débit d’envoi et de réception de chaque processus enregistré",
+        "processGpu": "Processus : mémoire GPU et compteurs",
+        "processGpuDesc": "Mémoire GPU dédiée, threads, handles",
+        "processes": "Processus par image",
+        "processesDesc": "Plus de processus rendent les classements par plage plus complets et l’enregistrement plus volumineux",
+        "processes20": "Environ 20 (par défaut)",
+        "processes40": "Environ 40",
+        "processes0": "Tous les processus actifs",
+        "estimate": "Avec cette sélection, une journée complète d’enregistrement occupe environ {size} ; rien n’est enregistré lorsqu’Argus n’est pas lancé ou que le PC est en veille."
+      },
+      "limit": {
+        "title": "Limites de conservation",
+        "time": "Durée",
+        "space": "Espace",
+        "none": "Illimité",
+        "year": "1 an",
+        "days": {
+          "one": "{count} jour",
+          "many": "{count} jours",
+          "other": "{count} jours"
+        },
+        "desc": "Si les deux sont définies, la première limite atteinte s’applique ; les jours les plus anciens sont supprimés en premier.",
+        "estimate": {
+          "one": "Avec l’enregistrement actuel, environ {count} jour est conservé ({by}, environ {size}).",
+          "many": "Avec l’enregistrement actuel, environ {count} jours sont conservés ({by}, environ {size}).",
+          "other": "Avec l’enregistrement actuel, environ {count} jours sont conservés ({by}, environ {size})."
+        },
+        "byTime": "limité par la durée",
+        "bySpace": "limité par l’espace",
+        "unbounded": "Sans aucune des deux limites, l’historique ne cesse de grandir.",
+        "confirmTitle": "Réduire la limite de conservation ?",
+        "confirmBody": "L’historique au-delà de la nouvelle limite sera supprimé, en commençant par les jours les plus anciens. Cette action est irréversible.",
+        "apply": "Appliquer"
+      },
+      "detail": {
+        "title": "Précision des enregistrements anciens",
+        "full": "Conserver tous les enregistrements de 5 secondes",
+        "minute7": "Une par minute après 7 jours",
+        "minute30": "Une par minute après 30 jours",
+        "fullDesc": "Chaque image de 5 secondes est conservée.",
+        "mergedDesc": "Les jours regroupés conservent la moyenne, le maximum et les processus les plus actifs de chaque minute, pour environ un huitième de la taille ; les variations brèves au sein d’une minute ne sont plus conservées.",
+        "confirmTitle": "Regrouper les enregistrements anciens ?",
+        "confirmBody": {
+          "one": "Les enregistrements de plus de {count} jour seront regroupés en une image par minute, en ne conservant que les moyennes, les maximums et les processus les plus actifs. Cette action est irréversible.",
+          "many": "Les enregistrements de plus de {count} jours seront regroupés en une image par minute, en ne conservant que les moyennes, les maximums et les processus les plus actifs. Cette action est irréversible.",
+          "other": "Les enregistrements de plus de {count} jours seront regroupés en une image par minute, en ne conservant que les moyennes, les maximums et les processus les plus actifs. Cette action est irréversible."
+        },
+        "merge": "Regrouper"
+      },
+      "place": {
+        "title": "Emplacement",
+        "default": "(par défaut)",
+        "open": "Ouvrir",
+        "change": "Modifier…",
+        "reset": "Rétablir l’emplacement par défaut",
+        "new": "Nouvel emplacement",
+        "records": "Déplacer aussi les enregistrements existants ({size}) ; sinon l’enregistrement repart de zéro au nouvel emplacement",
+        "pause": "L’enregistrement est suspendu pendant le déplacement puis reprend.",
+        "moveAndChange": "Déplacer et modifier",
+        "changeOnly": "Modifier l’emplacement",
+        "moved": "L’emplacement de l’historique a été modifié."
+      },
+      "part": "{name} {size}",
+      "parts": {
+        "system": "Mesures du système",
+        "processes": "Processus",
+        "watch": "Observations"
+      }
     }
   },
   "rules": {

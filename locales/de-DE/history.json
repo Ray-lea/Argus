@@ -8,7 +8,7 @@
   },
   "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
-  "note": "Werte und die aktivsten Prozesse werden alle 5 Sekunden aufgezeichnet, dazu Sekundenwerte der letzten 10 Minuten; im minimierten Zustand oder im Infobereich im dortigen Intervall, wenn es länger ist. 7 Tage aufbewahrt.",
+  "note": "Werte und die aktivsten Prozesse werden alle 5 Sekunden aufgezeichnet, dazu Sekundenwerte der letzten 10 Minuten; im minimierten Zustand oder im Infobereich im dortigen Intervall, wenn es länger ist.",
   "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>",
   "watch": {
     "title": "Prozessbeobachtung",
@@ -85,7 +85,8 @@
     "showTitle": "In der aktuellen Spur anzeigen",
     "addTitle": "Spur hinzufügen",
     "overlayTitle": "Zweiten Wert überlagern (rechte Achse)",
-    "foot": "Klicken zeigt den Wert in dieser Spur; + oder Ziehen ins Diagramm fügt eine Spur hinzu"
+    "foot": "Klicken zeigt den Wert in dieser Spur; + oder Ziehen ins Diagramm fügt eine Spur hinzu",
+    "byService": "Vom privilegierten Dienst bereitgestellt"
   },
   "group": {
     "cpu": "Prozessor",
@@ -284,5 +285,12 @@
   },
   "copy": {
     "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Wählen Sie einen beschreibbaren Ordner mit vollständigem Pfad; neuer und aktueller Speicherort dürfen einander nicht enthalten.",
+    "move": "Der Verlauf konnte nicht verschoben werden. Prüfen Sie, ob das Ziel Dateien mit gleichem Namen enthält, und die Zugriffsrechte beider Ordner.",
+    "save": "Die Verlaufseinstellungen konnten nicht gespeichert werden.",
+    "open": "Der Verlaufsordner konnte nicht im Datei-Explorer geöffnet werden.",
+    "clear": "Der Verlauf konnte nicht gelöscht werden. Prüfen Sie die Ordnerberechtigungen und ob Dateien verwendet werden."
   }
 }

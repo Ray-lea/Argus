@@ -8,7 +8,7 @@
   },
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
-  "note": "Les mesures et les processus les plus actifs sont enregistrés toutes les 5 secondes, avec des mesures par seconde pour les 10 dernières minutes ; réduit ou dans la zone de notification, à l’intervalle de cet état s’il est plus long. Conservés 7 jours.",
+  "note": "Les mesures et les processus les plus actifs sont enregistrés toutes les 5 secondes, avec des mesures par seconde pour les 10 dernières minutes ; réduit ou dans la zone de notification, à l’intervalle de cet état s’il est plus long.",
   "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
   "watch": {
     "title": "Observation du processus",
@@ -85,7 +85,8 @@
     "showTitle": "Afficher dans la piste active",
     "addTitle": "Ajouter une piste",
     "overlayTitle": "Superposer une deuxième mesure (axe de droite)",
-    "foot": "Cliquer pour l’afficher dans cette piste ; cliquer sur + ou la faire glisser sur le graphique pour ajouter une piste"
+    "foot": "Cliquer pour l’afficher dans cette piste ; cliquer sur + ou la faire glisser sur le graphique pour ajouter une piste",
+    "byService": "Fourni par le service privilégié"
   },
   "group": {
     "cpu": "Processeur",
@@ -287,5 +288,12 @@
   },
   "copy": {
     "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Choisissez un dossier accessible en écriture indiqué par son chemin complet ; le nouvel emplacement et l’actuel ne peuvent pas se contenir l’un l’autre.",
+    "move": "Impossible de déplacer l’historique. Vérifiez si la destination contient des fichiers du même nom, ainsi que les droits d’accès des deux dossiers.",
+    "save": "Impossible d’enregistrer les paramètres de l’historique.",
+    "open": "Impossible d’ouvrir le dossier de l’historique dans l’Explorateur de fichiers.",
+    "clear": "Impossible d’effacer l’historique. Vérifiez les autorisations du dossier et si des fichiers sont en cours d’utilisation."
   }
 }

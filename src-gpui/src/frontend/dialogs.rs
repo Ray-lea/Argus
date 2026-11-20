@@ -1733,6 +1733,7 @@ impl Desktop {
             "pick_path" => {
                 self.ui.busy.remove("pick");
                 let Some(path) = value.as_str() else {
+                    self.ui.busy.remove("pickHistory");
                     return;
                 };
                 match self.modal.as_ref().map(|m| m.kind.as_str()) {
@@ -1749,6 +1750,11 @@ impl Desktop {
                         }
                     }
                     Some("filelock") => self.search_lockers(vec![path.to_owned()], window, cx),
+                    // A folder for the history, from its settings card.
+                    None if self.ui.busy.remove("pickHistory") => {
+                        self.data.insert("historyMoveTo".into(), json!(path));
+                        self.data.insert("historyMoveRecords".into(), json!(true));
+                    }
                     _ => {}
                 }
             }
@@ -1821,6 +1827,7 @@ impl Desktop {
             }
             "pick_path" => {
                 self.ui.busy.remove("pick");
+                self.ui.busy.remove("pickHistory");
                 self.notify_toast(ToastKind::Error, message);
             }
             "find_lockers" => {

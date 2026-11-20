@@ -310,8 +310,8 @@
     },
     "history": {
       "title": "Record history",
-      "on": "Records resource usage and the top processes every 5 seconds, or at the minimized or tray refresh rate when that is slower. The data stays on this PC for 7 days and can be viewed on the History page.",
-      "off": "Off. Existing records expire after 7 days, or can be cleared now.",
+      "on": "Records resource usage and the top processes every 5 seconds, or at the minimized or tray refresh rate when that is slower. The data stays on this PC and can be viewed on the History page.",
+      "off": "Off. Existing records are still removed by the retention limits, or can be cleared now.",
       "error": "Couldn't change the history setting: {error}",
       "saved": "Saved history",
       "counting": "Calculating…",
@@ -324,7 +324,97 @@
         "body": "All recorded history ({size}) will be deleted. This can't be undone."
       },
       "cleared": "History cleared.",
-      "clearError": "Couldn't clear history: {error}"
+      "clearError": "Couldn't clear history: {error}",
+      "record": {
+        "title": "What to record",
+        "desc": "Everything that can be recorded is on by default; readings that need the privileged service are recorded once it is available.",
+        "always": "System readings",
+        "alwaysDesc": "Totals of CPU, memory, disks, network, GPU and battery",
+        "alwaysBadge": "Always recorded",
+        "cpuExtra": "Processor",
+        "cpuExtraDesc": "Kernel time, speed, package power",
+        "sensors": "Sensors",
+        "sensorsDesc": "CPU temperature, core voltage, fan speeds and device temperatures",
+        "memoryDetail": "Memory details",
+        "memoryDetailDesc": "Committed, cached, compressed, paged and non-paged pool",
+        "counts": "System counts",
+        "countsDesc": "Processes, threads, handles",
+        "disks": "Each disk",
+        "disksDesc": "Read and write rates, active time, average response time",
+        "nics": "Each network adapter",
+        "nicsDesc": "Receive and send rates",
+        "gpus": "Each GPU",
+        "gpusDesc": "Utilization, dedicated GPU memory, power",
+        "batteryDetail": "Battery details",
+        "batteryDetailDesc": "Voltage and temperature",
+        "processDisk": "Processes: disk",
+        "processDiskDesc": "Disk read and write rates of each recorded process",
+        "processNetwork": "Processes: network",
+        "processNetworkDesc": "Send and receive rates of each recorded process",
+        "processGpu": "Processes: GPU memory and counts",
+        "processGpuDesc": "Dedicated GPU memory, threads, handles",
+        "processes": "Processes per frame",
+        "processesDesc": "More processes make range rankings more complete and records larger",
+        "processes20": "About 20 (default)",
+        "processes40": "About 40",
+        "processes0": "All active processes",
+        "estimate": "With this selection, a full day of recording takes about {size}; nothing is recorded while Argus is not running or the PC sleeps."
+      },
+      "limit": {
+        "title": "Retention limits",
+        "time": "Time",
+        "space": "Space",
+        "none": "No limit",
+        "year": "1 year",
+        "days": {
+          "one": "{count} day",
+          "other": "{count} days"
+        },
+        "desc": "With both set, the first limit reached applies; the oldest days are removed first.",
+        "estimate": {
+          "one": "With the current recording, about {count} day is kept ({by}, about {size}).",
+          "other": "With the current recording, about {count} days are kept ({by}, about {size})."
+        },
+        "byTime": "limited by time",
+        "bySpace": "limited by space",
+        "unbounded": "With no limit on either, the history keeps growing.",
+        "confirmTitle": "Lower the retention limit?",
+        "confirmBody": "History beyond the new limit will be removed, oldest days first. This cannot be undone.",
+        "apply": "Apply"
+      },
+      "detail": {
+        "title": "Detail of older records",
+        "full": "Keep all 5-second records",
+        "minute7": "One per minute after 7 days",
+        "minute30": "One per minute after 30 days",
+        "fullDesc": "Every 5-second frame is kept.",
+        "mergedDesc": "Merged days keep the average, peak and busiest processes of each minute at about one eighth of the size; brief changes within a minute are no longer kept.",
+        "confirmTitle": "Merge older records?",
+        "confirmBody": {
+          "one": "Records older than {count} day will be merged into one frame per minute, keeping only averages, peaks and the busiest processes. This cannot be undone.",
+          "other": "Records older than {count} days will be merged into one frame per minute, keeping only averages, peaks and the busiest processes. This cannot be undone."
+        },
+        "merge": "Merge"
+      },
+      "place": {
+        "title": "Location",
+        "default": "(default)",
+        "open": "Open",
+        "change": "Change…",
+        "reset": "Restore default",
+        "new": "New location",
+        "records": "Move the existing records ({size}) as well; otherwise recording starts afresh in the new location",
+        "pause": "Recording pauses during the move and resumes afterwards.",
+        "moveAndChange": "Move and change",
+        "changeOnly": "Change location",
+        "moved": "The history location has been changed."
+      },
+      "part": "{name} {size}",
+      "parts": {
+        "system": "System readings",
+        "processes": "Processes",
+        "watch": "Observations"
+      }
     }
   },
   "rules": {

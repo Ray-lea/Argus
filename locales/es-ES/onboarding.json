@@ -105,7 +105,7 @@
     "pages": "{keys} cambia de página; {search} busca procesos",
     "menu": "Haga clic derecho en un proceso para finalizarlo, cambiar su prioridad, activar el modo de eficiencia o añadir una regla",
     "drop": "Arrastre un archivo o una carpeta a la ventana para encontrar los procesos que lo utilizan",
-    "history": "Historial conserva los últimos 7 días de uso de recursos y los procesos más activos en cada momento",
+    "history": "Historial conserva el uso de recursos y los procesos más activos en cada momento",
     "reopen": "Puede volver a abrir esta guía desde la página Acerca de."
   },
   "administrator": "Permitir que Argus se ejecute automáticamente como administrador para gestionar procesos y aplicaciones de inicio de otros usuarios. Está desactivado de forma predeterminada; Windows solicita autorización al activarlo por primera vez."
