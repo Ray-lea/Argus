@@ -187,6 +187,24 @@ impl Geometry {
     }
 }
 
+/// A curve moved with the clock between draws: the plot as the chart card
+/// drew it, and where it was laid out (written when it prepaints).
+pub(super) struct Glide {
+    pub(super) plot: crate::frontend::charts::TimePlot,
+    pub(super) bounds: Rc<std::cell::Cell<Bounds<Pixels>>>,
+}
+
+/// While the window glides with the clock in the fluid and balanced chart
+/// modes: the curves the chart card drew, when it drew them, and how long
+/// the window takes to move a step. The curves' textures move on every
+/// frame; the labels, gaps and marks the card lays out move a step at a
+/// time, when the card is drawn again.
+pub(super) struct Gliding {
+    pub(super) plots: Vec<Glide>,
+    pub(super) drawn: Instant,
+    pub(super) step: Duration,
+}
+
 /// The displayed window moving towards the target.
 #[derive(Clone, Copy, Debug)]
 struct Tween {
@@ -239,6 +257,14 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) flow_origin: Option<(f64, f64)>,
     /// The redraw waiting for the window to move a device pixel.
     pub(super) flow: Option<gpui_kit::gpui::Task<()>>,
+    /// The curves the chart card draws, collected while it renders.
+    pub(super) glides: Vec<Glide>,
+    /// While the curves glide frame by frame.
+    pub(super) gliding: Option<Gliding>,
+    /// A frame callback moving the curves is waiting; frames counted for the
+    /// balanced chart mode's pace.
+    pub(super) glide_queued: bool,
+    pub(super) glide_frames: u64,
     /// What the range pill says for a range picked by name (today, yesterday,
     /// custom ends), a locale key; none for the menu's ranges.
     pub(super) range_name: Option<&'static str>,
@@ -250,6 +276,8 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) channels_asked: Option<Instant>,
     pub(super) range_asked: Option<Instant>,
     pub(super) points_asked: Option<Instant>,
+    /// The window's points were wanted while a query was on its way.
+    pub(super) points_again: bool,
     pub(super) overview_asked: Option<Instant>,
     pub(super) frame_at: Option<i64>,
     /// Table rows expanded to their instances, by name.
@@ -304,12 +332,17 @@ impl Default for HistoryState {
             picker: None,
             flow_origin: None,
             flow: None,
+            glides: Vec::new(),
+            gliding: None,
+            glide_queued: false,
+            glide_frames: 0,
             range_name: None,
             restored: false,
             catalogue_key: (false, u8::MAX),
             channels_asked: None,
             range_asked: None,
             points_asked: None,
+            points_again: false,
             overview_asked: None,
             frame_at: None,
             expanded: Default::default(),

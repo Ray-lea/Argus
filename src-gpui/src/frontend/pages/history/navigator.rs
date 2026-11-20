@@ -4,7 +4,7 @@
 //! pauses: the range is held as it was when the drag began, and returning to
 //! the latest is up to the live button, End or a right click on the lanes.
 use super::series::{Part, Points, min_span};
-use super::state::{Brush, Drag, PRESETS, Range};
+use super::state::{Brush, Drag, Glide, PRESETS, Range};
 use super::*;
 
 /// How near a brush edge a press takes that edge.
@@ -125,48 +125,60 @@ impl Desktop {
                     (low.min(0.), high)
                 }
             };
-            strip = strip.child(
-                div()
-                    .absolute()
-                    .top(px(3.))
-                    .bottom(px(3.))
-                    .left_0()
-                    .right_0()
-                    .child(charts::TimePlot {
-                        id: "history-navigator".into(),
-                        series: Arc::new(vec![
-                            charts::Series::new(
-                                String::new(),
-                                points.line(&key, Part::Mean, end, |v| v),
-                                reading.color.opacity(0.75),
-                                charts::MetricFormat::Percent,
-                            )
-                            .fill(0.35)
-                            .source(charts::hash_of(("history-navigator", &reading.id))),
-                        ]),
-                        start: a as f64,
-                        end: b as f64,
-                        max: high,
-                        min: low,
-                        interactive: false,
-                        grid: false,
-                        fill: true,
-                        background_separate: false,
-                        smooth: false,
-                        ticks: None,
-                        geometry_start: self
-                            .history
-                            .flow_origin
-                            .map_or(a as f64, |(_, navigator)| navigator),
-                        measured_width: Rc::new(Cell::new(1.)),
-                        live_clock: None,
-                        image_surface: Default::default(),
-                        dash_phases: Default::default(),
-                        rescale: Default::default(),
-                        readout: Default::default(),
-                        captions: None,
-                    }),
-            );
+            let curve = charts::TimePlot {
+                id: "history-navigator".into(),
+                series: Arc::new(vec![
+                    charts::Series::new(
+                        String::new(),
+                        points.line(&key, Part::Mean, end, |v| v),
+                        reading.color.opacity(0.75),
+                        charts::MetricFormat::Percent,
+                    )
+                    .fill(0.35)
+                    .source(charts::hash_of(("history-navigator", &reading.id))),
+                ]),
+                start: a as f64,
+                end: b as f64,
+                max: high,
+                min: low,
+                interactive: false,
+                grid: false,
+                fill: true,
+                background_separate: false,
+                smooth: false,
+                ticks: None,
+                geometry_start: self
+                    .history
+                    .flow_origin
+                    .map_or(a as f64, |(_, navigator)| navigator),
+                measured_width: Rc::new(Cell::new(1.)),
+                live_clock: None,
+                image_surface: Default::default(),
+                dash_phases: Default::default(),
+                rescale: Default::default(),
+                readout: Default::default(),
+                captions: None,
+            };
+            let mut track = div()
+                .absolute()
+                .top(px(3.))
+                .bottom(px(3.))
+                .left_0()
+                .right_0();
+            if self.history.flow_origin.is_some() {
+                // The plot fills the box: its bounds are the box's.
+                let bounds = Rc::new(Cell::new(Bounds::default()));
+                self.history.glides.push(Glide {
+                    plot: curve.clone(),
+                    bounds: bounds.clone(),
+                });
+                track = track.child(
+                    canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})
+                        .absolute()
+                        .inset_0(),
+                );
+            }
+            strip = strip.child(track.child(curve));
         }
         let (va, vb) = self.history.shown_now();
         let fa = ((va - a as f64) / length as f64).clamp(0., 1.) as f32;

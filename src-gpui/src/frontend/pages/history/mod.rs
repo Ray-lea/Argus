@@ -17,6 +17,7 @@ mod settings;
 mod state;
 mod table;
 
+use crate::frontend::motion;
 use readings::Reading;
 use series::{FRAME, HOUR, MINUTE, Points, SECOND};
 pub(in crate::frontend) use state::HistoryState;
@@ -84,6 +85,14 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+/// The time it is, to a fraction of a millisecond.
+fn precise_now_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+        * 1000.
 }
 fn local(ts: i64) -> Option<time::OffsetDateTime> {
     time::OffsetDateTime::from_unix_timestamp(ts.div_euclid(1000))
@@ -193,17 +202,22 @@ fn duration_label(ms: i64) -> String {
 
 /// Points in a process's curve laid over the lanes.
 const CURVE_POINTS: usize = 160;
+/// The processes the lanes' tooltip lists; it keeps their rows while fewer
+/// are known, so that it keeps its height.
+const TIP_PROCESSES: usize = 5;
 /// The widest window that glides with the clock: wider ones move less than
 /// a pixel a second.
 const FLOW_SPAN: i64 = 15 * MINUTE;
 
-/// How often the newest readings are asked for while following: every second
-/// up to six hours on screen, every minute beyond.
+/// How often the newest readings are asked for while following: at every
+/// sample up to six hours on screen (at most four times a second), every
+/// minute beyond. A pace of exactly one sample skipped every sample that came
+/// a little early, and the curve then waited two seconds for its readings.
 fn refresh_every(span: i64) -> Duration {
     if span > 6 * HOUR {
         Duration::from_secs(60)
     } else {
-        Duration::from_secs(1)
+        Duration::from_millis(250)
     }
 }
 
@@ -225,6 +239,18 @@ impl Desktop {
             Some(newest) if newest <= now + SECOND && now - newest < 10 * SECOND => newest,
             _ => now - SECOND,
         }
+    }
+
+    /// How far behind the present a gliding window ends: as far as the live
+    /// charts' (two sampling intervals and a quarter of a second). A reading
+    /// is on screen a sample, a query and a raster after it was taken; a
+    /// window a second behind reached the newest one before the next was in,
+    /// and the curve's end left the edge until it came.
+    fn history_lag(&self) -> i64 {
+        let config = motion::config();
+        (self.interval as f64 * config["chartLagIntervals"].as_f64().unwrap_or(2.)
+            + config["chartLagSlackMs"].as_f64().unwrap_or(250.))
+        .round() as i64
     }
 
     /// Whether the range on screen spans a change of the local offset: times
@@ -249,9 +275,12 @@ impl Desktop {
             && self.options.fixture.is_none()
     }
 
-    /// The chart card, drawn on its own: while the window glides, every
-    /// device pixel it moves draws this region alone, the page around it
-    /// replaying; eased zooms and lanes do the same.
+    /// The chart card, drawn on its own: while the window glides, this region
+    /// is drawn alone, the page around it replaying, each time its labels and
+    /// marks move a step (a quarter of a device pixel, more when the window
+    /// moves fast), and in the fluid and balanced chart modes the curves'
+    /// textures move with the clock on every frame in between, nothing drawn
+    /// (`history_glide`); eased zooms and lanes draw the region every frame.
     pub(in crate::frontend) fn history_chart_region(
         &mut self,
         window: &mut Window,
@@ -260,15 +289,14 @@ impl Desktop {
         let motion = self.history_motion(cx);
         let now = Instant::now();
         let flowing = self.history_flowing(cx);
-        // The window ends a second behind the present while it glides, so
-        // that the newest reading is in before the edge reaches it; the
+        // The window ends behind the present while it glides, so that the
+        // newest reading is in before the edge reaches it (`history_lag`); the
         // curves keep the texture drawn for the readings' own window and move it.
+        // The state keeps whole milliseconds; the window drawn ends at the
+        // exact time, as the frames that only move the textures place them.
         let data = self.history_clock();
-        let clock = if flowing {
-            self.history_now() - SECOND
-        } else {
-            data
-        };
+        let precise = flowing.then(|| precise_now_ms() - self.history_lag() as f64);
+        let clock = precise.map_or(data, |end| end.floor() as i64);
         self.history.anchor(clock);
         self.history.flow_origin = flowing.then(|| {
             // The newest reading is usually ahead of the window on screen: the
@@ -279,7 +307,10 @@ impl Desktop {
                 (self.history.extent.0 - shift) as f64,
             )
         });
-        let (shown, easing) = self.history.shown(now, motion);
+        let (mut shown, easing) = self.history.shown(now, motion);
+        if let Some(end) = precise.filter(|_| !easing) {
+            shown = (end - (shown.1 - shown.0), end);
+        }
         let lanes_moving = self.history.step_lanes(now, motion);
         let toast = self
             .history
@@ -289,20 +320,106 @@ impl Desktop {
         if !toast {
             self.history.toast = None;
         }
+        self.history.glides.clear();
+        let chart = self.history_chart(shown, window, cx);
+        let glides = std::mem::take(&mut self.history.glides);
+        self.history.gliding = None;
         if easing || lanes_moving || toast {
             window.request_isolated_animation_frame();
         } else if flowing {
+            // Device pixels the window moves in a millisecond.
             let width = self.history_plot_width(window) * window.scale_factor();
-            let step = self.history.span() as f32 / width.max(1.);
-            let delay = Duration::from_secs_f32((step / 1000.).clamp(0.016, 1.));
-            self.history_flow_later(delay, window, cx);
+            let speed = width.max(1.) / self.history.span() as f32;
+            let mode = self.chart_clock.borrow().mode;
+            if matches!(mode, motion::Mode::Fluid | motion::Mode::Balanced) {
+                // Labels and marks move a quarter of a device pixel at a time
+                // (glyphs are drawn at quarter pixels), in larger steps as the
+                // window moves faster: about thirty a second, a pixel at most.
+                let pixels = (speed * 1000. / 30.).clamp(0.25, 1.);
+                let step = Duration::from_secs_f32((pixels / speed / 1000.).clamp(0.001, 1.));
+                self.history.gliding = Some(state::Gliding {
+                    plots: glides,
+                    drawn: now,
+                    step,
+                });
+                self.schedule_history_glide(window, cx);
+            } else {
+                let pixel = Duration::from_secs_f32((1. / speed / 1000.).clamp(0.016, 1.));
+                self.history_flow_later(pixel, window, cx);
+            }
         }
         div()
             .size_full()
             .flex()
             .flex_col()
-            .child(self.history_chart(shown, window, cx))
+            .child(chart)
             .into_any_element()
+    }
+
+    /// Moves the curves with the clock on the next frame while they glide,
+    /// and asks for the frame after: as the live charts' tick, while the
+    /// window is shown and no dialog covers the page.
+    pub(in crate::frontend) fn schedule_history_glide(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let shown = self.page == "history"
+            && self.modal.is_none()
+            && self.history.gliding.is_some()
+            && self.host.get_window("main").is_some_and(|w| {
+                w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+            });
+        if self.history.glide_queued || !shown {
+            return;
+        }
+        self.history.glide_queued = true;
+        let owner = cx.entity().downgrade();
+        window.on_next_frame(move |window, cx| {
+            let _ = owner.update(cx, |this, cx| {
+                this.history.glide_queued = false;
+                this.history_glide(window, cx);
+                this.schedule_history_glide(window, cx);
+            });
+        });
+    }
+
+    /// One frame of the glide (every frame in the fluid mode, about 60 a
+    /// second in the balanced one): the curves' textures move to the clock,
+    /// nothing drawn. The card is drawn again once the window has moved a
+    /// step since it was drawn (its labels, gaps and marks move then), or
+    /// when a texture cannot move (the window drew since, or one is still on
+    /// its way).
+    fn history_glide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != "history" || !self.history_flowing(cx) {
+            self.history.gliding = None;
+            return;
+        }
+        let Some(gliding) = &self.history.gliding else {
+            return;
+        };
+        let mode = self.chart_clock.borrow().mode;
+        self.history.glide_frames = self.history.glide_frames.wrapping_add(1);
+        let refresh = motion::frame_period(motion::Mode::Fluid, window.refresh_interval(cx));
+        let every = (motion::frame_period(mode, Some(refresh)).as_secs_f64()
+            / refresh.as_secs_f64())
+        .round()
+        .max(1.) as u64;
+        if !self.history.glide_frames.is_multiple_of(every) {
+            return;
+        }
+        let elapsed = gliding.drawn.elapsed();
+        let moved = elapsed < gliding.step && {
+            let ms = elapsed.as_secs_f64() * 1000.;
+            gliding.plots.iter().all(|glide| {
+                glide
+                    .plot
+                    .glide(glide.bounds.get(), glide.plot.end + ms, window)
+            })
+        };
+        if !moved {
+            self.redraw_region_alone(regions::RegionKind::HistoryChart, window);
+        }
     }
 
     /// Draws the chart again once the window has moved a device pixel.
@@ -521,6 +638,16 @@ impl Desktop {
     }
 
     fn history_ask_points(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // One query at a time: asked again as soon as the one on its way
+        // lands (`history_complete`), not a sample later.
+        if self
+            .pending
+            .values()
+            .any(|p| p.cache.as_deref() == Some("historyPoints"))
+        {
+            self.history.points_again = true;
+            return;
+        }
         let width = self.history_plot_width(window);
         let (a, b) = self.history.view;
         let span = (b - a).max(SECOND);
@@ -657,14 +784,14 @@ impl Desktop {
 
     /// The five processes busiest by `key` at point `index`, by name, once
     /// their answer for that point is in.
-    fn history_tip_ranking(&self, points: &Points, index: usize, key: &str) -> Vec<(String, f64)> {
-        let point = (points.ts[index], points.span[index]);
-        let Some((asked, answer)) = &self.history.tip else {
+    /// The processes the tooltip lists, busiest by `key` first: the point's
+    /// under the pointer, or while they are asked for, the last point's. The
+    /// list keeps its rows as the pointer moves, rather than emptying for a
+    /// moment at every point.
+    fn history_tip_ranking(&self, key: &str) -> Vec<(String, f64)> {
+        let Some((_, answer)) = &self.history.tip else {
             return Vec::new();
         };
-        if *asked != point {
-            return Vec::new();
-        }
         // A range answer holds totals over the time recorded.
         let seconds = answer["recorded"].as_f64().map(|ms| ms / 1000.);
         let mut by_name: Vec<(String, f64)> = Vec::new();
@@ -683,7 +810,7 @@ impl Desktop {
         }
         by_name.retain(|(_, v)| *v > 0.);
         by_name.sort_by(|a, b| b.1.total_cmp(&a.1));
-        by_name.truncate(5);
+        by_name.truncate(TIP_PROCESSES);
         by_name
     }
 
@@ -969,6 +1096,10 @@ impl Desktop {
                     self.history.anchor(clock);
                     // A newer frame may be what the table lists now.
                     self.history_ask_table(window, cx);
+                    if std::mem::take(&mut self.history.points_again) {
+                        self.history.points_asked = None;
+                        self.history_ask_points(window, cx);
+                    }
                 }
             }
             "history_channels" => {

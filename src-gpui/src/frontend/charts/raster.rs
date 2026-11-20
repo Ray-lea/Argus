@@ -280,6 +280,7 @@ struct Input {
     smooth: bool,
     phases: DashPhases,
     content: u64,
+    ticks: Option<(Arc<Vec<f64>>, Hsla)>,
 }
 impl Input {
     fn new(plot: &TimePlot, size: Size<Pixels>, density: f32) -> Self {
@@ -296,6 +297,7 @@ impl Input {
             smooth: plot.smooth,
             phases: plot.dash_phases.clone(),
             content: plot.content(),
+            ticks: plot.ticks.clone(),
         }
     }
 }
@@ -333,6 +335,14 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     plot.fill.hash(&mut key);
     plot.smooth.hash(&mut key);
     plot.content().hash(&mut key);
+    if let Some((ticks, color)) = &plot.ticks {
+        for tick in ticks.iter() {
+            tick.to_bits().hash(&mut key);
+        }
+        for value in [color.h, color.s, color.l, color.a] {
+            value.to_bits().hash(&mut key);
+        }
+    }
     for series in plot.series.iter() {
         series.geometry_key.hash(&mut key);
         series.dashed.hash(&mut key);
@@ -1155,6 +1165,16 @@ struct Extent {
     working_bytes: usize,
 }
 
+/// The clock lines (sorted) inside the raster's time window.
+fn tick_times(plot: &Input, (start, end): (f64, f64)) -> &[f64] {
+    let Some((ticks, _)) = &plot.ticks else {
+        return &[];
+    };
+    let first = ticks.partition_point(|t| *t < start);
+    let last = ticks.partition_point(|t| *t <= end).max(first);
+    &ticks[first..last]
+}
+
 /// Samples touching the interval, including both ends of a crossing segment.
 fn visible_samples(run: &[(f64, f64)], (start, end): (f64, f64)) -> std::ops::Range<usize> {
     let first = run.partition_point(|p| p.0 < start).saturating_sub(1);
@@ -1215,6 +1235,15 @@ fn extent(plot: &Input) -> Option<Extent> {
                 bottom = bottom.max(height);
             }
         }
+    }
+    // Clock lines run the plot's full height, and keep the texture on
+    // through the overscan they fall in, so that one moving in from an edge
+    // is there before it shows.
+    for &tick in tick_times(plot, time) {
+        first = first.min(x(tick));
+        last = last.max(x(tick) + 1.);
+        top = 0.;
+        bottom = height;
     }
     if top > bottom {
         return None;
@@ -1289,6 +1318,23 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
     let top = stroke / 2.;
     let fill = plot.fill && plot.series.iter().any(|series| series.fill > 0.);
     let mut shapes = Vec::new();
+    if let Some((_, color)) = &plot.ticks {
+        let color: Rgba = (*color).into();
+        let color = tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a)?;
+        let width = f64::from(f32::from(size.width));
+        for &tick in tick_times(plot, layout.time) {
+            // A pixel wide from the tick's time, as a rule the page lays out
+            // there; under every series.
+            let x = ((tick - plot.geometry_start) / span * width) as f32 - left;
+            if let Some(rect) = tiny_skia::Rect::from_xywh(x, 0., 1., height) {
+                shapes.push(Shape::Fill {
+                    path: tiny_skia::PathBuilder::from_rect(rect),
+                    color,
+                    faded: false,
+                });
+            }
+        }
+    }
     let mut drawn_phases = plot.phases.lock().unwrap_or_else(|e| e.into_inner());
     drawn_phases.resize_with(plot.series.len(), HashMap::new);
     for (index, series) in plot.series.iter().enumerate() {
@@ -1910,6 +1956,34 @@ mod tests {
         assert!(alpha(10.) > 128);
         assert_eq!(alpha(40.), 0);
         assert!(alpha(70.) > 128);
+    }
+
+    #[test]
+    fn clock_lines_run_the_full_height_through_the_overscan() {
+        // A low line keeps only its own rows; clock lines take every row and
+        // the texture reaches the one in the overscan, not the one beyond.
+        let mut p = plot(vec![(0., Some(9.)), (100., Some(9.))]);
+        let plain = super::extent(&Input::new(&p, size(px(100.), px(40.)), 2.)).unwrap();
+        assert!(plain.first_row > 60);
+        p.ticks = Some((Arc::new(vec![25., 75., 110., 200.]), rgb(0x808080).into()));
+        let input = Input::new(&p, size(px(100.), px(40.)), 2.);
+        let layout = super::extent(&input).unwrap();
+        assert_eq!((layout.first_row, layout.rows), (0, 80));
+        let texture = rasterize(&input).unwrap();
+        let width = texture.image.size(0).width.0 as usize;
+        let bytes = texture.image.as_bytes(0).unwrap();
+        let alpha = |x: f32, y: usize| {
+            let x = ((x - f32::from(texture.offset.x)) * 2.) as usize;
+            (x < width).then(|| bytes[(y * width + x) * 4 + 3])
+        };
+        assert!(alpha(25.5, 4).unwrap() > 200);
+        assert!(alpha(110.5, 4).unwrap() > 200);
+        assert_eq!(alpha(50.5, 4), Some(0));
+        assert!(f32::from(texture.offset.x + texture.size.width) < 112.6);
+        // Other clock lines are another texture.
+        let before = key(&p, size(px(100.), px(40.)), 2.);
+        p.ticks = Some((Arc::new(vec![30.]), rgb(0x808080).into()));
+        assert_ne!(before, key(&p, size(px(100.), px(40.)), 2.));
     }
 
     #[test]

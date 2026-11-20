@@ -405,8 +405,10 @@ pub struct TimePlot {
     pub(in crate::frontend) background_separate: bool,
     /// Smooth monotone curves; history charts join their points with straight lines.
     pub smooth: bool,
-    /// Vertical grid lines at these times instead of even columns (history's clock ticks).
-    pub ticks: Option<Arc<Vec<f64>>>,
+    /// Vertical lines at these times, in this colour, drawn into the curve's
+    /// texture under the series: they move with a curve that glides by
+    /// moving its texture (history's clock ticks).
+    pub ticks: Option<(Arc<Vec<f64>>, Hsla)>,
     pub geometry_start: f64,
     pub measured_width: Rc<Cell<f32>>,
     pub live_clock: Option<Rc<RefCell<motion::Clock>>>,
@@ -541,6 +543,21 @@ impl TimePlot {
         Some((max / shown) as f32)
             .filter(|k| k.is_finite() && *k > 0.)
             .unwrap_or(1.)
+    }
+    /// Moves the curve this plot last painted, laid out at `bounds`, to the
+    /// window ending at `end`, without drawing anything again: in a frame
+    /// callback, while nothing else draws. False when it must be drawn
+    /// instead (the window drew since, the texture is not painted yet, or it
+    /// would leave its clip).
+    pub(in crate::frontend) fn glide(
+        &self,
+        bounds: Bounds<Pixels>,
+        end: f64,
+        window: &mut Window,
+    ) -> bool {
+        self.image_surface
+            .borrow()
+            .translate(self, bounds, end, window)
     }
 }
 pub(super) struct ChartEntry {
@@ -1023,38 +1040,6 @@ impl TimePlot {
                 .first()
                 .map(|s| s.color)
                 .unwrap_or(cx.theme().border);
-            if let Some(ticks) = &self.ticks {
-                // Quarters across, the clock ticks down.
-                let line = color.opacity(GRID_OPACITY * alpha);
-                for fraction in [0.25, 0.5, 0.75] {
-                    window.paint_rule(
-                        Axis::Horizontal,
-                        Bounds::new(
-                            point(
-                                bounds.left(),
-                                bounds.top() + px((height * fraction).round()),
-                            ),
-                            size(bounds.size.width, px(1.)),
-                        ),
-                        line,
-                    );
-                }
-                let span = (self.end - self.start).max(1.);
-                for tick in ticks.iter() {
-                    let x = ((tick - self.start) / span) as f32 * width;
-                    if (0. ..=width).contains(&x) {
-                        window.paint_rule(
-                            Axis::Vertical,
-                            Bounds::new(
-                                point(bounds.left() + px(x.round()), bounds.top()),
-                                size(px(1.), bounds.size.height),
-                            ),
-                            line,
-                        );
-                    }
-                }
-                return;
-            }
             for (count, vertical) in [
                 (
                     theme::design()["layout"]["chartGridRows"].as_u64().unwrap(),
@@ -1841,6 +1826,8 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The history page's curves glide on a tick of their own.
+        self.schedule_history_glide(window, cx);
         let active = matches!(self.page.as_str(), "processes" | "performance")
             && self.modal.is_none()
             && (self.options.fixture.is_none() || self.fixture_samples)

@@ -4,7 +4,7 @@
 use super::bar::ReadingMenu;
 use super::readings::Reading;
 use super::series::{BANDED, FRAME, Part, Points, rows_for, tick_step, ticks};
-use super::state::{Drag, Drop, Hover, Lane};
+use super::state::{Drag, Drop, Glide, Hover, Lane};
 use super::*;
 
 /// The axis labels' columns either side of the plots; every lane keeps both,
@@ -20,6 +20,12 @@ const AXIS: f32 = 22.;
 const PAD: f32 = 10.;
 /// The navigator's row.
 const NAV: f32 = 32.;
+/// The lanes' tooltip: its width, fixed so that it keeps its size and place
+/// as the pointer passes readings and process names of other lengths; how
+/// far it sits from the pointer; and the room it keeps from the window's edges.
+const TIP_WIDTH: f32 = 300.;
+const TIP_GAP: f32 = 14.;
+const TIP_MARGIN: f32 = 8.;
 
 /// The chart card's height that gives `lanes` lanes room to read: about
 /// 128 px each, with the axis and the navigator.
@@ -35,6 +41,44 @@ pub(super) struct Axes {
     /// The overlay shares the left axis (same unit).
     pub(super) shared: bool,
     pub(super) rows: u32,
+}
+
+/// While the window glides, where a mark goes: laid out on the device-pixel
+/// grid at or before its time and moved the rest of the way when drawn
+/// (`shift::shifted`), so that it glides with the curves. Laid out at its
+/// time, a mark stepped a whole pixel at a time beside them. Borders, glyphs
+/// and icons still keep to whole pixels.
+#[derive(Clone, Copy)]
+struct Nudge {
+    /// The plot's width and the window's scale factor.
+    width: f32,
+    scale: f32,
+}
+
+impl Nudge {
+    /// A length on the device-pixel grid, so that a band moves whole.
+    fn length(self, length: f32) -> Pixels {
+        px((length * self.scale).round() / self.scale)
+    }
+}
+
+/// `mark` placed with its left edge at fraction `f` of the plot's width and
+/// `dx` beyond it.
+fn place<M: Styled + IntoElement + 'static>(
+    nudge: Option<Nudge>,
+    mark: M,
+    f: f32,
+    dx: f32,
+) -> AnyElement {
+    match nudge {
+        Some(nudge) => {
+            let x = f * nudge.width + dx;
+            let laid = (x * nudge.scale).floor() / nudge.scale;
+            crate::frontend::shift::shifted(mark.left(px(laid)), point(px(x - laid), px(0.)), 1.)
+                .into_any_element()
+        }
+        None => mark.left(relative(f)).ml(px(dx)).into_any_element(),
+    }
 }
 
 /// The width of the widest of `samples` at `size` and `weight`: a value slot
@@ -357,6 +401,22 @@ impl Desktop {
         geometry.borrow_mut().lanes.clear();
         let tick = tick_step(span as i64, width);
         let tick_list = Arc::new(ticks(window_ms.0, window_ms.1, tick));
+        // While the window glides, the clock lines are drawn into the curves'
+        // textures and move with them: the ticks of the texture's own window
+        // and the raster's overscan, an eighth of the window either side. They
+        // change only with the texture's window, as the newest reading does.
+        let clock_lines = self.history.flow_origin.map(|(origin, _)| {
+            let overscan = span / 8.;
+            let lines = ticks(
+                (origin - overscan).floor() as i64,
+                (origin + span + overscan).ceil() as i64,
+                tick,
+            );
+            (
+                Arc::new(lines.into_iter().map(|t| t as f64).collect::<Vec<_>>()),
+                p.stroke.opacity(0.6),
+            )
+        });
         let read_index = self.history_read_index();
         let points = self.history.points.clone();
         let mut column = div()
@@ -391,6 +451,7 @@ impl Desktop {
                 bucket,
                 (from, to),
                 &tick_list,
+                clock_lines.as_ref(),
                 read_index,
                 window,
                 cx,
@@ -408,31 +469,65 @@ impl Desktop {
                     .relative()
                     .child(self.history_add_lane(cx)),
             )
-            .child(
+            .child({
+                // Painted at their times to the fraction of a pixel (glyphs
+                // take quarter pixels), not laid out on whole device pixels:
+                // they move with the curves while the window glides.
+                let labels = tick_list
+                    .iter()
+                    .map(|at| {
+                        (
+                            ((*at as f64 - from) / span) as f32,
+                            SharedString::from(tick_label(*at, tick)),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let color = p.faint;
                 div()
                     .relative()
                     .flex_1()
                     .min_w_0()
                     .text_size(theme::font(11.))
-                    .text_color(p.faint)
-                    .children(tick_list.iter().filter_map(|at| {
-                        let f = ((*at as f64 - from) / span) as f32;
-                        let x = f * width;
-                        (x > 18. && x < width - 18.).then(|| {
-                            let text = tick_label(*at, tick);
-                            let half =
-                                f32::from(theme::text_width(&text, theme::font(11.), window, cx))
-                                    / 2.;
-                            div()
-                                .absolute()
-                                .top(px(4.))
-                                .left(relative(f))
-                                .ml(px(-half))
-                                .whitespace_nowrap()
-                                .child(text)
-                        })
-                    })),
-            )
+                    .child(
+                        canvas(
+                            |_, _, _| {},
+                            move |bounds, _, window, cx| {
+                                let width = f32::from(bounds.size.width);
+                                let size =
+                                    window.text_style().font_size.to_pixels(window.rem_size());
+                                let line_height = window.line_height();
+                                for (f, text) in &labels {
+                                    let x = f * width;
+                                    if !(x > 18. && x < width - 18.) {
+                                        continue;
+                                    }
+                                    let mut run = theme::text_run(text, FontWeight::NORMAL, cx);
+                                    run.color = color;
+                                    let line = window.text_system().shape_line(
+                                        text.clone(),
+                                        size,
+                                        &[run],
+                                        None,
+                                    );
+                                    let origin = point(
+                                        bounds.left() + px(x) - line.width / 2.,
+                                        bounds.top() + px(4.),
+                                    );
+                                    let _ = line.paint(
+                                        origin,
+                                        line_height,
+                                        gpui_kit::gpui::TextAlign::Left,
+                                        None,
+                                        window,
+                                        cx,
+                                    );
+                                }
+                            },
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+            })
             .child(div().w(px(GUTTER)).flex_shrink_0());
         column = column.child(axis);
         if let Some(drop) = self.history_drop_mark() {
@@ -530,6 +625,7 @@ impl Desktop {
         bucket: i64,
         (from, to): (f64, f64),
         tick_list: &Arc<Vec<i64>>,
+        clock_lines: Option<&(Arc<Vec<f64>>, Hsla)>,
         read_index: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -586,7 +682,10 @@ impl Desktop {
                     .bg(p.stroke),
             );
         }
-        for at in tick_list.iter() {
+        // The clock lines: in the curve's texture while it glides (they move
+        // with it), else laid out here.
+        let clock_lines = clock_lines.filter(|_| points.is_some() && reading.is_some());
+        for at in tick_list.iter().filter(|_| clock_lines.is_none()) {
             let f = ((*at as f64 - from) / span) as f32;
             if f > 0.002 && f < 0.998 {
                 plot = plot.child(
@@ -600,6 +699,19 @@ impl Desktop {
                 );
             }
         }
+        // Marks placed by time glide with the curves (`Nudge`).
+        let nudge = self.history.flow_origin.map(|_| Nudge {
+            width: self.history_plot_width(window),
+            scale: window.scale_factor(),
+        });
+        // A band from fraction `a` to `b` of the plot's width.
+        let band = |mark: Div, a: f32, b: f32| {
+            let mark = match nudge {
+                Some(nudge) => mark.w(nudge.length((b - a) * nudge.width)),
+                None => mark.w(relative(b - a)),
+            };
+            place(nudge, mark, a, 0.)
+        };
         // Gaps: hatched, named where there is room.
         if let Some(points) = &points {
             for gap in &points.gaps {
@@ -609,13 +721,11 @@ impl Desktop {
                     continue;
                 }
                 let wide = (b - a) * self.history_plot_width(window) > 58.;
-                plot = plot.child(
+                plot = plot.child(band(
                     div()
                         .absolute()
                         .top_0()
                         .bottom_0()
-                        .left(relative(a))
-                        .w(relative(b - a))
                         .bg(gpui_kit::gpui::pattern_slash(p.faint.opacity(0.22), 1., 6.))
                         .flex()
                         .items_center()
@@ -630,13 +740,15 @@ impl Desktop {
                                     .child(label(gap.reason.key())),
                             )
                         }),
-                );
+                    a,
+                    b,
+                ));
             }
         }
         let recorded = reading.as_ref().is_some_and(|r| r.recorded);
         if let (Some(points), Some(_)) = (&points, &reading) {
             let series = self.history_lane_series(lane, points, axes, bucket);
-            plot = plot.child(charts::TimePlot {
+            let curve = charts::TimePlot {
                 id: format!("history-lane-{id}").into(),
                 series: Arc::new(series),
                 start: from,
@@ -648,7 +760,7 @@ impl Desktop {
                 fill: true,
                 background_separate: false,
                 smooth: false,
-                ticks: None,
+                ticks: clock_lines.cloned(),
                 // While the window glides, the texture stays the one drawn for
                 // the newest reading's window, moved under the window on screen.
                 geometry_start: self.history.flow_origin.map_or(from, |(lanes, _)| lanes),
@@ -659,7 +771,21 @@ impl Desktop {
                 rescale: Default::default(),
                 readout: Default::default(),
                 captions: None,
-            });
+            };
+            if self.history.flow_origin.is_some() {
+                // The plot fills the box: its bounds are the box's.
+                let bounds = Rc::new(Cell::new(Bounds::default()));
+                self.history.glides.push(Glide {
+                    plot: curve.clone(),
+                    bounds: bounds.clone(),
+                });
+                plot = plot.child(
+                    canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})
+                        .absolute()
+                        .inset_0(),
+                );
+            }
+            plot = plot.child(curve);
         }
         if !recorded && let Some(reading) = &reading {
             plot = plot.child(self.history_unrecorded(reading, cx));
@@ -669,34 +795,39 @@ impl Desktop {
             let fa = ((a as f64 - from) / span).clamp(0., 1.) as f32;
             let fb = ((b as f64 - from) / span).clamp(0., 1.) as f32;
             if fb > fa {
-                plot = plot.child(
+                // Its edges are lines of their own: a bordered box keeps to
+                // whole pixels when it is moved.
+                let edge = || {
                     div()
                         .absolute()
                         .top_0()
                         .bottom_0()
-                        .left(relative(fa))
-                        .w(relative(fb - fa))
+                        .w(px(1.))
+                        .bg(p.accent.opacity(0.7))
+                };
+                plot = plot.child(band(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
                         .bg(p.accent.opacity(0.12))
-                        .border_l_1()
-                        .border_r_1()
-                        .border_color(p.accent.opacity(0.7)),
-                );
+                        .child(edge().left_0())
+                        .child(edge().right_0()),
+                    fa,
+                    fb,
+                ));
             }
         }
         let first = self.history.live_lanes().next().map(|l| l.id) == Some(id);
         if let Some(pin) = self.history.pin {
             let f = ((pin as f64 - from) / span) as f32;
             if (0. ..=1.).contains(&f) {
-                plot = plot.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .left(relative(f))
-                        .ml(px(-0.75))
-                        .w(px(1.5))
-                        .bg(p.accent),
-                );
+                plot = plot.child(place(
+                    nudge,
+                    div().absolute().top_0().bottom_0().w(px(1.5)).bg(p.accent),
+                    f,
+                    -0.75,
+                ));
                 // Over the first lane, the pin: pointed at, it clears the cursor.
                 if first {
                     let mark = |name: &str| {
@@ -708,14 +839,13 @@ impl Desktop {
                             .justify_center()
                             .child(icon(name, p.on_accent).size(px(12.)))
                     };
-                    plot = plot.child(
+                    plot = plot.child(place(
+                        nudge,
                         div()
                             .id("history-pin")
                             .group("history-pin")
                             .absolute()
                             .top(px(2.))
-                            .left(relative(f))
-                            .ml(px(-9.))
                             .size(px(18.))
                             .rounded_full()
                             .bg(p.accent)
@@ -733,7 +863,9 @@ impl Desktop {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.history_command(Command::ClearCursor, window, cx)
                             })),
-                    );
+                        f,
+                        -9.,
+                    ));
                 }
             }
         }
@@ -810,15 +942,17 @@ impl Desktop {
             let at = points.x_time(index, end) as f64;
             let f = ((at - from) / span) as f32;
             if (-0.002..=1.002).contains(&f) {
-                plot = plot.child(
+                plot = plot.child(place(
+                    nudge,
                     div()
                         .absolute()
                         .top_0()
                         .bottom_0()
-                        .left(relative(f))
                         .w(px(1.))
                         .bg(p.ink.opacity(0.4)),
-                );
+                    f,
+                    0.,
+                ));
                 let mut dots = Vec::new();
                 if let Some(reading) = &reading {
                     let main = reading.value(points, index).map(|v| {
@@ -840,19 +974,20 @@ impl Desktop {
                     let Some(value) = value else { continue };
                     let y = (1. - ((value - low) / (high - low).max(f64::EPSILON)).clamp(0., 1.))
                         as f32;
-                    plot = plot.child(
+                    plot = plot.child(place(
+                        nudge,
                         div()
                             .absolute()
-                            .left(relative(f))
                             .top(relative(y))
-                            .ml(px(-4.5))
                             .mt(px(-4.5))
                             .size(px(9.))
                             .rounded_full()
                             .border_2()
                             .border_color(p.tip)
                             .bg(color),
-                    );
+                        f,
+                        -4.5,
+                    ));
                 }
             }
         }
@@ -1367,15 +1502,24 @@ impl Desktop {
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(div().size(px(8.)).rounded(px(2.)).bg(reading.color))
+                            .child(
+                                div()
+                                    .size(px(8.))
+                                    .flex_shrink_0()
+                                    .rounded(px(2.))
+                                    .bg(reading.color),
+                            )
                             .child(
                                 div()
                                     .flex_1()
+                                    .min_w_0()
+                                    .truncate()
                                     .text_color(p.muted)
                                     .child(reading.long.clone()),
                             )
                             .child(
                                 div()
+                                    .flex_shrink_0()
                                     .font_weight(theme::LABEL_WEIGHT)
                                     .font_features(theme::tabular())
                                     .child(value),
@@ -1388,6 +1532,7 @@ impl Desktop {
                         rows.push(
                             div()
                                 .pl(px(16.))
+                                .truncate()
                                 .text_size(theme::font(11.))
                                 .text_color(p.faint)
                                 .child(format!(
@@ -1404,6 +1549,7 @@ impl Desktop {
                         rows.push(
                             div()
                                 .pl(px(16.))
+                                .truncate()
                                 .text_size(theme::font(11.))
                                 .text_color(p.faint)
                                 .child(tr!(
@@ -1415,41 +1561,42 @@ impl Desktop {
                     }
                 }
                 // The processes busiest by the lane's reading then: the frame's, or
-                // the bucket's averages.
+                // the bucket's averages. Their rows stay while fewer are known,
+                // and a long name ends in an ellipsis.
                 let key = self.history_trend_of(lane);
-                let ranked = self.history_tip_ranking(points, index, key);
-                if !ranked.is_empty() {
-                    let live = values(&self.snapshot["processes"]);
-                    let mut list = div()
-                        .mt(px(3.))
-                        .pt(px(6.))
-                        .border_t_1()
-                        .border_color(p.stroke)
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.));
-                    for (name, value) in ranked {
-                        let icon_of = live
-                            .iter()
-                            .find(|process| text(process, "name").eq_ignore_ascii_case(&name));
-                        list = list.child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(self.process_icon(icon_of, 16., cx))
-                                .child(div().flex_1().min_w_0().truncate().child(name))
+                let ranked = self.history_tip_ranking(key);
+                let live = values(&self.snapshot["processes"]);
+                let mut list = div()
+                    .mt(px(3.))
+                    .pt(px(6.))
+                    .border_t_1()
+                    .border_color(p.stroke)
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.));
+                for slot in 0..TIP_PROCESSES {
+                    let row = div().flex().items_center().gap_2();
+                    list = list.child(match ranked.get(slot) {
+                        Some((name, value)) => {
+                            let icon_of = live
+                                .iter()
+                                .find(|process| text(process, "name").eq_ignore_ascii_case(name));
+                            row.child(self.process_icon(icon_of, 16., cx))
+                                .child(div().flex_1().min_w_0().truncate().child(name.clone()))
                                 .child(
                                     div()
                                         .flex_shrink_0()
                                         .text_color(p.muted)
                                         .font_features(theme::tabular())
-                                        .child(table::format_process(key, value, bits)),
-                                ),
-                        );
-                    }
-                    rows.push(list.into_any_element());
+                                        .child(table::format_process(key, *value, bits)),
+                                )
+                        }
+                        None => row
+                            .child(div().size(px(16.)).flex_shrink_0())
+                            .child("\u{a0}"),
+                    });
                 }
+                rows.push(list.into_any_element());
             }
         }
         rows.push(
@@ -1463,19 +1610,30 @@ impl Desktop {
                 .child(label("history.tip.hint"))
                 .into_any_element(),
         );
-        let _ = window;
+        // Beside the pointer, on its left where the right has no room: at a
+        // fixed width, it turns over at one place and keeps its size.
+        let flip = hover.position.x + px(TIP_GAP + TIP_WIDTH)
+            > window.viewport_size().width - px(TIP_MARGIN);
         Some(
             deferred(
                 anchored()
+                    .anchor(if flip {
+                        gpui_kit::gpui::Anchor::TopRight
+                    } else {
+                        gpui_kit::gpui::Anchor::TopLeft
+                    })
                     .position(point(
-                        hover.position.x + px(14.),
+                        if flip {
+                            hover.position.x - px(TIP_GAP)
+                        } else {
+                            hover.position.x + px(TIP_GAP)
+                        },
                         hover.position.y + px(16.),
                     ))
-                    .snap_to_window_with_margin(px(8.))
+                    .snap_to_window_with_margin(px(TIP_MARGIN))
                     .child(
                         div()
-                            .min_w(px(180.))
-                            .max_w(px(320.))
+                            .w(px(TIP_WIDTH))
                             .flex()
                             .flex_col()
                             .gap(px(3.))
