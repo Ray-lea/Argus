@@ -291,7 +291,7 @@ impl Input {
         Self {
             series: plot.series.clone(),
             geometry_start: plot.geometry_start,
-            span: (plot.end - plot.start).max(1.),
+            span: plot.raster_span.unwrap_or(plot.end - plot.start).max(1.),
             min: plot.min,
             max: plot.max,
             fill: plot.fill,
@@ -323,7 +323,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     let mut key = std::collections::hash_map::DefaultHasher::new();
     for value in [
         plot.geometry_start,
-        plot.end - plot.start,
+        plot.raster_span.unwrap_or(plot.end - plot.start),
         plot.min,
         plot.max,
     ] {
@@ -1830,6 +1830,7 @@ mod tests {
             readout: Default::default(),
             captions: None,
             redraw_alone: false,
+            raster_span: None,
             corner: 0.,
         }
     }

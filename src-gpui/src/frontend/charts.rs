@@ -427,6 +427,11 @@ pub struct TimePlot {
     /// (the history page's chart card), not the views around it: drawing
     /// the whole page for it held the page's entrance still.
     pub(in crate::frontend) redraw_alone: bool,
+    /// How long a window the texture is drawn for, from `geometry_start`,
+    /// when it is not the one shown: a curve drawn once for a window and
+    /// moved and scaled as the window shown eases to or from it (the history
+    /// page's range switch). None draws the window shown.
+    pub(in crate::frontend) raster_span: Option<f64>,
     /// How far each bend of a straight line is rounded, in pixels: the
     /// history page's steps; none elsewhere.
     pub(in crate::frontend) corner: f32,
@@ -1775,6 +1780,7 @@ impl Desktop {
             readout,
             captions: None,
             redraw_alone: false,
+            raster_span: None,
             corner: 0.,
         };
         let plot_rc = if let Some(entry) = entries.get_mut(id) {
@@ -2085,6 +2091,7 @@ mod tests {
             readout: Default::default(),
             captions: None,
             redraw_alone: false,
+            raster_span: None,
             corner: 0.,
         }
     }

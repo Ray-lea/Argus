@@ -1,5 +1,5 @@
-//! The navigator under the lanes: the range (a pill opening a grid of the
-//! ranges, `history_ranges`), and
+//! The navigator under the lanes: the range (a pill opening a drop-down of
+//! the ranges), and
 //! a track with the active lane's reading over the whole range, the window
 //! drawn on it as a box to drag, and the range's ends. Dragging only ever
 //! pauses: the range is held as it was when the drag began, and returning to
@@ -28,13 +28,17 @@ impl Desktop {
 
     pub(super) fn history_navigator(
         &mut self,
+        drawn: Option<&Points>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
         let geometry = self.history.geometry.clone();
         let now = self.history_now();
-        let (a, b) = self.history.extent;
+        // The range as drawn: easing with the window on a range switch.
+        let (start, stop) = self.history.extent_shown();
+        let easing = (start, stop) != (self.history.extent.0 as f64, self.history.extent.1 as f64);
+        let (a, b) = (start.floor() as i64, stop.ceil() as i64);
         let length = (b - a).max(1);
         let follow = self.history.follow;
         let pill = div()
@@ -58,20 +62,16 @@ impl Desktop {
                     .hover(move |s| s.bg(p.hover_strong))
                     .child(self.history_range_name())
                     .child(icon("ChevronDown", p.muted).size(px(14.)))
-                    .on_click(cx.listener(|this, _, _, cx| this.history_open_ranges(cx))),
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.history_toggle_ranges(window, cx)),
+                    ),
             )
-            .child(layout::anchor_probe(
-                "history-range",
-                self.ui.anchors.clone(),
-            ));
+            .child(layout::anchor_probe(RANGES, self.ui.anchors.clone()));
         // The track: the reading over the range, the window as a box.
         let reading = self
             .history_reading(&self.history.active_lane().reading.clone())
             .cloned();
-        let source = self
-            .history
-            .points
-            .as_ref()
+        let source = drawn
             .filter(|points| points.from <= a && points.to >= b)
             .or(self.history.overview.as_ref());
         let mut strip = div()
@@ -90,77 +90,102 @@ impl Desktop {
                 .absolute()
                 .inset_0()
             });
-        if let (Some(reading), Some(points)) = (&reading, source) {
-            let key = navigator_key(reading, points);
-            let end = self.history_clock();
-            let top = points.highest(&key, Part::Mean, a, b, end).unwrap_or(0.);
-            let (low, high) = match reading.axis {
-                readings::Axis::Percent => (0., series::nice_top(top, true).max(10.)),
-                _ => {
-                    let (low, high) = reading.axis_range(points, a, b, end, false);
-                    (low.min(0.), high)
-                }
-            };
-            let curve = charts::TimePlot {
-                id: "history-navigator".into(),
-                series: Arc::new(vec![
-                    charts::Series::new(
-                        String::new(),
-                        points.line(&key, Part::Mean, end, |v| v),
-                        reading.color.opacity(0.75),
-                        charts::MetricFormat::Percent,
-                    )
-                    .fill(0.35)
-                    .source(charts::hash_of(("history-navigator", &reading.id))),
-                ]),
-                start: a as f64,
-                end: b as f64,
-                max: high,
-                min: low,
-                interactive: false,
-                grid: false,
-                fill: true,
-                background_separate: false,
-                smooth: false,
-                ticks: None,
-                geometry_start: self
-                    .history
-                    .flow_origin
-                    .map_or(a as f64, |(_, navigator)| navigator),
-                measured_width: Rc::new(Cell::new(1.)),
-                live_clock: None,
-                image_surface: Default::default(),
-                dash_phases: Default::default(),
-                rescale: Default::default(),
-                readout: Default::default(),
-                captions: None,
-                redraw_alone: true,
-                corner: STEP_CORNER,
-            };
+        let fading = self.history.fading;
+        let generation = self.history.drawn_generation();
+        if let Some(reading) = &reading {
             let mut track = div()
                 .absolute()
                 .top(px(3.))
                 .bottom(px(3.))
                 .left_0()
                 .right_0();
-            if self.history.flow_origin.is_some() {
-                // The plot fills the box: its bounds are the box's.
-                let bounds = Rc::new(Cell::new(Bounds::default()));
-                self.history.glides.push(Glide {
-                    plot: curve.clone(),
-                    bounds: bounds.clone(),
-                });
-                track = track.child(
-                    canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})
-                        .absolute()
-                        .inset_0(),
-                );
+            match fading {
+                // A range switch: the curve of the range before it, from the
+                // points it showed, fades out under the new range's.
+                Some(fade) => {
+                    let (from, to) = fade.extent_from;
+                    let was = (from.floor() as i64, to.ceil() as i64);
+                    if let Some(old) = self
+                        .history
+                        .previous
+                        .as_ref()
+                        .filter(|points| points.from <= was.0 && points.to >= was.1)
+                    {
+                        let curve = self.history_navigator_curve(
+                            format!("history-navigator-{}", generation.wrapping_sub(1)),
+                            reading,
+                            old,
+                            was,
+                            (start, stop),
+                            (from, Some(to - from)),
+                        );
+                        track = track.child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .opacity(1. - fade.alpha)
+                                .child(curve),
+                        );
+                    }
+                    let (ea, eb) = self.history.extent;
+                    let arriving = self
+                        .history
+                        .points
+                        .as_ref()
+                        .filter(|points| points.from <= ea && points.to >= eb)
+                        .or(self.history.overview.as_ref());
+                    if let Some(points) = arriving {
+                        let curve = self.history_navigator_curve(
+                            format!("history-navigator-{generation}"),
+                            reading,
+                            points,
+                            (ea, eb),
+                            (start, stop),
+                            (ea as f64, Some((eb - ea) as f64)),
+                        );
+                        track = track
+                            .child(div().absolute().inset_0().opacity(fade.alpha).child(curve));
+                    }
+                }
+                None => {
+                    if let Some(points) = source {
+                        let curve = self.history_navigator_curve(
+                            format!("history-navigator-{generation}"),
+                            reading,
+                            points,
+                            (a, b),
+                            (start, stop),
+                            (
+                                self.history
+                                    .flow_origin
+                                    .filter(|_| !easing)
+                                    .map_or(start, |(_, navigator)| navigator),
+                                None,
+                            ),
+                        );
+                        if self.history.flow_origin.is_some() && !easing {
+                            // The plot fills the box: its bounds are the box's.
+                            let bounds = Rc::new(Cell::new(Bounds::default()));
+                            self.history.glides.push(Glide {
+                                plot: curve.clone(),
+                                bounds: bounds.clone(),
+                            });
+                            track = track.child(
+                                canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})
+                                    .absolute()
+                                    .inset_0(),
+                            );
+                        }
+                        track = track.child(curve);
+                    }
+                }
             }
-            strip = strip.child(track.child(curve));
+            strip = strip.child(track);
         }
         let (va, vb) = self.history.shown_now();
-        let fa = ((va - a as f64) / length as f64).clamp(0., 1.) as f32;
-        let fb = ((vb - a as f64) / length as f64).clamp(0., 1.) as f32;
+        let range = (stop - start).max(1.);
+        let fa = ((va - start) / range).clamp(0., 1.) as f32;
+        let fb = ((vb - start) / range).clamp(0., 1.) as f32;
         let shade = p.background.opacity(if p.dark { 0.55 } else { 0.45 });
         strip = strip
             .child(
@@ -293,6 +318,64 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// The navigator's curve: `reading` from `points` over the range `(a, b)`,
+    /// shown over `shown` and drawn for the window from `drawn.0`, as long as
+    /// `drawn.1` (none: the range shown).
+    fn history_navigator_curve(
+        &self,
+        id: String,
+        reading: &readings::Reading,
+        points: &Points,
+        (a, b): (i64, i64),
+        (start, stop): (f64, f64),
+        drawn: (f64, Option<f64>),
+    ) -> charts::TimePlot {
+        let key = navigator_key(reading, points);
+        let end = self.history_clock();
+        let top = points.highest(&key, Part::Mean, a, b, end).unwrap_or(0.);
+        let (low, high) = match reading.axis {
+            readings::Axis::Percent => (0., series::nice_top(top, true).max(10.)),
+            _ => {
+                let (low, high) = reading.axis_range(points, a, b, end, false);
+                (low.min(0.), high)
+            }
+        };
+        charts::TimePlot {
+            id: id.into(),
+            series: Arc::new(vec![
+                charts::Series::new(
+                    String::new(),
+                    points.line(&key, Part::Mean, end, |v| v),
+                    reading.color.opacity(0.75),
+                    charts::MetricFormat::Percent,
+                )
+                .fill(0.35)
+                .source(charts::hash_of(("history-navigator", &reading.id))),
+            ]),
+            start,
+            end: stop,
+            max: high,
+            min: low,
+            interactive: false,
+            grid: false,
+            fill: true,
+            background_separate: false,
+            smooth: false,
+            ticks: None,
+            geometry_start: drawn.0,
+            measured_width: Rc::new(Cell::new(1.)),
+            live_clock: None,
+            image_surface: Default::default(),
+            dash_phases: Default::default(),
+            rescale: Default::default(),
+            readout: Default::default(),
+            captions: None,
+            redraw_alone: true,
+            raster_span: drawn.1,
+            corner: STEP_CORNER,
+        }
+    }
+
     /// A press on the track: an edge of the box resizes it, inside moves it,
     /// elsewhere centres it there and moves it from there on.
     fn history_brush_down(&mut self, at: Point<Pixels>) {
@@ -379,14 +462,18 @@ fn navigator_key(reading: &readings::Reading, points: &Points) -> String {
     }
 }
 
-/// The ranges the pill offers, four to a row: the presets, all of it, and
-/// "Custom…" opening the dialog.
-const QUICK: [&str; 8] = ["5m", "1h", "6h", "1d", "7d", "30d", "all", "custom"];
-const QUICK_COLUMNS: usize = 4;
+/// The ranges the pill's drop-down offers, and "Custom…" opening the dialog
+/// for any other.
+const QUICK: [&str; 5] = ["5m", "3h", "1d", "3d", "custom"];
+/// The pill's anchor, and its drop-down's `OpenSelect::id`.
+pub(super) const RANGES: &str = "history-range";
+/// The cache keys of the ranges read ahead while the drop-down is open,
+/// before each range's id.
+pub(super) const AHEAD: &str = "historyAhead.";
 
 impl Desktop {
-    /// The quick range in force: a preset or all of it, else "Custom…"
-    /// (today, yesterday or ends of its own).
+    /// The range in force among the drop-down's, else "Custom…" (another
+    /// length, all of it, today, yesterday or ends of its own).
     fn history_quick_current(&self) -> usize {
         let id = self
             .history
@@ -399,184 +486,92 @@ impl Desktop {
             .unwrap_or(QUICK.len() - 1)
     }
 
-    /// Opens the ranges over the pill, the keys on the one in force.
-    pub(super) fn history_open_ranges(&mut self, cx: &mut Context<Self>) {
-        self.history.ranges = Some(self.history_quick_current());
+    /// Whether the pill's drop-down is open.
+    pub(super) fn history_ranges_open(&self) -> bool {
+        self.ui
+            .select
+            .as_ref()
+            .is_some_and(|open| open.id == RANGES)
+    }
+
+    /// The drop-down's option the keys are on, while it is open.
+    pub(super) fn history_ranges_active(&self) -> Option<usize> {
+        self.ui
+            .select
+            .as_ref()
+            .filter(|open| open.id == RANGES)
+            .map(|open| open.active)
+    }
+
+    /// Opens the ranges as the interface's drop-down list, under the pill (over
+    /// it where there is no room) and as narrow as the pill or the longest
+    /// range; or closes them. "Custom…" opens the dialog again while a custom
+    /// range is in force.
+    fn history_toggle_ranges(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.history_ranges_open() {
+            self.close_select();
+        } else {
+            let options = QUICK
+                .iter()
+                .map(|id| match *id {
+                    "custom" => label("history.range.customMenu"),
+                    id => label(&format!("history.range.{id}")),
+                })
+                .collect();
+            self.open_select(
+                RANGES,
+                options,
+                Some(self.history_quick_current()),
+                Some(QUICK.len() - 1),
+                Rc::new(Self::history_choose_range),
+            );
+            self.history_read_ahead(window, cx);
+        }
+        window.refresh();
         cx.notify();
     }
 
-    pub(super) fn history_close_ranges(&mut self, cx: &mut Context<Self>) {
-        if self.history.ranges.take().is_some() {
-            cx.notify();
+    /// Reads the drop-down's ranges ahead while it is open, so that the one
+    /// chosen zooms in with its points at once: what each would ask for,
+    /// unless kept already.
+    fn history_read_ahead(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.options.fixture.is_some() {
+            return;
+        }
+        let width = self.history_plot_width(window);
+        let now = self.history_now();
+        let origin = local_midnight(now);
+        let keys = self.history_keys();
+        for id in QUICK {
+            let Some(&(_, span)) = PRESETS.iter().find(|(preset, _)| *preset == id) else {
+                continue;
+            };
+            let bucket = series::bucket_for(span, width);
+            let from = now - span;
+            let covers =
+                |points: &Points| points.matches(bucket, origin, &keys) && points.from <= from;
+            if self.history.points.as_ref().is_some_and(covers)
+                || self.history.stash.iter().any(covers)
+            {
+                continue;
+            }
+            let margin = span / 4 + bucket;
+            self.request(
+                "history_points",
+                json!({"from": from - margin, "to": now + bucket, "bucket": bucket,
+                    "origin": origin, "keys": keys, "part": "main", "incremental": false}),
+                Some(&format!("{AHEAD}{id}")),
+                window,
+                cx,
+            );
         }
     }
 
     fn history_choose_range(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        self.history.ranges = None;
         match QUICK.get(index) {
             Some(&"custom") => self.history_command(Command::Picker, window, cx),
             Some(id) => self.history_command(Command::Range(id), window, cx),
-            None => cx.notify(),
+            None => {}
         }
-    }
-
-    /// The keys while the ranges are open: arrows move through them, Enter
-    /// or Space takes one, Esc closes them.
-    pub(super) fn history_ranges_key(
-        &mut self,
-        key: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(at) = self.history.ranges else {
-            return false;
-        };
-        let last = QUICK.len() - 1;
-        let next = match key {
-            "escape" => {
-                self.history_close_ranges(cx);
-                return true;
-            }
-            "enter" | "space" => {
-                self.history_choose_range(at, window, cx);
-                return true;
-            }
-            "left" => at.saturating_sub(1),
-            "right" => (at + 1).min(last),
-            "up" => at.checked_sub(QUICK_COLUMNS).unwrap_or(at),
-            "down" => (at + QUICK_COLUMNS).min(last),
-            _ => return false,
-        };
-        self.history.ranges = Some(next);
-        cx.notify();
-        true
-    }
-
-    /// The ranges, over the pill (under it where there is no room above).
-    pub(super) fn history_ranges(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        let keyed = self.history.ranges?;
-        let p = self.palette;
-        let current = self.history_quick_current();
-        let viewport = window.viewport_size();
-        let margin = px(8.);
-        let pill = self
-            .ui
-            .anchors
-            .borrow()
-            .get("history-range")
-            .copied()
-            .unwrap_or_default();
-        let names = QUICK
-            .iter()
-            .map(|id| {
-                label(&if *id == "custom" {
-                    "history.range.customMenu".to_owned()
-                } else {
-                    format!("history.range.{id}")
-                })
-            })
-            .collect::<Vec<_>>();
-        // Every cell as wide as the widest name (the custom one with its icon).
-        let cell = names
-            .iter()
-            .enumerate()
-            .map(|(index, name)| {
-                let text = f32::from(theme::text_width(name, theme::font(13.), window, cx));
-                text + if index == QUICK.len() - 1 { 18. } else { 0. }
-            })
-            .fold(0., f32::max)
-            + 24.;
-        let gap = 4.;
-        let width = cell * QUICK_COLUMNS as f32 + gap * (QUICK_COLUMNS - 1) as f32 + 2. * 5. + 2.;
-        let tall = 2. * 30. + gap + 2. * 5. + 2.;
-        let above = pill.top() - px(6. + tall) >= margin;
-        let left = pill
-            .left()
-            .min(viewport.width - px(width) - margin)
-            .max(margin);
-        let mut grid = div().grid().grid_cols(QUICK_COLUMNS as u16).gap(px(gap));
-        for (index, name) in names.into_iter().enumerate() {
-            let on = index == current;
-            let custom = index == QUICK.len() - 1;
-            grid = grid.child(
-                div()
-                    .id(("history-quick-range", index))
-                    .h(px(30.))
-                    .w(px(cell))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(5.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(if index == keyed {
-                        p.accent.opacity(0.6)
-                    } else {
-                        gpui_kit::gpui::transparent_black()
-                    })
-                    .text_size(theme::font(13.))
-                    .whitespace_nowrap()
-                    .cursor_pointer()
-                    .when(on, |d| {
-                        d.bg(p.accent.opacity(0.16))
-                            .text_color(p.accent)
-                            .font_weight(theme::LABEL_WEIGHT)
-                    })
-                    .when(!on, |d| d.text_color(p.ink).hover(move |s| s.bg(p.hover)))
-                    .when(custom, |d| {
-                        d.child(
-                            icon("CalendarRangeIcon", if on { p.accent } else { p.muted })
-                                .size(px(13.)),
-                        )
-                    })
-                    .child(name)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.history_choose_range(index, window, cx)
-                    })),
-            );
-        }
-        let panel = div()
-            .id("history-quick-ranges")
-            .absolute()
-            .left(left)
-            .when(above, |d| d.bottom(viewport.height - pill.top() + px(6.)))
-            .when(!above, |d| d.top(pill.bottom() + px(6.)))
-            .p(px(5.))
-            .border_1()
-            .border_color(p.stroke_strong)
-            .rounded(px(8.))
-            .bg(widgets::solid(p.flyout))
-            .occlude()
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-            .child(grid);
-        Some(
-            deferred(
-                anchored().position(point(px(0.), px(0.))).child(
-                    div()
-                        .id("history-quick-ranges-layer")
-                        .w(viewport.width)
-                        .h(viewport.height)
-                        .occlude()
-                        // A press anywhere else closes them.
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, _, cx| this.history_close_ranges(cx)),
-                        )
-                        .on_mouse_down(
-                            MouseButton::Right,
-                            cx.listener(|this, _, _, cx| this.history_close_ranges(cx)),
-                        )
-                        .on_scroll(|_, _, cx| cx.stop_propagation())
-                        .child(panel),
-                ),
-            )
-            .with_priority(gpui_kit::base::POPUP_PRIORITY - 1)
-            .into_any_element(),
-        )
     }
 }

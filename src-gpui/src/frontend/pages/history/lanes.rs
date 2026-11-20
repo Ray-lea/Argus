@@ -3,7 +3,9 @@
 //! the navigator below.
 use super::bar::ReadingMenu;
 use super::readings::Reading;
-use super::series::{BANDED, FRAME, Part, Points, STEP_CORNER, rows_for, tick_step, ticks};
+use super::series::{
+    BANDED, FRAME, Part, Points, STEP_CORNER, rows_for, tick_step, ticks, zoom_between,
+};
 use super::state::{Drag, Drop, Glide, Hover, Lane};
 use super::*;
 
@@ -34,13 +36,279 @@ pub(super) fn comfortable_height(lanes: f32) -> f32 {
 }
 
 /// A lane's axis, the overlay's, and the rows dividing them.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Axes {
     pub(super) left: (f64, f64),
     pub(super) right: Option<(f64, f64)>,
     /// The overlay shares the left axis (same unit).
     pub(super) shared: bool,
     pub(super) rows: u32,
+}
+
+/// A lane's axes easing to new ranges (`state::AXIS`), geometrically about
+/// the value the two ranges have at the same height (zero, mostly), as the
+/// live charts' tops do: the readings they are for, the ranges shown when
+/// the latest change began, the axes they go to, the rows fading out (those
+/// of the axes shown before, and how opaque they were then), and when.
+#[derive(Clone, Debug)]
+pub(super) struct AxisEase {
+    readings: (String, Option<String>),
+    from: ((f64, f64), Option<(f64, f64)>),
+    to: Axes,
+    leaving: Option<(Axes, f32)>,
+    started: Option<Instant>,
+}
+
+/// A lane's axes at a moment of their ease: the ranges shown, and the rows
+/// either side (`Mark`) of the axes they go to and of those they leave.
+pub(super) struct Eased {
+    pub(super) axes: Axes,
+    pub(super) left: Vec<Mark>,
+    pub(super) right: Vec<Mark>,
+    pub(super) moving: bool,
+}
+
+/// A row of an axis: its value, its height on the plot (0 at the top, 1 at
+/// the bottom), how opaque, and the top of the axis it is a row of (which
+/// unit its label is in).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Mark {
+    pub(super) value: f64,
+    pub(super) at: f32,
+    pub(super) alpha: f32,
+    pub(super) top: f64,
+}
+
+impl AxisEase {
+    fn new(axes: Axes, readings: (String, Option<String>)) -> Self {
+        Self {
+            readings,
+            from: (axes.left, axes.right),
+            to: axes,
+            leaving: None,
+            started: None,
+        }
+    }
+
+    /// How far the latest change has come, eased out (1 when done).
+    fn progress(&self, now: Instant) -> f32 {
+        let Some(started) = self.started else {
+            return 1.;
+        };
+        let t = now.saturating_duration_since(started).as_secs_f32() / state::AXIS.as_secs_f32();
+        if t >= 1. {
+            1.
+        } else {
+            1. - (1. - t.max(0.)).powi(3)
+        }
+    }
+
+    /// The axes of a lane showing `readings` at `now`, easing towards
+    /// `target`: a new target eases on from the ranges shown, the rows shown
+    /// more fading out. Other readings start at their own axes.
+    pub(super) fn toward(
+        &mut self,
+        target: Axes,
+        readings: (String, Option<String>),
+        now: Instant,
+        motion: bool,
+    ) -> Eased {
+        if !motion || readings != self.readings {
+            *self = Self::new(target, readings);
+        } else if self.to != target {
+            let e = self.progress(now);
+            let shown = self.eased(now).axes;
+            let leaving = match self.leaving.filter(|_| e < 1.) {
+                Some((axes, alpha)) if alpha * (1. - e) > e => (axes, alpha * (1. - e)),
+                _ => (self.to, e),
+            };
+            *self = Self {
+                readings,
+                from: (shown.left, shown.right),
+                to: target,
+                leaving: Some(leaving),
+                started: Some(now),
+            };
+        }
+        self.eased(now)
+    }
+
+    fn eased(&self, now: Instant) -> Eased {
+        let e = self.progress(now);
+        let left = zoom_between(self.from.0, self.to.left, f64::from(e));
+        let right = match (self.from.1, self.to.right) {
+            (Some(from), Some(to)) => Some(zoom_between(from, to, f64::from(e))),
+            (_, to) => to,
+        };
+        let axes = Axes {
+            left,
+            right,
+            ..self.to
+        };
+        let leaving = self
+            .leaving
+            .filter(|_| e < 1.)
+            .map(|(axes, alpha)| (axes, alpha * (1. - e)));
+        let rows = self.to.rows;
+        Eased {
+            axes,
+            left: marks(
+                left,
+                (self.to.left, rows),
+                leaving.map(|(axes, alpha)| ((axes.left, axes.rows), alpha)),
+                e,
+            ),
+            right: match (right, self.to.right) {
+                (Some(shown), Some(to)) => marks(
+                    shown,
+                    (to, rows),
+                    leaving.and_then(|(axes, alpha)| axes.right.map(|r| ((r, axes.rows), alpha))),
+                    e,
+                ),
+                _ => Vec::new(),
+            },
+            moving: e < 1.,
+        }
+    }
+}
+
+/// An axis's range, and how many rows divide it.
+type Rows = ((f64, f64), u32);
+
+/// The rows an axis draws over the range `shown`: those of the range it goes
+/// to, as opaque as the change has come (`e`), and those of the range it
+/// leaves, fading out; a value both have stays whole. Rows off the plot are
+/// left out.
+pub(super) fn marks(
+    shown: (f64, f64),
+    to: Rows,
+    leaving: Option<(Rows, f32)>,
+    e: f32,
+) -> Vec<Mark> {
+    let height = shown.1 - shown.0;
+    if height.is_nan() || height <= 0. {
+        return Vec::new();
+    }
+    let rows = |((low, high), rows): Rows| {
+        let rows = rows.max(1);
+        (0..=rows).map(move |row| {
+            let value = high - (high - low) * f64::from(row) / f64::from(rows);
+            (value, high)
+        })
+    };
+    let near = |a: f64, b: f64| (a - b).abs() <= height.abs() * 1e-6;
+    let going: Vec<(f64, f64)> = leaving
+        .map(|(axis, _)| rows(axis).collect())
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for (value, top) in rows(to) {
+        let kept = leaving.is_none() || going.iter().any(|(v, _)| near(*v, value));
+        out.push(Mark {
+            value,
+            at: (1. - (value - shown.0) / height) as f32,
+            alpha: if kept { 1. } else { e },
+            top,
+        });
+    }
+    if let Some((_, alpha)) = leaving {
+        for (value, top) in going {
+            if !rows(to).any(|(v, _)| near(v, value)) {
+                out.push(Mark {
+                    value,
+                    at: (1. - (value - shown.0) / height) as f32,
+                    alpha,
+                    top,
+                });
+            }
+        }
+    }
+    out.retain(|mark| mark.at >= -0.002 && mark.at <= 1.002 && mark.alpha > 0.004);
+    out
+}
+
+/// A lane's curves fading out on a range switch: drawn on the axes and in
+/// the buckets of the window shown before it (`Crossfade::from`), with the
+/// points it showed (`HistoryState::previous`).
+pub(super) struct Leaving {
+    axes: Axes,
+    bucket: i64,
+    window: (f64, f64),
+    alpha: f32,
+}
+
+/// A lane's curve: `series` on the left axis of `axes`, shown in the window
+/// `shown` and drawn for the window from `drawn.0`, as long as `drawn.1`
+/// (none: the window shown).
+fn history_curve(
+    id: String,
+    series: Vec<charts::Series>,
+    axes: &Axes,
+    (from, to): (f64, f64),
+    drawn: (f64, Option<f64>),
+    ticks: Option<(Arc<Vec<f64>>, Hsla)>,
+) -> charts::TimePlot {
+    charts::TimePlot {
+        id: id.into(),
+        series: Arc::new(series),
+        start: from,
+        end: to,
+        max: axes.left.1,
+        min: axes.left.0,
+        interactive: false,
+        grid: false,
+        fill: true,
+        background_separate: false,
+        smooth: false,
+        ticks,
+        geometry_start: drawn.0,
+        measured_width: Rc::new(Cell::new(1.)),
+        live_clock: None,
+        image_surface: Default::default(),
+        dash_phases: Default::default(),
+        rescale: Default::default(),
+        readout: Default::default(),
+        captions: None,
+        redraw_alone: true,
+        raster_span: drawn.1,
+        corner: STEP_CORNER,
+    }
+}
+
+/// The rows of two axes at once, each where its own range puts it: those of
+/// the axes a range switch leaves, fading out, and those of the axes it goes
+/// to, as opaque as `alpha`. A row both have in one place stays whole.
+fn crossfade_marks(leaving: Rows, arriving: Rows, alpha: f32) -> Vec<Mark> {
+    let rows = |((low, high), rows): Rows, alpha: f32| {
+        let rows = rows.max(1);
+        (0..=rows)
+            .map(|row| {
+                let at = row as f32 / rows as f32;
+                Mark {
+                    value: high - (high - low) * f64::from(at),
+                    at,
+                    alpha,
+                    top: high,
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let old = rows(leaving, 1. - alpha);
+    let mut out = rows(arriving, alpha);
+    let near = |a: &Mark, b: &Mark| {
+        (a.at - b.at).abs() < 1e-4 && (a.value - b.value).abs() <= a.value.abs().max(1.) * 1e-9
+    };
+    for mark in &mut out {
+        if old.iter().any(|kept| near(kept, mark)) {
+            mark.alpha = 1.;
+        }
+    }
+    let gone: Vec<Mark> = old
+        .into_iter()
+        .filter(|mark| !out.iter().any(|kept| near(kept, mark)))
+        .collect();
+    out.extend(gone);
+    out.retain(|mark| mark.alpha > 0.004);
+    out
 }
 
 /// While the window glides, where a mark goes: laid out on the device-pixel
@@ -217,7 +485,8 @@ impl Desktop {
                     reading.color,
                     format,
                 )
-                .source(source("band")),
+                .source(source("band"))
+                .layer(true),
             );
         }
         let main = if reading.is_pair() && !points.has(&reading.keys[0]) {
@@ -364,8 +633,26 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let lanes = self.history_lanes(shown, window, cx);
-        let navigator = self.history_navigator(window, cx);
+        // The points drawn: spliced with those they replaced while the window
+        // eases from them, for the lanes and the navigator alike.
+        let mut drawn = self.history.drawn_points();
+        // Following a range in buckets, the curves end at the newest complete
+        // bucket, and one that completes is drawn on (`reveal_to`).
+        self.history.reveal_moving = false;
+        if self.history.follow
+            && self.history.fading.is_none()
+            && !self.history_flowing(cx)
+            && let Some(points) = drawn.as_mut().filter(|points| points.bucket > SECOND)
+        {
+            let motion = self.history_motion(cx);
+            let (cutoff, moving) =
+                self.history
+                    .reveal_to(points.settled, points.bucket, Instant::now(), motion);
+            *points = points.until(cutoff);
+            self.history.reveal_moving = moving;
+        }
+        let lanes = self.history_lanes(shown, drawn.as_ref(), window, cx);
+        let navigator = self.history_navigator(drawn.as_ref(), window, cx);
         div()
             .id("history-chart")
             .flex_none()
@@ -390,6 +677,7 @@ impl Desktop {
     fn history_lanes(
         &mut self,
         (from, to): (f64, f64),
+        points: Option<&Points>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -415,20 +703,31 @@ impl Desktop {
         // textures and move with them: the ticks of the texture's own window
         // and the raster's overscan, an eighth of the window either side. They
         // change only with the texture's window, as the newest reading does.
-        let clock_lines = self.history.flow_origin.map(|(origin, _)| {
-            let overscan = span / 8.;
-            let lines = ticks(
-                (origin - overscan).floor() as i64,
-                (origin + span + overscan).ceil() as i64,
-                tick,
-            );
-            (
-                Arc::new(lines.into_iter().map(|t| t as f64).collect::<Vec<_>>()),
-                p.stroke.opacity(0.6),
-            )
-        });
+        // A range switch cross-fades the curves drawn for the window before
+        // it into those drawn for the window it goes to: no clock lines in
+        // their textures then (those are drawn for one window).
+        let fading = self.history.fading;
+        let leaving_points = fading.and(self.history.previous.clone());
+        let arriving_points = fading.and(self.history.points.clone());
+        let view = self.history.view;
+        let clock_lines =
+            self.history
+                .flow_origin
+                .filter(|_| fading.is_none())
+                .map(|(origin, _)| {
+                    let overscan = span / 8.;
+                    let lines = ticks(
+                        (origin - overscan).floor() as i64,
+                        (origin + span + overscan).ceil() as i64,
+                        tick,
+                    );
+                    (
+                        Arc::new(lines.into_iter().map(|t| t as f64).collect::<Vec<_>>()),
+                        p.stroke.opacity(0.6),
+                    )
+                });
         let read_index = self.history_read_index();
-        let points = self.history.points.clone();
+        let motion = self.history_motion(cx);
         let mut column = div()
             .relative()
             .flex_1()
@@ -473,6 +772,10 @@ impl Desktop {
         );
         let mut lifted = None;
         let mut previous: Option<f32> = None;
+        let mut axes_moving = false;
+        self.history
+            .axes
+            .retain(|id, _| lanes.iter().any(|lane| lane.id == *id));
         for (index, lane) in lanes.iter().enumerate() {
             let presence = lane.presence();
             if let Some(before) = previous {
@@ -483,12 +786,59 @@ impl Desktop {
             previous = Some(presence);
             least += state::MIN_LANE * presence;
             let plot_height = measured.get(&lane.id).copied().unwrap_or(120.);
-            let axes = self.history_axes(lane, points.as_ref(), window_ms, bucket, plot_height);
+            // On a range switch the new curves stand on the axes of the window
+            // they are drawn for, the old ones on those of theirs; the rows
+            // cross-fade, and the axes then start from the new ones.
+            let target = match fading {
+                Some(_) => {
+                    self.history_axes(lane, arriving_points.as_ref(), view, bucket, plot_height)
+                }
+                None => self.history_axes(lane, points, window_ms, bucket, plot_height),
+            };
+            let leaving = fading.zip(leaving_points.as_ref()).map(|(fade, old)| {
+                let window = (fade.from.0.floor() as i64, fade.from.1.ceil() as i64);
+                let old_bucket = series::bucket_for(window.1 - window.0, width);
+                Leaving {
+                    axes: self.history_axes(lane, Some(old), window, old_bucket, plot_height),
+                    bucket: old_bucket,
+                    window: fade.from,
+                    alpha: 1. - fade.alpha,
+                }
+            });
+            let readings = (lane.reading.clone(), lane.overlay.clone());
+            let mut eased = self
+                .history
+                .axes
+                .entry(lane.id)
+                .or_insert_with(|| AxisEase::new(target, readings.clone()))
+                .toward(target, readings, now, motion && fading.is_none());
+            if let (Some(fade), Some(old)) = (fading, &leaving) {
+                eased.left = crossfade_marks(
+                    (old.axes.left, old.axes.rows),
+                    (target.left, target.rows),
+                    fade.alpha,
+                );
+                if let (Some(was), Some(will)) = (old.axes.right, target.right) {
+                    eased.right =
+                        crossfade_marks((was, old.axes.rows), (will, target.rows), fade.alpha);
+                }
+            }
+            axes_moving |= eased.moving || fading.is_some();
+            let fade = fading
+                .and(leaving_points.as_ref())
+                .zip(leaving.as_ref())
+                .map(|(old, leaving)| (old, leaving, fading.map_or(1., |fade| fade.alpha)));
             let element = self.history_lane(
                 lane,
                 presence,
                 multi,
-                &axes,
+                &eased,
+                if fading.is_some() {
+                    arriving_points.as_ref()
+                } else {
+                    points
+                },
+                fade,
                 bucket,
                 (from, to),
                 width,
@@ -529,6 +879,7 @@ impl Desktop {
                 }
             }
         }
+        self.history.axes_moving = axes_moving;
         if let Some((element, lift)) = lifted
             && let Some(part) = self.history.lanes_order.bounds(state::LANES, "", "")
         {
@@ -731,7 +1082,10 @@ impl Desktop {
         lane: &Lane,
         presence: f32,
         multi: bool,
-        axes: &Axes,
+        eased: &Eased,
+        points: Option<&Points>,
+        // A range switch: the curves fading out, and how opaque the new ones are.
+        fade: Option<(&Points, &Leaving, f32)>,
         bucket: i64,
         (from, to): (f64, f64),
         // The plot's width as laid out last: measured before the lanes
@@ -747,6 +1101,7 @@ impl Desktop {
     ) -> AnyElement {
         let p = self.palette;
         let id = lane.id;
+        let axes = &eased.axes;
         let span = (to - from).max(1.);
         let reading = self.history_reading(&lane.reading).cloned();
         let overlay = lane
@@ -756,7 +1111,6 @@ impl Desktop {
             .cloned();
         let bits = self.history_bits();
         let header = self.history_lane_header(lane, presence, multi, axes, read_index, window, cx);
-        let points = self.history.points.clone();
         let geometry = self.history.geometry.clone();
         let lane_id = lane.id;
         // The plot: its grid, the curves, the gaps and the marks.
@@ -784,17 +1138,18 @@ impl Desktop {
                 .absolute()
                 .inset_0()
             });
-        for row in 0..=axes.rows {
-            let f = row as f32 / axes.rows as f32;
+        // The rows, sliding with the curve and crossfading while the axis
+        // eases to a new range.
+        for mark in &eased.left {
             plot = plot.child(
                 div()
                     .absolute()
                     .left_0()
                     .right_0()
-                    .top(relative(f))
-                    .when(row == axes.rows, |d| d.mt(px(-1.)))
+                    .top(relative(mark.at))
+                    .when(mark.at > 0.999, |d| d.mt(px(-1.)))
                     .h(px(1.))
-                    .bg(p.stroke),
+                    .bg(p.stroke.opacity(mark.alpha)),
             );
         }
         // The clock lines: in the curve's texture while it glides (they move
@@ -827,8 +1182,13 @@ impl Desktop {
             };
             place(nudge, mark, a, 0.)
         };
-        // Gaps the line breaks for: hatched, named where there is room.
-        if let Some(points) = &points {
+        // Gaps the line breaks for: hatched, named where there is room. On a
+        // range switch those of the window before it fade out with its curves.
+        let hatched = points
+            .map(|points| (points, fade.map_or(1., |(_, _, alpha)| alpha)))
+            .into_iter()
+            .chain(fade.map(|(old, leaving, _)| (old, leaving.alpha)));
+        for (points, alpha) in hatched {
             for gap in points.shown_gaps() {
                 let a = ((gap.from as f64 - from) / span).clamp(0., 1.) as f32;
                 let b = ((gap.to as f64 - from) / span).clamp(0., 1.) as f32;
@@ -841,6 +1201,7 @@ impl Desktop {
                         .absolute()
                         .top_0()
                         .bottom_0()
+                        .when(alpha < 1., |d| d.opacity(alpha))
                         .bg(gpui_kit::gpui::pattern_slash(p.faint.opacity(0.22), 1., 6.))
                         .flex()
                         .items_center()
@@ -861,35 +1222,50 @@ impl Desktop {
             }
         }
         let recorded = reading.as_ref().is_some_and(|r| r.recorded);
+        let generation = self.history.drawn_generation();
+        if let (Some((old, leaving, _)), Some(_)) = (fade, &reading) {
+            // The window's curves before the switch, as drawn for it, fading out.
+            let series = self.history_lane_series(lane, old, &leaving.axes, leaving.bucket);
+            let curve = history_curve(
+                format!("history-lane-{id}-{}", generation.wrapping_sub(1)),
+                series,
+                &leaving.axes,
+                (from, to),
+                (leaving.window.0, Some(leaving.window.1 - leaving.window.0)),
+                None,
+            );
+            plot = plot.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .opacity(leaving.alpha)
+                    .child(curve),
+            );
+        }
         if let (Some(points), Some(_)) = (&points, &reading) {
             let series = self.history_lane_series(lane, points, axes, bucket);
-            let curve = charts::TimePlot {
-                id: format!("history-lane-{id}").into(),
-                series: Arc::new(series),
-                start: from,
-                end: to,
-                max: axes.left.1,
-                min: axes.left.0,
-                interactive: false,
-                grid: false,
-                fill: true,
-                background_separate: false,
-                smooth: false,
-                ticks: clock_lines.cloned(),
-                // While the window glides, the texture stays the one drawn for
-                // the newest reading's window, moved under the window on screen.
-                geometry_start: self.history.flow_origin.map_or(from, |(lanes, _)| lanes),
-                measured_width: Rc::new(Cell::new(1.)),
-                live_clock: None,
-                image_surface: Default::default(),
-                dash_phases: Default::default(),
-                rescale: Default::default(),
-                readout: Default::default(),
-                captions: None,
-                redraw_alone: true,
-                corner: STEP_CORNER,
-            };
-            if self.history.flow_origin.is_some() {
+            let (view_from, view_to) = self.history.view;
+            let curve = history_curve(
+                format!("history-lane-{id}-{generation}"),
+                series,
+                axes,
+                (from, to),
+                match fade {
+                    // Drawn once for the window the switch goes to.
+                    Some(_) => (view_from as f64, Some((view_to - view_from) as f64)),
+                    // While the window glides, the texture stays the one drawn
+                    // for the newest reading's window, moved under the window on
+                    // screen.
+                    None => (
+                        self.history.flow_origin.map_or(from, |(lanes, _)| lanes),
+                        None,
+                    ),
+                },
+                clock_lines.cloned(),
+            );
+            if let Some((_, _, alpha)) = fade {
+                plot = plot.child(div().absolute().inset_0().opacity(alpha).child(curve));
+            } else if self.history.flow_origin.is_some() {
                 // The plot fills the box: its bounds are the box's.
                 let bounds = Rc::new(Cell::new(Bounds::default()));
                 self.history.glides.push(Glide {
@@ -901,8 +1277,10 @@ impl Desktop {
                         .absolute()
                         .inset_0(),
                 );
+                plot = plot.child(curve);
+            } else {
+                plot = plot.child(curve);
             }
-            plot = plot.child(curve);
         }
         if !recorded && let Some(reading) = &reading {
             plot = plot.child(self.history_unrecorded(reading, cx));
@@ -1230,39 +1608,37 @@ impl Desktop {
                 cx.notify();
             }));
         // The axes' labels either side.
-        let label_column =
-            |values: Option<(f64, f64)>, reading: Option<&Reading>, color: Hsla, right: bool| {
-                let mut column = div().relative().w(px(GUTTER)).flex_shrink_0().h_full();
-                if let (Some((low, high)), Some(reading)) = (values, reading) {
-                    for row in 0..=axes.rows {
-                        let f = row as f32 / axes.rows as f32;
-                        let value = high - (high - low) * f64::from(f);
-                        let text = reading.axis_label(value, high, bits);
-                        // Centred on its line; the lowest just above it, so it
-                        // stays in the lane and clear of the time axis below.
-                        let lift = if row == axes.rows { -16. } else { -8. };
-                        column = column.child(
-                            div()
-                                .absolute()
-                                .top(relative(f))
-                                .mt(px(lift))
-                                .h(px(16.))
-                                .when(!right, |d| d.right(px(6.)))
-                                .when(right, |d| d.left(px(6.)))
-                                .flex()
-                                .items_center()
-                                .text_size(theme::font(11.))
-                                .text_color(color)
-                                .whitespace_nowrap()
-                                .child(text),
-                        );
-                    }
+        let label_column = |marks: &[Mark], reading: Option<&Reading>, color: Hsla, right: bool| {
+            let mut column = div().relative().w(px(GUTTER)).flex_shrink_0().h_full();
+            if let Some(reading) = reading {
+                for mark in marks {
+                    let text = reading.axis_label(mark.value, mark.top, bits);
+                    // Centred on its line; the lowest just above it, so it
+                    // stays in the lane and clear of the time axis below (a
+                    // row easing to the bottom moves up as it comes).
+                    let lift = -8. - 8. * ((mark.at - 0.94) / 0.06).clamp(0., 1.);
+                    column = column.child(
+                        div()
+                            .absolute()
+                            .top(relative(mark.at))
+                            .mt(px(lift))
+                            .h(px(16.))
+                            .when(!right, |d| d.right(px(6.)))
+                            .when(right, |d| d.left(px(6.)))
+                            .flex()
+                            .items_center()
+                            .text_size(theme::font(11.))
+                            .text_color(color.opacity(mark.alpha))
+                            .whitespace_nowrap()
+                            .child(text),
+                    );
                 }
-                column
-            };
-        let left_labels = label_column(Some(axes.left), reading.as_ref(), p.faint, false);
+            }
+            column
+        };
+        let left_labels = label_column(&eased.left, reading.as_ref(), p.faint, false);
         let right_labels = label_column(
-            axes.right.filter(|_| !axes.shared),
+            if axes.shared { &[] } else { &eased.right },
             overlay.as_ref(),
             overlay.as_ref().map_or(p.faint, |o| o.color),
             true,

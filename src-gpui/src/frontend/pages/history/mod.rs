@@ -311,6 +311,11 @@ impl Desktop {
             )
         });
         let (mut shown, easing) = self.history.shown(now, motion);
+        // The points an answer replaced are drawn with it only while the
+        // window eases from them.
+        if !easing && self.history.held_since().is_none() {
+            self.history.previous = None;
+        }
         if let Some(end) = precise.filter(|_| !easing) {
             shown = (end - (shown.1 - shown.0), end);
         }
@@ -339,7 +344,13 @@ impl Desktop {
         let chart = self.history_chart(shown, window, cx);
         let glides = std::mem::take(&mut self.history.glides);
         self.history.gliding = None;
-        if easing || lanes_moving || toast || self.history.lanes_order.moving(now) {
+        if easing
+            || lanes_moving
+            || toast
+            || self.history.axes_moving
+            || self.history.reveal_moving
+            || self.history.lanes_order.moving(now)
+        {
             window.request_isolated_animation_frame();
         } else if flowing {
             // Device pixels the window moves in a millisecond.
@@ -677,6 +688,7 @@ impl Desktop {
         self.history_restore();
         if self.options.fixture.is_some() {
             self.history_fixture();
+            self.history.release_hold();
             return;
         }
         let clock = self.history_clock();
@@ -711,6 +723,33 @@ impl Desktop {
         self.history_ask_points(window, cx);
         self.history_ask_overview(window, cx);
         self.history_ask_table(window, cx);
+        self.history_wait_for_points(window, cx);
+    }
+
+    /// A window waiting for its points eases without them once `HOLD` has
+    /// passed (a slow read of long-unread days).
+    fn history_wait_for_points(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(since) = self.history.held_since() else {
+            return;
+        };
+        if self
+            .history
+            .hold_wait
+            .as_ref()
+            .is_some_and(|(waiting, _)| *waiting == since)
+        {
+            return;
+        }
+        let wait = state::HOLD.saturating_sub(since.elapsed());
+        let task = cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.history.held_since() == Some(since) && this.history.release_hold() {
+                    this.history_redraw(window, cx);
+                }
+            });
+        });
+        self.history.hold_wait = Some((since, task));
     }
 
     /// The pointer reached the page's tab: the page's readings are asked for
@@ -750,6 +789,30 @@ impl Desktop {
     }
 
     fn history_ask_points(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let width = self.history_plot_width(window);
+        let (a, b) = self.history.view;
+        let span = (b - a).max(SECOND);
+        let bucket = series::bucket_for(span, width);
+        let now = self.history_now();
+        let origin = local_midnight(now);
+        let keys = self.history_keys();
+        let follow = self.history.follow;
+        let covers = |points: &Points| {
+            points.matches(bucket, origin, &keys) && points.from <= a && (follow || points.to >= b)
+        };
+        // Points kept for this window (a range switched away from, or read
+        // ahead by the range's drop-down) are taken up at once; what is newer
+        // than them is asked for below.
+        if !self.history.points.as_ref().is_some_and(covers)
+            && let Some(at) = self.history.stash.iter().position(covers)
+        {
+            let kept = self.history.stash.remove(at);
+            if let Some(old) = self.history.points.replace(kept) {
+                self.history.set_aside(old);
+            }
+            self.history.points_asked = None;
+            self.history.release_hold();
+        }
         // One query at a time: asked again as soon as the one on its way
         // lands (`history_complete`), not a sample later.
         if self
@@ -760,17 +823,7 @@ impl Desktop {
             self.history.points_again = true;
             return;
         }
-        let width = self.history_plot_width(window);
-        let (a, b) = self.history.view;
-        let span = (b - a).max(SECOND);
-        let bucket = series::bucket_for(span, width);
-        let now = self.history_now();
-        let origin = local_midnight(now);
-        let keys = self.history_keys();
-        let follow = self.history.follow;
-        let fresh = self.history.points.as_ref().is_some_and(|points| {
-            points.matches(bucket, origin, &keys) && points.from <= a && (follow || points.to >= b)
-        });
+        let fresh = self.history.points.as_ref().is_some_and(covers);
         if fresh {
             if !follow
                 || self
@@ -792,6 +845,23 @@ impl Desktop {
                 window,
                 cx,
             );
+            return;
+        }
+        // The range's drop-down read this window ahead: taken up when it lands.
+        let ahead = self.pending.values().any(|pending| {
+            let args = &pending.args;
+            pending
+                .cache
+                .as_deref()
+                .is_some_and(|key| key.starts_with(navigator::AHEAD))
+                && args["bucket"].as_i64() == Some(bucket)
+                && args["origin"].as_i64() == Some(origin)
+                && args["from"].as_i64().is_some_and(|from| from <= a)
+                && args["keys"].as_array().is_some_and(|list| {
+                    list.len() == keys.len() && list.iter().zip(&keys).all(|(k, key)| k == key)
+                })
+        });
+        if follow && ahead {
             return;
         }
         let margin = span / 4 + bucket;
@@ -817,7 +887,14 @@ impl Desktop {
             .points
             .as_ref()
             .is_some_and(|points| points.from <= a && points.to >= b);
-        if covered {
+        // The window's points on their way cover the range too: they draw it,
+        // and the same days are not read twice at once.
+        let coming = self.pending.values().any(|pending| {
+            pending.cache.as_deref() == Some("historyPoints")
+                && pending.args["from"].as_i64().is_some_and(|from| from <= a)
+                && pending.args["to"].as_i64().is_some_and(|to| to >= b)
+        });
+        if covered || coming {
             return;
         }
         let width = f32::from(self.history.geometry.borrow().track.size.width).max(300.);
@@ -1176,6 +1253,23 @@ impl Desktop {
             self.history_redraw(window, cx);
             return true;
         }
+        // A range's points read ahead while the drop-down is open: kept for
+        // when it is chosen.
+        if cache.is_some_and(|key| key.starts_with(navigator::AHEAD)) {
+            if let Ok(answer) = result {
+                self.history.stash_points(Points::parse(answer, args));
+                // Chosen while on its way: taken up now (the window waiting
+                // for it eases).
+                if self.page == "history" {
+                    let before = self.history.points.as_ref().map(|p| (p.bucket, p.from));
+                    self.history_ask_points(window, cx);
+                    if self.history.points.as_ref().map(|p| (p.bucket, p.from)) != before {
+                        self.history_redraw(window, cx);
+                    }
+                }
+            }
+            return true;
+        }
         let Ok(answer) = result else {
             // Kept as it was; asked again on the next poll.
             return true;
@@ -1184,12 +1278,19 @@ impl Desktop {
             "history_points" => {
                 let points = Points::parse(answer, args);
                 let overview = args["part"] == "overview";
+                let incremental = args["incremental"] == true;
+                if !overview
+                    && !incremental
+                    && let Some(old) = self.history.points.take()
+                {
+                    self.history.set_aside(old);
+                }
                 let slot = if overview {
                     &mut self.history.overview
                 } else {
                     &mut self.history.points
                 };
-                if args["incremental"] == true {
+                if incremental {
                     if let Some(existing) = slot
                         && existing.matches(points.bucket, points.origin, &points.keys)
                     {
@@ -1204,6 +1305,8 @@ impl Desktop {
                     points.trim(keep);
                 }
                 if !overview {
+                    // A new range's window eases there now, with its points.
+                    self.history.release_hold();
                     let clock = self.history_clock();
                     self.history.anchor(clock);
                     // A newer frame may be what the table lists now.
@@ -1419,9 +1522,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        // The quick ranges take the arrows, Enter, Space and Esc while open.
-        if self.history.ranges.is_some() {
-            return self.history_ranges_key(key, window, cx);
+        // The range's drop-down takes the arrows, Enter, Space and Esc while
+        // open, as a combo box holding the focus does.
+        if self.history_ranges_open() {
+            return self.select_key(key, window, cx);
         }
         // The reading chooser keeps typing in its search box: Up and Down
         // move through the readings, Enter chooses, Esc closes it.
@@ -1592,7 +1696,9 @@ impl Desktop {
             "follow": h.follow,
             "picker": h.picker.is_some(),
             "chooser": self.history_chooser_state(cx),
-            "ranges": h.ranges,
+            "ranges": self.history_ranges_active(),
+            "axesMoving": h.axes_moving,
+            "held": h.held_since().is_some(),
             "range": format!("{:?}", h.range),
             "view": [h.view.0, h.view.1],
             "extent": [h.extent.0, h.extent.1],
@@ -1667,7 +1773,6 @@ impl Desktop {
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
             .children(self.history_chooser(window, cx))
-            .children(self.history_ranges(window, cx))
             .into_any_element()
     }
 

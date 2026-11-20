@@ -56,8 +56,10 @@
   "range": {
     "5m": "5 Minuten",
     "1h": "1 Stunde",
+    "3h": "3 Stunden",
     "6h": "6 Stunden",
     "1d": "1 Tag",
+    "3d": "3 Tage",
     "7d": "7 Tage",
     "30d": "30 Tage",
     "all": "Alles",

@@ -13,7 +13,8 @@ pub(in crate::frontend) enum Tone {
 
 /// A deferred piece of work on the desktop: a toast action, a confirmed step.
 pub(in crate::frontend) type Handler = Rc<dyn Fn(&mut Desktop, &mut Window, &mut Context<Desktop>)>;
-type Pick = Rc<dyn Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>)>;
+pub(in crate::frontend) type Pick =
+    Rc<dyn Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>)>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(in crate::frontend) enum ToastKind {
@@ -48,6 +49,9 @@ pub(in crate::frontend) struct OpenSelect {
     pub pick: Pick,
     pub opened: Instant,
     pub scroll: ScrollHandle,
+    /// An option that acts even while it is the selected one (one opening a
+    /// dialog).
+    pub again: Option<usize>,
 }
 
 /// The show/hide hotkey card's recording session.
@@ -1309,23 +1313,7 @@ impl Desktop {
                 if this.ui.select.as_ref().is_some_and(|s| s.id == id) {
                     this.close_select();
                 } else {
-                    let anchor = this
-                        .ui
-                        .anchors
-                        .borrow()
-                        .get(&id)
-                        .copied()
-                        .unwrap_or_default();
-                    this.ui.select = Some(OpenSelect {
-                        id: id.clone(),
-                        options: options.clone(),
-                        selected,
-                        active: selected.unwrap_or(0),
-                        anchor,
-                        pick: pick.clone(),
-                        opened: Instant::now(),
-                        scroll: ScrollHandle::new(),
-                    });
+                    this.open_select(id.clone(), options.clone(), selected, None, pick.clone());
                 }
                 window.refresh();
                 cx.notify();
@@ -1502,6 +1490,66 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// Opens a drop-down's list at the control anchored as `id`: under it, or
+    /// over it where there is no room; at least as wide as the control.
+    pub(in crate::frontend) fn open_select(
+        &mut self,
+        id: impl Into<SharedString>,
+        options: Vec<String>,
+        selected: Option<usize>,
+        again: Option<usize>,
+        pick: Pick,
+    ) {
+        let id = id.into();
+        let anchor = self
+            .ui
+            .anchors
+            .borrow()
+            .get(&id)
+            .copied()
+            .unwrap_or_default();
+        self.ui.select = Some(OpenSelect {
+            id,
+            options,
+            selected,
+            active: selected.unwrap_or(0),
+            anchor,
+            pick,
+            opened: Instant::now(),
+            scroll: ScrollHandle::new(),
+            again,
+        });
+    }
+
+    /// The keys of an open drop-down whose control does not hold the focus
+    /// (one opened from a pill): what a combo box's own keys do.
+    pub(in crate::frontend) fn select_key(
+        &mut self,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(open) = &mut self.ui.select else {
+            return false;
+        };
+        let last = open.options.len().saturating_sub(1);
+        match key {
+            "up" => open.active = open.active.saturating_sub(1),
+            "down" => open.active = (open.active + 1).min(last),
+            "home" => open.active = 0,
+            "end" => open.active = last,
+            "enter" | "space" => {
+                self.pick_select(None, window, cx);
+                return true;
+            }
+            "escape" | "tab" => self.close_select(),
+            _ => return false,
+        }
+        window.refresh();
+        cx.notify();
+        true
+    }
+
     /// Closes the open drop-down; its list fades out.
     pub(in crate::frontend) fn close_select(&mut self) {
         if let Some(open) = self.ui.select.take() {
@@ -1525,7 +1573,8 @@ impl Desktop {
         if let Some(focus) = focus {
             focus.focus(window, cx);
         }
-        if Some(index) != open.selected && index < open.options.len() {
+        if (Some(index) != open.selected || Some(index) == open.again) && index < open.options.len()
+        {
             (open.pick)(self, index, window, cx);
         }
         window.refresh();
@@ -1563,13 +1612,6 @@ impl Desktop {
             (None, Some((open, shown))) => (open, shown),
             (None, None) => return None,
         };
-        // Grows in over 167 ms, decelerating (`flyout-in`; its slight scale is
-        // left out). One closed meanwhile goes on fading in.
-        let opacity = if reduce {
-            1.
-        } else {
-            theme::ease_out((open.opened.elapsed().as_secs_f32() / 0.167).min(1.))
-        };
         let p = self.palette;
         let viewport = window.viewport_size();
         let anchor = open.anchor;
@@ -1579,6 +1621,7 @@ impl Desktop {
         let up = below < wanted && above > below;
         let max_height = (if up { above } else { below }).max(ITEM * 3.);
         let height = wanted.min(max_height);
+        let scrolls = wanted > max_height;
         let top = if up {
             anchor.top() - px(GAP + height)
         } else {
@@ -1588,7 +1631,7 @@ impl Desktop {
             .left()
             .min(viewport.width - px(MARGIN) - anchor.size.width)
             .max(px(MARGIN));
-        if opacity < 1. || shown < 1. {
+        if shown < 1. {
             window.request_animation_frame();
         }
         let list = div()
@@ -1621,7 +1664,6 @@ impl Desktop {
                     .flex()
                     .items_center()
                     .rounded(px(4.))
-        let scrolls = wanted > max_height;
                     .whitespace_nowrap()
                     .when(index == open.active, |d| d.bg(p.hover))
                     .active(move |s| s.bg(p.press))

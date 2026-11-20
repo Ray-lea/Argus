@@ -12,6 +12,16 @@ use std::time::{Duration, Instant};
 /// Direct input (wheel, keys) and layout changes (ranges, lanes) ease over these.
 pub(super) const FAST: Duration = Duration::from_millis(167);
 pub(super) const SLOW: Duration = Duration::from_millis(250);
+/// The longest a new range's window waits for its points before it eases
+/// without them (days not read since the start, read from disk).
+pub(super) const HOLD: Duration = Duration::from_millis(500);
+/// How long a lane's axis takes to ease to a new range, as the live charts'
+/// tops do (`charts::RESCALE`).
+pub(super) const AXIS: Duration = Duration::from_millis(420);
+/// How long a bucket that completes takes to draw on while following (`Reveal`).
+pub(super) const REVEAL: Duration = Duration::from_millis(450);
+/// How many answers for other windows are kept (`HistoryState::stash`).
+const STASHED: usize = 4;
 /// The narrowest a lane can be dragged, header included.
 pub(super) const MIN_LANE: f32 = 76.;
 /// The lanes as a list arranged by dragging (`reorder`), each by its id.
@@ -28,11 +38,16 @@ pub(super) enum Range {
     Fixed(i64, i64),
 }
 
-pub(super) const PRESETS: [(&str, i64); 6] = [
+/// The ranges a saved preference names: the drop-down's, and those it
+/// offered before (kept for preferences saved then, and named as they were
+/// when "Custom…" picks as long a range).
+pub(super) const PRESETS: [(&str, i64); 8] = [
     ("5m", 5 * MINUTE),
     ("1h", HOUR),
+    ("3h", 3 * HOUR),
     ("6h", 6 * HOUR),
     ("1d", DAY),
+    ("3d", 3 * DAY),
     ("7d", 7 * DAY),
     ("30d", 30 * DAY),
 ];
@@ -216,6 +231,65 @@ struct Tween {
     from: (f64, f64),
     started: Instant,
     duration: Duration,
+    /// Waiting for a new range's points (`HOLD` at most): the window stays
+    /// where it was until they land, and then eases there with them.
+    held: bool,
+    /// Easing in as well as out: a range switch, whose zoom starts and ends
+    /// gently (the curves' textures keep up with it), where direct input
+    /// answers at once.
+    smooth: bool,
+    /// The navigator's range when the change began.
+    extent_from: (f64, f64),
+}
+
+/// A range switch on screen: the window drawn before it, which the curves
+/// fading out stay drawn for, the navigator's range then, and how far the
+/// curves drawn for the window it goes to have faded in. Both move and scale
+/// with the window shown.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Crossfade {
+    pub(super) from: (f64, f64),
+    pub(super) extent_from: (f64, f64),
+    pub(super) alpha: f32,
+}
+
+/// How far the new curves have faded in at `t` of a range switch: from a
+/// tenth of the way, smoothly, whole a little before the zoom ends.
+fn fade_in(t: f32) -> f32 {
+    let t = ((t - 0.1) / 0.75).clamp(0., 1.);
+    t * t * (3. - 2. * t)
+}
+
+/// Where the curves end while following a range in buckets: easing from
+/// where they ended to the newest complete bucket when one more completes.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Reveal {
+    from: f64,
+    to: f64,
+    started: Option<Instant>,
+}
+
+impl Reveal {
+    fn at(&self, now: Instant) -> f64 {
+        let Some(started) = self.started else {
+            return self.to;
+        };
+        let t = now.saturating_duration_since(started).as_secs_f64() / REVEAL.as_secs_f64();
+        if t >= 1. {
+            self.to
+        } else {
+            self.from + (self.to - self.from) * (1. - (1. - t).powi(3))
+        }
+    }
+}
+
+/// Eases in and out (cubic).
+fn ease_in_out(t: f32) -> f32 {
+    if t < 0.5 {
+        4. * t * t * t
+    } else {
+        1. - (-2. * t + 2.).powi(3) / 2.
+    }
 }
 
 pub(in crate::frontend) struct HistoryState {
@@ -227,6 +301,15 @@ pub(in crate::frontend) struct HistoryState {
     /// The window asked for, and the one drawn while it eases there.
     pub(super) view: (i64, i64),
     shown: (f64, f64),
+    /// The navigator's range as drawn: easing with the window from the range
+    /// before a switch to the new one.
+    extent_shown: (f64, f64),
+    /// A range switch cross-fading the curves, while it does.
+    pub(super) fading: Option<Crossfade>,
+    /// Counts range switches: the curves of each switch are plots of their
+    /// own (their textures cached apart), so that those of the window before
+    /// it keep theirs while they fade out.
+    pub(super) generation: u64,
     tween: Option<Tween>,
     pub(super) lanes: Vec<Lane>,
     pub(super) active: u64,
@@ -247,6 +330,25 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) points: Option<Points>,
     /// The navigator's overview of the whole range.
     pub(super) overview: Option<Points>,
+    /// The points an answer for another window replaced: drawn with the new
+    /// ones (`Points::spliced`) while the window eases from the one to the
+    /// other.
+    pub(super) previous: Option<Points>,
+    /// Answers for other windows, newest first: the ranges switched away
+    /// from, and those the range's drop-down read ahead. Taken up again when
+    /// a window they cover is asked for.
+    pub(super) stash: Vec<Points>,
+    /// The wait for a held window's points: since when, and the timer that
+    /// ends it (`HOLD`).
+    pub(super) hold_wait: Option<(Instant, gpui_kit::gpui::Task<()>)>,
+    /// Where the curves end while following a range in buckets (`reveal_to`),
+    /// and whether that moved in the last draw.
+    pub(super) reveal: Reveal,
+    pub(super) reveal_moving: bool,
+    /// Each lane's axes easing to new ranges, by lane.
+    pub(super) axes: std::collections::HashMap<u64, super::lanes::AxisEase>,
+    /// Whether an axis was easing in the last draw.
+    pub(super) axes_moving: bool,
     /// The table's processes: of a moment (`history_frame`), or of a range (`history_table`).
     pub(super) frame: Option<Value>,
     pub(super) table: Option<Value>,
@@ -258,8 +360,6 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) picker: Option<super::picker::Picker>,
     /// The reading chooser, while it is open.
     pub(super) chooser: Option<super::chooser::Chooser>,
-    /// The quick ranges over the pill, while open: the one the keys are on.
-    pub(super) ranges: Option<usize>,
     /// While the window glides with the clock: where the curves' textures
     /// start (lanes, navigator), the window drawn when the newest reading came
     /// in; the window on screen is a little ahead and moves them.
@@ -275,7 +375,7 @@ pub(in crate::frontend) struct HistoryState {
     pub(super) glide_queued: bool,
     pub(super) glide_frames: u64,
     /// What the range pill says for a range picked by name (today, yesterday,
-    /// custom ends), a locale key; none for the menu's ranges.
+    /// custom ends), a locale key; none for the drop-down's ranges.
     pub(super) range_name: Option<&'static str>,
     /// Restored from the preferences once.
     pub(super) restored: bool,
@@ -434,6 +534,9 @@ impl Default for HistoryState {
             view: (0, 5 * MINUTE),
             shown: (0., (5 * MINUTE) as f64),
             tween: None,
+            extent_shown: (0., 0.),
+            fading: None,
+            generation: 0,
             lanes: vec![Lane::new(1, "cpu".into(), None, 1.)],
             active: 1,
             next_lane: 2,
@@ -449,13 +552,19 @@ impl Default for HistoryState {
             readings: Vec::new(),
             points: None,
             overview: None,
+            previous: None,
+            stash: Vec::new(),
+            hold_wait: None,
+            reveal: Reveal::default(),
+            reveal_moving: false,
+            axes: Default::default(),
+            axes_moving: false,
             frame: None,
             table: None,
             first: None,
             toast: None,
             picker: None,
             chooser: None,
-            ranges: None,
             flow_origin: None,
             flow: None,
             glides: Vec::new(),
@@ -495,6 +604,14 @@ impl HistoryState {
     pub(super) fn shown_now(&self) -> (f64, f64) {
         self.shown
     }
+    /// The navigator's range drawn in the last frame.
+    pub(super) fn extent_shown(&self) -> (f64, f64) {
+        if self.extent_shown.1 > self.extent_shown.0 {
+            self.extent_shown
+        } else {
+            (self.extent.0 as f64, self.extent.1 as f64)
+        }
+    }
     pub(super) fn length(&self) -> i64 {
         (self.extent.1 - self.extent.0).max(SECOND)
     }
@@ -528,19 +645,43 @@ impl HistoryState {
     /// The window drawn now, easing towards the target; whether it still moves.
     pub(super) fn shown(&mut self, now: Instant, motion: bool) -> ((f64, f64), bool) {
         let target = (self.view.0 as f64, self.view.1 as f64);
+        let extent = (self.extent.0 as f64, self.extent.1 as f64);
+        self.fading = None;
         let Some(tween) = self.tween.filter(|_| motion) else {
             self.tween = None;
             self.shown = target;
+            self.extent_shown = extent;
             return (target, false);
         };
+        // Waiting for the new range's points: still where it was.
+        if tween.held {
+            self.shown = tween.from;
+            self.extent_shown = tween.extent_from;
+            return (tween.from, false);
+        }
         let progress = (now.saturating_duration_since(tween.started).as_secs_f64()
             / tween.duration.as_secs_f64().max(1e-6))
         .clamp(0., 1.);
-        let e = f64::from(ease(progress as f32));
-        self.shown = (
-            tween.from.0 + (target.0 - tween.from.0) * e,
-            tween.from.1 + (target.1 - tween.from.1) * e,
-        );
+        let e = f64::from(if tween.smooth {
+            ease_in_out(progress as f32)
+        } else {
+            ease(progress as f32)
+        });
+        self.shown = super::series::zoom_between(tween.from, target, e);
+        self.extent_shown = super::series::zoom_between(tween.extent_from, extent, e);
+        self.fading = (tween.smooth && progress < 1.).then(|| {
+            // Narrowing, the new curves cover only the end of the window shown
+            // (their points are read for the window they go to): they come in
+            // as they cover it, the old ones holding the rest until then.
+            let cover = ((target.1 - target.0) * 1.25 / (self.shown.1 - self.shown.0).max(1.))
+                .min(1.) as f32;
+            let covered = ((cover - 0.5) / 0.5).clamp(0., 1.);
+            Crossfade {
+                from: tween.from,
+                extent_from: tween.extent_from,
+                alpha: fade_in(progress as f32).min(covered * covered * (3. - 2. * covered)),
+            }
+        });
         if progress >= 1. {
             self.tween = None;
         }
@@ -553,6 +694,9 @@ impl HistoryState {
     /// axis across all that lies between while the page slid in.
     pub(super) fn settle(&mut self) {
         self.tween = None;
+        self.fading = None;
+        self.previous = None;
+        self.extent_shown = (self.extent.0 as f64, self.extent.1 as f64);
         self.shown = (self.view.0 as f64, self.view.1 as f64);
         self.lanes.retain(|lane| !lane.removing);
         for lane in &mut self.lanes {
@@ -568,9 +712,111 @@ impl HistoryState {
             from: self.shown,
             started: Instant::now(),
             duration,
+            held: false,
+            smooth: false,
+            extent_from: self.extent_shown,
         });
         if duration.is_zero() {
             self.shown = (self.view.0 as f64, self.view.1 as f64);
+        }
+    }
+
+    /// Eases to the window asked for once its points land, or `HOLD` has
+    /// passed (`release_hold`).
+    fn retarget_held(&mut self, duration: Duration) {
+        self.retarget(duration);
+        if let Some(tween) = &mut self.tween {
+            tween.held = true;
+            tween.smooth = true;
+        }
+    }
+
+    /// The switch whose curves are the window's own: the one before the
+    /// latest while the window waits for the points of the new range.
+    pub(super) fn drawn_generation(&self) -> u64 {
+        if self.held_since().is_some() {
+            self.generation.wrapping_sub(1)
+        } else {
+            self.generation
+        }
+    }
+
+    /// Since when the window has waited for its points, while it does.
+    pub(super) fn held_since(&self) -> Option<Instant> {
+        self.tween
+            .filter(|tween| tween.held)
+            .map(|tween| tween.started)
+    }
+
+    /// The new range's points landed, or have been waited for long enough:
+    /// the window eases there from now. Whether it was waiting.
+    pub(super) fn release_hold(&mut self) -> bool {
+        self.hold_wait = None;
+        match &mut self.tween {
+            Some(tween) if tween.held => {
+                tween.held = false;
+                tween.started = Instant::now();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Where the curves end while following a range in buckets: at the newest
+    /// complete bucket (`settled`), the bucket still filling left out (its
+    /// value moved with every reading). One that completes is drawn on over
+    /// `REVEAL`; a jump (another range, a gap, the first answer) shows at
+    /// once. Whether it still moves.
+    pub(super) fn reveal_to(
+        &mut self,
+        settled: i64,
+        bucket: i64,
+        now: Instant,
+        motion: bool,
+    ) -> (i64, bool) {
+        let target = settled as f64;
+        if self.reveal.to != target {
+            let shown = self.reveal.at(now);
+            let step = target - self.reveal.to;
+            self.reveal = if motion && step > 0. && step <= 3. * bucket as f64 && shown < target {
+                Reveal {
+                    from: shown,
+                    to: target,
+                    started: Some(now),
+                }
+            } else {
+                Reveal {
+                    from: target,
+                    to: target,
+                    started: None,
+                }
+            };
+        }
+        let shown = self.reveal.at(now);
+        (shown.round() as i64, shown < self.reveal.to)
+    }
+
+    /// The points an answer for another window replaces: drawn with it while
+    /// the window eases, and kept for a return to their window.
+    pub(super) fn set_aside(&mut self, old: Points) {
+        self.stash_points(old.clone());
+        self.previous = Some(old);
+    }
+
+    /// Keeps points for another window, in place of any for the same query.
+    pub(super) fn stash_points(&mut self, points: Points) {
+        self.stash
+            .retain(|kept| !kept.matches(points.bucket, points.origin, &points.keys));
+        self.stash.insert(0, points);
+        self.stash.truncate(STASHED);
+    }
+
+    /// What the lanes draw: the points, spliced with those they replaced
+    /// while the window eases from them.
+    pub(super) fn drawn_points(&self) -> Option<Points> {
+        match (&self.points, &self.previous) {
+            (Some(points), Some(previous)) => Some(points.spliced(previous)),
+            (points, _) => points.clone(),
         }
     }
 
@@ -590,6 +836,7 @@ impl HistoryState {
     /// A range from the menu: the last so long (or everything), following the
     /// clock; or fixed ends, unless they reach the present.
     pub(super) fn set_range(&mut self, range: Range, clock: i64) {
+        self.generation = self.generation.wrapping_add(1);
         self.range = range;
         self.range_name = None;
         self.pin = None;
@@ -613,7 +860,13 @@ impl HistoryState {
                 self.view = self.extent;
             }
         }
-        self.retarget(SLOW);
+        // Longer the more the scale changes, so that the zoom keeps a pace the
+        // eye can follow: from 250 ms, 30 ms more for each doubling, up to
+        // 420 ms (five minutes to three hours and beyond).
+        let was = (self.shown.1 - self.shown.0).max(1.);
+        let will = ((self.view.1 - self.view.0) as f64).max(1.);
+        let doublings = (will / was).max(was / will).log2();
+        self.retarget_held(SLOW + Duration::from_secs_f64((doublings * 0.03).clamp(0., 0.17)));
     }
 
     /// Fixed ends from the range picker, not following the clock.

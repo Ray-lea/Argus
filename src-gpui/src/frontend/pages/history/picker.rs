@@ -1,5 +1,5 @@
 //! The custom range, a dialog of its own opened from the range pill's
-//! "Custom…" (the pill's menu keeps the common ranges for everyday use): the
+//! "Custom…" (the pill's drop-down keeps the common ranges for everyday use): the
 //! common ranges on the left; a month of days, each with how much of it was
 //! recorded, and the exact start and end; and, folded under them until asked
 //! for, the last 30 days hour by hour beside the events found in them. A
