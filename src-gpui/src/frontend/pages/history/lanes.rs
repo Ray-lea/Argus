@@ -1,12 +1,12 @@
 //! The chart card: lanes of readings, each with its title, axes and plot; the
 //! time axis under them; the cursor, selection and drop marks over them; and
 //! the navigator below.
+use super::axes::{Axes, AxisEase, Eased, Mark, crossfade_marks, marks};
 use super::bar::ReadingMenu;
 use super::readings::Reading;
-use super::series::{
-    BANDED, FRAME, Part, Points, STEP_CORNER, rows_for, tick_step, ticks, zoom_between,
-};
+use super::series::{BANDED, FRAME, Part, Points, STEP_CORNER, tick_step, ticks};
 use super::state::{Drag, Drop, Glide, Hover, Lane};
+use super::transition::OverlayFade;
 use super::*;
 
 /// The axis labels' columns either side of the plots; every lane keeps both,
@@ -22,214 +22,11 @@ const AXIS: f32 = 22.;
 const PAD: f32 = 10.;
 /// The navigator's row.
 const NAV: f32 = 32.;
-/// The lanes' tooltip: its width, fixed so that it keeps its size and place
-/// as the pointer passes readings and process names of other lengths; how
-/// far it sits from the pointer; and the room it keeps from the window's edges.
-const TIP_WIDTH: f32 = 300.;
-const TIP_GAP: f32 = 14.;
-const TIP_MARGIN: f32 = 8.;
 
 /// The chart card's height that gives `lanes` lanes room to read: about
 /// 128 px each, with the axis and the navigator.
 pub(super) fn comfortable_height(lanes: f32) -> f32 {
     lanes * 128. + (lanes - 1.).max(0.) * GAP_Y + AXIS + NAV + 2. * PAD + 8.
-}
-
-/// A lane's axis, the overlay's, and the rows dividing them.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Axes {
-    pub(super) left: (f64, f64),
-    pub(super) right: Option<(f64, f64)>,
-    /// The overlay shares the left axis (same unit).
-    pub(super) shared: bool,
-    pub(super) rows: u32,
-}
-
-/// A lane's axes easing to new ranges (`state::AXIS`), geometrically about
-/// the value the two ranges have at the same height (zero, mostly), as the
-/// live charts' tops do: the readings they are for, the ranges shown when
-/// the latest change began, the axes they go to, the rows fading out (those
-/// of the axes shown before, and how opaque they were then), and when.
-#[derive(Clone, Debug)]
-pub(super) struct AxisEase {
-    readings: (String, Option<String>),
-    from: ((f64, f64), Option<(f64, f64)>),
-    to: Axes,
-    leaving: Option<(Axes, f32)>,
-    started: Option<Instant>,
-}
-
-/// A lane's axes at a moment of their ease: the ranges shown, and the rows
-/// either side (`Mark`) of the axes they go to and of those they leave.
-pub(super) struct Eased {
-    pub(super) axes: Axes,
-    pub(super) left: Vec<Mark>,
-    pub(super) right: Vec<Mark>,
-    pub(super) moving: bool,
-}
-
-/// A row of an axis: its value, its height on the plot (0 at the top, 1 at
-/// the bottom), how opaque, and the top of the axis it is a row of (which
-/// unit its label is in).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Mark {
-    pub(super) value: f64,
-    pub(super) at: f32,
-    pub(super) alpha: f32,
-    pub(super) top: f64,
-}
-
-impl AxisEase {
-    fn new(axes: Axes, readings: (String, Option<String>)) -> Self {
-        Self {
-            readings,
-            from: (axes.left, axes.right),
-            to: axes,
-            leaving: None,
-            started: None,
-        }
-    }
-
-    /// The axes it goes to.
-    pub(super) fn target(&self) -> Axes {
-        self.to
-    }
-
-    /// How far the latest change has come, eased out (1 when done).
-    fn progress(&self, now: Instant) -> f32 {
-        let Some(started) = self.started else {
-            return 1.;
-        };
-        let t = now.saturating_duration_since(started).as_secs_f32() / state::AXIS.as_secs_f32();
-        if t >= 1. {
-            1.
-        } else {
-            1. - (1. - t.max(0.)).powi(3)
-        }
-    }
-
-    /// The axes of a lane showing `readings` at `now`, easing towards
-    /// `target`: a new target eases on from the ranges shown, the rows shown
-    /// more fading out. Another reading starts at its own axes; an overlay
-    /// coming or going eases them.
-    pub(super) fn toward(
-        &mut self,
-        target: Axes,
-        readings: (String, Option<String>),
-        now: Instant,
-        motion: bool,
-    ) -> Eased {
-        if !motion || readings.0 != self.readings.0 {
-            *self = Self::new(target, readings);
-        } else if self.to != target {
-            let e = self.progress(now);
-            let shown = self.eased(now).axes;
-            let leaving = match self.leaving.filter(|_| e < 1.) {
-                Some((axes, alpha)) if alpha * (1. - e) > e => (axes, alpha * (1. - e)),
-                _ => (self.to, e),
-            };
-            *self = Self {
-                readings,
-                from: (shown.left, shown.right),
-                to: target,
-                leaving: Some(leaving),
-                started: Some(now),
-            };
-        }
-        self.eased(now)
-    }
-
-    fn eased(&self, now: Instant) -> Eased {
-        let e = self.progress(now);
-        let left = zoom_between(self.from.0, self.to.left, f64::from(e));
-        let right = match (self.from.1, self.to.right) {
-            (Some(from), Some(to)) => Some(zoom_between(from, to, f64::from(e))),
-            (_, to) => to,
-        };
-        let axes = Axes {
-            left,
-            right,
-            ..self.to
-        };
-        let leaving = self
-            .leaving
-            .filter(|_| e < 1.)
-            .map(|(axes, alpha)| (axes, alpha * (1. - e)));
-        let rows = self.to.rows;
-        Eased {
-            axes,
-            left: marks(
-                left,
-                (self.to.left, rows),
-                leaving.map(|(axes, alpha)| ((axes.left, axes.rows), alpha)),
-                e,
-            ),
-            right: match (right, self.to.right) {
-                (Some(shown), Some(to)) => marks(
-                    shown,
-                    (to, rows),
-                    leaving.and_then(|(axes, alpha)| axes.right.map(|r| ((r, axes.rows), alpha))),
-                    e,
-                ),
-                _ => Vec::new(),
-            },
-            moving: e < 1.,
-        }
-    }
-}
-
-/// An axis's range, and how many rows divide it.
-type Rows = ((f64, f64), u32);
-
-/// The rows an axis draws over the range `shown`: those of the range it goes
-/// to, as opaque as the change has come (`e`), and those of the range it
-/// leaves, fading out; a value both have stays whole. Rows off the plot are
-/// left out.
-pub(super) fn marks(
-    shown: (f64, f64),
-    to: Rows,
-    leaving: Option<(Rows, f32)>,
-    e: f32,
-) -> Vec<Mark> {
-    let height = shown.1 - shown.0;
-    if height.is_nan() || height <= 0. {
-        return Vec::new();
-    }
-    let rows = |((low, high), rows): Rows| {
-        let rows = rows.max(1);
-        (0..=rows).map(move |row| {
-            let value = high - (high - low) * f64::from(row) / f64::from(rows);
-            (value, high)
-        })
-    };
-    let near = |a: f64, b: f64| (a - b).abs() <= height.abs() * 1e-6;
-    let going: Vec<(f64, f64)> = leaving
-        .map(|(axis, _)| rows(axis).collect())
-        .unwrap_or_default();
-    let mut out = Vec::new();
-    for (value, top) in rows(to) {
-        let kept = leaving.is_none() || going.iter().any(|(v, _)| near(*v, value));
-        out.push(Mark {
-            value,
-            at: (1. - (value - shown.0) / height) as f32,
-            alpha: if kept { 1. } else { e },
-            top,
-        });
-    }
-    if let Some((_, alpha)) = leaving {
-        for (value, top) in going {
-            if !rows(to).any(|(v, _)| near(v, value)) {
-                out.push(Mark {
-                    value,
-                    at: (1. - (value - shown.0) / height) as f32,
-                    alpha,
-                    top,
-                });
-            }
-        }
-    }
-    out.retain(|mark| mark.at >= -0.002 && mark.at <= 1.002 && mark.alpha > 0.004);
-    out
 }
 
 /// A lane's curves fading out on a range switch: drawn on the axes and in
@@ -240,6 +37,36 @@ pub(super) struct Leaving {
     bucket: i64,
     window: (f64, f64),
     alpha: f32,
+}
+
+/// What a lane is drawn with besides its own settings.
+pub(super) struct LaneDraw<'a> {
+    /// How far it has come in (or gone), 0 to 1.
+    presence: f32,
+    /// Whether there are other lanes.
+    multi: bool,
+    /// Its axes as they ease, and their rows.
+    eased: &'a Eased,
+    /// The points drawn.
+    points: Option<&'a Points>,
+    /// A range switch: the curves fading out, and how opaque the new ones are.
+    fade: Option<(&'a Points, &'a Leaving, f32)>,
+    /// The overlay coming in or going, and how opaque it is.
+    overlay_fade: Option<&'a (OverlayFade, f32)>,
+    /// The bucket width asked for.
+    bucket: i64,
+    /// The window shown.
+    window: (f64, f64),
+    /// The plot's width as laid out last: measured before the lanes record
+    /// their places anew (`history_plot_width` falls back to an estimate from
+    /// the window while they do, and marks placed by it stood off their times).
+    plot_width: f32,
+    /// The clock lines' times, and those drawn into the curves' textures
+    /// while the window glides.
+    ticks: &'a Arc<Vec<i64>>,
+    clock_lines: Option<&'a (Arc<Vec<f64>>, Hsla)>,
+    /// The point the readings in the title show.
+    read_index: Option<usize>,
 }
 
 /// A lane's curve: `series` on the left axis of `axes`, shown in the window
@@ -278,43 +105,6 @@ fn history_curve(
         raster_span: drawn.1,
         corner: STEP_CORNER,
     }
-}
-
-/// The rows of two axes at once, each where its own range puts it: those of
-/// the axes a range switch leaves, fading out, and those of the axes it goes
-/// to, as opaque as `alpha`. A row both have in one place stays whole.
-fn crossfade_marks(leaving: Rows, arriving: Rows, alpha: f32) -> Vec<Mark> {
-    let rows = |((low, high), rows): Rows, alpha: f32| {
-        let rows = rows.max(1);
-        (0..=rows)
-            .map(|row| {
-                let at = row as f32 / rows as f32;
-                Mark {
-                    value: high - (high - low) * f64::from(at),
-                    at,
-                    alpha,
-                    top: high,
-                }
-            })
-            .collect::<Vec<_>>()
-    };
-    let old = rows(leaving, 1. - alpha);
-    let mut out = rows(arriving, alpha);
-    let near = |a: &Mark, b: &Mark| {
-        (a.at - b.at).abs() < 1e-4 && (a.value - b.value).abs() <= a.value.abs().max(1.) * 1e-9
-    };
-    for mark in &mut out {
-        if old.iter().any(|kept| near(kept, mark)) {
-            mark.alpha = 1.;
-        }
-    }
-    let gone: Vec<Mark> = old
-        .into_iter()
-        .filter(|mark| !out.iter().any(|kept| near(kept, mark)))
-        .collect();
-    out.extend(gone);
-    out.retain(|mark| mark.alpha > 0.004);
-    out
 }
 
 /// While the window glides, where a mark goes: laid out on the device-pixel
@@ -410,52 +200,6 @@ impl Desktop {
                 .then(|| points.ts.len().checked_sub(1))
                 .flatten()
         })
-    }
-
-    /// The axes of a lane over the window `from..to`.
-    pub(super) fn history_axes(
-        &self,
-        lane: &Lane,
-        points: Option<&Points>,
-        (from, to): (i64, i64),
-        bucket: i64,
-        height: f32,
-    ) -> Axes {
-        let end = self.history_clock();
-        let banded = bucket >= BANDED && self.history.band;
-        let reading = self.history_reading(&lane.reading);
-        let empty = Points::default();
-        let points = points.unwrap_or(&empty);
-        let mut left = reading.map_or((0., 100.), |r| r.axis_range(points, from, to, end, banded));
-        let overlay = lane
-            .overlay
-            .as_deref()
-            .and_then(|id| self.history_reading(id));
-        let mut right = overlay.map(|r| r.axis_range(points, from, to, end, false));
-        let shared = matches!((reading, overlay), (Some(a), Some(b)) if a.unit == b.unit);
-        if shared && let Some(r) = right {
-            left = (left.0.min(r.0), left.1.max(r.1));
-            right = Some(left);
-        }
-        let range = left.1 - left.0;
-        let unit = reading.map_or(1., |r| r.label_unit(left.1.abs().max(left.0.abs())));
-        let scaled = range / unit;
-        let half = scaled / 2.;
-        let round_half = (half - half.round()).abs() < 1e-6
-            || (half < 1. && (half * 10. - (half * 10.).round()).abs() < 1e-6);
-        let rows = if height < 50. {
-            1
-        } else if height < 100. {
-            if round_half { 2 } else { 1 }
-        } else {
-            rows_for(scaled)
-        };
-        Axes {
-            left,
-            right,
-            shared,
-            rows,
-        }
     }
 
     /// The series a lane draws: the band's top (CPU's highest samples), the
@@ -820,13 +564,13 @@ impl Desktop {
             {
                 let fade = match (&was, &lane.overlay) {
                     _ if !motion => None,
-                    (_, Some(id)) => Some(state::OverlayFade {
+                    (_, Some(id)) => Some(OverlayFade {
                         id: id.clone(),
                         right: None,
                         coming: true,
                         started: now,
                     }),
-                    (Some(id), None) => Some(state::OverlayFade {
+                    (Some(id), None) => Some(OverlayFade {
                         id: id.clone(),
                         right: self
                             .history
@@ -879,27 +623,25 @@ impl Desktop {
                 .and(leaving_points.as_ref())
                 .zip(leaving.as_ref())
                 .map(|(old, leaving)| (old, leaving, fading.map_or(1., |fade| fade.alpha)));
-            let element = self.history_lane(
-                lane,
+            let draw = LaneDraw {
                 presence,
                 multi,
-                &eased,
-                if fading.is_some() {
+                eased: &eased,
+                points: if fading.is_some() {
                     arriving_points.as_ref()
                 } else {
                     points
                 },
                 fade,
-                overlay_fade.as_ref(),
+                overlay_fade: overlay_fade.as_ref(),
                 bucket,
-                (from, to),
-                width,
-                &tick_list,
-                clock_lines.as_ref(),
+                window: (from, to),
+                plot_width: width,
+                ticks: &tick_list,
+                clock_lines: clock_lines.as_ref(),
                 read_index,
-                window,
-                cx,
-            );
+            };
+            let element = self.history_lane(lane, draw, window, cx);
             let key = lane.id.to_string();
             match &lift {
                 Some(lift) if lift.key == key => {
@@ -1128,31 +870,27 @@ impl Desktop {
             .into_any_element()
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn history_lane(
         &mut self,
         lane: &Lane,
-        presence: f32,
-        multi: bool,
-        eased: &Eased,
-        points: Option<&Points>,
-        // A range switch: the curves fading out, and how opaque the new ones are.
-        fade: Option<(&Points, &Leaving, f32)>,
-        // The overlay coming in or going, and how opaque it is.
-        overlay_fade: Option<&(state::OverlayFade, f32)>,
-        bucket: i64,
-        (from, to): (f64, f64),
-        // The plot's width as laid out last: measured before the lanes
-        // record their places anew (`history_plot_width` falls back to an
-        // estimate from the window while they do, and marks placed by it
-        // stood off their times).
-        plot_width: f32,
-        tick_list: &Arc<Vec<i64>>,
-        clock_lines: Option<&(Arc<Vec<f64>>, Hsla)>,
-        read_index: Option<usize>,
+        draw: LaneDraw,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let LaneDraw {
+            presence,
+            multi,
+            eased,
+            points,
+            fade,
+            overlay_fade,
+            bucket,
+            window: (from, to),
+            plot_width,
+            ticks: tick_list,
+            clock_lines,
+            read_index,
+        } = draw;
         let p = self.palette;
         let id = lane.id;
         let span = (to - from).max(1.);
@@ -2040,332 +1778,6 @@ impl Desktop {
                     ),
             )
             .with_priority(2)
-            .into_any_element(),
-        )
-    }
-
-    /// The card by the pointer: when, the lane's readings then, or why nothing
-    /// was recorded.
-    fn history_tip(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let p = self.palette;
-        let hover = self.history.hover?;
-        if self.history.drag.is_some() {
-            return None;
-        }
-        let points = self.history.points.as_ref()?;
-        let lane = self.history.lanes.iter().find(|l| l.id == hover.lane)?;
-        let mut rows: Vec<AnyElement> = Vec::new();
-        let head = |time: String, kind: Option<String>| {
-            div()
-                .flex()
-                .items_baseline()
-                .gap_2()
-                .child(div().font_weight(theme::LABEL_WEIGHT).child(time))
-                .when_some(kind, |d, kind| {
-                    d.child(
-                        div()
-                            .text_size(theme::font(11.))
-                            .text_color(p.faint)
-                            .child(kind),
-                    )
-                })
-                .into_any_element()
-        };
-        let bits = self.history_bits();
-        match points.index_at(hover.at) {
-            None => {
-                let gap = points.gap_at(hover.at);
-                let offsets = self.history_offsets_differ();
-                rows.push(head(
-                    with_offset(moment_label(hover.at, false), hover.at, offsets),
-                    None,
-                ));
-                rows.push(
-                    div()
-                        .text_color(p.muted)
-                        .child(match gap {
-                            Some(gap) => tr!("history.gap.tip", reason = label(gap.reason.key())),
-                            None => label("history.noRecordAt"),
-                        })
-                        .into_any_element(),
-                );
-            }
-            Some(index) => {
-                let start = points.ts[index];
-                let length = points.span[index];
-                let (time, kind) = if length <= FRAME {
-                    (
-                        moment_label(start, true),
-                        Some(label(if length < FRAME {
-                            "history.tip.second"
-                        } else {
-                            "history.tip.frame"
-                        })),
-                    )
-                } else {
-                    (
-                        range_label(start, start + length, length < MINUTE),
-                        Some(label("history.tip.average")),
-                    )
-                };
-                rows.push(head(
-                    with_offset(time, start, self.history_offsets_differ()),
-                    kind,
-                ));
-                let mut readings = vec![self.history_reading(&lane.reading)];
-                readings.push(
-                    lane.overlay
-                        .as_deref()
-                        .and_then(|id| self.history_reading(id)),
-                );
-                for reading in readings.into_iter().flatten() {
-                    let value = reading
-                        .value(points, index)
-                        .map(|v| reading.format(v, bits))
-                        .unwrap_or_else(|| label("format.missing"));
-                    rows.push(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .size(px(8.))
-                                    .flex_shrink_0()
-                                    .rounded(px(2.))
-                                    .bg(reading.color),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_color(p.muted)
-                                    .child(reading.long.clone()),
-                            )
-                            .child(
-                                div()
-                                    .flex_shrink_0()
-                                    .font_weight(theme::LABEL_WEIGHT)
-                                    .font_features(theme::tabular())
-                                    .child(value),
-                            )
-                            .into_any_element(),
-                    );
-                    if let (Some((a, b)), Some((na, nb))) =
-                        (reading.part_values(points, index), &reading.parts)
-                    {
-                        rows.push(
-                            div()
-                                .pl(px(16.))
-                                .truncate()
-                                .text_size(theme::font(11.))
-                                .text_color(p.faint)
-                                .child(format!(
-                                    "{na} {} · {nb} {}",
-                                    reading.format(a, bits),
-                                    reading.format(b, bits)
-                                ))
-                                .into_any_element(),
-                        );
-                    }
-                    if length > FRAME
-                        && let Some(peak) = reading.peak_value(points, index)
-                    {
-                        rows.push(
-                            div()
-                                .pl(px(16.))
-                                .truncate()
-                                .text_size(theme::font(11.))
-                                .text_color(p.faint)
-                                .child(tr!(
-                                    "history.metric.peak",
-                                    value = reading.format(peak, bits)
-                                ))
-                                .into_any_element(),
-                        );
-                    }
-                }
-                // Under the readings, what made them: the processes busiest by
-                // the lane's reading (the frame's, or the bucket's averages), or
-                // for the process count the programs with the most processes.
-                // The rows stay while fewer are known, and a long name ends in
-                // an ellipsis. Readings no process adds to list nothing.
-                let live = values(&self.snapshot["processes"]);
-                let icon_of = |name: &str| {
-                    live.iter()
-                        .find(|process| text(process, "name").eq_ignore_ascii_case(name))
-                };
-                let list = || {
-                    div()
-                        .mt(px(3.))
-                        .pt(px(6.))
-                        .border_t_1()
-                        .border_color(p.stroke)
-                        .flex()
-                        .flex_col()
-                        .gap(px(4.))
-                };
-                let entry = |name: &str, value: String| {
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(self.process_icon(icon_of(name), 16., cx))
-                        .child(div().flex_1().min_w_0().truncate().child(name.to_owned()))
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .text_color(p.muted)
-                                .font_features(theme::tabular())
-                                .child(value),
-                        )
-                };
-                let blank = || {
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(div().size(px(16.)).flex_shrink_0())
-                        .child("\u{a0}")
-                };
-                match self.history_tip_list(lane) {
-                    state::TipList::Processes(key) => {
-                        let ranked = self.history_tip_ranking(key);
-                        let mut column = list();
-                        for slot in 0..TIP_PROCESSES {
-                            column = column.child(match ranked.get(slot) {
-                                Some((name, value)) => {
-                                    entry(name, table::format_process(key, *value, bits))
-                                }
-                                None => blank(),
-                            });
-                        }
-                        rows.push(column.into_any_element());
-                    }
-                    state::TipList::Programs => {
-                        // The frame asked for at this point (`history_ask_tip`).
-                        let answer = self
-                            .history
-                            .tip
-                            .as_ref()
-                            .filter(|(at, answer)| {
-                                *at == (start, length) && answer["system"].is_object()
-                            })
-                            .map(|(_, answer)| answer);
-                        let programs: Vec<(String, u64)> = answer
-                            .map(|answer| {
-                                values(&answer["programs"])
-                                    .iter()
-                                    .filter_map(|program| {
-                                        Some((
-                                            text(program, "name").to_owned(),
-                                            program["count"].as_u64()?,
-                                        ))
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        // A frame recorded without the counts lists nothing.
-                        if answer.is_none() || !programs.is_empty() {
-                            let shown = programs.len().min(TIP_PROCESSES);
-                            let mut column = list();
-                            for slot in 0..TIP_PROCESSES {
-                                column = column.child(match programs.get(slot) {
-                                    Some((name, count)) if slot < shown => {
-                                        entry(name, crate::regional::count(*count as f64))
-                                    }
-                                    _ => blank(),
-                                });
-                            }
-                            // The other programs, and the processes they have.
-                            if let Some(answer) = answer {
-                                let distinct = answer["programCount"].as_u64().unwrap_or(0);
-                                let total = answer["system"]["processes"].as_f64().unwrap_or(0.);
-                                let listed: u64 = programs[..shown].iter().map(|(_, n)| n).sum();
-                                if distinct > shown as u64 {
-                                    column = column.child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_2()
-                                            .text_color(p.muted)
-                                            .child(div().size(px(16.)).flex_shrink_0())
-                                            .child(div().flex_1().min_w_0().truncate().child(
-                                                theme::counted(
-                                                    "history.tip.otherPrograms",
-                                                    distinct - shown as u64,
-                                                    &[],
-                                                ),
-                                            ))
-                                            .child(
-                                                div()
-                                                    .flex_shrink_0()
-                                                    .font_features(theme::tabular())
-                                                    .child(crate::regional::count(
-                                                        (total - listed as f64).max(0.),
-                                                    )),
-                                            ),
-                                    );
-                                }
-                            }
-                            rows.push(column.into_any_element());
-                        }
-                    }
-                    state::TipList::Nothing => {}
-                }
-            }
-        }
-        rows.push(
-            div()
-                .mt(px(3.))
-                .pt(px(6.))
-                .border_t_1()
-                .border_color(p.stroke)
-                .text_size(theme::font(11.))
-                .text_color(p.faint)
-                .child(label("history.tip.hint"))
-                .into_any_element(),
-        );
-        // Beside the pointer, on its left where the right has no room: at a
-        // fixed width, it turns over at one place and keeps its size.
-        let flip = hover.position.x + px(TIP_GAP + TIP_WIDTH)
-            > window.viewport_size().width - px(TIP_MARGIN);
-        Some(
-            deferred(
-                anchored()
-                    .anchor(if flip {
-                        gpui_kit::gpui::Anchor::TopRight
-                    } else {
-                        gpui_kit::gpui::Anchor::TopLeft
-                    })
-                    .position(point(
-                        if flip {
-                            hover.position.x - px(TIP_GAP)
-                        } else {
-                            hover.position.x + px(TIP_GAP)
-                        },
-                        hover.position.y + px(16.),
-                    ))
-                    .snap_to_window_with_margin(px(TIP_MARGIN))
-                    .child(
-                        div()
-                            .w(px(TIP_WIDTH))
-                            .flex()
-                            .flex_col()
-                            .gap(px(3.))
-                            .px(px(10.))
-                            .py(px(8.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(p.stroke_strong)
-                            .bg(widgets::solid(p.tip))
-                            .text_size(theme::font(12.))
-                            .line_height(relative(1.4))
-                            .children(rows),
-                    ),
-            )
-            .with_priority(1)
             .into_any_element(),
         )
     }

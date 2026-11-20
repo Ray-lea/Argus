@@ -7,6 +7,7 @@
 //! hours on screen and once a minute beyond.
 use super::*;
 
+mod axes;
 mod bar;
 mod chooser;
 mod lanes;
@@ -17,6 +18,8 @@ mod series;
 mod settings;
 mod state;
 mod table;
+mod tip;
+mod transition;
 
 use crate::frontend::motion;
 use readings::Reading;
@@ -203,9 +206,6 @@ fn duration_label(ms: i64) -> String {
 
 /// Points in a process's curve laid over the lanes.
 const CURVE_POINTS: usize = 160;
-/// The processes the lanes' tooltip lists; it keeps their rows while fewer
-/// are known, so that it keeps its height.
-const TIP_PROCESSES: usize = 5;
 /// The widest window that glides with the clock: wider ones move less than
 /// a pixel a second.
 const FLOW_SPAN: i64 = 15 * MINUTE;
@@ -740,7 +740,7 @@ impl Desktop {
         {
             return;
         }
-        let wait = state::HOLD.saturating_sub(since.elapsed());
+        let wait = transition::HOLD.saturating_sub(since.elapsed());
         let task = cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(wait).await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -963,127 +963,10 @@ impl Desktop {
         self.history.selection.unwrap_or(self.history.view)
     }
 
-    /// The trend column follows the topmost lane's reading.
-    /// The process value that goes with a lane's reading (the tooltip ranks by it).
-    /// What a lane's tooltip lists: the processes by the reading's share of
-    /// each, the programs by their processes for the process count, nothing
-    /// for readings no process adds to (a battery's charge, a temperature):
-    /// ranked by CPU instead, they read as their cause.
-    fn history_tip_list(&self, lane: &state::Lane) -> state::TipList {
-        match self.history_reading(&lane.reading) {
-            Some(reading) if reading.id == "processes" => state::TipList::Programs,
-            Some(reading) => reading
-                .process
-                .map_or(state::TipList::Nothing, state::TipList::Processes),
-            None => state::TipList::Nothing,
-        }
-    }
-
     fn history_trend_of(&self, lane: &state::Lane) -> &'static str {
         self.history_reading(&lane.reading)
             .and_then(|reading| reading.process)
             .unwrap_or("cpu")
-    }
-
-    /// The five processes busiest by `key` at point `index`, by name, once
-    /// their answer for that point is in.
-    /// The processes the tooltip lists, busiest by `key` first: the point's
-    /// under the pointer, or while they are asked for, the last point's. The
-    /// list keeps its rows as the pointer moves, rather than emptying for a
-    /// moment at every point.
-    fn history_tip_ranking(&self, key: &str) -> Vec<(String, f64)> {
-        let Some((_, answer)) = &self.history.tip else {
-            return Vec::new();
-        };
-        // A range answer holds totals over the time recorded.
-        let seconds = answer["recorded"].as_f64().map(|ms| ms / 1000.);
-        let mut by_name: Vec<(String, f64)> = Vec::new();
-        for process in values(&answer["processes"]) {
-            let Some(value) = table::process_value(process, key, seconds) else {
-                continue;
-            };
-            let name = text(process, "name").to_owned();
-            match by_name
-                .iter_mut()
-                .find(|(n, _)| n.eq_ignore_ascii_case(&name))
-            {
-                Some((_, sum)) => *sum += value,
-                None => by_name.push((name, value)),
-            }
-        }
-        by_name.retain(|(_, v)| *v > 0.);
-        by_name.sort_by(|a, b| b.1.total_cmp(&a.1));
-        by_name.truncate(TIP_PROCESSES);
-        by_name
-    }
-
-    /// Asks for the processes of the point under the pointer: its frame, or for
-    /// a bucket the range table over it.
-    fn history_ask_tip(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(hover) = self.history.hover else {
-            return;
-        };
-        let Some(points) = self.history.points.as_ref() else {
-            return;
-        };
-        let Some(index) = points.index_at(hover.at) else {
-            return;
-        };
-        let point = (points.ts[index], points.span[index]);
-        let list = self
-            .history
-            .lanes
-            .iter()
-            .find(|l| l.id == hover.lane)
-            .map_or(state::TipList::Nothing, |lane| self.history_tip_list(lane));
-        if self.history.tip_for == Some(point) && self.history.tip_kind == list {
-            return;
-        }
-        self.history.tip_for = Some(point);
-        self.history.tip_kind = list;
-        if list == state::TipList::Nothing {
-            return;
-        }
-        // The programs' processes are counted in each frame: a bucket shows
-        // those of a frame inside it.
-        let frame_of = point.1 <= FRAME || list == state::TipList::Programs;
-        let frame = points.frame[index];
-        if self.options.fixture.is_some() {
-            // A fixture holds one frame and one range table.
-            let answer = if frame_of {
-                self.data.get("historyFrame")
-            } else {
-                self.data.get("historyTable")
-            };
-            self.history.tip = answer.map(|answer| (point, answer.clone()));
-            return;
-        }
-        if frame_of {
-            let ts = if frame > 0 { frame } else { point.0 };
-            self.request(
-                "history_frame",
-                json!({"ts": ts, "tip": [point.0, point.1]}),
-                Some("historyTip"),
-                window,
-                cx,
-            );
-        } else {
-            let lane = self
-                .history
-                .lanes
-                .iter()
-                .find(|l| l.id == hover.lane)
-                .cloned();
-            let trend = lane.map_or("cpu", |lane| self.history_trend_of(&lane));
-            self.request(
-                "history_table",
-                json!({"from": point.0, "to": point.0 + point.1, "trend": trend, "points": 1,
-                    "tip": [point.0, point.1]}),
-                Some("historyTip"),
-                window,
-                cx,
-            );
-        }
     }
 
     fn history_trend_key(&self) -> &'static str {
