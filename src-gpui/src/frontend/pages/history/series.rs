@@ -385,23 +385,67 @@ impl Points {
         next - end <= (3 * widest).max(MAX_CADENCE)
     }
 
+    /// The recorded gaps the lanes show hatched: those the line breaks for,
+    /// and those before its first point or after its last. A gap inside what
+    /// a point covers (a short one in a wide bucket, with records either side
+    /// of it in the bucket) leaves the line whole and is not shown: hatched,
+    /// it lay over a line that ran on through it.
+    pub(super) fn shown_gaps(&self) -> Vec<&Gap> {
+        let (Some(&first), Some(&last), Some(&last_span)) =
+            (self.ts.first(), self.ts.last(), self.span.last())
+        else {
+            return self.gaps.iter().collect();
+        };
+        self.gaps
+            .iter()
+            .filter(|gap| {
+                gap.to <= first
+                    || gap.from >= last + last_span
+                    || (0..self.ts.len() - 1).any(|i| {
+                        !self.joins(i) && self.gaps_after(i).any(|after| std::ptr::eq(after, *gap))
+                    })
+            })
+            .collect()
+    }
+
+    /// The recorded gaps between point `i` and the next: those the line
+    /// breaks across (`joins`).
+    fn gaps_after(&self, i: usize) -> impl Iterator<Item = &Gap> {
+        let next = self.ts.get(i + 1).copied();
+        let end = self.ts[i] + self.span[i];
+        self.gaps
+            .iter()
+            .filter(move |gap| next.is_some_and(|next| gap.from < next && gap.to > end - 1))
+    }
+
     /// Where the line through point `i` (drawn at `at`) stops when it breaks
-    /// after it: at the end of what the point covers, or where the gap after
-    /// it begins if that is sooner. A point is drawn at its start (or its
-    /// middle), so the line and its fill would otherwise stop short of the gap.
+    /// after it: where the recorded gap after it begins, so that the line
+    /// meets the gap's hatching, else at the end of what the point covers. A
+    /// point is drawn at its start (or its middle), so the line and its fill
+    /// would otherwise stop short. The per-second readings of the last minutes
+    /// cover less than the frame a gap is counted from: the last one holds on.
     fn run_end(&self, i: usize, at: f64) -> f64 {
         let Some(&next) = self.ts.get(i + 1) else {
             return at;
         };
-        let cover = self.ts[i].saturating_add(self.span[i]).min(next);
-        let gap = self
-            .gaps
-            .iter()
-            .map(|gap| gap.from)
-            .filter(|from| (*from as f64) >= at && *from < next)
-            .min()
-            .unwrap_or(cover);
-        (cover.min(gap) as f64).max(at)
+        let stop = match self.gaps_after(i).map(|gap| gap.from).min() {
+            Some(from) => from.min(next),
+            None => self.ts[i].saturating_add(self.span[i]).min(next),
+        };
+        (stop as f64).max(at)
+    }
+
+    /// Where the line through point `i` (drawn at `at`) begins when it
+    /// resumes after a recorded gap: where the gap ends, so that it meets
+    /// the hatching there too, the point's value held back to it.
+    fn run_start(&self, i: usize, at: f64) -> f64 {
+        let Some(previous) = i.checked_sub(1) else {
+            return at;
+        };
+        self.gaps_after(previous)
+            .map(|gap| gap.to)
+            .max()
+            .map_or(at, |to| (to as f64).min(at))
     }
 
     /// The values of `key` as a time plot draws them: each at its point's place,
@@ -419,6 +463,12 @@ impl Points {
         for i in 0..self.ts.len() {
             let at = self.x_time(i, end) as f64;
             let value = self.value(key, part, i).map(&scale);
+            if i > 0 && !self.joins(i - 1) {
+                let start = self.run_start(i, at);
+                if start < at {
+                    out.push((start, value));
+                }
+            }
             out.push((at, value));
             if i + 1 < self.ts.len() && !self.joins(i) {
                 let stop = self.run_end(i, at);
@@ -426,7 +476,7 @@ impl Points {
                     out.push((stop, value));
                 }
                 let next = self.x_time(i + 1, end) as f64;
-                out.push(((stop + next) / 2., None));
+                out.push(((stop + self.run_start(i + 1, next)) / 2., None));
             }
         }
         out
@@ -446,6 +496,12 @@ impl Points {
                 .value(high, Part::High, i)
                 .or_else(|| self.value(high, Part::Mean, i));
             let edges = below.zip(above);
+            if i > 0 && !self.joins(i - 1) {
+                let start = self.run_start(i, at);
+                if start < at {
+                    out.push((start, edges));
+                }
+            }
             out.push((at, edges));
             if i + 1 < self.ts.len() && !self.joins(i) {
                 let stop = self.run_end(i, at);
@@ -453,7 +509,7 @@ impl Points {
                     out.push((stop, edges));
                 }
                 let next = self.x_time(i + 1, end) as f64;
-                out.push(((stop + next) / 2., None));
+                out.push(((stop + self.run_start(i + 1, next)) / 2., None));
             }
         }
         out
@@ -712,6 +768,51 @@ mod tests {
         let line = points.line("cpu", Part::Mean, 40 * MINUTE, |v| v);
         assert_eq!(line[1], (FRAME as f64, Some(1.)));
         assert_eq!(line[2].1, None);
+    }
+
+    #[test]
+    fn only_gaps_the_line_breaks_for_are_shown() {
+        // 10-s buckets: a 3-s gap inside the second leaves the line whole; a
+        // gap of minutes after the third breaks it; one after the last stays.
+        let answer = json!({"bucket": 10 * SECOND,
+            "ts": [0, 10 * SECOND, 20 * SECOND, 10 * MINUTE],
+            "span": [10 * SECOND, 10 * SECOND, 10 * SECOND, 10 * SECOND],
+            "series": {"cpu": {"mean": [1, 2, 3, 4]}},
+            "gaps": [{"from": 12 * SECOND, "to": 15 * SECOND, "reason": "sleep"},
+                {"from": 30 * SECOND, "to": 10 * MINUTE, "reason": "sleep"},
+                {"from": 10 * MINUTE + 10 * SECOND, "to": 11 * MINUTE, "reason": "sleep"}],
+            "settled": 20 * MINUTE});
+        let points = Points::parse(&answer, &args(0, 20 * MINUTE, 10 * SECOND));
+        assert_eq!(points.gaps.len(), 3);
+        let shown = points
+            .shown_gaps()
+            .iter()
+            .map(|gap| gap.from)
+            .collect::<Vec<_>>();
+        assert_eq!(shown, vec![30 * SECOND, 10 * MINUTE + 10 * SECOND]);
+    }
+
+    #[test]
+    fn a_line_meets_the_gap_on_both_sides() {
+        // Per-second readings stop 3 s in; the gap is counted from the end of
+        // the 5-s frame, and the next reading comes 1.5 s after the gap ends.
+        let answer = json!({"bucket": SECOND, "ts": [0, SECOND, 2 * SECOND, MINUTE + 1_500],
+            "span": [SECOND, SECOND, SECOND, SECOND],
+            "series": {"cpu": {"mean": [1, 2, 3, 4]}},
+            "gaps": [{"from": FRAME, "to": MINUTE, "reason": "sleep"}],
+            "settled": 2 * MINUTE});
+        let points = Points::parse(&answer, &args(0, 2 * MINUTE, SECOND));
+        let line = points.line("cpu", Part::Mean, 2 * MINUTE, |v| v);
+        assert!(
+            line.contains(&(FRAME as f64, Some(3.))),
+            "the last value holds to where the gap begins"
+        );
+        assert!(
+            line.contains(&(MINUTE as f64, Some(4.))),
+            "the next run begins where the gap ends"
+        );
+        let gap = line.iter().position(|p| p.1.is_none()).expect("a break");
+        assert!((FRAME as f64) < line[gap].0 && line[gap].0 < MINUTE as f64);
     }
 
     #[test]

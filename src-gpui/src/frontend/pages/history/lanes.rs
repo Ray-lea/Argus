@@ -467,6 +467,7 @@ impl Desktop {
                 &axes,
                 bucket,
                 (from, to),
+                width,
                 &tick_list,
                 clock_lines.as_ref(),
                 read_index,
@@ -641,6 +642,11 @@ impl Desktop {
         axes: &Axes,
         bucket: i64,
         (from, to): (f64, f64),
+        // The plot's width as laid out last: measured before the lanes
+        // record their places anew (`history_plot_width` falls back to an
+        // estimate from the window while they do, and marks placed by it
+        // stood off their times).
+        plot_width: f32,
         tick_list: &Arc<Vec<i64>>,
         clock_lines: Option<&(Arc<Vec<f64>>, Hsla)>,
         read_index: Option<usize>,
@@ -718,7 +724,7 @@ impl Desktop {
         }
         // Marks placed by time glide with the curves (`Nudge`).
         let nudge = self.history.flow_origin.map(|_| Nudge {
-            width: self.history_plot_width(window),
+            width: plot_width,
             scale: window.scale_factor(),
         });
         // A band from fraction `a` to `b` of the plot's width.
@@ -729,15 +735,15 @@ impl Desktop {
             };
             place(nudge, mark, a, 0.)
         };
-        // Gaps: hatched, named where there is room.
+        // Gaps the line breaks for: hatched, named where there is room.
         if let Some(points) = &points {
-            for gap in &points.gaps {
+            for gap in points.shown_gaps() {
                 let a = ((gap.from as f64 - from) / span).clamp(0., 1.) as f32;
                 let b = ((gap.to as f64 - from) / span).clamp(0., 1.) as f32;
                 if b - a <= 0. {
                     continue;
                 }
-                let wide = (b - a) * self.history_plot_width(window) > 58.;
+                let wide = (b - a) * plot_width > 58.;
                 plot = plot.child(band(
                     div()
                         .absolute()
@@ -896,7 +902,6 @@ impl Desktop {
             if (0. ..=1.).contains(&middle) {
                 let text = label("history.selection.zoom");
                 let width = f32::from(theme::text_width(&text, theme::font(12.), window, cx)) + 78.;
-                let plot_width = self.history_plot_width(window);
                 let x =
                     (middle * plot_width - width / 2.).clamp(4., (plot_width - width - 4.).max(4.));
                 plot = plot.child(
