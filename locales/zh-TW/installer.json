@@ -12,6 +12,7 @@
   "ArgusLocation": "安裝位置：{installDir}",
   "ArgusChange": "變更",
   "ArgusChooseFolder": "選取安裝 Argus 的資料夾",
+  "ArgusProgramFilesNote": "開啟後，特殊權限服務、以系統管理員身分執行與核心感測器所需的檔案存放在 {programFiles}，只有系統管理員可以修改該位置。",
   "ArgusInstalling": "正在安裝 Argus…",
   "ArgusUpdating": "正在更新 Argus…",
   "ArgusInstalled": "安裝完成",

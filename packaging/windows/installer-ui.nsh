@@ -619,6 +619,8 @@ FunctionEnd
 Var ArgusOldVersion
 Var ArgusCompare ; 2: not installed; 1: upgrade; 0: same version; -1: newer installed
 Var ArgusLocationText
+Var ArgusChangeLink
+Var ArgusNoteText
 
 Function ArgusDetect
   StrCpy $ArgusCompare 2
@@ -678,16 +680,49 @@ Function ArgusPageMain
   IntOp $3 $ArgusWidth - 120
   !insertmacro ArgusControl $ArgusLocationText dialog STATIC ${ARGUS_PATH} 0 24 $2 $3 20 "$(ArgusLocation)" $ArgusFontSmall
   !insertmacro ArgusPaint $ArgusLocationText ink3
+  StrCpy $ArgusChangeLink 0
   ${If} $ArgusCompare = 2
     IntOp $3 $ArgusWidth - 88
-    !insertmacro ArgusControl $1 dialog LINK ${__NSD_Link_STYLE} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
-    !insertmacro ArgusPaint $1 link
-    ${NSD_OnClick} $1 ArgusChangeLocation
+    !insertmacro ArgusControl $ArgusChangeLink dialog LINK ${__NSD_Link_STYLE} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
+    !insertmacro ArgusPaint $ArgusChangeLink link
+    ${NSD_OnClick} $ArgusChangeLink ArgusChangeLocation
   ${EndIf}
+  ; Under it, for a folder outside Program Files: what goes to Program Files
+  ; anyway (ArgusPlaceNote).
+  IntOp $2 $ArgusHeight - 38
+  !insertmacro ArgusControl $ArgusNoteText dialog STATIC ${ARGUS_TEXT} 0 24 $2 $ArgusInner 32 "$(ArgusProgramFilesNote)" $ArgusFontSmall
+  !insertmacro ArgusPaint $ArgusNoteText ink3
+  Call ArgusPlaceNote
 
   Call ArgusHideButtons
   nsDialogs::Show
   Call ArgusReleaseButton
+FunctionEnd
+
+; The components that run as administrator or SYSTEM (the privileged service,
+; administrator startup and the sensor driver) are copied to Program Files
+; whatever the install folder: elsewhere a standard user could replace them.
+; For a folder outside it, the note says so and the location line moves up
+; above it; otherwise the page shows the location line alone.
+Function ArgusPlaceNote
+  StrCpy $0 "$PROGRAMFILES64\"
+  StrLen $1 $0
+  StrCpy $1 "$INSTDIR\" $1
+  IntOp $2 $ArgusHeight - 40
+  ${If} $1 == $0 ; StrCmp ignores case, as paths do
+    ShowWindow $ArgusNoteText ${SW_HIDE}
+  ${Else}
+    IntOp $2 $ArgusHeight - 62
+    ShowWindow $ArgusNoteText ${SW_SHOW}
+  ${EndIf}
+  ${ArgusScale} $1 24
+  ${ArgusScale} $2 $2
+  System::Call 'user32::SetWindowPos(p $ArgusLocationText, p 0, i r1, i r2, i 0, i 0, i 0x15)'
+  ${If} $ArgusChangeLink <> 0
+    IntOp $1 $ArgusWidth - 88
+    ${ArgusScale} $1 $1
+    System::Call 'user32::SetWindowPos(p $ArgusChangeLink, p 0, i r1, i r2, i 0, i 0, i 0x15)'
+  ${EndIf}
 FunctionEnd
 
 Function ArgusPageMainLeave
@@ -715,6 +750,7 @@ Function ArgusChangeLocation
     ${EndIf}
     StrCpy $INSTDIR $0
     SendMessage $ArgusLocationText ${WM_SETTEXT} 0 "STR:$(ArgusLocation)"
+    Call ArgusPlaceNote
   ${EndIf}
 FunctionEnd
 
