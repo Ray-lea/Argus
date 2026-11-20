@@ -371,7 +371,10 @@ impl Desktop {
             .border_1()
             .border_color(p.stroke)
             .rounded(px(8.))
-            .bg(p.layer)
+            // Opaque, as the live charts' surface: Windows moves curves on
+            // the compositor only over an opaque backdrop, and draws those
+            // over the window material again in every frame.
+            .bg(p.chart_surface)
             .child(lanes)
             .child(navigator)
             .into_any_element()

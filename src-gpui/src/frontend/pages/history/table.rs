@@ -1124,7 +1124,8 @@ impl Desktop {
     }
 }
 
-/// A process's trend: a small area, scaled to its own highest value.
+/// A process's trend: a small area, scaled to its own highest value, drawn
+/// as an image at the window's density (`charts::sparkline_image`).
 fn sparkline(trend: Option<Vec<Option<f64>>>, color: Hsla) -> AnyElement {
     let cell = div()
         .w(px(TREND_WIDTH))
@@ -1140,34 +1141,18 @@ fn sparkline(trend: Option<Vec<Option<f64>>>, color: Hsla) -> AnyElement {
         canvas(
             |_, _, _| {},
             move |bounds, _, window, _| {
-                let n = trend.len().max(2) - 1;
-                let at = |i: usize, v: f64| {
-                    point(
-                        bounds.left() + bounds.size.width * (i as f32 / n as f32),
-                        bounds.bottom() - bounds.size.height * (v / top).clamp(0., 1.) as f32,
-                    )
-                };
-                let mut area = PathBuilder::fill();
-                let mut line = PathBuilder::stroke(px(1.25));
-                let mut started = false;
-                for (i, value) in trend.iter().enumerate() {
-                    let v = value.unwrap_or(0.);
-                    if !started {
-                        area.move_to(point(at(i, 0.).x, bounds.bottom()));
-                        line.move_to(at(i, v));
-                        started = true;
-                    } else {
-                        line.line_to(at(i, v));
-                    }
-                    area.line_to(at(i, v));
+                let scale = window.scale_factor();
+                let size = (
+                    (f32::from(bounds.size.width) * scale).round() as u32,
+                    (f32::from(bounds.size.height) * scale).round() as u32,
+                );
+                if size.0 == 0 || size.1 == 0 {
+                    return;
                 }
-                area.line_to(point(bounds.right(), bounds.bottom()));
-                area.close();
-                if let Ok(path) = area.build() {
-                    window.paint_path(path, color.opacity(0.18));
-                }
-                if let Ok(path) = line.build() {
-                    window.paint_path(path, color.opacity(0.9));
+                if let Some(image) =
+                    charts::sparkline_image(&trend, top, size, scale, color, window)
+                {
+                    let _ = window.paint_image(bounds, bounds, Corners::default(), image, 0, false);
                 }
             },
         )

@@ -406,6 +406,9 @@ pub(in crate::frontend) fn release_all(window: &mut Window, cx: &mut App) {
             *surface.borrow_mut() = Surface::default();
         }
     }
+    for (_, image) in SPARKS.with_borrow_mut(std::mem::take) {
+        let _ = window.drop_image(image);
+    }
     window.invalidate_render_cache();
 }
 
@@ -719,6 +722,120 @@ fn dot_image(fill: Hsla, ring: Hsla, density: f32) -> Option<Arc<RenderImage>> {
     let buffer = image::RgbaImage::from_raw(side, side, pixels)?;
     let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
     DOTS.with_borrow_mut(|dots| dots.insert(key, image.clone()));
+    Some(image)
+}
+
+/// Trend images kept for reuse, the most recently painted last; the oldest
+/// leave the atlas as new ones come.
+const SPARKLINES: usize = 256;
+
+thread_local! {
+    static SPARKS: RefCell<std::collections::VecDeque<(u64, Arc<RenderImage>)>> =
+        const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// A table row's trend as an image `size` device pixels large: an area under
+/// a line through `trend` (unknown readings at zero), scaled to `top`. A
+/// trend drawn as vector paths kept the Windows renderer from caching the
+/// rest of the window and from moving curves on the compositor: every frame
+/// of a gliding chart on the same page was drawn whole.
+pub(in crate::frontend) fn sparkline_image(
+    trend: &[Option<f64>],
+    top: f64,
+    size: (u32, u32),
+    density: f32,
+    color: Hsla,
+    window: &mut Window,
+) -> Option<Arc<RenderImage>> {
+    let rgba: Rgba = color.into();
+    let key = super::hash_of((
+        trend
+            .iter()
+            .map(|v| v.map(f64::to_bits))
+            .collect::<Vec<_>>(),
+        top.to_bits(),
+        size,
+        [density, rgba.r, rgba.g, rgba.b, rgba.a].map(f32::to_bits),
+    ));
+    let cached = SPARKS.with_borrow_mut(|sparks| {
+        let index = sparks.iter().position(|(k, _)| *k == key)?;
+        let entry = sparks.remove(index)?;
+        let image = entry.1.clone();
+        sparks.push_back(entry);
+        Some(image)
+    });
+    if cached.is_some() {
+        return cached;
+    }
+    let (width, height) = size;
+    let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
+    let (w, h) = (width as f32, height as f32);
+    let last = (trend.len().max(2) - 1) as f32;
+    let at = |i: usize, v: f64| (w * i as f32 / last, h - h * (v / top).clamp(0., 1.) as f32);
+    let mut area = tiny_skia::PathBuilder::new();
+    let mut line = tiny_skia::PathBuilder::new();
+    for (i, value) in trend.iter().enumerate() {
+        let (x, y) = at(i, value.unwrap_or(0.));
+        if i == 0 {
+            area.move_to(x, h);
+            line.move_to(x, y);
+        } else {
+            line.line_to(x, y);
+        }
+        area.line_to(x, y);
+    }
+    area.line_to(w, h);
+    area.close();
+    let paint = |opacity: f32| -> Option<tiny_skia::Paint<'static>> {
+        Some(tiny_skia::Paint {
+            shader: tiny_skia::Shader::SolidColor(tiny_skia::Color::from_rgba(
+                rgba.r,
+                rgba.g,
+                rgba.b,
+                rgba.a * opacity,
+            )?),
+            anti_alias: true,
+            ..Default::default()
+        })
+    };
+    if let Some(path) = area.finish() {
+        pixmap.fill_path(
+            &path,
+            &paint(0.18)?,
+            tiny_skia::FillRule::Winding,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+    if let Some(path) = line.finish() {
+        let stroke = tiny_skia::Stroke {
+            width: 1.25 * density,
+            line_join: tiny_skia::LineJoin::Round,
+            ..Default::default()
+        };
+        pixmap.stroke_path(
+            &path,
+            &paint(0.9)?,
+            &stroke,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+    let mut pixels = pixmap.take();
+    straight_bgra(&mut pixels);
+    let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
+    let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
+    let evicted = SPARKS.with_borrow_mut(|sparks| {
+        sparks.push_back((key, image.clone()));
+        let excess = sparks.len().saturating_sub(SPARKLINES);
+        sparks
+            .drain(..excess)
+            .map(|(_, image)| image)
+            .collect::<Vec<_>>()
+    });
+    for old in evicted {
+        let _ = window.drop_image(old);
+    }
     Some(image)
 }
 
