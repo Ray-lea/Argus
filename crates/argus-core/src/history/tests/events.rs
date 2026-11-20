@@ -433,6 +433,19 @@ fn damaged_process_blocks_preserve_events_and_damaged_system_minutes_break_runs(
 }
 
 #[test]
+fn frames_written_without_program_counts_have_none() {
+    let dir = temp_dir("event-no-programs");
+    let mut day = Day::new(DAY);
+    day.frame(0, 0, LOW, &[]);
+    day.save(&dir);
+    let f = frame(&dir, BASE).unwrap();
+    assert!(f.programs.is_empty());
+    assert_eq!(f.program_count, 0);
+    assert_eq!(serde_json::to_value(&f).unwrap()["programs"], json!([]));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn days_of_other_versions_give_no_events() {
     let dir = temp_dir("event-other-version");
     fs::create_dir_all(&dir).unwrap();

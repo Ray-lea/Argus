@@ -240,6 +240,8 @@ impl MinuteProcess {
 
 #[derive(Default)]
 struct Aggregate {
+    /// The program counts of the minute's last frame that had them.
+    programs: Option<Vec<u8>>,
     ts: i64,
     coverage: Vec<(i64, i64)>,
     bands: Vec<Band>,
@@ -331,6 +333,9 @@ impl Aggregate {
             prev_mask.clone_from(&self.present);
         }
         packet(out, MINUTE, &data)?;
+        if let Some(programs) = self.programs.take() {
+            packet(out, PROGRAMS, &programs)?;
+        }
         self.coverage.clear();
         self.rows.clear();
         self.bands.fill(Band::default());
@@ -401,6 +406,9 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
         for (i, id) in ids.iter().enumerate() {
             packet(&mut out, INSTANCE, &serde_json::to_vec(&(i, id))?)?;
         }
+        for (i, name) in idx.programs.iter().enumerate() {
+            packet(&mut out, PROGRAM, &serde_json::to_vec(&(i, name))?)?;
+        }
         let mut agg = Aggregate {
             bands: vec![Band::default(); idx.catalog.rows.len()],
             present: vec![0; idx.catalog.rows.len().div_ceil(8)],
@@ -432,6 +440,12 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
                     return Err(invalid());
                 };
                 let rows = d.metrics(f).ok_or_else(invalid)?;
+                // A sample without processes counted none: the minute keeps
+                // the counts of a frame that had some.
+                let programs = d
+                    .programs_packet(i)
+                    .filter(|p| p.get(..2) != Some(&[0, 0][..]))
+                    .map(<[u8]>::to_vec);
                 let mut ts = ts;
                 while ts < frame_end {
                     let slot = align(ts, 0, MINUTE_MS);
@@ -442,6 +456,9 @@ pub(super) fn merge(dir: &Path, day: i64, cap: u32) -> io::Result<()> {
                         if out.stream_position()? > MAX_FILE_BYTES as u64 {
                             return Err(invalid());
                         }
+                    }
+                    if programs.is_some() {
+                        agg.programs.clone_from(&programs);
                     }
                     if let Some(last) = agg.coverage.last_mut().filter(|v| v.1 == ts) {
                         last.1 = end;

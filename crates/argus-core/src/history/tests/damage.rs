@@ -26,6 +26,12 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     };
     packet(&mut main, INSTANCE, &serde_json::to_vec(&(0, id)).unwrap()).unwrap();
     packet(&mut main, PRESENCE, &[1]).unwrap();
+    packet(
+        &mut main,
+        PROGRAM,
+        &serde_json::to_vec(&(0, "p.exe")).unwrap(),
+    )
+    .unwrap();
     let rows = vec![0, 1, 0, 0, 128, 63, 1, 0, 0, 1, 2];
     let mut f = TS.to_le_bytes().to_vec();
     f.extend(1i64.to_le_bytes());
@@ -34,6 +40,9 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     f.extend((rows.len() as u32).to_le_bytes());
     f.extend(1f32.to_le_bytes());
     packet(&mut main, V4_FRAME, &f).unwrap();
+    let mut programs = [0; PROGRAMS_LEN];
+    programs[..6].copy_from_slice(&[1, 0, 0, 0, 3, 0]);
+    packet(&mut main, PROGRAMS, &programs).unwrap();
     let mut sys = SystemRoll::default();
     sys.add(TS, &[1.], 1.);
     sys.finish(&mut main).unwrap();
@@ -86,7 +95,7 @@ fn corrupt_run_address_reads_the_primary_and_matches_its_frames() {
     let (_, block) = next_packet(&idx).unwrap();
     let mut offset = None;
     packets(&block[8..], 0, |at, tag, _| {
-        if tag == FRAME_RUN {
+        if tag == FRAME_RUN || tag == FRAME_RUN_COUNTED {
             offset = Some(5 + 8 + at + 5 + 52);
         }
         true
@@ -317,6 +326,29 @@ fn a_corrupt_process_frame_never_replaces_the_source_day() {
     assert_eq!(fs::read(&path).unwrap(), invalid_main);
     assert_eq!(fs::read(path.with_extension("proc")).unwrap(), duplicated);
     assert!(!path.with_extension("merge-tmp").exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn program_counts_survive_checkpoints_and_the_minute_merge() {
+    let dir = temp_dir("programs-fixture");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    for (ext, bytes) in ["hist", "proc", "idx", "roll"]
+        .into_iter()
+        .zip(v4_files(&dir))
+    {
+        fs::write(path.with_extension(ext), bytes).unwrap();
+    }
+    let expect = vec![ProgramCount {
+        name: "p.exe".into(),
+        count: 3,
+    }];
+    assert_eq!(frame(&dir, TS).unwrap().programs, expect);
+    minute::merge(&dir, DAY, 20).unwrap();
+    forget(&dir);
+    let merged = frame(&dir, TS).unwrap();
+    assert_eq!((merged.programs, merged.program_count), (expect, 1));
     fs::remove_dir_all(dir).unwrap();
 }
 

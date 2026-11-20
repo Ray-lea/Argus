@@ -250,6 +250,10 @@ impl ProcAcc {
 
 #[derive(Default)]
 struct Window {
+    /// How many processes the programs that run the most had in the last
+    /// sample, and how many programs it had (`programs_of`).
+    programs: Vec<(Arc<str>, u32)>,
+    program_count: u32,
     values: Vec<Mean>,
     present: Vec<bool>,
     awake: i64,
@@ -424,6 +428,7 @@ impl HistoryRecorder {
             w.present[i] |= v != f64::NEG_INFINITY;
         }
         w.cpu_peak = w.cpu_peak.max(s.system.cpu);
+        (w.programs, w.program_count) = programs_of(&s.processes);
         if self.live.catalog.as_ref() != &self.catalog.rows {
             self.live.catalog = Arc::new(self.catalog.rows.clone());
         }
@@ -652,6 +657,35 @@ impl Drop for HistoryRecorder {
         self.stop(false);
     }
 }
+/// How many programs a frame keeps the process count of (`ProgramCount`).
+const PROGRAMS_KEPT: usize = 8;
+
+/// How many processes each program runs, a program being an executable name
+/// with case set aside (spelled as first seen): the most first, then by
+/// name, as many as `PROGRAMS_KEPT`; and how many programs there are.
+fn programs_of(processes: &[crate::process::ProcessRow]) -> (Vec<(Arc<str>, u32)>, u32) {
+    let mut by_name: HashMap<String, (Arc<str>, u32)> = HashMap::with_capacity(processes.len());
+    for p in processes {
+        by_name
+            .entry(p.name.to_lowercase())
+            .or_insert_with(|| (p.name.clone(), 0))
+            .1 += 1;
+    }
+    let total = by_name.len() as u32;
+    let mut list: Vec<(String, Arc<str>, u32)> = by_name
+        .into_iter()
+        .map(|(key, (name, count))| (key, name, count))
+        .collect();
+    list.sort_unstable_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    list.truncate(PROGRAMS_KEPT);
+    (
+        list.into_iter()
+            .map(|(_, name, count)| (name, count))
+            .collect(),
+        total,
+    )
+}
+
 /// Each resource contributes its busiest distinct instances. An unknown/pending
 /// observation is removed by the caller before ranking.
 fn select<T: Copy>(
@@ -1291,18 +1325,41 @@ pub struct FrameProcess {
     pub threads: Option<u32>,
     pub handles: Option<u32>,
 }
+/// How many processes a program ran in a frame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProgramCount {
+    pub name: String,
+    pub count: u32,
+}
 #[derive(Debug, Clone, Serialize)]
 pub struct HistoryFrame {
     pub ts: i64,
     pub span: i64,
     pub system: BTreeMap<String, Option<f64>>,
     pub processes: Vec<FrameProcess>,
+    /// The programs running the most processes, of all the frame's last
+    /// sample had (not only the processes it kept): most first, then by
+    /// name. Empty when unknown (frames written before 0.6).
+    pub programs: Vec<ProgramCount>,
+    /// How many programs that sample had; 0 when unknown.
+    #[serde(rename = "programCount")]
+    pub program_count: u32,
 }
 
 const CHANNEL: u8 = 3;
 const INSTANCE: u8 = 4;
 const MARKER: u8 = 5;
 const V4_FRAME: u8 = 6;
+/// A program's entry in the day's dictionary: `(id, name)`, before the first
+/// frame that counts it.
+const PROGRAM: u8 = 14;
+/// The program counts of the frame (or minute) just before, written after
+/// every frame since 0.6: how many programs (u16), then `PROGRAMS_KEPT`
+/// slots of dictionary id and count (u16 each; a count of 0 ends the list).
+/// At a fixed size, frames keep fixed strides in checkpointed runs
+/// (`FRAME_RUN_COUNTED`); it is not copied into the checkpoints.
+const PROGRAMS: u8 = 15;
+const PROGRAMS_LEN: usize = 2 + PROGRAMS_KEPT * 4;
 fn packet(out: &mut impl Write, tag: u8, data: &[u8]) -> io::Result<()> {
     out.write_all(&[tag])?;
     out.write_all(
@@ -1393,6 +1450,8 @@ struct Writer4 {
     catalog: Catalog,
     ids: HashMap<Identity, u32>,
     next_id: u32,
+    /// Program ids by lower-case name (`PROGRAM`).
+    program_ids: HashMap<String, u32>,
 }
 const FRAME_PREFIX: usize = 8 + 8 + 4 + 8 + 4;
 struct Stored<'a> {
@@ -1586,6 +1645,23 @@ impl Writer4 {
                 }
             }
         }
+        // The counts' dictionary entries go before the frame, the counts
+        // right after it (`DayRead::programs`).
+        let mut counted = Vec::new();
+        for (name, count) in &w.programs {
+            let key = name.to_lowercase();
+            let id = match self.program_ids.get(&key) {
+                Some(&id) => id,
+                None if self.program_ids.len() >= usize::from(u16::MAX) => continue,
+                None => {
+                    let id = self.program_ids.len() as u32;
+                    packet(&mut metadata, PROGRAM, &serde_json::to_vec(&(id, &**name))?)?;
+                    self.program_ids.insert(key, id);
+                    id
+                }
+            };
+            counted.push((id, *count));
+        }
         let mut frame = Vec::with_capacity(FRAME_PREFIX + values.len() * 4);
         frame.extend(w.start.to_le_bytes());
         frame.extend(w.awake.to_le_bytes());
@@ -1617,6 +1693,14 @@ impl Writer4 {
             }
         }
         packet(&mut metadata, V4_FRAME, &frame)?;
+        let mut programs = [0u8; PROGRAMS_LEN];
+        let small = |v: u32| u16::try_from(v).unwrap_or(u16::MAX).to_le_bytes();
+        programs[..2].copy_from_slice(&small(w.program_count));
+        for (slot, (id, count)) in counted.into_iter().enumerate() {
+            programs[2 + slot * 4..4 + slot * 4].copy_from_slice(&small(id));
+            programs[4 + slot * 4..6 + slot * 4].copy_from_slice(&small(count));
+        }
+        packet(&mut metadata, PROGRAMS, &programs)?;
         if (w.start + w.span()).rem_euclid(ROLL_MS) == 0 {
             self.system.finish(&mut metadata)?;
         }
@@ -1880,6 +1964,8 @@ struct Index {
     limited: bool,
     catalog: Catalog,
     ids: Vec<Identity>,
+    /// Program names by id (`PROGRAM`).
+    programs: Vec<String>,
     frames: Vec<(u32, u32)>,
     summaries: Vec<RollRef>,
     masks: Vec<(usize, Vec<u8>)>,
@@ -1919,8 +2005,9 @@ impl Index {
                 return false;
             };
             let limit = checkpoint_end.unwrap_or(MAX_FILE_BYTES);
-            if tag == FRAME_RUN {
-                return checkpoint_end.is_some() && self.address_run(p, limit);
+            if tag == FRAME_RUN || tag == FRAME_RUN_COUNTED {
+                return checkpoint_end.is_some()
+                    && self.address_run(p, limit, tag == FRAME_RUN_COUNTED);
             }
             if end > limit
                 || self
@@ -1945,6 +2032,7 @@ impl Index {
         let capped = match tag {
             CHANNEL => p.len() > MAX_METADATA_BYTES || self.labels.len() >= MAX_FRAMES,
             INSTANCE => p.len() > MAX_METADATA_BYTES || self.ids.len() >= MAX_INSTANCES,
+            PROGRAM => p.len() > MAX_METADATA_BYTES || self.programs.len() >= MAX_INSTANCES,
             minute::MINUTE if self.version == 5 => self.frames.len() >= 1440,
             minute::GAP if self.version == 5 => self.gaps.len() >= MAX_FRAMES,
             V4_FRAME => self.frames.len() >= MAX_FRAMES,
@@ -1991,6 +2079,16 @@ impl Index {
                 self.ids.push(id);
                 self.process_bytes += (5 + p.len()) as u64;
             }
+            PROGRAM => {
+                let (i, name) = serde_json::from_slice::<(usize, String)>(p).ok()?;
+                if i != self.programs.len() {
+                    return None;
+                }
+                self.programs.push(name);
+                self.process_bytes += (5 + p.len()) as u64;
+            }
+            // Read with the frame before it.
+            PROGRAMS if p.len() == PROGRAMS_LEN => self.process_bytes += (5 + p.len()) as u64,
             MARKER if p.len() == 25 => match p[0] {
                 1 => self.boot = i64::from_le_bytes(field(p, 9)?),
                 2 | 3 => {
@@ -2154,6 +2252,12 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
             pos: idx.proc_end,
             catalog: idx.catalog,
             next_id: idx.ids.len() as u32,
+            program_ids: idx
+                .programs
+                .iter()
+                .enumerate()
+                .map(|(i, name)| (name.to_lowercase(), i as u32))
+                .collect(),
             ids: idx
                 .ids
                 .into_iter()
@@ -2260,6 +2364,7 @@ fn index(path: &Path) -> Option<Arc<Index>> {
                 .sum::<usize>()
             + i.gaps.capacity() * std::mem::size_of::<Gap>()
             + i.ids.iter().map(|id| 64 + id.name.len()).sum::<usize>()
+            + i.programs.iter().map(|n| 32 + n.len()).sum::<usize>()
             + i.catalog
                 .rows
                 .iter()
@@ -2431,6 +2536,19 @@ impl DayRead {
             .all(|(id, _)| *id < self.idx.ids.len())
             .then_some(rows)
     }
+    /// The program counts recorded with frame (or minute) `i`: the packet
+    /// right after it, when there is one.
+    fn programs(&self, i: usize) -> (Vec<ProgramCount>, u32) {
+        self.programs_packet(i)
+            .and_then(|p| decode_programs(p, &self.idx.programs))
+            .unwrap_or_default()
+    }
+    fn programs_packet(&self, i: usize) -> Option<&[u8]> {
+        let bytes = self.bytes(i)?;
+        let (_, first) = next_packet(bytes)?;
+        let (tag, p) = next_packet(bytes.get(5 + first.len()..)?)?;
+        (tag == PROGRAMS).then_some(p)
+    }
     fn minute(&self, i: usize) -> Option<Minute<'_>> {
         let (tag, p) = next_packet(self.bytes(i)?)?;
         let m = Minute::parse(p, self.idx.day)?;
@@ -2491,6 +2609,25 @@ impl Reading<'_> {
         }
     }
 }
+fn decode_programs(p: &[u8], names: &[String]) -> Option<(Vec<ProgramCount>, u32)> {
+    let (total, slots) = p.split_first_chunk::<2>()?;
+    if p.len() != PROGRAMS_LEN {
+        return None;
+    }
+    let mut out = Vec::new();
+    for slot in slots.as_chunks::<4>().0 {
+        let count = u32::from(u16::from_le_bytes([slot[2], slot[3]]));
+        if count == 0 {
+            break;
+        }
+        let id = usize::from(u16::from_le_bytes([slot[0], slot[1]]));
+        out.push(ProgramCount {
+            name: names.get(id)?.clone(),
+            count,
+        });
+    }
+    Some((out, u32::from(u16::from_le_bytes(*total))))
+}
 fn finite(v: f64) -> Option<f64> {
     v.is_finite().then_some(v)
 }
@@ -2527,6 +2664,7 @@ pub fn frame(dir: &Path, ts: i64) -> Option<HistoryFrame> {
                 let diff = row.ts().abs_diff(ts);
                 if diff < distance {
                     distance = diff;
+                    let (programs, program_count) = d.programs(i);
                     best = Some(HistoryFrame {
                         ts: row.ts(),
                         span: row.span(),
@@ -2542,6 +2680,8 @@ pub fn frame(dir: &Path, ts: i64) -> Option<HistoryFrame> {
                             })
                             .collect(),
                         processes: d.processes(i),
+                        programs,
+                        program_count,
                     });
                 }
             }
@@ -3835,12 +3975,17 @@ fn bucket_at<'a>(
 // A run ends at a gap or metadata change. Its two clocks suffice to join it
 // to the adjacent runs; reading an older day never decodes every system frame.
 const FRAME_RUN: u8 = 9;
+/// A run of frames each followed by its program counts (`PROGRAMS`): the
+/// same record, at a stride that includes them.
+const FRAME_RUN_COUNTED: u8 = 16;
 #[derive(Default)]
 struct AddressRun {
     first: Option<Stamp>,
     last: Stamp,
     refs: Vec<u8>,
     proc_end: u64,
+    /// Its frames are each followed by their program counts.
+    counted: bool,
 }
 impl AddressRun {
     fn finish(&mut self, bytes: &mut Vec<u8>) {
@@ -3855,7 +4000,11 @@ impl AddressRun {
         }
         body.extend(self.proc_end.to_le_bytes());
         body.append(&mut self.refs);
-        bytes.push(FRAME_RUN);
+        bytes.push(if std::mem::take(&mut self.counted) {
+            FRAME_RUN_COUNTED
+        } else {
+            FRAME_RUN
+        });
         bytes.extend((body.len() as u32).to_le_bytes());
         bytes.extend(body);
     }
@@ -3923,6 +4072,11 @@ impl Checkpoints {
                     .refs
                     .extend((f.ts.rem_euclid(DAY_MS) as u32).to_le_bytes());
                 self.run.refs.extend(((self.end + at) as u32).to_le_bytes());
+            } else if tag == PROGRAMS {
+                // Read with their frame from the main file: copied, every
+                // frame would end a run. The run records that its frames
+                // have them (`FRAME_RUN_COUNTED`).
+                self.run.counted = true;
             } else {
                 self.run.finish(&mut self.pending);
                 self.pending.extend(&main[at..at + 5 + p.len()]);
@@ -4016,7 +4170,7 @@ impl Index {
         }
     }
 
-    fn address_run(&mut self, p: &[u8], limit: usize) -> bool {
+    fn address_run(&mut self, p: &[u8], limit: usize, counted: bool) -> bool {
         let Some((header, refs)) = p.split_first_chunk::<48>() else {
             return false;
         };
@@ -4044,7 +4198,8 @@ impl Index {
             return false;
         };
         let base = self.valid;
-        let width = 5 + FRAME_PREFIX + self.catalog.bytes;
+        let width =
+            5 + FRAME_PREFIX + self.catalog.bytes + if counted { 5 + PROGRAMS_LEN } else { 0 };
         let Some(end) = refs
             .len()
             .checked_mul(width)
@@ -4086,6 +4241,10 @@ impl Index {
         self.proc_end = proc_end;
         self.last = Some(last);
         self.valid = end;
+        // The counts a scan of the primary would have read with each frame.
+        if counted {
+            self.process_bytes += (refs.len() * (5 + PROGRAMS_LEN)) as u64;
+        }
         true
     }
     fn range(&self, day: i64, from: i64, to: i64) -> std::ops::Range<usize> {
@@ -4294,6 +4453,118 @@ mod tests {
             );
             fs::remove_dir_all(&dir).unwrap();
         }
+    }
+
+    #[test]
+    fn frames_keep_program_counts_of_every_process_in_their_last_sample() {
+        let dir = temp_dir("programs");
+        let day = 20_737;
+        let base = day * DAY_MS;
+        let path = day_path(&dir, day);
+        let mut processes = Vec::new();
+        let mut pid = 100;
+        let mut add = |name: &str, n: u32| {
+            for _ in 0..n {
+                pid += 1;
+                processes.push(proc(pid, name, 0., 1024));
+            }
+        };
+        // Two spellings are one program, under the first seen.
+        add("svchost.exe", 5);
+        add("Chrome.exe", 3);
+        add("chrome.exe", 2);
+        for name in [
+            "i.exe", "b.exe", "a.exe", "h.exe", "c.exe", "g.exe", "d.exe", "f.exe", "e.exe",
+        ] {
+            add(name, 1);
+        }
+        let mut rec = HistoryRecorder::new(dir.clone());
+        // Only the frame's last sample counts.
+        rec.record(&snapshot(base, 1., vec![proc(1, "early.exe", 0., 1024)]));
+        rec.record(&snapshot(base + 1000, 1., processes.clone()));
+        rec.record(&snapshot(base + FRAME_MS, 1., processes[..5].to_vec()));
+        rec.record(&snapshot(base + 2 * FRAME_MS, 1., Vec::new()));
+        drop(rec);
+        let counts = |list: &[(&str, u32)]| {
+            list.iter()
+                .map(|&(name, count)| ProgramCount {
+                    name: name.into(),
+                    count,
+                })
+                .collect::<Vec<_>>()
+        };
+        let check = |dir: &Path| {
+            let first = frame(dir, base).unwrap();
+            assert_eq!(first.program_count, 11);
+            assert_eq!(
+                first.programs,
+                counts(&[
+                    ("Chrome.exe", 5),
+                    ("svchost.exe", 5),
+                    ("a.exe", 1),
+                    ("b.exe", 1),
+                    ("c.exe", 1),
+                    ("d.exe", 1),
+                    ("e.exe", 1),
+                    ("f.exe", 1),
+                ])
+            );
+            let second = frame(dir, base + FRAME_MS).unwrap();
+            assert_eq!(second.programs, counts(&[("svchost.exe", 5)]));
+            let json = serde_json::to_value(&second).unwrap();
+            assert_eq!(json["programCount"], 1);
+            assert_eq!(
+                json["programs"],
+                serde_json::json!([{"name": "svchost.exe", "count": 5}])
+            );
+            let empty = frame(dir, base + 2 * FRAME_MS).unwrap();
+            assert!(empty.programs.is_empty());
+            assert_eq!(empty.program_count, 0);
+        };
+        check(&dir);
+        // Recording on in the same day keeps the dictionary.
+        let mut rec = HistoryRecorder::new(dir.clone());
+        rec.record(&snapshot(
+            base + 3 * FRAME_MS,
+            1.,
+            vec![
+                proc(9, "SVCHOST.EXE", 0., 1024),
+                proc(10, "new.exe", 0., 1024),
+            ],
+        ));
+        rec.record(&snapshot(base + 4 * FRAME_MS, 1., Vec::new()));
+        drop(rec);
+        let later = counts(&[("new.exe", 1), ("svchost.exe", 1)]);
+        assert_eq!(frame(&dir, base + 3 * FRAME_MS).unwrap().programs, later);
+        // The checkpoints hold the dictionary but not the counts of every
+        // frame, whose runs they mark; read through them and without them.
+        let mut tags = Vec::new();
+        packets(
+            &fs::read(path.with_extension("idx")).unwrap(),
+            0,
+            |_, _, p| {
+                packets(p.get(8..).unwrap_or_default(), 0, |_, tag, _| {
+                    tags.push(tag);
+                    true
+                });
+                true
+            },
+        );
+        assert!(tags.contains(&PROGRAM) && tags.contains(&FRAME_RUN_COUNTED));
+        assert!(!tags.contains(&PROGRAMS));
+        forget(&dir);
+        check(&dir);
+        let through = index(&path).unwrap().process_bytes;
+        fs::remove_file(path.with_extension("idx")).unwrap();
+        forget(&dir);
+        check(&dir);
+        assert_eq!(index(&path).unwrap().process_bytes, through);
+        // A merged minute keeps the counts of its last frame that had some.
+        minute::merge(&dir, day, 0).unwrap();
+        forget(&dir);
+        let merged = frame(&dir, base).unwrap();
+        assert_eq!((merged.programs, merged.program_count), (later, 2));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
