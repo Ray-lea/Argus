@@ -8,6 +8,10 @@ use super::readings::{Group, tab_ids};
 use super::state::Drag;
 use super::*;
 
+/// A tab's width besides its name and value: padding, swatch, gaps, the +
+/// and the border.
+const TAB_PARTS: f32 = 10. + 8. + 7. + 7. + 7. + 18. + 4. + 2.;
+
 /// What a menu of readings is for.
 pub(super) struct ReadingMenu<'a> {
     /// Its title (a locale key), if it needs one.
@@ -110,29 +114,48 @@ impl Desktop {
         let multi = lanes.len() > 1;
         let active = self.history.active_lane().reading.clone();
         let value_size = theme::font(13.);
-        let mut row = div()
-            .flex_none()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(px(4.));
+        // One line however narrow the window: the tabs that do not fit scroll
+        // sideways (the wheel scrolls them there), "More readings" stays at
+        // its end.
+        let tabs_scroll = window
+            .use_keyed_state("history-tabs-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
+        let mut row = div().flex().flex_none().items_center().gap(px(4.));
         let ids = tab_ids(&self.history.readings);
-        for id in &ids {
-            let Some(reading) = self.history_reading(id) else {
-                continue;
-            };
+        let tabs_shown = ids
+            .iter()
+            .filter_map(|id| self.history_reading(id))
+            .map(|reading| {
+                let slot = slot_width(
+                    &reading.widest_samples(bits),
+                    value_size,
+                    FontWeight::SEMIBOLD,
+                    window,
+                    cx,
+                );
+                let name = theme::text_width(&reading.name, theme::font(13.), window, cx);
+                (reading, slot, name)
+            })
+            .collect::<Vec<_>>();
+        // Where the tabs with their values do not fit the line, they leave the
+        // values to the lanes' titles; only then do any left over scroll.
+        // (The room is the line's as laid out last: it does not change with
+        // the tabs.)
+        let room = tabs_scroll.bounds().size.width;
+        let natural = tabs_shown
+            .iter()
+            .map(|(_, slot, name)| f32::from(*slot + *name) + TAB_PARTS)
+            .sum::<f32>()
+            + 4. * tabs_shown.len().saturating_sub(1) as f32;
+        let compact = room > px(0.) && natural > f32::from(room);
+        for (reading, width, _) in tabs_shown {
+            let id = &reading.id;
             let shown = lanes.iter().any(|lane| lane.reading == *id);
             let overlaid = lanes
                 .iter()
                 .any(|lane| lane.overlay.as_deref() == Some(id.as_str()));
             let current = multi && active == *id;
-            let width = slot_width(
-                &reading.widest_samples(bits),
-                value_size,
-                FontWeight::SEMIBOLD,
-                window,
-                cx,
-            );
             let value = points
                 .zip(index)
                 .and_then(|(points, index)| reading.value(points, index))
@@ -182,19 +205,21 @@ impl Desktop {
                             .whitespace_nowrap()
                             .child(reading.name.clone()),
                     )
-                    .child(
-                        div()
-                            .min_w(width)
-                            .text_right()
-                            .text_size(value_size)
-                            .when(reading.recorded, |d| {
-                                d.text_color(p.ink).font_weight(FontWeight::SEMIBOLD)
-                            })
-                            .when(!reading.recorded, |d| d.text_color(p.faint))
-                            .font_features(theme::tabular())
-                            .whitespace_nowrap()
-                            .child(value),
-                    )
+                    .when(!compact, |d| {
+                        d.child(
+                            div()
+                                .min_w(width)
+                                .text_right()
+                                .text_size(value_size)
+                                .when(reading.recorded, |d| {
+                                    d.text_color(p.ink).font_weight(FontWeight::SEMIBOLD)
+                                })
+                                .when(!reading.recorded, |d| d.text_color(p.faint))
+                                .font_features(theme::tabular())
+                                .whitespace_nowrap()
+                                .child(value),
+                        )
+                    })
                     .child(
                         // Shown on hover, its room kept so that the tabs stay put.
                         div()
@@ -233,9 +258,40 @@ impl Desktop {
             );
         }
         let exclude = ids.clone();
-        row = row.child(
+        let wheel_scroll = tabs_scroll.clone();
+        let tabs = div()
+            .id("history-tabs")
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .track_scroll(&tabs_scroll)
+            .overflow_x_scroll()
+            .on_scroll(cx.listener(move |this, event: &ScrollEvent, window, cx| {
+                // An upright wheel moves the tabs along while they overflow.
+                let max = wheel_scroll.max_offset().x;
+                let delta = event.delta.pixel_delta(window.line_height());
+                if max <= px(0.) || delta.y == px(0.) || delta.x != px(0.) {
+                    return;
+                }
+                let offset = wheel_scroll.offset();
+                let x = (offset.x + delta.y).clamp(-max, px(0.));
+                if x != offset.x {
+                    wheel_scroll.set_offset(point(x, offset.y));
+                    cx.stop_propagation();
+                    this.history_redraw(window, cx);
+                }
+            }))
+            .child(row);
+        let row = div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .child(tabs);
+        let row = row.child(
             div()
                 .id("history-tab-more")
+                .flex_shrink_0()
                 .relative()
                 .flex()
                 .items_center()

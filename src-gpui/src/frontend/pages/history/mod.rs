@@ -336,7 +336,7 @@ impl Desktop {
         let chart = self.history_chart(shown, window, cx);
         let glides = std::mem::take(&mut self.history.glides);
         self.history.gliding = None;
-        if easing || lanes_moving || toast {
+        if easing || lanes_moving || toast || self.history.lanes_order.moving(now) {
             window.request_isolated_animation_frame();
         } else if flowing {
             // Device pixels the window moves in a millisecond.
@@ -577,6 +577,27 @@ impl Desktop {
         if changed {
             self.prefs.set("history.kinds", self.history.kinds.saved());
         }
+    }
+
+    /// While a lane is dragged near the top or the bottom of lanes that
+    /// scroll, they scroll that way a little with each move.
+    fn history_scroll_lanes_toward(&self, at: Point<Pixels>) {
+        let handle = &self.history.lanes_scroll;
+        let max = handle.max_offset().y;
+        if max <= px(0.) {
+            return;
+        }
+        let bounds = handle.bounds();
+        let edge = px(28.);
+        let step = if at.y < bounds.top() + edge {
+            px(12.)
+        } else if at.y > bounds.bottom() - edge {
+            px(-12.)
+        } else {
+            return;
+        };
+        let offset = handle.offset();
+        handle.set_offset(point(offset.x, (offset.y + step).clamp(-max, px(0.))));
     }
 
     /// Forgets the names learned (history cleared); the running programs are
@@ -1754,17 +1775,31 @@ impl Desktop {
             state::Drag::Lane {
                 id, start, moved, ..
             } => {
-                let moved = moved || (at - start).magnitude() > 6.;
-                let target = moved
-                    .then(|| self.history_drop_target(at, true, ""))
-                    .flatten();
-                self.history.drag = Some(state::Drag::Lane {
-                    id,
-                    start,
-                    at,
-                    moved,
-                    target,
-                });
+                // The lane follows the pointer over the others, which make
+                // room and glide to their places (`reorder`).
+                let began = !moved && (at - start).magnitude() > 6.;
+                let order = &self.history.lanes_order;
+                if began {
+                    let lanes = self
+                        .history
+                        .live_lanes()
+                        .map(|lane| lane.id.to_string())
+                        .collect();
+                    order.take(
+                        state::LANES,
+                        "",
+                        &id.to_string(),
+                        crate::frontend::reorder::Flow::Stack { gap: lanes::GAP_Y },
+                        lanes,
+                        at,
+                    );
+                }
+                let moved = moved || began;
+                if moved {
+                    order.follow(at, self.history_motion(cx), Instant::now());
+                    self.history_scroll_lanes_toward(at);
+                }
+                self.history.drag = Some(state::Drag::Lane { id, start, moved });
             }
         }
         let _ = window;
@@ -1811,11 +1846,16 @@ impl Desktop {
                     }
                 }
             }
-            state::Drag::Lane {
-                id, moved, target, ..
-            } => {
-                if moved && let Some(state::Drop::Insert(index)) = target {
-                    self.history.move_lane(id, index);
+            state::Drag::Lane { .. } => {
+                // Let go, the lane glides from under the pointer into its place.
+                if let Some(lift) = self.history.lanes_order.release(motion, Instant::now())
+                    && let Some(order) = lift.moved()
+                {
+                    let order = order
+                        .iter()
+                        .filter_map(|key| key.parse::<u64>().ok())
+                        .collect::<Vec<_>>();
+                    self.history.arrange_lanes(&order);
                 }
             }
         }

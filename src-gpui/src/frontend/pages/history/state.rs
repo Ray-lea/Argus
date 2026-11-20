@@ -14,6 +14,8 @@ pub(super) const FAST: Duration = Duration::from_millis(167);
 pub(super) const SLOW: Duration = Duration::from_millis(250);
 /// The narrowest a lane can be dragged, header included.
 pub(super) const MIN_LANE: f32 = 76.;
+/// The lanes as a list arranged by dragging (`reorder`), each by its id.
+pub(super) const LANES: &str = "history-lanes";
 
 /// A preset range in the range menu, or one picked by its ends.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,12 +159,11 @@ pub(super) enum Drag {
         moved: bool,
         target: Option<Drop>,
     },
+    /// A lane by its grip (`lanes_order` has where it is).
     Lane {
         id: u64,
         start: Point<Pixels>,
-        at: Point<Pixels>,
         moved: bool,
-        target: Option<Drop>,
     },
 }
 
@@ -286,6 +287,10 @@ pub(in crate::frontend) struct HistoryState {
     /// categories folded (`history.foldedSections`).
     pub(super) kinds: Kinds,
     pub(super) folded: std::collections::HashSet<String>,
+    /// A lane dragged by its grip, and the lanes gliding aside (`LANES`).
+    pub(super) lanes_order: crate::frontend::reorder::Reorder,
+    /// The lanes that do not fit the card scroll there.
+    pub(super) lanes_scroll: gpui_kit::gpui::ScrollHandle,
     /// The table's selected row (name, or name and PID).
     pub(super) selected: Option<String>,
     /// The processes the tooltip ranks, for the point (start, span) they were asked for.
@@ -459,6 +464,8 @@ impl Default for HistoryState {
             expanded: Default::default(),
             kinds: Kinds::default(),
             folded: Default::default(),
+            lanes_order: Default::default(),
+            lanes_scroll: gpui_kit::gpui::ScrollHandle::new(),
             selected: None,
             tip: None,
             tip_for: None,
@@ -773,18 +780,16 @@ impl HistoryState {
     }
 
     /// Moves the lane `id` to `index` (counted before it is taken out).
-    pub(super) fn move_lane(&mut self, id: u64, index: usize) {
-        let Some(from) = self.lanes.iter().position(|lane| lane.id == id) else {
-            return;
+    /// Puts the lanes in `order` (by id), as a drag arranged them; any not in
+    /// it keep their turn after those that are.
+    pub(super) fn arrange_lanes(&mut self, order: &[u64]) {
+        let turn = |lane: &Lane| {
+            order
+                .iter()
+                .position(|id| *id == lane.id)
+                .unwrap_or(order.len())
         };
-        let mut to = index;
-        if to > from {
-            to -= 1;
-        }
-        if to != from {
-            let lane = self.lanes.remove(from);
-            self.lanes.insert(to.min(self.lanes.len()), lane);
-        }
+        self.lanes.sort_by_key(turn);
     }
 
     /// Steps the lanes' heights; whether any still moves.
@@ -962,7 +967,7 @@ mod tests {
         let mut state = HistoryState::default();
         state.insert_lane("memUsed".into(), 1, false);
         state.insert_lane("disk".into(), 2, false);
-        state.move_lane(3, 0);
+        state.arrange_lanes(&[3, 1, 2]);
         assert_eq!(
             state
                 .lanes

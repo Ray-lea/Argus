@@ -351,15 +351,8 @@ impl Desktop {
         } else {
             f32::from(window.viewport_size().height) - 140.
         };
-        let lanes_count = self.history.live_lanes().count() as f32;
-        // Room for every lane at its narrowest, the axis and the navigator.
-        let least = lanes_count * (state::MIN_LANE + 6.)
-            + (lanes_count - 1.) * GAP_Y
-            + AXIS
-            + NAV
-            + 2. * PAD
-            + 8.;
-        (content * self.history.split).max(260.).max(least)
+        // Its share of the page; lanes that do not fit there scroll inside.
+        (content * self.history.split).max(260.)
     }
 
     /// The chart card: the lanes over the time axis, and the navigator,
@@ -451,16 +444,47 @@ impl Desktop {
                 .absolute()
                 .inset_0()
             });
+        // The lanes share the card's height by their weights down to their
+        // narrowest (`MIN_LANE`); more than fit scroll there, under the time
+        // axis and the navigator that stay put. The wheel scrolls them over
+        // their titles and axes; over the plots it zooms.
+        let lanes_scroll = self.history.lanes_scroll.clone();
+        // A lane dragged by its grip follows the pointer over the others,
+        // drawn last; its place is a slot, and the others glide aside.
+        let now = Instant::now();
+        let lift = self.history.lanes_order.lifted(state::LANES);
+        let mut lanes = lanes;
+        if let Some(lift) = &lift {
+            lanes.sort_by_key(|lane| {
+                lift.order
+                    .iter()
+                    .position(|key| *key == lane.id.to_string())
+                    .unwrap_or(usize::MAX)
+            });
+        }
+        let mut least = 0.;
+        let mut stack = div().relative().flex().flex_col().child(
+            canvas(
+                self.history.lanes_order.recorder(state::LANES, "", ""),
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0(),
+        );
+        let mut lifted = None;
         let mut previous: Option<f32> = None;
         for (index, lane) in lanes.iter().enumerate() {
             let presence = lane.presence();
             if let Some(before) = previous {
-                column = column.child(self.history_divider(index - 1, presence.min(before), cx));
+                let presence = presence.min(before);
+                least += GAP_Y * presence;
+                stack = stack.child(self.history_divider(index - 1, presence, cx));
             }
             previous = Some(presence);
+            least += state::MIN_LANE * presence;
             let plot_height = measured.get(&lane.id).copied().unwrap_or(120.);
             let axes = self.history_axes(lane, points.as_ref(), window_ms, bucket, plot_height);
-            column = column.child(self.history_lane(
+            let element = self.history_lane(
                 lane,
                 presence,
                 multi,
@@ -473,9 +497,83 @@ impl Desktop {
                 read_index,
                 window,
                 cx,
-            ));
+            );
+            let key = lane.id.to_string();
+            match &lift {
+                Some(lift) if lift.key == key => {
+                    // Its place, to drop it into, as tall as it was.
+                    stack = stack.child(
+                        div()
+                            .relative()
+                            .flex_none()
+                            .h(lift.start.size.height)
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_dashed()
+                            .border_color(p.accent.opacity(0.5))
+                            .bg(p.accent.opacity(0.06))
+                            .child(
+                                canvas(
+                                    self.history.lanes_order.recorder(state::LANES, "", &key),
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .inset_0(),
+                            ),
+                    );
+                    lifted = Some((element, lift.clone()));
+                }
+                _ => {
+                    let offset = self.history.lanes_order.offset(state::LANES, "", &key, now);
+                    stack = stack.child(crate::frontend::shift::shifted(element, offset, 1.));
+                }
+            }
         }
-        // The time axis, and the button adding a lane at its left end.
+        if let Some((element, lift)) = lifted
+            && let Some(part) = self.history.lanes_order.bounds(state::LANES, "", "")
+        {
+            // Up and down only, within the lanes.
+            let room = (part.size.height - lift.start.size.height).max(px(0.));
+            let top = (lift.origin().y - part.top()).clamp(px(0.), room);
+            stack = stack.child(
+                div()
+                    .absolute()
+                    .left(lift.start.left() - part.left())
+                    .top(top)
+                    .w(lift.start.size.width)
+                    .h(lift.start.size.height)
+                    .flex()
+                    .flex_col()
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(p.accent.opacity(0.6))
+                    .bg(p.chart_surface)
+                    .cursor_grabbing()
+                    .child(element),
+            );
+        }
+        column = column.child(
+            div()
+                .id("history-lanes")
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                // Clipping at the card's edge rather than the lanes': a long
+                // axis label reaches into the card's padding.
+                .mx(px(-PAD))
+                .px(px(PAD))
+                .track_scroll(&lanes_scroll)
+                .overflow_y_scroll()
+                .child(stack.flex_1().min_h(px(least)))
+                .child(scrollbar::scrollbar(
+                    "history-lanes-scrollbar",
+                    &lanes_scroll,
+                    p.dark,
+                )),
+        );
+        // The time axis.
         let axis = div()
             .flex_none()
             .h(px(AXIS) + theme::text_growth(11., 1.4))
@@ -1183,10 +1281,21 @@ impl Desktop {
                 d.style().flex_basis = Some(px(0.).into());
                 d
             })
-            .min_h_0()
             .overflow_hidden()
+            .min_h(px(state::MIN_LANE * presence))
             .flex()
             .flex_col()
+            // Where it is, for a drag arranging the lanes.
+            .child(
+                canvas(
+                    self.history
+                        .lanes_order
+                        .recorder(state::LANES, "", &id.to_string()),
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
             .child(
                 canvas(
                     move |bounds, _, _| {
@@ -1350,11 +1459,7 @@ impl Desktop {
                 moved: true,
                 ..
             }) => (*index, false),
-            Some(Drag::Lane {
-                target: Some(Drop::Insert(index)),
-                moved: true,
-                ..
-            }) => (*index, true),
+            // A lane dragged shows its own place (`history_lanes`).
             _ => return None,
         };
         let geometry = self.history.geometry.borrow();
@@ -1415,16 +1520,7 @@ impl Desktop {
                 let reading = self.history_reading(id)?;
                 (reading.long.clone(), reading.color, *at)
             }
-            Some(Drag::Lane {
-                id,
-                at,
-                moved: true,
-                ..
-            }) => {
-                let lane = self.history.lanes.iter().find(|l| l.id == *id)?;
-                let reading = self.history_reading(&lane.reading)?;
-                (reading.long.clone(), reading.color, *at)
-            }
+            // A lane dragged is drawn under the pointer itself.
             _ => return None,
         };
         Some(
@@ -1733,12 +1829,11 @@ impl Desktop {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                            this.history.lanes_order.press(event.position);
                             this.history.drag = Some(Drag::Lane {
                                 id,
                                 start: event.position,
-                                at: event.position,
                                 moved: false,
-                                target: None,
                             });
                             cx.stop_propagation();
                             cx.notify();
