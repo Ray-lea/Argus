@@ -126,7 +126,7 @@ impl Library {
 
     /// Keeps the DLL in the process until it exits, whatever `FreeLibrary`
     /// does later, for libraries that leave callbacks registered behind them.
-    pub(super) fn pin(&self) {
+    fn pin(&self) {
         let mut module = HMODULE::default();
         unsafe {
             let _ = GetModuleHandleExW(
