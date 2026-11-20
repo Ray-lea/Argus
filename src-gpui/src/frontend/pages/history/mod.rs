@@ -233,12 +233,14 @@ impl Desktop {
     }
 
     /// What the window follows: the newest reading, while readings come in;
-    /// else the present, less a second.
+    /// else the present, less a second, in whole seconds. To the millisecond,
+    /// the curves ended somewhere else in every draw, and each texture that
+    /// landed was drawn again at once.
     fn history_clock(&self) -> i64 {
         let now = self.history_now();
         match self.history.points.as_ref().and_then(Points::newest) {
             Some(newest) if newest <= now + SECOND && now - newest < 10 * SECOND => newest,
-            _ => now - SECOND,
+            _ => (now - SECOND).div_euclid(SECOND) * SECOND,
         }
     }
 
