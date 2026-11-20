@@ -1417,6 +1417,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // The quick ranges take the arrows, Enter, Space and Esc while open.
+        if self.history.ranges.is_some() {
+            return self.history_ranges_key(key, window, cx);
+        }
         // The reading chooser keeps typing in its search box: Up and Down
         // move through the readings, Enter chooses, Esc closes it.
         if self.history.chooser.is_some() {
@@ -1586,6 +1590,7 @@ impl Desktop {
             "follow": h.follow,
             "picker": h.picker.is_some(),
             "chooser": self.history_chooser_state(cx),
+            "ranges": h.ranges,
             "range": format!("{:?}", h.range),
             "view": [h.view.0, h.view.1],
             "extent": [h.extent.0, h.extent.1],
@@ -1660,6 +1665,7 @@ impl Desktop {
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
             .children(self.history_chooser(window, cx))
+            .children(self.history_ranges(window, cx))
             .into_any_element()
     }
 

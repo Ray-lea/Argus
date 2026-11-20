@@ -1,4 +1,5 @@
-//! The navigator under the lanes: the range (a pill dropping the presets), and
+//! The navigator under the lanes: the range (a pill opening a grid of the
+//! ranges, `history_ranges`), and
 //! a track with the active lane's reading over the whole range, the window
 //! drawn on it as a box to drag, and the range's ends. Dragging only ever
 //! pauses: the range is held as it was when the drag began, and returning to
@@ -36,7 +37,6 @@ impl Desktop {
         let (a, b) = self.history.extent;
         let length = (b - a).max(1);
         let follow = self.history.follow;
-        let checked = self.history.range.id();
         let pill = div()
             .relative()
             .flex_shrink_0()
@@ -58,31 +58,7 @@ impl Desktop {
                     .hover(move |s| s.bg(p.hover_strong))
                     .child(self.history_range_name())
                     .child(icon("ChevronDown", p.muted).size(px(14.)))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let mut items = PRESETS
-                            .iter()
-                            .map(|(id, _)| {
-                                MenuItem::new(
-                                    label(&format!("history.range.{id}")),
-                                    Action::History(Command::Range(id)),
-                                )
-                                .checked(checked == Some(*id))
-                            })
-                            .collect::<Vec<_>>();
-                        items.push(
-                            MenuItem::new(
-                                label("history.range.all"),
-                                Action::History(Command::Range("all")),
-                            )
-                            .checked(checked == Some("all")),
-                        );
-                        items.push(MenuItem::separator());
-                        items.push(MenuItem::new(
-                            label("history.range.customMenu"),
-                            Action::History(Command::Picker),
-                        ));
-                        this.open_anchored(items, "history-range", layout::Side::Above, window, cx);
-                    })),
+                    .on_click(cx.listener(|this, _, _, cx| this.history_open_ranges(cx))),
             )
             .child(layout::anchor_probe(
                 "history-range",
@@ -400,5 +376,207 @@ fn navigator_key(reading: &readings::Reading, points: &Points) -> String {
     match &reading.fallback {
         Some(fallback) if !points.has(first) && points.has(fallback) => fallback.clone(),
         _ => first.clone(),
+    }
+}
+
+/// The ranges the pill offers, four to a row: the presets, all of it, and
+/// "Custom…" opening the dialog.
+const QUICK: [&str; 8] = ["5m", "1h", "6h", "1d", "7d", "30d", "all", "custom"];
+const QUICK_COLUMNS: usize = 4;
+
+impl Desktop {
+    /// The quick range in force: a preset or all of it, else "Custom…"
+    /// (today, yesterday or ends of its own).
+    fn history_quick_current(&self) -> usize {
+        let id = self
+            .history
+            .range
+            .id()
+            .filter(|_| self.history.range_name.is_none());
+        QUICK
+            .iter()
+            .position(|quick| Some(*quick) == id)
+            .unwrap_or(QUICK.len() - 1)
+    }
+
+    /// Opens the ranges over the pill, the keys on the one in force.
+    pub(super) fn history_open_ranges(&mut self, cx: &mut Context<Self>) {
+        self.history.ranges = Some(self.history_quick_current());
+        cx.notify();
+    }
+
+    pub(super) fn history_close_ranges(&mut self, cx: &mut Context<Self>) {
+        if self.history.ranges.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    fn history_choose_range(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.history.ranges = None;
+        match QUICK.get(index) {
+            Some(&"custom") => self.history_command(Command::Picker, window, cx),
+            Some(id) => self.history_command(Command::Range(id), window, cx),
+            None => cx.notify(),
+        }
+    }
+
+    /// The keys while the ranges are open: arrows move through them, Enter
+    /// or Space takes one, Esc closes them.
+    pub(super) fn history_ranges_key(
+        &mut self,
+        key: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(at) = self.history.ranges else {
+            return false;
+        };
+        let last = QUICK.len() - 1;
+        let next = match key {
+            "escape" => {
+                self.history_close_ranges(cx);
+                return true;
+            }
+            "enter" | "space" => {
+                self.history_choose_range(at, window, cx);
+                return true;
+            }
+            "left" => at.saturating_sub(1),
+            "right" => (at + 1).min(last),
+            "up" => at.checked_sub(QUICK_COLUMNS).unwrap_or(at),
+            "down" => (at + QUICK_COLUMNS).min(last),
+            _ => return false,
+        };
+        self.history.ranges = Some(next);
+        cx.notify();
+        true
+    }
+
+    /// The ranges, over the pill (under it where there is no room above).
+    pub(super) fn history_ranges(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let keyed = self.history.ranges?;
+        let p = self.palette;
+        let current = self.history_quick_current();
+        let viewport = window.viewport_size();
+        let margin = px(8.);
+        let pill = self
+            .ui
+            .anchors
+            .borrow()
+            .get("history-range")
+            .copied()
+            .unwrap_or_default();
+        let names = QUICK
+            .iter()
+            .map(|id| {
+                label(&if *id == "custom" {
+                    "history.range.customMenu".to_owned()
+                } else {
+                    format!("history.range.{id}")
+                })
+            })
+            .collect::<Vec<_>>();
+        // Every cell as wide as the widest name (the custom one with its icon).
+        let cell = names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let text = f32::from(theme::text_width(name, theme::font(13.), window, cx));
+                text + if index == QUICK.len() - 1 { 18. } else { 0. }
+            })
+            .fold(0., f32::max)
+            + 24.;
+        let gap = 4.;
+        let width = cell * QUICK_COLUMNS as f32 + gap * (QUICK_COLUMNS - 1) as f32 + 2. * 5. + 2.;
+        let tall = 2. * 30. + gap + 2. * 5. + 2.;
+        let above = pill.top() - px(6. + tall) >= margin;
+        let left = pill
+            .left()
+            .min(viewport.width - px(width) - margin)
+            .max(margin);
+        let mut grid = div().grid().grid_cols(QUICK_COLUMNS as u16).gap(px(gap));
+        for (index, name) in names.into_iter().enumerate() {
+            let on = index == current;
+            let custom = index == QUICK.len() - 1;
+            grid = grid.child(
+                div()
+                    .id(("history-quick-range", index))
+                    .h(px(30.))
+                    .w(px(cell))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(5.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(if index == keyed {
+                        p.accent.opacity(0.6)
+                    } else {
+                        gpui_kit::gpui::transparent_black()
+                    })
+                    .text_size(theme::font(13.))
+                    .whitespace_nowrap()
+                    .cursor_pointer()
+                    .when(on, |d| {
+                        d.bg(p.accent.opacity(0.16))
+                            .text_color(p.accent)
+                            .font_weight(theme::LABEL_WEIGHT)
+                    })
+                    .when(!on, |d| d.text_color(p.ink).hover(move |s| s.bg(p.hover)))
+                    .when(custom, |d| {
+                        d.child(
+                            icon("CalendarRangeIcon", if on { p.accent } else { p.muted })
+                                .size(px(13.)),
+                        )
+                    })
+                    .child(name)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.history_choose_range(index, window, cx)
+                    })),
+            );
+        }
+        let panel = div()
+            .id("history-quick-ranges")
+            .absolute()
+            .left(left)
+            .when(above, |d| d.bottom(viewport.height - pill.top() + px(6.)))
+            .when(!above, |d| d.top(pill.bottom() + px(6.)))
+            .p(px(5.))
+            .border_1()
+            .border_color(p.stroke_strong)
+            .rounded(px(8.))
+            .bg(widgets::solid(p.flyout))
+            .occlude()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .child(grid);
+        Some(
+            deferred(
+                anchored().position(point(px(0.), px(0.))).child(
+                    div()
+                        .id("history-quick-ranges-layer")
+                        .w(viewport.width)
+                        .h(viewport.height)
+                        .occlude()
+                        // A press anywhere else closes them.
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _, _, cx| this.history_close_ranges(cx)),
+                        )
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(|this, _, _, cx| this.history_close_ranges(cx)),
+                        )
+                        .on_scroll(|_, _, cx| cx.stop_propagation())
+                        .child(panel),
+                ),
+            )
+            .with_priority(gpui_kit::base::POPUP_PRIORITY - 1)
+            .into_any_element(),
+        )
     }
 }
