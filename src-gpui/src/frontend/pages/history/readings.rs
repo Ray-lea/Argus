@@ -166,7 +166,7 @@ impl Reading {
 
     /// The channel drawn as the main line: a pair's first part, or the
     /// combined channel of older records.
-    fn main_key<'a>(&'a self, points: &Points) -> &'a str {
+    pub(super) fn main_key<'a>(&'a self, points: &Points) -> &'a str {
         match &self.fallback {
             Some(fallback) if !points.has(&self.keys[0]) && points.has(fallback) => fallback,
             _ => &self.keys[0],

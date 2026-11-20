@@ -257,22 +257,36 @@ impl Desktop {
             && let Some(right) = axes.right
         {
             let left = axes.left;
-            let key = overlay.keys[0].clone();
-            series.push(
-                charts::Series::new(
-                    String::new(),
-                    points.line(&key, Part::Mean, end, |v| onto(v, right, left)),
-                    overlay.color,
-                    format,
-                )
-                .fill(0.)
-                .source(charts::hash_of((
-                    "history",
-                    lane.id,
-                    &overlay.id,
-                    "overlay",
-                ))),
-            );
+            // A pair's parts as in a lane of its own, the second dimmer.
+            let mut lines = vec![(
+                overlay.main_key(points).to_owned(),
+                overlay.color,
+                "overlay",
+            )];
+            if overlay.is_pair() && points.has(&overlay.keys[1]) {
+                lines.push((
+                    overlay.keys[1].clone(),
+                    overlay.color.opacity(0.5),
+                    "overlay-second",
+                ));
+            }
+            for (key, color, part) in lines {
+                series.push(
+                    charts::Series::new(
+                        String::new(),
+                        points.line(&key, Part::Mean, end, |v| onto(v, right, left)),
+                        color,
+                        format,
+                    )
+                    .fill(0.)
+                    .source(charts::hash_of((
+                        "history",
+                        lane.id,
+                        &overlay.id,
+                        part,
+                    ))),
+                );
+            }
         }
         // A process laid over the lanes: its own readings of the lane's kind, dashed.
         if let Some(curve) = self.history_process_curve(reading) {
@@ -972,7 +986,13 @@ impl Desktop {
                     }
                 }
                 if let (Some(overlay), Some(right)) = (&overlay, axes.right) {
-                    dots.push((overlay.value(points, index), overlay.color, right));
+                    match overlay.part_values(points, index) {
+                        Some((first, second)) => {
+                            dots.push((Some(first), overlay.color, right));
+                            dots.push((Some(second), overlay.color.opacity(0.6), right));
+                        }
+                        None => dots.push((overlay.value(points, index), overlay.color, right)),
+                    }
                 }
                 for (value, color, (low, high)) in dots {
                     let Some(value) = value else { continue };
@@ -1862,10 +1882,9 @@ impl Desktop {
                         })),
                 );
             }
-            // The overlay on the right axis, or a button adding one.
-            if !reading.is_pair() {
-                row = row.child(self.history_overlay_chip(lane, axes, read_index, window, cx));
-            }
+            // The overlay on the right axis, or a button adding one: a pair
+            // (read and write, sent and received) takes one as any reading.
+            row = row.child(self.history_overlay_chip(lane, axes, read_index, window, cx));
             // The process laid over this lane, and a way to take it off.
             if let Some(name) = self
                 .history
@@ -1977,7 +1996,7 @@ impl Desktop {
                         title: Some("history.menu.overlayTitle"),
                         current: None,
                         exclude: std::slice::from_ref(&primary),
-                        pairs: false,
+                        pairs: true,
                         none: None,
                         add: false,
                     };
@@ -2084,7 +2103,7 @@ impl Desktop {
                     title: Some("history.menu.overlayTitle"),
                     current: Some(&current),
                     exclude: std::slice::from_ref(&primary),
-                    pairs: false,
+                    pairs: true,
                     none: Some(Command::Overlay(id, None)),
                     add: false,
                 };

@@ -1838,12 +1838,9 @@ impl Desktop {
             }
             let in_plot = plot.contains(&at);
             let owner = self.history.lanes.iter().find(|l| l.id == *id);
-            let pair = |id: &str| self.history_reading(id).is_some_and(Reading::is_pair);
             if in_plot
                 && let Some(owner) = owner
                 && owner.reading != reading
-                && !pair(reading)
-                && !pair(&owner.reading)
             {
                 return Some(state::Drop::Overlay(*id));
             }
