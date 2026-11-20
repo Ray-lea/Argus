@@ -62,8 +62,8 @@ const MONTH_W: f32 = 7. * CELL_W;
 /// border and the dialog's margins.
 const PRESETS_W: f32 = 132.;
 const PANEL_W: f32 = PRESETS_W + MONTH_W + 2. * 14. + 2. + 48.;
-/// Wider with the overview open: the events beside the calendar, and the
-/// 30 days of hours across the whole width under them.
+/// Wider with the overview open: the events in a column beside the
+/// calendar and the 30 days of hours under it.
 const PANEL_WIDE: f32 = 720.;
 /// The most events listed.
 const EVENTS_SHOWN: usize = 40;
@@ -559,7 +559,15 @@ impl Desktop {
             .gap(px(12.))
             .text_size(theme::font(13.))
             .line_height(relative(1.4))
-            .child(self.dialog_title(modal.title.clone()))
+            .child(self.dialog_title(modal.title.clone()));
+        // The common ranges and the calendar, with the fold under them and,
+        // open, the map of hours under that.
+        let left = div()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .w(px(PRESETS_W + MONTH_W + 28. + 2.))
+            .flex_shrink_0()
             .child(
                 div()
                     .flex()
@@ -567,30 +575,34 @@ impl Desktop {
                     .border_color(p.stroke)
                     .rounded(px(6.))
                     .child(self.history_picker_presets(cx))
-                    .child(
-                        div()
-                            .flex()
-                            .when(overview, |d| d.w(px(MONTH_W + 28.)).flex_shrink_0())
-                            .when(!overview, |d| d.flex_1().min_w_0())
-                            .child(self.history_picker_main(window, cx)),
-                    )
-                    .when(overview, |d| {
-                        d.child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .px(px(12.))
-                                .pt(px(8.))
-                                .pb(px(10.))
-                                .border_l_1()
-                                .border_color(p.stroke)
-                                .child(self.history_events_list(window, cx)),
-                        )
-                    }),
+                    .child(self.history_picker_main(window, cx)),
             )
             .child(self.history_picker_fold(overview, cx))
             .when(overview, |d| d.child(self.history_overview(cx)));
+        let body = if overview {
+            // The events in a column of their own, from the top to the bottom
+            // of what is beside them: laid over its room rather than in it,
+            // so that a long list scrolls inside instead of growing the dialog.
+            body.child(
+                div().flex().gap(px(14.)).child(left).child(
+                    div().relative().flex_1().min_w_0().child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .px(px(12.))
+                            .pt(px(8.))
+                            .pb(px(10.))
+                            .border_1()
+                            .border_color(p.stroke)
+                            .rounded(px(6.))
+                            .child(self.history_events_list(window, cx)),
+                    ),
+                ),
+            )
+        } else {
+            body.child(left)
+        };
         dialog.child(self.dialog_body(id).child(body)).footer(
             self.measure(id, 1).child(
                 self.dialog_footer()
