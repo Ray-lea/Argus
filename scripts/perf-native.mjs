@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { availableParallelism } from "node:os";
 import assert from "node:assert/strict";
 import { physicalPixelsMatch, summarizeFrames } from "./perf-frames.mjs";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -18,6 +18,7 @@ const flag = (name, fallback) => {
   return index < 0 ? fallback : process.argv[index + 1];
 };
 const output = resolve("target/native-validation", label);
+const logs = [];
 mkdirSync(output, { recursive: true });
 const executable = resolve(output, "argus.exe");
 const sourceExecutable = resolve(input ?? "target/release/argus.exe");
@@ -336,10 +337,10 @@ try {
   for (let i = 0; i < 240 && !exited; i++) await sleep(50);
   child.stdin.end();
   result.stderr = stderr;
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
   writeFileSync(resolve(output, "result.json"), JSON.stringify(result, null, 2));
 }
-assert.equal(result.exitCode, 0, stderr);
+assert.equal(result.exitCode, 0, [stderr, ...panics(logs)].join("\n"));
 assert.equal(result.invalidStructuredLines, 0, "measurement stream contained corrupted JSON lines");
 assert(result.captureClosedBeforeExit, "capture teardown did not complete before window shutdown");
 assert(!result.events.some((event) => event.event === "focusViolation"), "focus isolation failed");

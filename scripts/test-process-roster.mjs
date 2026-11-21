@@ -5,12 +5,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 
 process.chdir(resolve(import.meta.dirname, ".."));
 const [label = "process-roster", input = "target/debug/argus.exe"] = process.argv.slice(2);
 assert(/^[a-z0-9-]+$/.test(label));
 const output = resolve("target/native-validation", label);
+const logs = [];
 mkdirSync(output, { recursive: true });
 const executable = join(output, "argus.exe");
 copyFileSync(resolve(input), executable);
@@ -120,8 +121,8 @@ try {
   if (!exited) child.kill();
   report.exitCode = exitCode; report.stderr = stderr;
   writeFileSync(join(output,"result.json"), JSON.stringify(report,null,2));
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
-assert.equal(exitCode,0,stderr);
+assert.equal(exitCode,0,[stderr,...panics(logs)].join("\n"));
 assert(!events.some(e=>e.event==="focusViolation"));
 console.log(JSON.stringify({ output, snapshotsDuringDelay: report.stillUpdating.seq-report.delaying.seq, identityStable:true, foregroundViolations:0 }));

@@ -10,8 +10,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
 import { INSPECTIONS, parseSteps, pickFrames, runSeconds, unmet } from "./lib/ui-shots.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -101,6 +101,7 @@ const recorded = (name) => events.find((e) => e.event === "recorded" && String(e
 
 const results = [];
 const failures = [];
+const logs = [];
 try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
   if (!shown) throw Error(`window unavailable: ${error}`);
@@ -167,9 +168,9 @@ try {
   for (let i = 0; i < 400 && !exited; i++) await sleep(50);
   if (!exited) child.kill();
   writeFileSync(join(output, "results.json"), JSON.stringify({ identifier, live, results, failures, events, stderr: error, exitCode }, null, 2));
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
-if (exitCode !== 0 && exitCode !== undefined) failures.push(`probe exited with ${exitCode}: ${error.slice(0, 500)}`);
+if (exitCode !== 0 && exitCode !== undefined) failures.push(`probe exited with ${exitCode}: ${error.slice(0, 500)}`, ...panics(logs));
 console.log(`output: ${output}`);
 if (failures.length) {
   console.error(failures.join("\n"));
