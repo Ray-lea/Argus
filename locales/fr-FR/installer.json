@@ -11,6 +11,7 @@
   "ArgusLocation": "Emplacement d’installation : {installDir}",
   "ArgusChange": "Modifier",
   "ArgusChooseFolder": "Choisir le dossier d’installation d’Argus",
+  "ArgusProgramFilesNote": "Une fois activés, les fichiers du service privilégié, de l’exécution en administrateur et des capteurs du noyau vont dans {programFiles}, réservé aux administrateurs.",
   "ArgusInstalling": "Installation d’Argus…",
   "ArgusUpdating": "Mise à jour d’Argus…",
   "ArgusInstalled": "Argus est installé",

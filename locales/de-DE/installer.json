@@ -11,6 +11,7 @@
   "ArgusLocation": "Installationsort: {installDir}",
   "ArgusChange": "Ändern",
   "ArgusChooseFolder": "Installationsordner für Argus auswählen",
+  "ArgusProgramFilesNote": "Wenn aktiviert, liegen die Dateien von privilegiertem Dienst, Administratorstart und Kernelsensoren in {programFiles}; dort dürfen nur Administratoren schreiben.",
   "ArgusInstalling": "Argus wird installiert…",
   "ArgusUpdating": "Argus wird aktualisiert…",
   "ArgusInstalled": "Argus ist installiert",
