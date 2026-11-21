@@ -59,3 +59,9 @@
 字形按 DirectWrite 为该字体、字号和缩放推荐的渲染方式栅格化，与 Windows 和 Chromium 一致：微软雅黑 UI 的字号不超过 21 设备像素时按字体的网格对齐仅做水平抗锯齿，更大时双向抗锯齿；Segoe UI Variable 始终双向抗锯齿。行的上伸与下伸取文字所请求字体的度量，不取回退字体，纯中文、纯西文与中西混排在相同行高中基线一致。云母窗口将 DirectWrite 的子像素覆盖率按亮度加权为灰阶遮罩，合成时应用系统对比度和伽马。整窗实色模式可按系统设置使用 RGB ClearType。区域级 ClearType 方案及取舍见[窗口外观](../design/window.md)。
 
 `inline` 用等宽占位将按钮和键帽嵌入一行文字，使控件随文本整体换行。数字与单位、标题与型号按首行基线对齐，基线取整到设备像素。相关补丁见 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。
+
+## 辅助技术
+
+屏幕阅读器等辅助技术经 AccessKit 读取窗口，有客户端读取时 GPUI 才构建辅助功能树。带 id 与角色的元素是树中的节点；没有 id 的文字（字符串、`StyledText`，以及 Argus 自行排版的 `PlainText`、`CellText` 和 `InlineText`）在预绘制时经 `Window::report_a11y_text` 报告，按所在的最近节点归属：按钮、页签、菜单项、单元格等控件没有自己的名称时以文字为名称，名称未包含的文字作为说明；组合框以文字为值；其他位置的文字成为独立的标签节点，按所在元素 id 路径中的序号编号，文字本身或其他路径中的内容变化时节点不变。`visibility: hidden` 方框中的文字（如下拉按钮中为测宽保留的其他选项）不报告。`InlineText` 的句子含占位词，改为按原文顺序报告各段文字与其中的元素。文本框的占位提示以 `Text::new_inaccessible` 绘制，输入框本身已用同一文字命名。
+
+区域重放的帧不携带辅助功能节点，这样的帧不发送树：辅助技术保留上一棵完整的树，随后补绘一帧完整画面，停顿后立即补绘，动画持续时至多每 250 ms 一次；焦点变化本身就完整重绘。辅助技术读取窗口期间，表格行由组件绘制（`NativeTable::draws_rows`），单元格以文字为名称。实现见 [GPUI 补丁](../../vendor/gpui-pre/ARGUS-PATCHES.md)。
