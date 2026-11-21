@@ -2901,6 +2901,20 @@ impl Desktop {
         let field = delegate.fields.iter().find(|field| field.key == key)?;
         Some((field.label.clone(), display_cell(row, field, delegate.bits)))
     }
+    /// Every column of the current table with `row`'s cell in it, as the
+    /// table shows them.
+    pub(in crate::frontend) fn row_cells(&self, row: &Row, cx: &App) -> Vec<(String, String)> {
+        let Some(table) = self.table.as_ref() else {
+            return Vec::new();
+        };
+        let state = table.read(cx);
+        let delegate = state.delegate();
+        delegate
+            .fields
+            .iter()
+            .map(|field| (field.label.clone(), display_cell(row, field, delegate.bits)))
+            .collect()
+    }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {
         let mut hosted: HashMap<u64, Vec<String>> = HashMap::new();

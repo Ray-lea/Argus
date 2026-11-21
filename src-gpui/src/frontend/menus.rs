@@ -1091,16 +1091,40 @@ impl Desktop {
         } else if row.user.is_none() {
             return;
         }
+        // The other lists copy the cells shown as their details, taken now:
+        // a connection can leave the list while its menu is open.
+        let details = self.cells_text(&row, cx);
+        // Their name column is what Ctrl+C copies; it gets its own item, as
+        // the process list's copy submenu has "Name".
+        let first = tables::first_column(&self.page);
+        let name_cell = details
+            .is_some()
+            .then(|| self.cell_copy(&row, first, cx))
+            .flatten();
         let cell = column
-            .filter(|_| row.section.is_none() && self.page == "processes")
+            .filter(|key| {
+                row.section.is_none()
+                    && list_copy::LISTS.contains(&self.page.as_str())
+                    && !(name_cell.is_some() && *key == first)
+            })
             .and_then(|key| self.cell_copy(&row, key, cx));
         let mut items = self.row_menu(&row);
+        // After the menu's own copy items: the name, the cell's copy, then
+        // the details.
+        let mut at = list_copy::copy_position(&items);
+        if let Some((name, value)) = name_cell {
+            items.insert(
+                at,
+                MenuItem::new(
+                    tr!("processes.menu.copyColumn", column = &name),
+                    Action::CopyAs(value, label("actions.copyWhat.name")),
+                )
+                .icon("CopyIcon")
+                .hint("Ctrl+C"),
+            );
+            at += 1;
+        }
         if let Some((name, value)) = cell {
-            // After the copy submenu, as the cell's own copy.
-            let at = items
-                .iter()
-                .position(|item| !item.children.is_empty() && item.icon == Some("CopyIcon"))
-                .map_or(items.len(), |at| at + 1);
             let nothing = value.is_empty() || value == label("format.missing");
             items.insert(
                 at,
@@ -1109,6 +1133,18 @@ impl Desktop {
                     Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
                 )
                 .disabled(nothing),
+            );
+            at += 1;
+        }
+        if let Some(details) = details {
+            items.insert(
+                at,
+                MenuItem::new(
+                    label("common.copyDetails"),
+                    Action::CopyAs(details, label("actions.copyWhat.details")),
+                )
+                .icon("CopyIcon")
+                .hint("Ctrl+Shift+C"),
             );
         }
         self.open_popup(items, window, cx);

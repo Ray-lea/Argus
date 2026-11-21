@@ -19,6 +19,7 @@
   "filterColumn": "Filtrar por {column}",
   "command": "Comando",
   "copyName": "Copiar nombre",
+  "copyDetails": "Copiar detalles",
   "copyPath": "Copiar ruta",
   "openFileLocation": "Abrir ubicación del archivo",
   "goToProcess": "Ir al proceso",

@@ -19,6 +19,7 @@
   "filterColumn": "Фильтр по столбцу «{column}»",
   "command": "Команда",
   "copyName": "Копировать имя",
+  "copyDetails": "Копировать сведения",
   "copyPath": "Копировать путь",
   "openFileLocation": "Открыть папку с файлом",
   "goToProcess": "Перейти к процессу",
