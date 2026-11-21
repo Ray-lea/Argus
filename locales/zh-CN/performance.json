@@ -405,6 +405,8 @@
     },
     "smart": "SMART 属性",
     "smartSource": "NVMe 健康日志",
+    "rawDecimal": "十进制",
+    "rawHex": "十六进制",
     "group": {
       "health": "健康",
       "usage": "使用情况",

@@ -420,6 +420,8 @@
     },
     "smart": "SMART-Attribute",
     "smartSource": "NVMe Gesundheitsprotokoll",
+    "rawDecimal": "Dezimal",
+    "rawHex": "Hex",
     "group": {
       "health": "Zustand",
       "usage": "Verwendung",

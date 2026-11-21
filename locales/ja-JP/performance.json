@@ -415,6 +415,8 @@
     },
     "smart": "SMART 属性",
     "smartSource": "NVMe ヘルスログ",
+    "rawDecimal": "10 進数",
+    "rawHex": "16 進数",
     "group": {
       "health": "正常性",
       "usage": "使用状況",

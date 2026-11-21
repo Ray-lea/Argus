@@ -60,6 +60,8 @@ use std::{
     time::{Duration, Instant},
 };
 use theme::{Palette, icon, label};
+/// The preference for SMART raw values in hexadecimal (default decimal).
+const DISK_RAW_HEX: &str = "diskRawHex";
 /// Minutes hidden before the window gives its memory back; 0 for never.
 const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
 const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
@@ -390,6 +392,8 @@ struct Desktop {
     cpu_mode: String,
     cpu_page: String,
     disk_page: String,
+    /// Whether SMART raw values read in hexadecimal rather than decimal.
+    disk_raw_hex: bool,
     /// The disk details page that is open, if one is.
     disk_details_open: Option<DiskDetailsOpen>,
     interval: u64,
@@ -576,6 +580,7 @@ impl Desktop {
             cpu_mode: prefs.get("cpuMode", "overall".into()),
             cpu_page: prefs.get("cpuPage", "overview".into()),
             disk_page: prefs.get("diskPage", "overview".into()),
+            disk_raw_hex: prefs.get(DISK_RAW_HEX, false),
             disk_details_open: None,
             interval: prefs.get("interval", 1000),
             paused: false,

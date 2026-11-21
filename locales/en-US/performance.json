@@ -417,6 +417,8 @@
     },
     "smart": "SMART attributes",
     "smartSource": "NVMe health log",
+    "rawDecimal": "Decimal",
+    "rawHex": "Hex",
     "group": {
       "health": "Health",
       "usage": "Usage",

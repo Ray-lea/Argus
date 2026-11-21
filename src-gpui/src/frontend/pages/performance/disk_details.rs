@@ -124,6 +124,21 @@ fn grouped(value: &Value) -> String {
     };
     crate::regional::digits(&digits)
 }
+/// A raw field as the attribute tables show it: decimal in the regional
+/// grouping, or hexadecimal where the reader asked for it (`diskRawHex`).
+fn raw_number(value: &Value, hex: bool) -> String {
+    if !hex {
+        return grouped(value);
+    }
+    let number = match value {
+        Value::String(digits) if digits.bytes().all(|b| b.is_ascii_digit()) => {
+            digits.parse::<u128>().ok()
+        }
+        Value::Number(number) => number.as_u64().map(u128::from),
+        _ => None,
+    };
+    number.map_or_else(missing, |number| format!("0x{number:X}"))
+}
 fn with_unit(value: String, unit: &str) -> String {
     if value == missing() {
         value
@@ -368,10 +383,11 @@ fn attribute(key: &str, value: String, raw: String) -> Attribute {
         alert: false,
     }
 }
-/// The SMART/health log's fields in three groups: health, usage and temperature.
-fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
+/// The SMART/health log's fields in three groups: health, usage and
+/// temperature, raw values in hexadecimal where `hex`.
+fn attributes(health: &Value, hex: bool) -> Vec<(&'static str, Vec<Attribute>)> {
     let bits = health["criticalWarning"].as_u64().unwrap_or(0);
-    let raw = |key: &str| grouped(&health[key]);
+    let raw = |key: &str| raw_number(&health[key], hex);
     let warnings = WARNINGS
         .iter()
         .filter(|(bit, ..)| bits & bit != 0)
@@ -392,7 +408,12 @@ fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
                 } else {
                     reason_list(&warnings)
                 },
-                format!("0x{bits:02X}"),
+                // A bit field: both digits even in hexadecimal.
+                if hex {
+                    format!("0x{bits:02X}")
+                } else {
+                    bits.to_string()
+                },
             )
         },
         Attribute {
@@ -474,7 +495,7 @@ fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
     let mut temperature = vec![attribute(
         "compositeTemperature",
         celsius(&health["temperature"]["celsius"]),
-        grouped(&health["temperature"]["kelvin"]),
+        raw_number(&health["temperature"]["kelvin"], hex),
     )];
     // Slots the drive leaves unreported are left out; their numbers stay.
     for (slot, sensor) in values(&health["temperatureSensors"]).iter().enumerate() {
@@ -482,7 +503,7 @@ fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
             temperature.push(Attribute {
                 name: tr!("performance.disk.attribute.sensor", index = slot + 1),
                 value: celsius(&sensor["celsius"]),
-                raw: grouped(&sensor["kelvin"]),
+                raw: raw_number(&sensor["kelvin"], hex),
                 alert: false,
             });
         }
@@ -507,7 +528,7 @@ fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
                     index = level
                 ),
                 value: grouped(&thermal[&field]),
-                raw: grouped(&thermal[&field]),
+                raw: raw_number(&thermal[&field], hex),
                 alert: false,
             });
         }
@@ -516,7 +537,7 @@ fn attributes(health: &Value) -> Vec<(&'static str, Vec<Attribute>)> {
             temperature.push(Attribute {
                 name: tr!("performance.disk.attribute.thermalTime", index = level),
                 value: with_unit(grouped(&thermal[&field]), "seconds"),
-                raw: grouped(&thermal[&field]),
+                raw: raw_number(&thermal[&field], hex),
                 alert: false,
             });
         }
@@ -627,6 +648,25 @@ impl Desktop {
                 .map(|open| json!({"disk": open.disk, "held": open.held}))
         )
     }
+    /// The SMART attributes card's choice of how raw values read: decimal (the
+    /// default) or hexadecimal, for every disk.
+    fn disk_raw_switch(&self, cx: &Context<Self>) -> AnyElement {
+        self.segments(
+            "disk-raw-radix",
+            [("rawDecimal", false), ("rawHex", true)]
+                .into_iter()
+                .map(|(key, hex)| {
+                    (
+                        label(&format!("performance.disk.{key}")),
+                        None,
+                        Action::Preference(DISK_RAW_HEX.into(), json!(hex)),
+                        self.disk_raw_hex == hex,
+                    )
+                })
+                .collect(),
+            cx,
+        )
+    }
     /// The head's button reading the details again.
     pub(super) fn disk_refresh_button(&self, index: u64, cx: &mut Context<Self>) -> AnyElement {
         self.btn_small(
@@ -716,12 +756,12 @@ impl Desktop {
         }
         cards.push(self.disk_device(details, index, width, window, cx));
         if health.is_object() {
-            cards.push(self.card(
+            let body = self.disk_attributes(health, width, window, cx);
+            cards.push(self.card_with_control(
                 label("performance.disk.smart"),
                 Some(label("performance.disk.smartSource")),
-                None,
-                false,
-                self.disk_attributes(health, width, window, cx),
+                self.disk_raw_switch(cx),
+                body,
             ));
         } else if details["smartHealth"].is_object() {
             cards.extend(self.disk_legacy_attributes(details, width, window, cx));
@@ -1426,7 +1466,7 @@ impl Desktop {
         let p = self.palette;
         let size = theme::font(12.);
         let title_size = theme::font(13.);
-        let groups = attributes(health)
+        let groups = attributes(health, self.disk_raw_hex)
             .into_iter()
             .map(|(group, list)| (label(&format!("performance.disk.group.{group}")), list))
             .collect::<Vec<_>>();
@@ -1539,7 +1579,7 @@ mod tests {
     // Not a glob: GPUI's own `test` attribute would shadow the standard one.
     use super::{
         Arrangement, Condition, Sheet, Value, arrange, assess, attributes, balance, grouped,
-        identity_text, link, sector, temperature_condition,
+        identity_text, link, raw_number, sector, temperature_condition,
     };
     use serde_json::json;
 
@@ -1725,13 +1765,41 @@ mod tests {
             {"kelvin": 0, "celsius": null},
             {"kelvin": 316, "celsius": 42.85},
         ]);
-        let groups = attributes(&health);
+        let groups = attributes(&health, false);
         let (_, temperature) = &groups[2];
         let raw = temperature
             .iter()
             .map(|row| row.raw.as_str())
             .collect::<Vec<_>>();
         assert_eq!(&raw[..3], ["324", "324", "316"]);
-        assert!(groups[0].1[0].raw == "0x00" && !groups[0].1[0].alert);
+        assert!(groups[0].1[0].raw == "0" && !groups[0].1[0].alert);
+    }
+
+    #[test]
+    fn raw_values_read_in_either_radix_exactly() {
+        let mut health = healthy();
+        health["temperature"] = json!({"kelvin": 316, "celsius": 42.85});
+        health["dataUnitsRead"] = json!(u128::MAX.to_string());
+        let raw = |hex: bool| {
+            attributes(&health, hex)
+                .into_iter()
+                .flat_map(|(_, rows)| rows)
+                .map(|row| row.raw)
+                .collect::<Vec<_>>()
+        };
+        let (decimal, hexadecimal) = (raw(false), raw(true));
+        // The critical warning bits keep both digits in hexadecimal.
+        assert_eq!(
+            (decimal[0].as_str(), hexadecimal[0].as_str()),
+            ("0", "0x00")
+        );
+        assert!(decimal.contains(&crate::regional::digits(&u128::MAX.to_string())));
+        assert!(hexadecimal.contains(&format!("0x{:X}", u128::MAX)));
+        assert!(decimal.contains(&"316".to_owned()) && hexadecimal.contains(&"0x13C".to_owned()));
+        assert_eq!(raw_number(&json!("12"), true), "0xC");
+        assert_eq!(raw_number(&json!(255), true), "0xFF");
+        for value in [json!(null), json!("-1"), json!("1e3"), json!(-1)] {
+            assert_eq!(raw_number(&value, true), super::missing(), "{value}");
+        }
     }
 }

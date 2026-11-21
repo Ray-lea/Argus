@@ -425,6 +425,8 @@
     },
     "smart": "Attributs SMART",
     "smartSource": "Journal de santé NVMe",
+    "rawDecimal": "Décimal",
+    "rawHex": "Hexadécimal",
     "group": {
       "health": "État de santé",
       "usage": "Utilisation",

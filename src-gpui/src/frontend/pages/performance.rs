@@ -49,6 +49,9 @@ const STATS_GAP: f32 = 28.;
 const STACK_GAP: f32 = 20.;
 /// Widest a figure's explanation runs before it wraps.
 const HINT_WIDTH: f32 = 420.;
+/// How far a control in a details card's head reaches above and below the
+/// title's line (a segmented control is 32 px tall).
+const CARD_CONTROL_OVERHANG: f32 = 6.;
 /// Figures and specs go side by side once the figures' share holds this many
 /// columns: with fewer, the figures take more rows beside the specs than both
 /// take stacked.
@@ -1973,10 +1976,51 @@ impl Desktop {
         body: impl IntoElement,
     ) -> AnyElement {
         let p = self.palette;
+        let summary = div()
+            .flex_1()
+            .min_w_0()
+            .truncate()
+            .text_right()
+            .text_size(theme::font(12.))
+            .text_color(if alert { p.danger } else { p.muted })
+            .child(summary.unwrap_or_default());
+        self.card_headed(title, note, summary.into_any_element(), alert, body)
+    }
+    /// A details card whose head ends in a control in place of the summary.
+    /// The control overhangs the title's line rather than heighten the head,
+    /// so the card's body stays where a card without one puts it. Where the
+    /// title leaves it too little room it takes a line of its own, at the
+    /// right: it keeps its width (no `min_w_0`), and the head wraps.
+    fn card_with_control(
+        &self,
+        title: String,
+        note: Option<String>,
+        control: AnyElement,
+        body: impl IntoElement,
+    ) -> AnyElement {
+        let control = div()
+            .flex_1()
+            .flex()
+            .justify_end()
+            .my(px(-CARD_CONTROL_OVERHANG))
+            .child(control);
+        self.card_headed(title, note, control.into_any_element(), false, body)
+    }
+    fn card_headed(
+        &self,
+        title: String,
+        note: Option<String>,
+        trailing: AnyElement,
+        alert: bool,
+        body: impl IntoElement,
+    ) -> AnyElement {
+        let p = self.palette;
         self.card_frame(alert)
             .child(
                 div()
                     .flex()
+                    // Only a control wraps: a summary shrinks and truncates.
+                    .flex_wrap()
                     .items_baseline()
                     .gap_4()
                     .mb(px(12.))
@@ -1999,16 +2043,7 @@ impl Desktop {
                                 )
                             }),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_right()
-                            .text_size(theme::font(12.))
-                            .text_color(if alert { p.danger } else { p.muted })
-                            .child(summary.unwrap_or_default()),
-                    ),
+                    .child(trailing),
             )
             .child(body)
             .into_any_element()

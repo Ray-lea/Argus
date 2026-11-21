@@ -425,6 +425,8 @@
     },
     "smart": "Atributos de SMART",
     "smartSource": "Registro de estado NVMe",
+    "rawDecimal": "Decimal",
+    "rawHex": "Hexadecimal",
     "group": {
       "health": "Estado",
       "usage": "Uso",

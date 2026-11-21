@@ -462,6 +462,7 @@ impl Desktop {
                 return;
             }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
+            DISK_RAW_HEX => self.disk_raw_hex = value.as_bool().unwrap_or(false),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {
                     self.read_disk_details(index, window, cx);

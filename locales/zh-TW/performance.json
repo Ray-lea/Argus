@@ -402,6 +402,8 @@
     },
     "smart": "SMART 屬性",
     "smartSource": "NVMe 健康記錄",
+    "rawDecimal": "十進位",
+    "rawHex": "十六進位",
     "group": {
       "health": "健康",
       "usage": "使用狀況",
