@@ -1,5 +1,5 @@
 {
-  "about": "在 125%、150%、175% 的界面缩放下，把进程列表、服务列表、设置页和关于页用滚轮滚到底，再逐格滚回顶部，核对确实离开了顶部并能回到顶部。分数缩放下滚动范围的末端落在设备像素之间，滑动的取整曾让列表停在底部无法上滚；测试窗口平时以 100% 缩放运行，看不到这类问题。表格的纵向位置读 `inspect columns` 的 `state.scroll.y`，设置页读 `inspectLayout.settingsTop`，关于页读 `aboutScroll`。",
+  "about": "在 125%、150%、175% 的界面缩放下，把进程列表、服务列表、设置页和关于页用滚轮滚到底，再逐格滚回顶部，核对确实离开了顶部并能回到顶部。分数缩放下滚动范围的末端落在设备像素之间，滑动的取整曾让列表停在底部无法上滚；测试窗口平时以 100% 缩放运行，看不到这类问题。另在 150% 缩放下检查启动页：七个启动项略高于视口，从底部向上滚一格应回到顶部。表格的纵向位置读 `inspect columns` 的 `state.scroll.y`，设置页读 `inspectLayout.settingsTop`，关于页读 `aboutScroll`。",
   "window": [1000, 680],
   "steps": [
     {"control":{"page":"processes","view":"list","details":"closed","motion":"off","pointerOutside":true,"contentZoom":1.25},"wait":1200},
@@ -61,6 +61,9 @@
     {"control":{"wheel":{"x":300,"y":200,"lines":-600}},"wait":1500,"inspect":"layout","label":"about-175-bottom","expect":{"aboutScroll.atEnd":true},"expectNot":{"aboutScroll.offset":0}},
     {"control":{"wheel":{"x":300,"y":200,"lines":3}},"wait":600},
     {"control":{"wheel":{"x":300,"y":200,"lines":3}},"wait":600},
-    {"control":{"wheel":{"x":300,"y":200,"lines":600}},"wait":1500,"inspect":"layout","label":"about-175-top","expect":{"aboutScroll.offset":0}}
+    {"control":{"wheel":{"x":300,"y":200,"lines":600}},"wait":1500,"inspect":"layout","label":"about-175-top","expect":{"aboutScroll.offset":0}},
+    {"probe":"size 1000 551","control":{"page":"startup","contentZoom":1.5,"pointerOutside":true},"wait":1000},
+    {"control":{"wheel":{"x":300,"y":170,"lines":-120},"passive":true},"wait":600,"inspect":"columns","label":"startup-150-bottom","expect":{"state.page":"startup"},"expectNot":{"state.scroll.y":0}},
+    {"control":{"wheel":{"x":300,"y":170,"lines":3},"passive":true},"wait":600,"inspect":"columns","label":"startup-150-one-notch-up","expect":{"state.scroll.y":0}}
   ]
 }
