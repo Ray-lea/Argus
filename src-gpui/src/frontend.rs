@@ -126,6 +126,7 @@ enum Action {
     CopyAs(String, String),
     /// The details of the process row with this key, as text (`details_text`).
     CopyDetails(String),
+    ExportTableCsv,
     /// A command of the history page.
     History(pages::history::Command),
     CloseOverlay,

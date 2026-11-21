@@ -73,7 +73,7 @@
       "ipv4Only": "Solo se pueden cerrar las conexiones IPv4 TCP"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager no pudo comprobar el destino; a continuación se muestran los resultados de la consulta de identificadores"
+      "restartManagerFailed": "No se pudo completar la comprobación de los archivos; los resultados proceden solo de la consulta de identificadores"
     },
     "handles": {
       "tooMany": "Se pueden comprobar hasta 32 rutas a la vez, con una longitud total de como máximo 8 KiB",

@@ -1,5 +1,6 @@
 use super::*;
 mod file_lock;
+mod presence;
 mod process_actions;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::WindowExt;
@@ -783,8 +784,8 @@ impl Desktop {
         self.begin_leaving(false, window, cx);
     }
 
-    /// The top dialog fades out (`dialog-out`, with the scrim when it is the
-    /// last one) and closes when that ends; at once under reduced motion.
+    /// The top dialog recedes and fades out (`presence`, with the scrim when
+    /// it is the last one) and closes when that ends; at once under reduced motion.
     fn begin_leaving(&mut self, cancelled: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.modal.as_ref().map(|m| m.id) else {
             if self.modal.is_none() {
@@ -826,8 +827,9 @@ impl Desktop {
             self.after_close(closed, cancelled, window, cx);
         }
         if self.modal.is_none() {
+            // A scrim still fading out finishes on its own clock: it runs
+            // longer than the dialog's fade.
             self.scrim.shown.set(None);
-            self.scrim.leaving.set(None);
             self.notify_scrim(cx);
             self.focus.focus(window, cx);
         }
@@ -1042,8 +1044,8 @@ impl Desktop {
             "scrollY":frame.map(|frame|f32::from(-frame.scroll.offset().y))})
     }
 
-    /// The common dialog surface: width, colours, no close button, Fluent
-    /// fade. It opens centred in the window, as the interface's scrim centred
+    /// The common dialog surface: width, colours, no close button, and its
+    /// entrance and exit (`presence`). It opens centred in the window, as the interface's scrim centred
     /// it. Release readers retain their centre during height transitions;
     /// forms retain their top edge. Bodies scroll at the available-height limit.
     fn surface(
@@ -1138,10 +1140,13 @@ impl Desktop {
                 }
                 let top = frame.top;
                 drop(frames);
+                // The component sets the surface's opacity and shadow itself;
+                // a transform in the style scales and fades all of it.
+                let pose = self.dialog_pose(id, window, cx);
                 dialog
                     .margin_top(top - shift)
                     .h(height)
-                    .opacity(self.dialog_opacity(id, window, cx))
+                    .when_some(pose, |dialog, pose| dialog.paint_transform(pose))
             }
             None => dialog.opacity(0.),
         };
@@ -1190,10 +1195,15 @@ impl Desktop {
             })
     }
 
-    /// A shown dialog's opacity: in over 250 ms from its first visible frame
-    /// (`dialog-in`, decelerating), out over 167 ms while it leaves
-    /// (`dialog-out`, accelerating). The interface's slight scale is left out.
-    fn dialog_opacity(&self, id: u64, window: &Window, cx: &mut Context<Self>) -> f32 {
+    /// A shown dialog's pose (`presence::pose`): it grows in from its first
+    /// visible frame and recedes while it leaves, closing once faded out.
+    /// `None` at rest and under reduced motion: no transform, whole pixels.
+    fn dialog_pose(
+        &self,
+        id: u64,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<LiveTransformValue> {
         let shown = *self
             .ui
             .dialog_shown
@@ -1206,28 +1216,22 @@ impl Desktop {
             self.notify_scrim(cx);
         }
         if cx.reduce_motion() {
-            return 1.;
+            return None;
         }
-        let entering = (shown.elapsed().as_secs_f32() / 0.25).min(1.);
-        let mut opacity = theme::ease_out(entering);
-        let mut animating = entering < 1.;
-        if let Some((leaving, started, _)) = self.ui.dialog_leaving
-            && leaving == id
-        {
-            let t = (started.elapsed().as_secs_f32() / 0.167).min(1.);
-            opacity *= 1. - theme::ease_in(t);
-            if t >= 1. {
-                cx.defer_in(window, move |this, window, cx| {
-                    this.finish_leaving(id, window, cx)
-                });
-            } else {
-                animating = true;
-            }
-        }
-        if animating {
+        let left = self
+            .ui
+            .dialog_leaving
+            .filter(|(leaving, ..)| *leaving == id)
+            .map(|(_, started, _)| started.elapsed());
+        let pose = presence::pose(shown.elapsed(), left);
+        if pose.gone {
+            cx.defer_in(window, move |this, window, cx| {
+                this.finish_leaving(id, window, cx)
+            });
+        } else if !pose.settled {
             window.request_animation_frame();
         }
-        opacity
+        (!pose.settled).then_some(pose.value)
     }
 
     /// A dialog's title in the display face (`.dialog-title`).
@@ -2351,7 +2355,8 @@ pub(super) struct ScrimState {
 /// The dim behind dialogs, a layer of its own over the desktop and its chart
 /// layer, so the moving curves dim with everything else; the caption buttons
 /// stay above it. It fades in over 167 ms when the first dialog shows and out
-/// (accelerating) with the last.
+/// over 167 ms, both linearly, once the last starts leaving; the fade out
+/// outlasts the dialog's own.
 pub(super) struct Scrim {
     pub state: Rc<ScrimState>,
     /// The part behind the caption buttons, drawn by the title row under
@@ -2371,7 +2376,7 @@ impl Render for Scrim {
             }
         };
         let level = match (self.state.shown.get(), self.state.leaving.get()) {
-            (_, Some(leaving)) => 1. - theme::ease_in(progress(leaving)),
+            (_, Some(leaving)) => 1. - progress(leaving),
             (Some(shown), None) => progress(shown),
             (None, None) => 0.,
         };

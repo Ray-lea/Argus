@@ -867,12 +867,7 @@ impl Desktop {
                     .font_weight(theme::LABEL_WEIGHT)
                     .child(label("performance.disk.held.title")),
             )
-            .child(label("performance.disk.held.reason"))
-            .child(
-                div()
-                    .text_color(p.muted)
-                    .child(label("performance.disk.held.note")),
-            );
+            .child(label("performance.disk.held.reason"));
         self.card_frame(false)
             .flex()
             .flex_col()

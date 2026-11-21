@@ -258,7 +258,7 @@
     "limitHistory": "Registro",
     "limitLogged": "Activado anteriormente",
     "limitNever": "Sin registro",
-    "limitHistoryHint": "El registro retenido por el hardware puede ser anterior al inicio de esta sesión de Argus.",
+    "limitHistoryHint": "Los eventos pueden ser anteriores al inicio de Argus.",
     "columnCoreType": "Tipo",
     "pCore": "Núcleo P",
     "eCore": "Núcleo E",
@@ -296,7 +296,7 @@
     "inUseDescription": "Memoria utilizada por procesos, controladores o el sistema operativo",
     "modifiedDescription": "Memoria cuyo contenido debe escribirse en el disco antes de poder usarse para otro propósito",
     "standbyDescription": "Memoria que contiene datos almacenados en caché y código que no está en uso activo",
-    "freeDescription": "Memoria que no está en uso actualmente y que se reutilizará primero cuando los procesos, los controladores o el sistema operativo necesiten más memoria",
+    "freeDescription": "Memoria sin usar disponible para asignación inmediata",
     "compressedDescription": "Memoria que conserva páginas de procesos en forma comprimida, incluida en la memoria en uso",
     "compressedSaving": "La memoria comprimida almacena aproximadamente {stored} de datos, lo que ahorra {saved} de memoria al sistema",
     "inUse": "En uso",
@@ -315,7 +315,7 @@
   },
   "disk": {
     "performanceUnavailable": "Los contadores de rendimiento del disco no están disponibles temporalmente.",
-    "volumeCounters": "Las estadísticas de rendimiento proceden del volumen {volumes} y abarcan ese volumen.",
+    "volumeCounters": "Las cifras corresponden solo al volumen {volumes}.",
     "volumeCountersMultiple": "Las velocidades de lectura y escritura y el tiempo de respuesta se agregan para los volúmenes {volumes}; el tiempo de actividad no está disponible.",
     "title": "Disco {index}",
     "titleVolumes": "Disco {index} ({volumes})",
@@ -344,8 +344,7 @@
     "unavailable": "No hay detalles del disco.",
     "held": {
       "title": "Lectura automática en pausa",
-      "reason": "Argus no se cerró correctamente después de la última lectura de los detalles del disco. Es posible que Windows haya fallado, que se haya cortado la alimentación o que se haya finalizado el proceso de Argus. Para que el problema no se repita en cada inicio, esta página ya no lee automáticamente al abrirse.",
-      "note": "La lectura envía consultas de solo lectura al controlador de almacenamiento. Si Argus sigue funcionando con normalidad durante un tiempo después de una lectura, la lectura automática se reanuda. Si Argus vuelve a cerrarse de forma anómala, este aviso aparecerá en el próximo inicio.",
+      "reason": "Argus se cerró de forma inesperada durante la última lectura o poco después. Si Windows sufrió un bloqueo, podría volver a ocurrir al reintentar. La lectura automática se reanuda si Argus funciona con normalidad durante 2 minutos tras la lectura.",
       "read": "Leer de todos modos"
     },
     "openFailed": "Este disco no se pudo abrir.",
@@ -390,8 +389,8 @@
       "unsupported": "El dispositivo o controlador no proporciona información legible sobre el estado del disco.",
       "unavailable": "La información sobre el estado del disco no está disponible temporalmente.",
       "invalidData": "El dispositivo devolvió datos de estado del disco no válidos.",
-      "serviceUnavailable": "Más información SMART requiere el servicio privilegiado. Instálelo e inícielo en Configuración → Permisos.",
-      "serviceOutdated": "Se necesita actualizar el servicio privilegiado para leer más información SMART. Actualícelo en Configuración → Permisos.",
+      "serviceUnavailable": "Para ver más datos SMART, instale e inicie el servicio privilegiado en Configuración → Permisos.",
+      "serviceOutdated": "Para ver más datos SMART, actualice el servicio privilegiado en Configuración → Permisos.",
       "smartDisabled": "SMART está deshabilitado en este dispositivo."
     },
     "device": "Información del dispositivo",
@@ -533,7 +532,7 @@
     "mac": "Dirección física"
   },
   "gpu": {
-    "utilizationHint": "El uso global corresponde al motor más ocupado, complementado con los contadores de motores por proceso y el uso del núcleo de GPU de NVIDIA. Los gráficos de motores nativos y las lecturas del controlador pueden tener distintos ámbitos e intervalos de muestreo.",
+    "utilizationHint": "El uso total se basa en el motor más ocupado y se complementa con lecturas de los procesos y del controlador. Las fuentes pueden cubrir distintas actividades e intervalos.",
     "utilSource": {
       "windows": "Motores Windows",
       "process": "Motores de proceso",
@@ -556,12 +555,12 @@
     "vidHint": "Tensión de alimentación solicitada por la GPU integrada (VID).",
     "unsliceClock": "Frecuencia de lógica compartida",
     "unsliceClockHint": "Reloj de la lógica compartida de la GPU integrada (Unslice), que puede detenerse independientemente del reloj de los bloques de cálculo gráfico.",
-    "clockHint": "Las lecturas del kernel se calculan a partir del multiplicador actual y el incremento nominal oficial, sin incluir la desviación medida del reloj de referencia. Las frecuencias se muestran como valores numéricos, incluido el cero; la frecuencia mínima de funcionamiento indica el rango admitido.",
+    "clockHint": "Las lecturas del kernel se calculan a partir del multiplicador y del incremento nominal. Un núcleo en reposo o apagado puede mostrar 0 MHz. La frecuencia mínima de funcionamiento es una especificación del hardware.",
     "sharedMemoryClock": "Reloj de memoria compartida",
-    "sharedMemoryClockHint": "Frecuencia de la memoria del sistema compartida por la GPU integrada. Las lecturas del kernel se calculan a partir de la configuración del controlador y la referencia nominal, sin incluir la desviación medida del reloj de referencia. La tasa de transferencia DDR es aproximadamente el doble de este valor.",
+    "sharedMemoryClockHint": "Las lecturas del kernel se calculan a partir de la configuración del controlador de memoria y del reloj de referencia nominal. La tasa de transferencia DDR es aproximadamente el doble de esta frecuencia.",
     "gtActivity": "Actividad GT",
     "mediaActivity": "Actividad de los medios",
-    "activityHint": "Calculado a partir de contadores de actividad de hardware durante el intervalo de muestreo. Su alcance difiere del tiempo de actividad del motor Windows.",
+    "activityHint": "La actividad del hardware y el uso del motor en Windows miden actividades distintas.",
     "minCoreClock": "Frecuencia mínima",
     "referenceClock": "Reloj de referencia",
     "performanceLimits": "Límites de rendimiento",
@@ -602,7 +601,7 @@
     "maxCoreClock": "Frecuencia máxima del núcleo",
     "powerState": "Estado de energía",
     "lowPower": "En suspensión",
-    "lowPowerHint": "La GPU está inactiva y en un estado de bajo consumo. Leer la temperatura, el ventilador, la frecuencia, el voltaje y la potencia la reactivaría, por lo que no se leen. Volverán a mostrarse cuando la GPU esté en uso.",
+    "lowPowerHint": "Las lecturas de temperatura, velocidad del ventilador, frecuencia, voltaje y potencia se reanudarán cuando se active la GPU.",
     "powerSource": "Origen de la lectura de potencia",
     "sources": {
       "nvml": "NVIDIA NVML · placa",
@@ -654,6 +653,6 @@
     "model": "Modelo",
     "serial": "Número de serie",
     "manufactured": "Fecha de fabricación",
-    "wornNote": "La capacidad de carga total se ha reducido al {percent} % de la capacidad de diseño, por lo que una carga completa no durará tanto como lo haría con una batería nueva."
+    "wornNote": "La capacidad de carga completa ha bajado al {percent}% de la capacidad de diseño."
   }
 }

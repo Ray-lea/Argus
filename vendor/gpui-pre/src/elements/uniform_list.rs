@@ -378,6 +378,9 @@ impl Element for UniformList {
             handle.deferred_scroll_to_item.take()
         });
 
+        // Interactivity clamps the vertical offset before laying out the rows.
+        // A second clamp using padded_bounds can change the value by a fraction
+        // of a pixel and cancel a wheel glide on its first step away from the bottom.
         self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -394,16 +397,6 @@ impl Element for UniformList {
                 };
 
                 if self.item_count > 0 {
-                    let content_height = item_height * self.item_count;
-
-                    let is_scrolled_vertically = !scroll_offset.y.is_zero();
-                    let max_scroll_offset = padded_bounds.size.height - content_height;
-
-                    if is_scrolled_vertically && scroll_offset.y < max_scroll_offset {
-                        shared_scroll_offset.borrow_mut().y = max_scroll_offset;
-                        scroll_offset.y = max_scroll_offset;
-                    }
-
                     let content_width = content_size.width + padding.left + padding.right;
                     let is_scrolled_horizontally =
                         can_scroll_horizontally && !scroll_offset.x.is_zero();
@@ -443,7 +436,7 @@ impl Element for UniformList {
                             }
 
                             let max_scroll_offset =
-                                (content_height - list_height).max(Pixels::ZERO);
+                                (content_size.height - list_height).max(Pixels::ZERO);
                             match strategy {
                                 ScrollStrategy::Top => {
                                     updated_scroll_offset.y = -(item_top - offset_pixels)

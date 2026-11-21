@@ -8,8 +8,8 @@
   },
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
-  "note": "Readings and the busiest processes are recorded every 5 seconds, plus per-second readings for the last 10 minutes; at the minimized or tray refresh rate when that is slower.",
-  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
+  "note": "Usually recorded every 5 seconds, or less often if background sampling is slower. Every sample is available for the last 10 minutes.",
+  "off": "History recording is off. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
     "empty": "Choose “Watch this instance” in the details of a single process to record memory even below the top list.",
@@ -17,7 +17,7 @@
     "target": "Watching {name} (PID {pid})",
     "stop": "Stop recording",
     "delete": "Delete recording",
-    "note": "This instance only; up to 1 hour, 720 points and 1 MiB. Samples are usually 5 seconds apart; slower background sampling may leave gaps. Working set growth alone does not prove a memory leak. Stop keeps data; Delete stops and removes this recording.",
+    "note": "Records only this instance, for up to 1 hour. Stopping keeps the data. Deleting ends observation and erases the recording.",
     "metric": {
       "memory": "Private working set",
       "commit": "Private commit"
@@ -45,8 +45,8 @@
     "runSummary": "Showing {shown}/{total} launches; {points} saved points in this launch",
     "earlier": "Earlier points",
     "latest": "Latest points",
-    "programNote": "Current and future launches at this image path are recorded separately. Up to 7 days, 131072 points and 9 MiB; the first limit reached removes oldest data. Up to 512 concurrent instances. The list shows the latest 256 launches; each page shows up to 1000 saved points plus gap markers. Earlier points remain browsable. Samples are usually 5 seconds apart; slower sampling leaves gaps. Working set growth does not prove a leak. Stop keeps data; Delete removes it. Restarting Argus does not resume recording.",
-    "damaged": "Some stored records failed integrity checks; missing intervals remain gaps.",
+    "programNote": "Each launch from the same path is recorded separately. Data is kept for up to 7 days. Older data is cleared sooner if storage fills up. Stopping keeps the data. Deleting ends observation and erases the recording. Start observation again after restarting Argus.",
+    "damaged": "Some records are damaged. The affected intervals are blank.",
     "earlierRuns": "Earlier launches",
     "latestRuns": "Latest launches",
     "waiting": "Waiting for another launch",
@@ -69,9 +69,9 @@
   "now": "Now",
   "live": {
     "on": "Live",
-    "onTitle": "Showing the latest readings: every second up to 6 hours, every minute for longer ranges. Click to pause",
+    "onTitle": "Pause following the latest readings",
     "off": "Back to latest",
-    "offTitle": "Go back to the latest readings and keep updating (or right-click the chart, or press End)"
+    "offTitle": "Resume following the latest readings (right-click the chart or press End)"
   },
   "toast": {
     "latest": "Back to the latest",
@@ -89,7 +89,6 @@
     "showTitle": "Show in the current lane",
     "addTitle": "Add a lane",
     "overlayTitle": "Overlay a second reading (right axis)",
-    "foot": "Click to show in this lane; click + or drag a reading onto the chart to add a lane",
     "byService": "Provided by the privileged service"
   },
   "group": {
@@ -203,9 +202,9 @@
   },
   "unrecorded": {
     "title": "No records of {name}",
-    "hint": "This reading is not recorded on this computer; the device or counter it needs may be missing.",
+    "hint": "The required device or counter may be unavailable.",
     "serviceTitle": "{name} needs the privileged service",
-    "serviceHint": "The privileged service reads the processor sensors through the PawnIO fixed modules. Once installed, recording starts with the next sample; earlier periods stay blank.",
+    "serviceHint": "Recording starts with the next sample after the service is enabled. Earlier intervals stay blank.",
     "install": "Install the privileged service…"
   },
   "tip": {
@@ -244,7 +243,7 @@
     },
     "search": "Search processes",
     "emptyRange": "No processes recorded in this range",
-    "netService": "Per-process network readings need the privileged service; Argus runs with standard rights, so the Network column has no records.",
+    "netService": "Recording network usage per process with standard permissions requires the privileged service.",
     "live": "Latest processes"
   },
   "column": {

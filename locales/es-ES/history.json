@@ -8,8 +8,8 @@
   },
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
-  "note": "Las lecturas y los procesos más activos se registran cada 5 segundos, con lecturas por segundo de los últimos 10 minutos; minimizado o en la bandeja, al intervalo de actualización de allí si es más largo.",
-  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
+  "note": "Normalmente se registra cada 5 segundos, o con menor frecuencia si el muestreo en segundo plano es más lento. Se conserva cada muestra de los últimos 10 minutos.",
+  "off": "El registro del historial está desactivado. <link>Abrir Configuración</link>",
   "watch": {
     "title": "Observación de proceso",
     "empty": "Elija «Observar esta instancia» en los detalles de un solo proceso para registrar memoria fuera de la lista principal.",
@@ -17,7 +17,7 @@
     "target": "Observando {name} (PID {pid})",
     "stop": "Detener registro",
     "delete": "Eliminar registro",
-    "note": "Solo esta instancia; hasta 1 hora, 720 puntos y 1 MiB. Muestras normalmente cada 5 segundos; un muestreo más lento puede dejar huecos. El crecimiento del conjunto de trabajo no prueba una fuga. Detener conserva datos; Eliminar detiene y borra este registro.",
+    "note": "Solo se registra esta instancia, durante un máximo de 1 hora. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro.",
     "metric": {
       "memory": "Conjunto de trabajo privado",
       "commit": "Memoria privada comprometida"
@@ -45,8 +45,8 @@
     "runSummary": "Se muestran {shown}/{total} inicios; {points} puntos guardados en este inicio",
     "earlier": "Puntos anteriores",
     "latest": "Últimos puntos",
-    "programNote": "Los inicios actuales y futuros de esta ruta de imagen se registran por separado. Hasta 7 días, 131072 puntos y 9 MiB; el primer límite alcanzado elimina los datos más antiguos. Hasta 512 instancias simultáneas. La lista muestra los últimos 256 inicios; cada página hasta 1000 puntos guardados y marcas de huecos. Los puntos anteriores siguen disponibles. Normalmente cada 5 segundos; un muestreo más lento deja huecos. El crecimiento del conjunto de trabajo no demuestra una fuga. Detener conserva los datos; Eliminar los borra. Reiniciar Argus no reanuda la grabación.",
-    "damaged": "Algunos registros no superaron la comprobación de integridad; los intervalos ausentes siguen siendo huecos.",
+    "programNote": "Cada ejecución desde la misma ruta se registra por separado. Los datos se conservan hasta 7 días. Si se alcanza el límite de almacenamiento, se borran antes los más antiguos. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro. Tras reiniciar Argus, se debe iniciar otra observación.",
+    "damaged": "Algunos registros están dañados. Los intervalos afectados quedan en blanco.",
     "earlierRuns": "Inicios anteriores",
     "latestRuns": "Últimos inicios",
     "waiting": "Esperando otro inicio",
@@ -69,9 +69,9 @@
   "now": "Ahora",
   "live": {
     "on": "En directo",
-    "onTitle": "Muestra las lecturas más recientes: cada segundo hasta 6 horas y cada minuto en intervalos más largos. Haga clic para pausar",
+    "onTitle": "Pausar el seguimiento de las últimas lecturas",
     "off": "Volver a lo último",
-    "offTitle": "Volver a las lecturas más recientes y seguir actualizando (también con clic derecho en el gráfico o con Fin)"
+    "offTitle": "Seguir de nuevo las últimas lecturas (clic derecho en el gráfico o tecla End)"
   },
   "toast": {
     "latest": "De vuelta a lo último",
@@ -89,7 +89,6 @@
     "showTitle": "Mostrar en la pista actual",
     "addTitle": "Agregar una pista",
     "overlayTitle": "Superponer una segunda lectura (eje derecho)",
-    "foot": "Haga clic para mostrarla en esta pista; haga clic en + o arrástrela al gráfico para agregar una pista",
     "byService": "Lo proporciona el servicio privilegiado"
   },
   "group": {
@@ -205,9 +204,9 @@
   },
   "unrecorded": {
     "title": "No hay registros de {name}",
-    "hint": "Esta lectura no se registra en este equipo; puede faltar el dispositivo o el contador que necesita.",
+    "hint": "Es posible que el dispositivo o contador no esté disponible.",
     "serviceTitle": "{name} requiere el servicio privilegiado",
-    "serviceHint": "El servicio privilegiado lee los sensores del procesador mediante los módulos fijos de PawnIO. Tras instalarlo, el registro empieza con la siguiente muestra; los periodos anteriores quedan en blanco.",
+    "serviceHint": "El registro comienza en la siguiente muestra tras activar el servicio. Los intervalos anteriores quedan en blanco.",
     "install": "Instalar el servicio privilegiado…"
   },
   "tip": {
@@ -248,7 +247,7 @@
     },
     "search": "Buscar procesos",
     "emptyRange": "No hay procesos registrados en este intervalo",
-    "netService": "Las lecturas de red por proceso requieren el servicio privilegiado; Argus se ejecuta con permisos estándar, así que la columna «Red» no tiene registros.",
+    "netService": "Con permisos estándar, el registro del uso de red por proceso requiere el servicio privilegiado.",
     "live": "Procesos más recientes"
   },
   "column": {

@@ -7,7 +7,9 @@
     "commonFolder": "Startup folder (all users)",
     "package": "App package (current user)"
   },
-  "menu": {},
+  "menu": {
+    "copyCommand": "Copy command"
+  },
   "delete": {
     "title": "Delete startup app {name}?",
     "registry": "“{entry}” will be removed from {location}. This cannot be undone; the program itself is kept.",
@@ -15,7 +17,7 @@
     "done": "Deleted startup app {name}.",
     "error": {
       "accessDenied": "Access denied: startup app {name} could not be deleted. Items for all users need Argus running as administrator; other items may be protected by file or registry permissions.",
-      "notFound": "Startup app {name} no longer exists; it may have been deleted already.",
+      "notFound": "Startup item {name} was not found.",
       "refused": "Startup app {name} cannot be deleted. Startup tasks of app packages can only be disabled.",
       "generic": "Could not delete startup app {name}: {error}"
     },
@@ -45,5 +47,5 @@
   "loading": "Reading startup apps…",
   "noMatch": "No matching startup apps",
   "summary": "{enabled} of {total} enabled",
-  "note": "Disabling uses the same switch as Startup apps in Task Manager and can be undone. Items for all users need administrator rights."
+  "note": "Disabled items can be enabled again. Changing an all-users startup item requires administrator rights."
 }

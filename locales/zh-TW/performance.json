@@ -242,7 +242,7 @@
     "limitHistory": "記錄",
     "limitLogged": "曾觸發",
     "limitNever": "無記錄",
-    "limitHistoryHint": "硬體栓鎖記錄，可能早於本次啟動 Argus。",
+    "limitHistoryHint": "記錄可能早於本次啟動 Argus。",
     "columnCoreType": "類型",
     "pCore": "P 核心",
     "eCore": "E 核心",
@@ -280,7 +280,7 @@
     "inUseDescription": "由處理程序、驅動程式或作業系統使用的記憶體",
     "modifiedDescription": "內容必須先寫入磁碟才能用於其他用途的記憶體",
     "standbyDescription": "包含未頻繁使用的快取資料和程式碼的記憶體",
-    "freeDescription": "目前未使用，但會在處理程序、驅動程式或作業系統需要更多記憶體時優先重新使用的記憶體",
+    "freeDescription": "尚未使用、可立即配置的記憶體",
     "compressedDescription": "以壓縮形式保存處理程序頁面的記憶體，屬於使用中的記憶體",
     "compressedSaving": "壓縮記憶體估計儲存了 {stored} 的資料，為系統節省了 {saved} 記憶體",
     "inUse": "使用中",
@@ -325,8 +325,7 @@
     "unavailable": "暫無磁碟詳細資料。",
     "held": {
       "title": "已暫停自動讀取",
-      "reason": "上次讀取磁碟詳細資料後，Argus 未正常結束，可能發生了系統當機、斷電或處理程序遭強制結束。為避免問題在每次啟動時重現，開啟此頁時不再自動讀取。",
-      "note": "讀取會向儲存裝置驅動程式傳送唯讀查詢。讀取後 Argus 繼續正常執行一段時間，自動讀取即恢復；再次異常結束時，下次啟動仍顯示本說明。",
+      "reason": "上次讀取磁碟詳細資料期間或隨後不久，Argus 異常結束。若當時系統當機，重試可能使問題重現。讀取完成後正常執行滿 2 分鐘，即恢復自動讀取。",
       "read": "仍要讀取"
     },
     "openFailed": "無法開啟此磁碟。",
@@ -371,8 +370,8 @@
       "unsupported": "裝置或驅動程式未提供可讀取的磁碟健康資訊。",
       "unavailable": "磁碟健康資訊暫不可用。",
       "invalidData": "裝置傳回的磁碟健康資料無效。",
-      "serviceUnavailable": "更多 SMART 資訊需要特殊權限服務，可在「設定 → 權限」中安裝並啟動。",
-      "serviceOutdated": "讀取更多 SMART 資訊需要更新特殊權限服務，可在「設定 → 權限」中更新。",
+      "serviceUnavailable": "在「設定 → 權限」中安裝並啟動特殊權限服務，即可檢視更多 SMART 資訊。",
+      "serviceOutdated": "在「設定 → 權限」中更新特殊權限服務，即可檢視更多 SMART 資訊。",
       "smartDisabled": "裝置的 SMART 功能已停用。"
     },
     "device": "裝置資訊",
@@ -490,7 +489,7 @@
       "counters": "讀寫錯誤統計"
     },
     "performanceUnavailable": "暫時無法讀取磁碟效能計數。",
-    "volumeCounters": "目前使用磁碟區 {volumes} 的效能統計，統計範圍為該磁碟區。",
+    "volumeCounters": "僅統計磁碟區 {volumes}。",
     "volumeCountersMultiple": "目前彙總磁碟區 {volumes} 的讀寫速率與回應時間；活動時間暫無可用讀數。"
   },
   "network": {
@@ -513,7 +512,7 @@
     "mac": "實體位址"
   },
   "gpu": {
-    "utilizationHint": "整體佔用取最忙碌引擎，並以處理程序引擎計數和 NVIDIA 核心使用率補充。原生引擎折線與驅動程式數值的涵蓋範圍、取樣時間範圍可能不同。",
+    "utilizationHint": "整體使用率取最忙碌的引擎，並參考處理程序與驅動程式的讀數。各來源的範圍和時段可能不同。",
     "utilSource": {
       "windows": "Windows 引擎",
       "process": "處理程序引擎計數",
@@ -536,12 +535,12 @@
     "vidHint": "內顯請求的目標供電電壓（VID）。",
     "unsliceClock": "共用邏輯時脈",
     "unsliceClockHint": "內顯非切片部分（Unslice）的時脈，與圖形運算切片可分別停止時脈。",
-    "clockHint": "核心讀數由目前倍率依官方標稱步進換算，不包含實測基準時脈偏差。時脈直接顯示數值，零值保留；最低運作時脈為能力範圍。",
+    "clockHint": "核心感測器讀數依倍頻與標稱步進換算。核心休眠或關閉時可顯示 0 MHz。最低工作時脈為硬體規格。",
     "sharedMemoryClock": "共用記憶體時脈",
-    "sharedMemoryClockHint": "內顯共用系統記憶體的時脈。核心讀數由控制器設定依標稱參考換算，DDR 傳輸率約為此數值的兩倍，不包含實測基準時脈偏差。",
+    "sharedMemoryClockHint": "核心感測器讀數依記憶體控制器設定與標稱參考時脈換算。DDR 傳輸率約為此時脈的兩倍。",
     "gtActivity": "GT 活動率",
     "mediaActivity": "媒體活動率",
-    "activityHint": "由硬體活動計數器依取樣間隔計算，與 Windows 引擎忙碌時間的統計範圍不同。",
+    "activityHint": "硬體活動率與 Windows 引擎使用率的統計範圍不同。",
     "minCoreClock": "最低運作時脈",
     "referenceClock": "基準時脈",
     "performanceLimits": "效能限制",
@@ -578,7 +577,7 @@
     "maxCoreClock": "最高核心時脈",
     "powerState": "電源狀態",
     "lowPower": "已休眠",
-    "lowPowerHint": "GPU 閒置，已進入低耗電狀態。讀取溫度、風扇、時脈、電壓與功耗會將其喚醒，因此暫不讀取；GPU 恢復運作後繼續顯示。",
+    "lowPowerHint": "GPU 休眠期間暫停讀取溫度、風扇轉速、時脈、電壓與功耗，喚醒後恢復。",
     "powerSource": "功耗來源",
     "sources": {
       "nvml": "NVIDIA NVML · 介面卡",
@@ -630,6 +629,6 @@
     "model": "型號",
     "serial": "序號",
     "manufactured": "製造日期",
-    "wornNote": "完全充電容量已降至設計容量的 {percent}%，充滿後的續航時間將短於新電池。"
+    "wornNote": "完全充電容量已降至設計容量的 {percent}%。"
   }
 }

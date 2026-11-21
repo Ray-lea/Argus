@@ -16,7 +16,7 @@
   "refreshStatus": "Actualiser l’état",
   "vitals": {
     "title": "Vue d’ensemble des ressources",
-    "desc": "Le mode automatique réserve la place de la vue d’ensemble et de 10 lignes de processus. La vue se replie si l’espace manque. La réduction des groupes et les filtres n’influencent pas ce calcul.",
+    "desc": "Le mode automatique replie la vue d’ensemble quand la fenêtre manque de place.",
     "auto": "Automatique",
     "show": "Toujours afficher",
     "hide": "Masquée"
@@ -27,23 +27,21 @@
   },
   "userGroups": {
     "title": "Grouper les processus par utilisateur",
-    "desc": "Regroupe la liste des processus par utilisateur connecté ; les vues, les catégories, le tri et la recherche fonctionnent de la même façon dans chaque groupe. Le mode automatique ne regroupe que lorsque plusieurs utilisateurs sont connectés, sessions déconnectées comprises. Les sessions sans utilisateur, comme celle des services système, figurent sous « Système ».",
+    "desc": "Le mode automatique ne regroupe que lorsque plusieurs utilisateurs sont connectés, sessions déconnectées comprises.",
     "auto": "Automatique",
     "on": "Toujours grouper",
     "off": "Ne jamais grouper"
   },
   "holdOrder": {
     "title": "Suspendre le tri au survol",
-    "desc": "Tant que le pointeur est sur la liste des processus, les lignes restent en place et les valeurs continuent d’être actualisées ; elles sont triées de nouveau quand le pointeur quitte la liste. Option désactivée, la liste est triée à chaque actualisation. Les lignes restent en place tant qu’un menu contextuel ou une boîte de dialogue est ouvert."
+    "desc": "Les valeurs continuent d’être actualisées ; les lignes sont triées de nouveau quand le pointeur quitte la liste."
   },
   "language": {
     "title": "Langue d’affichage",
-    "desc": "S’applique immédiatement, y compris aux menus de la zone de notification et aux messages. « Comme Windows » suit la langue d’affichage de Windows.",
     "error": "Impossible de changer la langue : {error}"
   },
   "theme": {
     "title": "Thème",
-    "desc": "« Comme Windows » suit le mode des applications Windows et bascule entre clair et sombre avec le système.",
     "system": "Comme Windows",
     "light": "Clair",
     "dark": "Sombre",
@@ -51,14 +49,14 @@
   },
   "navigation": {
     "title": "Position de navigation",
-    "desc": "Le volet latéral affiche uniquement les icônes par défaut ; le bouton ☰ dans son coin supérieur gauche le développe pour afficher les noms des pages. La navigation supérieure affiche les pages sous forme d’onglets sous la barre d’outils.",
+    "desc": "Le volet latéral affiche uniquement les icônes par défaut ; le bouton ☰ dans son coin supérieur gauche le développe.",
     "side": "Latérale",
     "top": "En haut"
   },
   "startup": {
     "autostart": {
       "title": "Lancer à l’ouverture de session Windows",
-      "desc": "Démarre dans la zone de notification. Ouvrez la fenêtre avec le raccourci clavier ou l’icône de notification.",
+      "desc": "Démarre dans la zone de notification.",
       "error": "Impossible de modifier le paramètre de démarrage : {error}"
     },
     "startPage": {
@@ -67,19 +65,18 @@
     },
     "trayPage": {
       "title": "Réouverture depuis la zone de notification",
-      "desc": "S’applique à la réouverture depuis la zone de notification ou avec un raccourci clavier. La restauration d’une fenêtre réduite conserve la page actuelle.",
+      "desc": "S’applique à la réouverture depuis la zone de notification ou avec un raccourci clavier.",
       "current": "Conserver la page actuelle",
       "default": "Ouvrir la page par défaut"
     },
     "closeToTray": {
       "title": "Conserver dans la zone de notification à la fermeture",
-      "desc": "Argus reste actif pour se rouvrir rapidement. Lorsqu’il est masqué, il utilise la fréquence de la zone de notification et continue d’enregistrer l’historique et d’appliquer les règles.",
+      "desc": "Lorsqu’il est masqué, Argus continue d’enregistrer l’historique et d’appliquer les règles.",
       "error": "Impossible d’enregistrer le paramètre : {error}"
     }
   },
   "shortcuts": {
     "title": "Raccourcis clavier",
-    "desc": "Afficher les raccourcis de navigation, de suspension de l’actualisation et de gestion des processus.",
     "view": "Voir les raccourcis",
     "scope": "Actions quotidiennes, raccourcis de navigation et de liste.",
     "global": "Global",
@@ -91,7 +88,7 @@
     "searchTitle": "Rechercher des processus",
     "search": "Accédez à la recherche de processus. La touche / fonctionne également lorsque vous ne tapez pas, et sur la page Processus, la saisie d’une lettre ou d’un chiffre lance une recherche.",
     "runTask": "Lancez un programme ou ouvrez un fichier ou un dossier depuis n’importe quelle page. Inactif pendant la saisie.",
-    "pause": "Maintenez la touche enfoncée pour suspendre l’actualisation sur Processus ou Performances, puis relâchez-la pour reprendre. Une pause manuelle reste active.",
+    "pause": "Maintenez la touche enfoncée pour suspendre l’actualisation sur Processus ou Performances ; relâchez-la pour revenir à l’état précédent.",
     "end": "Terminez le processus ou le groupe d’applications sélectionné, avec confirmation.",
     "taskManager": "Ouvrez Argus lorsque le remplacement de Gestionnaire des tâches est activé.",
     "close": "Fermer l’aide",
@@ -101,8 +98,8 @@
     "ends": "Sélectionnez le premier/dernier élément",
     "expand": "Processus : réduire/développer un groupe ou une catégorie, ou sélectionner un parent/enfant",
     "details": "Processus : ouvrir les détails",
-    "copyName": "Copier le nom de la sélection, tel que l’affiche la colonne du nom",
-    "copyDetails": "Copier les détails de la sélection : pour un processus, comme dans le volet Détails ; dans les autres listes, toutes les colonnes affichées",
+    "copyName": "Copier le nom de la sélection",
+    "copyDetails": "Copier les détails de la sélection",
     "endTable": "Processus : terminer la sélection, avec confirmation",
     "endDirect": "Processus : terminer la sélection sans confirmation",
     "clear": "Effacer la sélection ; effacez d’abord la recherche de processus si elle est active.",
@@ -145,7 +142,7 @@
   },
   "hotkey": {
     "title": "Afficher ou masquer Argus",
-    "desc": "Fonctionne dans la plupart des programmes. Une combinaison comporte généralement Ctrl, Alt ou Win plus une touche ordinaire ; chaque côté d’un modificateur fonctionne.",
+    "desc": "Fonctionne dans la plupart des programmes.",
     "help": "Appuyez et relâchez une combinaison de touches pour l’enregistrer. Esc annule ; Retour arrière désactive le raccourci.",
     "recording": "Appuyez sur une nouvelle combinaison de touches…",
     "change": "Modifier",
@@ -155,12 +152,12 @@
     "rerecord": "Enregistrer à nouveau",
     "done": {
       "saved": "Enregistré. Le raccourci est maintenant {keys}",
-      "off": "Le raccourci est désactivé. La combinaison est conservée ; rallumez-le avec l’interrupteur."
+      "off": "Le raccourci est désactivé ; rallumez-le avec l’interrupteur."
     },
     "unknownKey": "Cette touche",
     "hint": {
       "order": "Maintenez d’abord les modificateurs (Ctrl, Alt, Shift ou Win), puis appuyez sur l’autre touche.",
-      "multipleKeys": "Une seule touche ordinaire : un raccourci global est Ctrl, Alt, Shift ou Win plus une seule autre touche, donc deux touches ordinaires ne peuvent pas être combinées.",
+      "multipleKeys": "Un raccourci global ne peut comporter qu’une seule touche ordinaire.",
       "lockKey": "Le verrouillage des majuscules, le verrouillage numérique et le verrouillage du défilement ne font pas partie d’une combinaison et sont ignorés.",
       "maybeTaken": "Si rien ne se passe après avoir appuyé sur une combinaison, Windows ou une autre application l’utilise peut-être."
     },
@@ -179,7 +176,7 @@
     },
     "issue": {
       "invalid": "La combinaison n’est pas reconnue.",
-      "noKey": "Un raccourci global ne peut pas être composé uniquement de touches de modification ; ajoutez une touche ordinaire. Windows ne distingue pas les touches Ctrl, Alt, Shift et Win gauches et droites.",
+      "noKey": "Un raccourci global ne peut pas être composé uniquement de touches de modification ; ajoutez une touche ordinaire.",
       "unsupported": "{key} ne peut pas être utilisé dans un raccourci global.",
       "lockKey": "Le verrouillage des majuscules, le verrouillage numérique et le verrouillage du défilement ne peuvent pas faire partie d’une combinaison.",
       "needsModifier": "Une combinaison nécessite Ctrl, Alt ou Win (sauf F13–F24 et Shift+F1–F11). D’autres combinaisons Shift uniquement interféreraient avec la saisie dans chaque application.",
@@ -189,8 +186,8 @@
     }
   },
   "privilege": {
-    "desc": "Permet à Argus exécuté en tant qu’utilisateur standard de gérer les processus système, d’appliquer automatiquement des règles, de collecter le trafic réseau par processus et les lectures et écritures de disque, de rechercher les verrous de fichiers, de lire les informations du disque SMART, de contrôler les services et de fermer les connexions IPv4 TCP. L’installation et la désinstallation nécessitent l’autorisation de l’administrateur.",
-    "statusDesc": "Argus se connecte automatiquement au service pendant son exécution. Les colonnes réseau sont masquées lorsque la collecte réseau n’est pas disponible ; chaque règle affiche ses résultats en dessous.",
+    "desc": "Permet à Argus exécuté en tant qu’utilisateur standard de gérer les processus et services système, et de collecter les données qui nécessitent des droits d’administrateur.",
+    "statusDesc": "Argus se connecte automatiquement au service pendant son exécution.",
     "state": {
       "busy": "En attente de l’autorisation de l’administrateur ou travail sur le service…",
       "checking": "Vérification de l’état du service…",
@@ -215,7 +212,7 @@
     },
     "uninstall": {
       "title": "Désinstaller le service privilégié ?",
-      "body": "Le Gestionnaire des tâches Windows est d’abord restauré, puis le service en arrière-plan est arrêté et supprimé. Si la restauration échoue, la désinstallation s’arrête. Argus continue de fonctionner et les opérations sur les processus et services système sont de nouveau limitées par les droits actuels. La désinstallation nécessite une autorisation d’administrateur.",
+      "body": "Le Gestionnaire des tâches Windows est d’abord restauré, puis le service en arrière-plan est arrêté et supprimé. Les opérations sur les processus et services système sont ensuite limitées par les droits actuels. La désinstallation nécessite une autorisation d’administrateur.",
       "confirm": "Désinstaller le service",
       "action": "Désinstaller"
     },
@@ -229,7 +226,7 @@
       "notice": "Le service privilégié est endommagé et ne peut pas démarrer. Consultez Paramètres → Autorisations.",
       "view": "Voir"
     },
-    "deletePending": "Le service a été désinstallé. Windows supprimera son inscription lorsque les autres programmes auront fermé leurs handles sur ce service. Fermez les programmes qui l’affichent, comme la console Services, puis actualisez l’état ; un redémarrage de Windows termine également la suppression.",
+    "deletePending": "Le service a été désinstallé. Windows termine la suppression une fois fermés les programmes qui l’affichent, comme la console Services ; actualisez l’état pour vérifier. Un redémarrage de Windows la termine également.",
     "repair": {
       "title": "Réparer le service privilégié ?",
       "body": "L’enregistrement d’autorisation est perdu ; le compte pour lequel le service était autorisé ne peut pas être confirmé. La réparation réinstalle les fichiers du service et autorise le service pour le compte Windows actuel ; si le remplacement du Gestionnaire des tâches est activé, le Gestionnaire des tâches Windows est d’abord restauré.",
@@ -239,7 +236,7 @@
   },
   "taskManager": {
     "title": "Remplacer le Gestionnaire des tâches",
-    "desc": "Permet à Ctrl+Shift+Esc et à d’autres raccourcis Gestionnaire des tâches d’ouvrir Argus. Désactivé par défaut ; l’outil de récupération autonome ne dépend pas de l’interface ou du service. La mise à jour du service privilégié met également à jour le remplacement et le maintient activé ; la désinstallation du service restaure Gestionnaire des tâches Windows.",
+    "desc": "Permet à Ctrl+Shift+Esc et aux autres raccourcis du Gestionnaire des tâches d’ouvrir Argus.",
     "confirm": {
       "title": "Remplacer le Gestionnaire des tâches ?",
       "body": "Ctrl+Shift+Esc et les autres accès au Gestionnaire des tâches ouvriront Argus. La modification concerne tout le PC ; les autres comptes continueront à ouvrir le Gestionnaire des tâches Windows. L’activation nécessite une autorisation d’administrateur. Si Argus ne démarre pas, une tentative d’ouverture du Gestionnaire des tâches Windows est effectuée. Conservez l’outil de récupération autonome pour pouvoir restaurer le réglage si l’interface ou le service ne fonctionne plus."
@@ -268,7 +265,7 @@
   "motion": {
     "window": {
       "title": "Transitions de fenêtres",
-      "desc": "Estompez la fenêtre lors de son affichage, de son masquage, de sa réduction ou de sa restauration. Désactivez-la pour laisser Windows ou un autre gestionnaire de fenêtres gérer les transitions. Suit le paramètre d’effets d’animation Windows par défaut."
+      "desc": "Estompez la fenêtre lors de son affichage, de son masquage, de sa réduction ou de sa restauration. Suit le paramètre d’effets d’animation Windows par défaut."
     },
     "ui": {
       "title": "Animations de l’interface",
@@ -276,7 +273,7 @@
     },
     "chart": {
       "title": "Animations des graphiques",
-      "desc": "Une fréquence d’images plus élevée améliore la fluidité mais utilise plus de ressources : « Fluide » occupe environ 10 %–15 % d’un cœur et « Équilibré » environ la moitié. « Économie d’énergie » déplace la courbe d’un pixel entier à la fois ; les petits graphiques avancent donc par à-coups.",
+      "desc": "Une fréquence d’images plus élevée améliore la fluidité mais utilise plus de ressources.",
       "fluid": "Fluide ({fps} fps)",
       "balanced": "Équilibré ({fps} fps)",
       "pixel": "Économie d’énergie (pas de pixel)",
@@ -284,7 +281,7 @@
     },
     "acceleration": {
       "title": "Accélération matérielle",
-      "desc": "Par défaut, le GPU dessine l’interface. Une fois l’option désactivée, le CPU la dessine et Argus n’utilise plus le GPU. Utile si l’interface saccade lorsque le GPU est saturé, ou pour éviter qu’Argus sollicite le GPU. L’utilisation du CPU augmente ; si nécessaire, les animations des graphiques peuvent être réduites. S’applique immédiatement, sans redémarrage.",
+      "desc": "Une fois l’option désactivée, le CPU dessine l’interface à la place du GPU et son utilisation augmente.",
       "error": "Impossible de changer l’accélération matérielle : {error}"
     }
   },
@@ -292,28 +289,28 @@
     "intervalDesc": "Des intervalles plus courts donnent des graphiques plus fins mais font que Argus lui-même utilise plus de ressources.",
     "minimized": {
       "title": "Actualisation lorsque la fenêtre est réduite",
-      "desc": "Intervalle de collecte lorsque la fenêtre est réduite. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
     },
     "tray": {
       "title": "Actualisation dans la zone de notification",
-      "desc": "Intervalle de collecte lorsque la fenêtre est masquée dans la zone de notification ; l’icône et son infobulle suivent le même rythme. Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder les règles pour les nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
     },
     "background": {
       "error": "Impossible d’enregistrer le taux de rafraîchissement : {error}"
     },
     "releaseHidden": {
       "title": "Libérer la mémoire lorsque la fenêtre est masquée",
-      "desc": "Lorsque la fenêtre reste réduite ou masquée dans la zone de notification pendant cette durée, Argus libère les images des graphiques et rend la mémoire inutilisée à Windows. L’échantillonnage et l’historique continuent. À la réouverture, les graphiques sont d’abord redessinés, ce qui peut prendre un instant.",
+      "desc": "Lorsque la fenêtre reste réduite ou masquée dans la zone de notification pendant cette durée, Argus libère la mémoire des graphiques. La réouverture peut alors prendre un instant.",
       "option": "Après {minutes} min",
       "never": "Jamais"
     },
     "netUnit": {
       "title": "Unité de vitesse réseau",
-      "desc": "Les octets correspondent à l’unité de vitesse du disque ; les bits correspondent aux vitesses de liaison de l’adaptateur réseau et aux forfaits haut débit. La vue réseau sur la page Performances affiche les deux."
+      "desc": "Les octets correspondent à l’unité de vitesse du disque ; les bits correspondent aux vitesses de liaison de l’adaptateur réseau et aux forfaits haut débit."
     },
     "history": {
       "title": "Enregistrer l’historique",
-      "on": "Enregistre les ressources utilisées et les processus les plus chargés toutes les 5 secondes, ou selon l’intervalle de la fenêtre réduite ou de la zone de notification s’il est plus long. Les données restent uniquement sur ce PC et sont consultables dans Historique.",
+      "on": "Enregistre normalement toutes les 5 secondes les ressources utilisées et les processus les plus chargés. Les données restent uniquement sur ce PC.",
       "off": "Désactivé. Les enregistrements existants sont toujours supprimés selon les limites de conservation, ou peuvent être effacés maintenant.",
       "error": "Impossible de modifier le paramètre d’historique : {error}",
       "saved": "Historique enregistré",
@@ -330,7 +327,7 @@
       "clearError": "Impossible d’effacer l’historique : {error}",
       "record": {
         "title": "Éléments enregistrés",
-        "desc": "Tout ce qui peut être enregistré est activé par défaut ; les mesures qui nécessitent le service privilégié sont enregistrées dès qu’il est disponible.",
+        "desc": "Les mesures qui nécessitent le service privilégié sont enregistrées dès qu’il est disponible.",
         "always": "Mesures du système",
         "alwaysDesc": "Totaux du CPU, de la mémoire, des disques, du réseau, du GPU et de la batterie",
         "alwaysBadge": "Toujours enregistré",
@@ -361,7 +358,7 @@
         "processes20": "Environ 20 (par défaut)",
         "processes40": "Environ 40",
         "processes0": "Tous les processus actifs",
-        "estimate": "Avec cette sélection, une journée complète d’enregistrement occupe environ {size} ; rien n’est enregistré lorsqu’Argus n’est pas lancé ou que le PC est en veille."
+        "estimate": "Avec cette sélection, une journée complète d’enregistrement occupe environ {size}."
       },
       "limit": {
         "title": "Limites de conservation",
@@ -392,8 +389,7 @@
         "full": "Conserver tous les enregistrements de 5 secondes",
         "minute7": "Une par minute après 7 jours",
         "minute30": "Une par minute après 30 jours",
-        "fullDesc": "Chaque image de 5 secondes est conservée.",
-        "mergedDesc": "Les jours regroupés conservent la moyenne, le maximum et les processus les plus actifs de chaque minute, pour environ un huitième de la taille ; les variations brèves au sein d’une minute ne sont plus conservées.",
+        "mergedDesc": "Les jours regroupés conservent la moyenne, le maximum et les processus les plus actifs de chaque minute, pour environ un huitième de la taille.",
         "confirmTitle": "Regrouper les enregistrements anciens ?",
         "confirmBody": {
           "one": "Les enregistrements de plus de {count} jour seront regroupés en une image par minute, en ne conservant que les moyennes, les maximums et les processus les plus actifs. Cette action est irréversible.",
@@ -484,7 +480,7 @@
     },
     "current": "Version actuelle {version} · {build}",
     "detail": {
-      "ready": "L’installation nécessite l’autorisation de l’administrateur. Argus se ferme pendant l’installation ; le programme d’installation affiche uniquement sa progression et redémarre Argus une fois l’opération terminée.",
+      "ready": "L’installation nécessite l’autorisation de l’administrateur. Argus se ferme pendant l’installation et redémarre une fois l’opération terminée.",
       "portable": "La version portable ne se met pas à jour automatiquement. Téléchargez la nouvelle version depuis la page de publication.",
       "downloaded": "Téléchargé {received} depuis {source}.",
       "downloadedOf": "Téléchargé {received} de {total} à partir de {source}.",
@@ -497,11 +493,11 @@
     "check": "Rechercher des mises à jour",
     "auto": {
       "title": "Rechercher automatiquement les mises à jour",
-      "desc": "Vérifie environ 1 minute après le démarrage, puis une fois par jour. Les nouvelles versions sont téléchargées en arrière-plan et ne sont installées qu’après confirmation."
+      "desc": "Vérifie une fois par jour. Les nouvelles versions sont téléchargées en arrière-plan et ne sont installées qu’après confirmation."
     },
     "whatsNew": {
       "title": "Afficher les nouveautés après la mise à jour",
-      "desc": "Affiche les nouveautés lors de la première ouverture après une mise à jour, une fois par version. Si cette option est désactivée, seul un avis en bas à droite indique la fin de la mise à jour.",
+      "desc": "Si cette option est désactivée, seul un avis en bas à droite indique la fin de la mise à jour.",
       "view": "Voir les changements de cette version"
     },
     "channel": {
@@ -512,7 +508,7 @@
     },
     "route": {
       "label": "Source de téléchargement",
-      "desc": "Les proxys GitHub sont gérés par des tiers et peuvent voir l’adresse IP de ce PC et les fichiers qu’il télécharge. Les signatures de l’installateur couvrent également le numéro de version, de sorte qu’un proxy ne peut pas falsifier une mise à jour ou faire passer une ancienne version pour une nouvelle.",
+      "desc": "Les proxys GitHub sont exploités par des tiers, qui peuvent voir l’adresse IP de ce PC et les fichiers téléchargés. Les programmes d’installation doivent passer la vérification de signature et de version.",
       "auto": "Automatique (GitHub, miroir officiel, puis proxys)",
       "direct": "GitHub uniquement",
       "proxy": "Via le proxy GitHub uniquement"
@@ -531,7 +527,7 @@
     },
     "star": {
       "title": "Rappel d’étoile",
-      "desc": "Affiche une fois par jour, en bas à droite de la fenêtre, une carte invitant à attribuer une étoile sur GitHub. L’option se désactive automatiquement après l’ouverture de GitHub depuis la carte ou le choix de « Ne plus rappeler »."
+      "desc": "Affiche une fois par jour, en bas à droite de la fenêtre, une carte invitant à attribuer une étoile sur GitHub."
     }
   },
   "about": {
@@ -588,12 +584,12 @@
     },
     "log": {
       "title": "Journal",
-      "desc": "Enregistre l’environnement d’exécution, l’état des fonctionnalités, les étapes ayant échoué, les codes d’erreur et les chemins réels des fichiers ou dossiers associés. Stocké localement, avec jusqu’à 1 MB par fichier et 3 journaux précédents. Les lignes de commande, les informations d’identification et le contenu des fichiers sont exclus. Utilisez cette entrée pour localiser les journaux de diagnostic pour les rapports de bogues.",
+      "desc": "Les journaux de diagnostic restent sur ce PC et ne contiennent ni lignes de commande, ni informations d’identification, ni contenu de fichiers. Joignez le journal à tout rapport de problème ; avant de le publier, vérifiez si ses chemins contiennent des noms d’utilisateur.",
       "open": "Ouvrir le dossier des journaux"
     },
     "diagnostics": {
       "title": "Informations de diagnostic",
-      "desc": "Copie la version actuelle, l’état d’exécution, le matériel et les paramètres d’affichage pour les coller dans un rapport de problème. Les informations manquantes sont indiquées comme inconnues.",
+      "desc": "Copie la version actuelle, l’état d’exécution, le matériel et les paramètres d’affichage pour les coller dans un rapport de problème.",
       "copy": "Copier les informations de diagnostic",
       "unknown": "Inconnu",
       "version": "Version complète d’Argus",
@@ -621,7 +617,7 @@
   },
   "sensors": {
     "title": "Capteurs du noyau",
-    "desc": "L’activation de cette option vérifie PawnIO, installe le pilote officiel s’il est manquant ou obsolète et le démarre si nécessaire. L’autorisation d’administrateur est requise. Installez et démarrez d’abord le service privilégié Argus. La désactivation de cette option arrête uniquement la collecte du capteur Argus.",
+    "desc": "Activez d’abord le service privilégié. L’installation, la mise à jour ou le démarrage du pilote PawnIO nécessite une autorisation d’administrateur. La désactivation arrête la lecture des capteurs du noyau par Argus ; le pilote reste installé.",
     "off": "Désactivé ; Les capteurs Windows restent disponibles.",
     "driver": "Site Web PawnIO",
     "preparing": "Préparation du pilote. Confirmez la demande d’autorisation d’administrateur si elle apparaît ; la première installation nécessite le téléchargement de fichiers."
@@ -643,15 +639,15 @@
   },
   "appearance": {
     "scaleTitle": "Échelle de l’interface",
-    "scaleDesc": "Redimensionnez le texte, les icônes et les contrôles de 80 % à 150 % (par défaut : 100 %). Les modifications s’appliquent immédiatement et sont enregistrées automatiquement.",
+    "scaleDesc": "Redimensionnez le texte, les icônes et les contrôles de 80 % à 150 %.",
     "fontTitle": "Taille de la police",
-    "fontDesc": "Taille de police de base : 11 à 20 px (par défaut : 13 px). Les titres et le texte secondaire sont mis à l’échelle proportionnellement. Se combine avec la mise à l’échelle de l’interface.",
+    "fontDesc": "Taille de police de base : 11 à 20 px. Les titres et le texte secondaire sont mis à l’échelle proportionnellement.",
     "reset": "Réinitialiser",
     "saveFailed": "Impossible d’enregistrer les préférences d’interface. Vérifiez que le dossier de configuration est accessible en écriture."
   },
   "leaks": {
     "title": "Alertes de fuites de ressources",
-    "desc": "Surveille le nombre de handles et de processus enfants de chaque processus, et signale sur la page Processus les programmes qui semblent perdre des handles ou des processus.",
+    "desc": "Signale sur la page Processus les programmes qui semblent perdre des handles ou des processus.",
     "restore": {
       "one": "Rétablir {count} programme ignoré",
       "many": "Rétablir {count} programmes ignorés",

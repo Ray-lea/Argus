@@ -39,6 +39,14 @@
     ClearErrors
   ${EndIf}
 !endif
+
+  ; An update replaces argus.exe, and the refresh above argus.ico, under the
+  ; same names. Explorer caches icons by path and index, so the shortcuts on
+  ; the desktop, in Start and pinned to the taskbar, the taskbar button and
+  ; the Apps list would keep the previous version's icon. SHCNE_ASSOCCHANGED
+  ; makes the shell drop its icon cache; SHCNF_FLUSHNOWAIT starts delivering
+  ; it before returning without waiting on a window that does not respond.
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x3000, p 0, p 0)'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

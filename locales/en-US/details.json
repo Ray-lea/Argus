@@ -8,8 +8,8 @@
     "copy": "Copy PC specifications as text",
     "copyWhat": "PC specifications",
     "copyPart": "{kind}: {name}",
-    "selectTip": "Click an app or process in the list to see its details here; click it again to deselect it.",
-    "closeTip": "The details pane stays open by default. Click {icon} at the top right of the window to collapse it.",
+    "selectTip": "Select an app or process to see its details. Select it again to clear the selection.",
+    "closeTip": "Use {icon} in the page toolbar to collapse the pane.",
     "tips": "Tips",
     "tipsCollapse": "Collapse tips",
     "tipsExpand": "Expand tips",
@@ -36,8 +36,7 @@
     "health": "Health {percent}%"
   },
   "exited": {
-    "title": "Process has exited",
-    "hint": "Select another process in the list to see its details."
+    "title": "Process has exited"
   },
   "group": {
     "count": {
@@ -92,7 +91,7 @@
   "netNeedsAdmin": "Run Argus as administrator to view",
   "threads": "Threads",
   "handles": "Handles",
-  "noAccess": "Couldn't open this process to read its command line and user name. Run Argus as administrator to view them.",
+  "noAccess": "Command line and user information are unavailable with current permissions. Try running Argus as administrator.",
   "product": "Product",
   "version": "Version",
   "copy": {

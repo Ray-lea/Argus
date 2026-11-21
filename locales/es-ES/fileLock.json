@@ -1,6 +1,6 @@
 {
   "title": "¿Qué utiliza el archivo?",
-  "intro": "Si al eliminar o mover un archivo aparece «Archivo en uso», busque aquí los procesos que lo utilizan. También puede arrastrar el archivo a la ventana de Argus.",
+  "intro": "Suelte un archivo o carpeta en la ventana para comprobarlo.",
   "dropZone": "Suelte archivos o carpetas en la ventana, o",
   "pickFile": "Seleccionar archivo",
   "pickFolder": "Seleccionar carpeta",
@@ -31,20 +31,20 @@
   "showProcess": "Mostrar en Procesos",
   "end": "Finalizar tarea",
   "checked": {
-    "one": "Restart Manager ha comprobado {count} archivo. {handles}",
-    "many": "Restart Manager ha comprobado {count} archivos. {handles}",
-    "other": "Restart Manager ha comprobado {count} archivos. {handles}"
+    "one": "Se comprobó {count} archivo. {handles}",
+    "many": "Se comprobaron {count} archivos. {handles}",
+    "other": "Se comprobaron {count} archivos. {handles}"
   },
   "handles": {
     "service": {
-      "one": "El servicio privilegiado ha comprobado {count} identificador de archivo, incluidos los de carpetas.",
-      "many": "El servicio privilegiado ha comprobado {count} identificadores de archivo, incluidos los de carpetas.",
-      "other": "El servicio privilegiado ha comprobado {count} identificadores de archivo, incluidos los de carpetas."
+      "one": "El servicio privilegiado comprobó {count} identificador.",
+      "many": "El servicio privilegiado comprobó {count} identificadores.",
+      "other": "El servicio privilegiado comprobó {count} identificadores."
     },
     "local": {
-      "one": "Se ha comprobado localmente {count} identificador de archivo, incluidos los de carpetas.",
-      "many": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas.",
-      "other": "Se han comprobado localmente {count} identificadores de archivo, incluidos los de carpetas."
+      "one": "Se comprobó {count} identificador localmente.",
+      "many": "Se comprobaron {count} identificadores localmente.",
+      "other": "Se comprobaron {count} identificadores localmente."
     },
     "unfinished": "La consulta de identificadores no ha finalizado."
   },
@@ -52,10 +52,10 @@
   "limitReached": "Se alcanzó el límite de consultas.",
   "serviceHint": "Habilite el servicio privilegiado en Configuración para verificar más procesos del sistema.",
   "unchecked": {
-    "one": "Restart Manager no pudo comprobar {count} archivo adicional, posiblemente por los permisos o por cambios en el archivo.",
-    "many": "Restart Manager no pudo comprobar {count} archivos adicionales, posiblemente por los permisos o por cambios en los archivos.",
-    "other": "Restart Manager no pudo comprobar {count} archivos adicionales, posiblemente por los permisos o por cambios en los archivos."
+    "one": "No se pudo comprobar {count} archivo más.",
+    "many": "No se pudieron comprobar {count} archivos más.",
+    "other": "No se pudieron comprobar {count} archivos más."
   },
   "truncated": "La carpeta tiene demasiados archivos; solo se comprobaron los primeros {count}.",
-  "footerHint": "La consulta de identificadores también detecta carpetas utilizadas como directorio de trabajo actual; los procesos protegidos pueden seguir siendo inaccesibles."
+  "footerHint": "Los resultados pueden omitir archivos en uso por procesos protegidos."
 }

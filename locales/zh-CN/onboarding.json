@@ -36,11 +36,11 @@
     "autostart": "登录 Windows 时启动",
     "autostartHint": "在托盘中静默启动，不显示窗口。",
     "closeToTray": "关闭窗口时保留在托盘",
-    "closeToTrayHint": "关闭这一项后，关闭窗口即退出 Argus。",
+    "closeToTrayHint": "关闭此项后，关闭窗口即退出 Argus。",
     "minimizedInterval": "最小化时的刷新间隔",
     "minimizedIntervalHint": "默认 5 秒；更短的间隔会增加后台开销。",
     "trayInterval": "后台常驻时的刷新间隔",
-    "trayIntervalHint": "隐藏到托盘后按此间隔采样；长于 5 秒时，历史记录随之变稀。",
+    "trayIntervalHint": "长于 5 秒时，历史记录随之变稀。",
     "hotkey": "按 {hotkey} 可随时显示或隐藏 Argus，可在设置中更改。",
     "hotkeyOff": "显示或隐藏 Argus 的全局快捷键已停用，可在设置中重新开启。",
     "hotkeyTaken": "{shortcut} 已被 Windows 或其他程序（包括另一个正在运行的 Argus）占用，可在设置中更换组合键。",
@@ -59,7 +59,7 @@
     "routeAuto": "自动",
     "routeDirect": "仅连接 GitHub",
     "routeProxy": "仅使用加速代理",
-    "proxyNotice": "加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件；签名校验保证代理无法篡改更新。",
+    "proxyNotice": "加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件；安装包须通过签名与版本号校验。",
     "unavailable": "此版本不支持应用内更新。"
   },
   "privilege": {

@@ -5,11 +5,11 @@
     "processHint": "隐藏 Windows 系统组件及额外隐藏名单中的进程，保留始终显示名单。仅影响列表显示。",
     "networkHint": "隐藏系统进程的连接及 PID 为 0 的无所属进程记录。仅影响列表显示。",
     "edit": "编辑隐藏规则",
-    "description": "按 Windows 组件信息识别系统进程。两页共用以下规则，隐藏开关分别保存。",
+    "description": "进程页和连接页共用以下规则，分别保存隐藏开关。",
     "keep": "始终显示",
-    "keepHint": "即使属于系统进程，也保留这些程序。此名单优先于额外隐藏。",
+    "keepHint": "优先于系统进程和“额外隐藏”规则。",
     "hide": "额外隐藏",
-    "hideHint": "开启隐藏时一并隐藏这些程序。留空时仅隐藏系统进程。",
+    "hideHint": "仅在开启“隐藏系统进程”时生效。",
     "namesHint": "填写程序文件名，以逗号或分号分隔，不区分大小写，每项名单最多 128 个。",
     "invalid": "请填写有效的程序文件名，不含路径或通配符，每项名单最多 128 个。",
     "reset": "恢复默认规则",
@@ -20,12 +20,12 @@
   "countersPending": "正在读取该进程的资源计数。",
   "refreshPending": "正在更新进程数据，当前显示最近一次成功读取的数值。",
   "diskUnavailable": {
-    "pending": "暂无磁盘读数：刚出现的进程要到下一次刷新才有读数。",
-    "enable": "暂无磁盘读数：系统未直接提供该数据，需由特权服务读取，可在设置中启用特权服务。",
-    "update": "暂无磁盘读数：特权服务版本与 Argus 不一致，需在设置中更新服务。",
-    "start": "暂无磁盘读数：特权服务已停止，可在设置中启动服务。",
-    "service": "暂无磁盘读数：未能从特权服务读取，可在设置中查看服务状态。",
-    "unavailable": "暂无磁盘读数：暂时无法读取每个进程的磁盘计数。"
+    "pending": "新进程通常在下次刷新后显示磁盘读数。",
+    "enable": "在设置中启用特权服务，可查看进程的磁盘读数。",
+    "update": "特权服务版本不兼容，请在设置中更新后查看磁盘读数。",
+    "start": "特权服务已停止，请在设置中启动后查看磁盘读数。",
+    "service": "未能读取磁盘数据，请在设置中检查特权服务状态。",
+    "unavailable": "暂无此进程的磁盘读数。"
   },
   "serviceHost": "服务主机：{names}",
   "webView": {
@@ -44,7 +44,7 @@
   "total": "{count} 个进程",
   "totalHidden": "{total} ({count} 个隐藏)",
   "filtered": "列表已按搜索内容筛选",
-  "orderHeld": "排序已暂停：行位置保持不变，读数照常刷新。移开指针或关闭菜单、对话框后重新排序。",
+  "orderHeld": "排序已暂停，读数照常刷新。移开指针或关闭菜单、对话框后恢复排序。",
   "groupIn": "{user} · {group}",
   "groupPlace": "{index} / {total}",
   "column": {
@@ -122,7 +122,7 @@
     },
     "elevated": {
       "label": "已提升",
-      "title": "进程是否以管理员权限（提升的令牌）运行。"
+      "title": "进程是否以管理员权限运行。"
     },
     "commandLine": {
       "label": "命令行",
@@ -166,7 +166,7 @@
     },
     "basePriority": {
       "label": "基本优先级",
-      "title": "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。"
+      "title": "通常显示优先级类别，介于两类之间的基本优先级显示为数值。"
     },
     "workingSet": {
       "label": "工作集",
@@ -325,9 +325,9 @@
     "acpiTemperature": "ACPI 热区温度"
   },
   "memoryScope": {
-    "vital": "整机已用物理内存：总内存减去可用内存，包含使用中与已修改的部分。进程行显示各自的专用工作集，合计会小于此值。详见使用指南的“内存统计口径”。",
-    "header": "上方百分比为整机已用物理内存的占比；各行为专用工作集，即进程独占且驻留在物理内存中的部分，应用组与分类按此合计。详见使用指南的“内存统计口径”。",
-    "section": "该分类各进程专用工作集的合计。整机占用还包括共享页、内核与驱动、页表、使用中的系统缓存和已修改页，因此高于各分类之和。详见使用指南的“内存统计口径”。"
+    "vital": "整机已用物理内存为总量减去可用内存，包括使用中和已修改的内存。",
+    "header": "百分比为整机物理内存占用率。进程行显示专用工作集，分组显示成员合计。",
+    "section": "此分类的专用工作集合计。共享内存和系统内存另计。"
   },
   "columns": {
     "choose": "选择列",
@@ -343,7 +343,7 @@
     "sortAscending": "升序排序",
     "sortDescending": "降序排序",
     "hide": "隐藏“{name}”列",
-    "description": "勾选要显示的列；拖动右侧列表或表头可调整顺序。",
+    "description": "拖动右侧列表项或表头可调整列顺序。",
     "networkUnavailable": "已选网络列将在采集可用时显示。",
     "gpuUnavailable": "未检测到 GPU，已选 GPU 列暂不显示。",
     "category": {
@@ -367,15 +367,15 @@
     "selectionSummary": "已选 {count} 列",
     "virtualAliases": "虚拟内存 虚拟字节 地址预留"
   },
-  "basePriorityBetween": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级，介于{below}与{above}之间。",
-  "basePriorityCustom": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级。",
+  "basePriorityBetween": "Windows 设置的基本优先级，介于{below}与{above}之间。",
+  "basePriorityCustom": "Windows 为此进程设置的基本优先级。",
   "leak": {
     "kind": {
       "handles": "句柄泄漏",
       "children": "子进程累积",
       "orphans": "残留进程"
     },
-    "mark": "{count} 项可能的资源泄漏，单击查看",
+    "mark": "{count} 项可能的资源泄漏",
     "handlesExtreme": "持有 {handles} 个句柄，远超一般进程",
     "handlesExtremeGrowing": "持有 {handles} 个句柄，远超一般进程；{span}内仍增加了 {growth} 个",
     "handlesGrowing": "{span}内句柄数持续上升，增加了 {growth} 个，当前 {handles} 个",

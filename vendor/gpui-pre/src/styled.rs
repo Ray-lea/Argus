@@ -748,6 +748,14 @@ pub trait Styled: Sized {
         self
     }
 
+    /// Argus patch: paints this element and its children moved, scaled and
+    /// faded by `transform` about the centre of its bounds, while layout and
+    /// hit testing stay in place (see [`crate::PaintTransform`]). Applied by divs.
+    fn paint_transform(mut self, transform: crate::LiveTransformValue) -> Self {
+        self.style().paint_transform = Some(crate::PaintTransform(transform));
+        self
+    }
+
     /// Sets the grid columns of this element.
     fn grid_cols(mut self, cols: u16) -> Self {
         self.style().grid_cols = Some(GridTemplate {

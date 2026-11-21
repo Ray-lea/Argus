@@ -258,7 +258,7 @@
     "limitHistory": "Enregistré",
     "limitLogged": "Enregistré",
     "limitNever": "Non enregistré",
-    "limitHistoryHint": "L’historique verrouillé par le matériel peut être antérieur à cette session Argus.",
+    "limitHistoryHint": "Les événements peuvent être antérieurs au démarrage d’Argus.",
     "columnCoreType": "Type",
     "pCore": "Cœur P",
     "eCore": "Cœur E",
@@ -296,7 +296,7 @@
     "inUseDescription": "Mémoire utilisée par les processus, les pilotes ou le système d’exploitation",
     "modifiedDescription": "Mémoire dont le contenu doit être écrit sur le disque avant de pouvoir être utilisé à d’autres fins",
     "standbyDescription": "Mémoire contenant des données mises en cache et du code qui n’est pas activement utilisé",
-    "freeDescription": "Mémoire qui n’est pas actuellement utilisée et qui sera réutilisée en premier lorsque les processus, les pilotes ou le système d’exploitation auront besoin de plus de mémoire",
+    "freeDescription": "Mémoire inutilisée disponible immédiatement",
     "compressedDescription": "Mémoire qui conserve des pages de processus sous forme compressée, comptée dans la mémoire utilisée",
     "compressedSaving": "La mémoire compressée stocke environ {stored} de données, ce qui fait économiser {saved} de mémoire au système",
     "inUse": "Utilisée",
@@ -315,7 +315,7 @@
   },
   "disk": {
     "performanceUnavailable": "Les compteurs de performances du disque sont temporairement indisponibles.",
-    "volumeCounters": "Les statistiques de performances proviennent du volume {volumes} et couvrent ce volume.",
+    "volumeCounters": "Les mesures concernent uniquement le volume {volumes}.",
     "volumeCountersMultiple": "Les débits de lecture et d’écriture et le temps de réponse sont agrégés pour les volumes {volumes} ; le temps d’activité est indisponible.",
     "title": "Disque {index}",
     "titleVolumes": "Disque {index} ({volumes})",
@@ -344,8 +344,7 @@
     "unavailable": "Aucun détail sur le disque.",
     "held": {
       "title": "Lecture automatique suspendue",
-      "reason": "Argus ne s’est pas fermé normalement après la dernière lecture des détails du disque. Windows a peut-être planté, l’alimentation a peut-être été coupée ou le processus Argus a été arrêté. Pour que le problème ne se répète pas à chaque démarrage, cette page ne lit plus automatiquement à l’ouverture.",
-      "note": "La lecture envoie des requêtes en lecture seule au pilote de stockage. Si Argus continue de fonctionner normalement pendant un certain temps après une lecture, la lecture automatique reprend. Si Argus se ferme de nouveau anormalement, cet avis s’affichera au prochain démarrage.",
+      "reason": "Argus s’est fermé de façon inattendue pendant ou peu après la dernière lecture. Si Windows a planté à ce moment-là, un nouvel essai pourrait provoquer le même problème. La lecture automatique reprend si Argus fonctionne normalement pendant 2 minutes après la lecture.",
       "read": "Lire quand même"
     },
     "openFailed": "Ce disque n’a pas pu être ouvert.",
@@ -390,8 +389,8 @@
       "unsupported": "Le périphérique ou le pilote ne fournit pas d’informations lisibles sur l’état du disque.",
       "unavailable": "Les informations sur l’état du disque sont temporairement indisponibles.",
       "invalidData": "Le périphérique a renvoyé des données d’intégrité du disque non valides.",
-      "serviceUnavailable": "Plus d’informations sur SMART nécessitent le service privilégié. Installez-le et démarrez-le dans Paramètres → Autorisations.",
-      "serviceOutdated": "Plus d’informations sur SMART nécessitent un service privilégié mis à jour. Mettez-le à jour dans Paramètres → Autorisations.",
+      "serviceUnavailable": "Pour afficher plus de données SMART, installez et démarrez le service privilégié dans Paramètres → Autorisations.",
+      "serviceOutdated": "Pour afficher plus de données SMART, mettez à jour le service privilégié dans Paramètres → Autorisations.",
       "smartDisabled": "SMART est désactivé sur cet appareil."
     },
     "device": "Informations sur le périphérique",
@@ -533,7 +532,7 @@
     "mac": "Adresse physique"
   },
   "gpu": {
-    "utilizationHint": "L’utilisation globale correspond au moteur le plus chargé, complétée par les compteurs de moteurs par processus et l’utilisation du cœur GPU NVIDIA. Les graphiques des moteurs natifs et les mesures du pilote peuvent couvrir des périmètres et des intervalles d’échantillonnage différents.",
+    "utilizationHint": "L’utilisation globale se base sur le moteur le plus sollicité, complété par les mesures des processus et du pilote. Les sources peuvent couvrir des activités et des périodes différentes.",
     "utilSource": {
       "windows": "Moteurs Windows",
       "process": "Moteurs de processus",
@@ -556,12 +555,12 @@
     "vidHint": "Tension d’alimentation cible demandée par le GPU intégré (VID).",
     "unsliceClock": "Fréquence de la logique partagée",
     "unsliceClockHint": "Horloge de la logique partagée (Unslice) du GPU intégré. Elle peut être arrêtée indépendamment de celle des blocs de calcul graphique.",
-    "clockHint": "Les mesures du noyau sont calculées à partir du multiplicateur actuel et du pas nominal officiel, sans inclure l’écart mesuré de l’horloge de référence. Les fréquences sont affichées numériquement, y compris zéro ; la fréquence minimale décrit la plage prise en charge.",
+    "clockHint": "Les mesures du noyau sont calculées à partir du multiplicateur et du pas nominal. Un cœur en veille ou à l’arrêt peut afficher 0 MHz. La fréquence minimale de fonctionnement est une caractéristique du matériel.",
     "sharedMemoryClock": "Horloge de la mémoire partagée",
-    "sharedMemoryClockHint": "Horloge de la mémoire système partagée par le GPU intégré. Les lectures du noyau utilisent la configuration du contrôleur et la référence nominale, sans mesurer l’écart de l’horloge de référence. Le taux de transfert DDR est environ le double de cette valeur.",
+    "sharedMemoryClockHint": "Les mesures du noyau sont calculées à partir de la configuration du contrôleur mémoire et de l’horloge de référence nominale. Le débit de transfert DDR est environ le double de cette fréquence.",
     "gtActivity": "Activité GT",
     "mediaActivity": "Activité multimédia",
-    "activityHint": "Calculé à partir des compteurs d’activité matérielle sur l’intervalle d’échantillonnage. Sa portée diffère du temps d’occupation du moteur Windows.",
+    "activityHint": "L’activité matérielle et l’utilisation du moteur par Windows couvrent des activités différentes.",
     "minCoreClock": "Horloge de fonctionnement min.",
     "referenceClock": "Horloge de référence",
     "performanceLimits": "Limites de performances",
@@ -602,7 +601,7 @@
     "maxCoreClock": "Fréquence maximale du cœur",
     "powerState": "État d’alimentation",
     "lowPower": "En veille",
-    "lowPowerHint": "Le GPU est inactif et dans un état de faible consommation. Lire la température, le ventilateur, la fréquence, la tension et la puissance le réveillerait. Ces mesures sont donc suspendues et s’affichent de nouveau dès que le GPU est utilisé.",
+    "lowPowerHint": "Les mesures de température, de vitesse du ventilateur, de fréquence, de tension et de puissance reprendront au réveil du GPU.",
     "powerSource": "Source de la mesure de puissance",
     "sources": {
       "nvml": "NVIDIA NVML · carte",
@@ -654,6 +653,6 @@
     "model": "Modèle",
     "serial": "Numéro de série",
     "manufactured": "Date de fabrication",
-    "wornNote": "La capacité de charge complète est tombée à {percent} % de la capacité nominale. Une charge complète ne durera donc pas aussi longtemps que sur une batterie neuve."
+    "wornNote": "La capacité à pleine charge est tombée à {percent}% de la capacité nominale."
   }
 }

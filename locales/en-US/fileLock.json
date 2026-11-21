@@ -1,6 +1,6 @@
 {
   "title": "What's using the file",
-  "intro": "If deleting or moving a file fails because it's in use, find the processes holding it here. Files can also be dropped onto the Argus window.",
+  "intro": "Drop a file or folder onto the window to check it.",
   "dropZone": "Drop files or folders onto the window, or",
   "pickFile": "Choose file",
   "pickFolder": "Choose folder",
@@ -29,17 +29,17 @@
   "showProcess": "Show in Processes",
   "end": "End task",
   "checked": {
-    "one": "Restart Manager checked {count} file. {handles}",
-    "other": "Restart Manager checked {count} files. {handles}"
+    "one": "Checked {count} file. {handles}",
+    "other": "Checked {count} files. {handles}"
   },
   "handles": {
     "service": {
-      "one": "The privileged service checked {count} file handle, including directory handles.",
-      "other": "The privileged service checked {count} file handles, including directory handles."
+      "one": "The privileged service checked {count} handle.",
+      "other": "The privileged service checked {count} handles."
     },
     "local": {
-      "one": "Checked {count} file handle locally, including directory handles.",
-      "other": "Checked {count} file handles locally, including directory handles."
+      "one": "Checked {count} handle locally.",
+      "other": "Checked {count} handles locally."
     },
     "unfinished": "The handle query didn't finish."
   },
@@ -47,9 +47,9 @@
   "limitReached": "The query limit was reached.",
   "serviceHint": "Enable the privileged service in Settings to check more system processes.",
   "unchecked": {
-    "one": "Restart Manager couldn't check {count} more file, possibly because of permissions or a change to the file.",
-    "other": "Restart Manager couldn't check {count} more files, possibly because of permissions or changes to the files."
+    "one": "Couldn’t check {count} other file.",
+    "other": "Couldn’t check {count} other files."
   },
   "truncated": "The folder has too many files; only the first {count} were checked.",
-  "footerHint": "The handle query also finds folders in use as a working directory; protected processes may still be out of reach."
+  "footerHint": "File use by protected processes may be missing from results."
 }

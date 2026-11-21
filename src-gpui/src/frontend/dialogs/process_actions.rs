@@ -758,18 +758,23 @@ impl Desktop {
                                                                 .size(px(14.)),
                                                         ),
                                                 )
-                                                .child(
-                                                    div()
-                                                        .mt(px(3.))
-                                                        .min_h(px(36.))
-                                                        .text_size(theme::font(12.))
-                                                        .line_height(relative(1.5))
-                                                        .text_color(p.muted)
-                                                        .child(label(if elevated {
-                                                            "tasks.administratorHint"
-                                                        } else {
-                                                            "tasks.standardHint"
-                                                        })),
+                                                .when(
+                                                    elevated
+                                                        || boolean(&self.data["info"], "elevated"),
+                                                    |d| {
+                                                        d.child(
+                                                            div()
+                                                                .mt(px(3.))
+                                                                .text_size(theme::font(12.))
+                                                                .line_height(relative(1.5))
+                                                                .text_color(p.muted)
+                                                                .child(label(if elevated {
+                                                                    "tasks.administratorHint"
+                                                                } else {
+                                                                    "tasks.standardHint"
+                                                                })),
+                                                        )
+                                                    },
                                                 ),
                                         ),
                                 )

@@ -31,7 +31,9 @@
   },
   "menu": {
     "end": "End {name}",
-    "close": "Close this connection"
+    "close": "Close this connection",
+    "copyLocal": "Copy local address",
+    "copyRemote": "Copy remote address"
   },
   "copied": {
     "local": "local address",
@@ -52,5 +54,5 @@
   "noMatch": "No matching connections",
   "noMatchPort": "No matching connections: no program is using port {port}",
   "clearFilter": "Clear filters",
-  "note": "Updates every 2 seconds. Double-click a row to go to its process."
+  "note": "Double-click a connection to go to its process."
 }

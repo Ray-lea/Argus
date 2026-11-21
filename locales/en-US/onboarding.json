@@ -40,7 +40,7 @@
     "minimizedInterval": "Refresh rate while minimized",
     "minimizedIntervalHint": "Default 5 seconds; shorter intervals cost more in the background.",
     "trayInterval": "Refresh rate in the tray",
-    "trayIntervalHint": "Samples at this interval while hidden in the system tray. Intervals over 5 seconds make history records less frequent.",
+    "trayIntervalHint": "Intervals over 5 seconds make history records less frequent.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus; it can be changed in Settings.",
     "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings.",
     "hotkeyTaken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination in Settings.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automatic",
     "routeDirect": "GitHub only",
     "routeProxy": "GitHub proxy only",
-    "proxyNotice": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. The signature check keeps them from tampering with updates.",
+    "proxyNotice": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. Installers must pass signature and version checks.",
     "unavailable": "This version can't update itself."
   },
   "privilege": {

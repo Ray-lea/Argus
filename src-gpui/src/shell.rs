@@ -189,10 +189,23 @@ pub fn draw_badge(rgba: &mut [u8], size: u32, color: [u8; 4]) {
     }
 }
 
+/// The app icon at the notification area's size. LoadIcon would give the
+/// large size, which the shell and `create_badged_icon` shrink until the dots
+/// run together; at this size Windows picks the icon's pixel master for it.
+/// Shared, so the repeated loads on every update return the same handle.
 unsafe fn base_tray_icon() -> windows::core::Result<HICON> {
     unsafe {
-        LoadIconW(Some(GetModuleHandleW(None)?.into()), PCWSTR(1usize as _))
-            .or_else(|_| LoadIconW(None, IDI_APPLICATION))
+        let size = GetSystemMetrics(SM_CXSMICON).max(16);
+        LoadImageW(
+            Some(GetModuleHandleW(None)?.into()),
+            PCWSTR(1usize as _),
+            IMAGE_ICON,
+            size,
+            size,
+            LR_SHARED,
+        )
+        .map(|icon| HICON(icon.0))
+        .or_else(|_| LoadIconW(None, IDI_APPLICATION))
     }
 }
 

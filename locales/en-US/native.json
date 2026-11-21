@@ -72,7 +72,7 @@
       "ipv4Only": "Only IPv4 TCP connections can be closed"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager couldn't check the target; the results below come from a handle search"
+      "restartManagerFailed": "Couldn't finish checking the files; the results come only from a handle search"
     },
     "handles": {
       "tooMany": "Up to 32 paths can be checked at a time, with a total length of at most 8 KiB",

@@ -40,7 +40,7 @@ export default function FileDrop() {
       {!result && !checking && <span className="file-hint" aria-hidden="true" />}
       <div className="a-dialog file-drop-dialog">
         <h3>谁在占用文件</h3>
-        <p className="a-dialog-text">删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程。</p>
+        {result && <p className="a-dialog-text">可将文件或文件夹拖到窗口中查询。</p>}
         <FileLock
           result={result}
           checking={checking}

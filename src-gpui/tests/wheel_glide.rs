@@ -5,7 +5,8 @@
 use gpui_test::{
     AppContext, Context, InteractiveElement, IntoElement, Modifiers, ParentElement, Render,
     ScrollDelta, ScrollEvent, ScrollHandle, ScrollSource, StatefulInteractiveElement, Styled,
-    TestAppContext, TouchPhase, VisualTestContext, Window, div, point, px,
+    TestAppContext, TouchPhase, UniformListScrollHandle, VisualTestContext, Window, div, point, px,
+    uniform_list,
 };
 
 /// A 50 px box over 254 device pixels of content at 1.5x: it scrolls by
@@ -77,4 +78,37 @@ fn a_wheel_glide_leaves_a_bottom_edge_between_device_pixels() {
         "the glide up from the bottom stopped at {:?}, not near {target:?}",
         scroll.offset().y
     );
+}
+
+#[test]
+fn uniform_list_uses_the_scroll_handles_bottom_edge() {
+    struct Rows(UniformListScrollHandle);
+    impl Render for Rows {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                uniform_list("rows", 12, |range, _, _| {
+                    range.map(|_| div().h(px(30.))).collect()
+                })
+                .track_scroll(&self.0)
+                .w(px(100.))
+                .h(px(398. / 1.5)),
+            )
+        }
+    }
+
+    let mut cx = TestAppContext::single();
+    let rows = UniformListScrollHandle::new();
+    let scroll = rows.0.borrow().base_handle.clone();
+    let window = cx.add_window(|_, _| Rows(rows.clone()));
+    cx.update_window(window.into(), |_, window, cx| {
+        window.set_scale_factor(1.5);
+        // The last row and the scrollbar must agree where a glide starts.
+        scroll.scroll_to_bottom();
+        window.refresh();
+        window.draw(cx).clear(cx);
+        assert!(scroll.max_offset().y > px(90.));
+        assert_eq!(scroll.offset().y, -scroll.max_offset().y);
+        assert_eq!(rows.is_scrolled_to_end(), Some(true));
+    })
+    .unwrap();
 }

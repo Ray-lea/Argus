@@ -2657,6 +2657,21 @@ impl Interactivity {
                     tab_group = self.tab_index;
                 }
 
+                // Argus patch: a transform carried in the style
+                // (`Styled::paint_transform`) moves, scales and fades the whole
+                // paint (shadows, background, border, children) about the
+                // centre of the bounds, as `Window::with_live_transform` does;
+                // layout and hitboxes stay in place.
+                let live = style.paint_transform.map(|transform| {
+                    window.invalidator.debug_assert_paint();
+                    let scale_factor = window.scale_factor();
+                    window.next_frame.scene.push_live_transform(
+                        crate::LiveTransform::new(transform.0),
+                        bounds.center().scale(scale_factor),
+                        scale_factor,
+                    );
+                });
+
                 window.with_element_opacity(style.opacity, |window| {
                     window.pending_hover_background = hover_background;
                     style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
@@ -2749,6 +2764,9 @@ impl Interactivity {
                         });
                     });
                 });
+                if live.is_some() {
+                    window.next_frame.scene.pop_transform();
+                }
 
                 ((), element_state)
             },

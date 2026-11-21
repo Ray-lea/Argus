@@ -44,6 +44,8 @@
 
 ## 测试实例
 
+模拟快照下，表格导出结果由 `inspectLayout.tableCsv` 提供，见[界面验证](gpui.md)。
+
 | 变量 | 取值 | 作用 |
 |---|---|---|
 | `ARGUS_TEST_HISTORY` | `1` | 允许测试实例记录历史。带 `--test` 或 `--fixture` 的实例默认不写历史；`perf-native.mjs --history` 自动设置 |

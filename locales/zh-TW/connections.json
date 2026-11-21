@@ -31,7 +31,9 @@
   },
   "menu": {
     "end": "結束 {name}",
-    "close": "中斷此連線"
+    "close": "中斷此連線",
+    "copyLocal": "複製本機位址",
+    "copyRemote": "複製遠端位址"
   },
   "copied": {
     "local": "本機位址",
@@ -51,6 +53,6 @@
   "noMatch": "沒有相符的連線",
   "noMatchPort": "沒有相符的連線：沒有程式在使用連接埠 {port}",
   "clearFilter": "清除篩選",
-  "note": "每 2 秒重新整理一次。連按兩下某列可移至對應的處理程序。",
+  "note": "按兩下連線即可前往對應的處理程序。",
   "unowned": "無所屬處理程序"
 }

@@ -3,6 +3,7 @@ use super::*;
 mod body;
 mod cell_text;
 mod cells;
+mod export;
 mod groups;
 /// A category heading's tint and its count's, for lists drawn like the
 /// process list's groups (the history page's table).
@@ -2931,19 +2932,16 @@ impl Desktop {
         key: &str,
         cx: &App,
     ) -> Option<(String, String)> {
-        let state = self.table.as_ref()?.read(cx);
-        let delegate = state.delegate();
+        let delegate = self.exportable_table(cx)?;
         let field = delegate.fields.iter().find(|field| field.key == key)?;
         Some((field.label.clone(), copied_cell(row, field, delegate.bits)))
     }
     /// Every column of the current table with `row`'s cell in it, as the
     /// table shows them.
     pub(in crate::frontend) fn row_cells(&self, row: &Row, cx: &App) -> Vec<(String, String)> {
-        let Some(table) = self.table.as_ref() else {
+        let Some(delegate) = self.exportable_table(cx) else {
             return Vec::new();
         };
-        let state = table.read(cx);
-        let delegate = state.delegate();
         delegate
             .fields
             .iter()

@@ -16,6 +16,38 @@ use refineable::Refineable;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Argus patch: a transform carried in a style ([`Styled::paint_transform`]),
+/// with the same meaning as a [`crate::LiveTransform`]'s value. Being part of
+/// the style, it also reaches an element that another component builds from a
+/// style refinement, such as a dialog surface whose opacity and shadow the
+/// component sets itself. A div paints its shadows, background, border and
+/// children inside it, about the centre of its bounds; layout and hit testing
+/// stay where they are. It is never serialized.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PaintTransform(pub crate::LiveTransformValue);
+
+impl Serialize for PaintTransform {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_unit()
+    }
+}
+
+impl<'de> Deserialize<'de> for PaintTransform {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <()>::deserialize(deserializer).map(|()| Self::default())
+    }
+}
+
+impl JsonSchema for PaintTransform {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "PaintTransform".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "null" })
+    }
+}
+
 /// Use this struct for interfacing with the 'debug_below' styling from your own elements.
 /// If a parent element has this style set on it, then this struct will be set as a global in
 /// GPUI.
@@ -300,6 +332,10 @@ pub struct Style {
 
     /// The opacity of this element
     pub opacity: Option<f32>,
+
+    /// Argus patch: a transform this element is painted inside, about the
+    /// centre of its bounds (see [`PaintTransform`]).
+    pub paint_transform: Option<PaintTransform>,
 
     /// The grid columns of this element
     /// Roughly equivalent to the Tailwind `grid-cols-<number>`
@@ -816,6 +852,7 @@ impl Default for Style {
             text: TextStyleRefinement::default(),
             mouse_cursor: None,
             opacity: None,
+            paint_transform: None,
             grid_rows: None,
             grid_cols: None,
             grid_location: None,
