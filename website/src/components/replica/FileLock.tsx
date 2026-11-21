@@ -157,7 +157,7 @@ export default function FileLock({
           </>
         )}
       </div>
-      {footer && <p className="a-lock-foot">句柄查询可发现当前目录占用；受保护进程仍可能无法检查。</p>}
+      {footer && <p className="a-lock-foot">受保护进程的文件占用可能无法显示。</p>}
     </div>
   );
 }
