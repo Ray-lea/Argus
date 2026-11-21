@@ -107,6 +107,7 @@ impl Desktop {
         let history = boolean(settings, "history");
         let toggle = self.setting_toggle(
             "history",
+            "settings.data.history.title",
             history,
             "set_history_enabled",
             "enabled",

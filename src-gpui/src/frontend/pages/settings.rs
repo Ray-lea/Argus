@@ -451,10 +451,14 @@ impl Desktop {
             .into_any_element()
     }
 
-    /// A settings toggle running a command with `{argument: !value}`.
+    /// A settings toggle running a command with `{argument: !value}`,
+    /// named for assistive technology by the catalog text `title`: the title
+    /// of the setting it switches.
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::frontend) fn setting_toggle(
         &self,
         id: &str,
+        title: &str,
         value: bool,
         command: &str,
         argument: &str,
@@ -465,7 +469,7 @@ impl Desktop {
         let argument = argument.to_owned();
         self.toggle(
             id.to_owned(),
-            id.to_owned(),
+            label(title),
             value,
             false,
             move |this, on, window, cx| {
@@ -996,6 +1000,7 @@ impl Desktop {
             "startup" => {
                 let autostart = self.setting_toggle(
                     "autostart",
+                    "settings.startup.autostart.title",
                     boolean(settings, "autostart"),
                     "set_autostart",
                     "enabled",
@@ -1954,7 +1959,10 @@ impl Desktop {
                                     .appearance(false)
                                     .px_0()
                                     .py_0()
-                                    .text_size(theme::font(13.)),
+                                    .text_size(theme::font(13.))
+                                    // Named, for assistive technology, by
+                                    // the setting it changes.
+                                    .aria_label(label(title)),
                             ),
                     )
                     .child(self.spin_button(setting, id, &group, focused || held, window, cx))
@@ -2796,6 +2804,7 @@ impl Desktop {
             .into_any_element();
         let whats_new = self.setting_toggle(
             "whatsNew",
+            "settings.update.whatsNew.title",
             boolean(settings, "whatsNew"),
             "set_whats_new",
             "enabled",

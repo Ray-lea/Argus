@@ -292,6 +292,7 @@ impl Desktop {
         );
         let card = self.setting_toggle(
             "trayCard",
+            "components.tray.card.title",
             settings["trayCard"].as_bool().unwrap_or(true),
             "set_tray",
             "card",
@@ -300,6 +301,7 @@ impl Desktop {
         );
         let close = self.setting_toggle(
             "closeToTray",
+            "settings.startup.closeToTray.title",
             boolean(settings, "closeToTray"),
             "set_close_to_tray",
             "value",
@@ -1079,13 +1081,33 @@ impl Desktop {
         let monitor: DesktopMonitor =
             serde_json::from_value(settings["desktopMonitor"].clone()).unwrap_or_default();
         let command = "set_desktop_monitor";
-        let mut toggle = |id: &str, value: bool, field: &str| {
-            self.setting_toggle(id, value, command, field, window, cx)
+        let mut toggle = |id: &str, title: &str, value: bool, field: &str| {
+            self.setting_toggle(id, title, value, command, field, window, cx)
         };
-        let enabled = toggle("desktopMonitor", monitor.enabled, "enabled");
-        let topmost = toggle("desktopTopmost", monitor.topmost, "topmost");
-        let locked = toggle("desktopLocked", monitor.locked, "locked");
-        let through = toggle("desktopClickThrough", monitor.click_through, "clickThrough");
+        let enabled = toggle(
+            "desktopMonitor",
+            "components.desktop.title",
+            monitor.enabled,
+            "enabled",
+        );
+        let topmost = toggle(
+            "desktopTopmost",
+            "components.desktop.topmost.title",
+            monitor.topmost,
+            "topmost",
+        );
+        let locked = toggle(
+            "desktopLocked",
+            "components.desktop.locked.title",
+            monitor.locked,
+            "locked",
+        );
+        let through = toggle(
+            "desktopClickThrough",
+            "components.desktop.clickThrough.title",
+            monitor.click_through,
+            "clickThrough",
+        );
         let opacity = self.select(
             "components-desktop-opacity",
             label("components.desktop.opacity.title"),
@@ -1335,6 +1357,7 @@ impl Desktop {
         let command = "set_taskbar_monitor";
         let enabled = self.setting_toggle(
             "taskbarMonitor",
+            "components.taskbar.title",
             monitor.enabled,
             command,
             "enabled",
