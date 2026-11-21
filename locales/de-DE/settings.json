@@ -16,7 +16,7 @@
   "refreshStatus": "Status aktualisieren",
   "vitals": {
     "title": "Ressourcenübersicht",
-    "desc": "Der Automatikmodus reserviert Platz für die Übersicht und 10 Prozesszeilen. Reicht der Platz nicht, wird die Übersicht eingeklappt. Eingeklappte Gruppen und Filter beeinflussen diese Entscheidung nicht.",
+    "desc": "Der Automatikmodus klappt die Übersicht ein, wenn im Fenster nicht genug Platz ist.",
     "auto": "Automatisch",
     "show": "Immer anzeigen",
     "hide": "Ausgeblendet"
@@ -27,23 +27,21 @@
   },
   "userGroups": {
     "title": "Prozesse nach Benutzer gruppieren",
-    "desc": "Gruppiert die Prozessliste nach angemeldeten Benutzern; Ansichten, Kategorien, Sortierung und Suche funktionieren innerhalb jeder Gruppe unverändert. Der automatische Modus gruppiert nur, solange mehrere Benutzer angemeldet sind, getrennte Sitzungen eingeschlossen. Sitzungen ohne Benutzer, etwa die der Systemdienste, erscheinen unter „System“.",
+    "desc": "Der automatische Modus gruppiert nur, solange mehrere Benutzer angemeldet sind, getrennte Sitzungen eingeschlossen.",
     "auto": "Automatisch",
     "on": "Immer gruppieren",
     "off": "Nie gruppieren"
   },
   "holdOrder": {
     "title": "Sortierung beim Daraufzeigen anhalten",
-    "desc": "Solange sich der Zeiger über der Prozessliste befindet, bleiben die Zeilen an ihrem Platz und die Werte werden weiter aktualisiert; verlässt der Zeiger die Liste, werden sie neu sortiert. Ist die Option deaktiviert, wird die Liste bei jeder Aktualisierung neu sortiert. Solange ein Kontextmenü oder Dialog geöffnet ist, bleiben die Zeilen weiterhin an ihrem Platz."
+    "desc": "Die Werte werden weiter aktualisiert; verlässt der Zeiger die Liste, werden die Zeilen neu sortiert."
   },
   "language": {
     "title": "Anzeigesprache",
-    "desc": "Gilt sofort, auch für das Menü im Infobereich und Meldungen. „Wie Windows“ übernimmt die Windows-Anzeigesprache.",
     "error": "Die Sprache konnte nicht geändert werden: {error}"
   },
   "theme": {
     "title": "Design",
-    "desc": "„Wie Windows“ übernimmt den Windows-App-Modus und wechselt mit dem System zwischen hell und dunkel.",
     "system": "Wie Windows",
     "light": "Hell",
     "dark": "Dunkel",
@@ -51,14 +49,14 @@
   },
   "navigation": {
     "title": "Navigationsposition",
-    "desc": "Im Seitenbereich werden standardmäßig nur Symbole angezeigt. Mit der Schaltfläche ☰ in der oberen linken Ecke wird es erweitert, um Seitennamen anzuzeigen. Die obere Navigation zeigt die Seiten als Registerkarten unterhalb der Symbolleiste an.",
+    "desc": "Im Seitenbereich werden standardmäßig nur Symbole angezeigt; die Schaltfläche ☰ oben links erweitert ihn.",
     "side": "Seitlich",
     "top": "Oben"
   },
   "startup": {
     "autostart": {
       "title": "Bei Windows-Anmeldung starten",
-      "desc": "Startet im Infobereich. Das Fenster lässt sich über die Tastenkombination oder das Symbol im Infobereich öffnen.",
+      "desc": "Startet im Infobereich.",
       "error": "Die Starteinstellung konnte nicht geändert werden: {error}"
     },
     "startPage": {
@@ -67,19 +65,18 @@
     },
     "trayPage": {
       "title": "Aus dem Infobereich öffnen",
-      "desc": "Gilt beim erneuten Öffnen über den Infobereich oder eine Tastenkombination. Beim Wiederherstellen eines minimierten Fensters bleibt die aktuelle Seite erhalten.",
+      "desc": "Gilt beim erneuten Öffnen über den Infobereich oder eine Tastenkombination.",
       "current": "Aktuelle Seite beibehalten",
       "default": "Standardseite öffnen"
     },
     "closeToTray": {
       "title": "Beim Schließen im Infobereich behalten",
-      "desc": "Argus läuft weiter und lässt sich schnell wieder öffnen. Im ausgeblendeten Zustand gilt das Intervall für den Infobereich; Verlauf und Regeln bleiben aktiv.",
+      "desc": "Im ausgeblendeten Zustand bleiben Verlauf und Regeln aktiv.",
       "error": "Die Einstellung konnte nicht gespeichert werden: {error}"
     }
   },
   "shortcuts": {
     "title": "Tastenkombinationen",
-    "desc": "Tastenkombinationen für Seitenwechsel, das Anhalten der Datenaktualisierung und Prozessaktionen anzeigen.",
     "view": "Tastenkombinationen anzeigen",
     "scope": "Tastenkombinationen für häufige Aktionen, Seitennavigation und Listen.",
     "global": "Global",
@@ -91,7 +88,7 @@
     "searchTitle": "Prozesse suchen",
     "search": "Gehen Sie zur Prozesssuche. Die /-Taste funktioniert auch, wenn Sie nichts eingeben. Wenn Sie auf der Seite „Prozesse“ einen Buchstaben oder eine Ziffer eingeben, wird eine Suche gestartet.",
     "runTask": "Starten Sie auf jeder Seite ein Programm oder öffnen Sie eine Datei oder einen Ordner. Nicht während der Texteingabe.",
-    "pause": "Halten Sie gedrückt, um Aktualisierungen von Prozessen oder Leistung anzuhalten; loslassen, um fortzufahren. Eine manuelle Pause bleibt bestehen.",
+    "pause": "Halten Sie gedrückt, um Aktualisierungen von Prozessen oder Leistung anzuhalten; beim Loslassen gilt wieder der vorherige Zustand.",
     "end": "Beenden Sie den ausgewählten Prozess oder die ausgewählte App-Gruppe mit Bestätigung.",
     "taskManager": "Öffnen Sie Argus, wenn die Task-Manager-Ersetzung aktiviert ist.",
     "close": "Übersicht schließen",
@@ -101,9 +98,12 @@
     "ends": "Wählen Sie das erste / letzte Element aus",
     "expand": "Prozesse: Reduzieren/Erweitern einer Gruppe oder Kategorie oder Auswählen eines übergeordneten/untergeordneten Elements",
     "details": "Prozesse: Details öffnen",
+    "copyName": "Prozesse: Namen der Auswahl kopieren",
+    "copyDetails": "Prozesse: Details der Auswahl kopieren",
     "endTable": "Prozesse: Auswahl beenden, mit Bestätigung",
     "endDirect": "Prozesse: Auswahl ohne Bestätigung beenden",
     "clear": "Auswahl löschen; löschen Sie zuerst die Prozesssuche, falls eine aktiv ist.",
+    "scrollSideways": "Mit dem Zeiger über einer Liste waagerecht zu den übrigen Spalten scrollen",
     "history": "Wenn das Verlaufsdiagramm den Fokus hat",
     "time": "Wählen Sie den vorherigen / nächsten Zeitpunkt aus",
     "timeJump": "Um einen größeren Zeitraum zurück- oder vorwärtsgehen",
@@ -142,7 +142,7 @@
   },
   "hotkey": {
     "title": "Argus ein- oder ausblenden",
-    "desc": "Funktioniert in den meisten Programmen. Eine Kombination besteht normalerweise aus Strg, Alt oder Win plus einer normalen Taste; Jede Seite eines Modifikators funktioniert.",
+    "desc": "Funktioniert in den meisten Programmen.",
     "help": "Drücken Sie eine Tastenkombination und lassen Sie sie wieder los, um sie zu speichern. Esc bricht ab; Mit der Rücktaste wird die Tastenkombination deaktiviert.",
     "recording": "Drücken Sie eine neue Tastenkombination…",
     "change": "Ändern",
@@ -152,12 +152,12 @@
     "rerecord": "Erneut aufnehmen",
     "done": {
       "saved": "Gespeichert. Die Tastenkombination ist jetzt {keys}",
-      "off": "Die Tastenkombination ist deaktiviert und bleibt gespeichert. Sie kann jederzeit mit dem Schalter wieder aktiviert werden."
+      "off": "Die Tastenkombination ist deaktiviert. Sie kann mit dem Schalter wieder aktiviert werden."
     },
     "unknownKey": "Diese Taste",
     "hint": {
       "order": "Halten Sie zuerst die Modifikatoren (Strg, Alt, Umschalt oder Win) gedrückt und drücken Sie dann die andere Taste.",
-      "multipleKeys": "Nur eine gewöhnliche Taste: Eine globale Tastenkombination ist Strg, Alt, Umschalt oder Win plus eine einzelne andere Taste, sodass zwei gewöhnliche Tasten nicht kombiniert werden können.",
+      "multipleKeys": "Eine globale Tastenkombination kann nur eine gewöhnliche Taste enthalten.",
       "lockKey": "Feststelltaste, Num-Taste und Scroll-Taste sind nicht Teil einer Kombination und werden ignoriert.",
       "maybeTaken": "Wenn nach dem Drücken einer Kombination nichts passiert, wird sie möglicherweise von Windows oder einer anderen App verwendet."
     },
@@ -176,7 +176,7 @@
     },
     "issue": {
       "invalid": "Die Kombination wird nicht erkannt.",
-      "noKey": "Eine globale Tastenkombination benötigt neben Modifikatortasten auch eine normale Taste. Windows unterscheidet dabei nicht zwischen linker und rechter Strg-, Alt-, Umschalt- oder Win-Taste.",
+      "noKey": "Eine globale Tastenkombination benötigt neben Modifikatortasten auch eine normale Taste.",
       "unsupported": "{key} kann nicht für eine globale Tastenkombination verwendet werden.",
       "lockKey": "Feststelltaste, Num-Taste und Scroll-Taste können nicht Teil einer Kombination sein.",
       "needsModifier": "Eine Kombination erfordert Strg, Alt oder Win (außer F13–F24 und Umschalt+F1–F11). Andere Nur-Shift-Kombinationen würden das Tippen in jeder App beeinträchtigen.",
@@ -186,8 +186,8 @@
     }
   },
   "privilege": {
-    "desc": "Ermöglicht Argus, das als Standardbenutzer ausgeführt wird, Systemprozesse zu verwalten, Regeln automatisch anzuwenden, Netzwerkverkehr pro Prozess sowie Lese- und Schreibvorgänge auf der Festplatte zu sammeln, Dateisperren zu finden, SMART-Informationen auf der Festplatte zu lesen, Dienste zu steuern und IPv4 TCP-Verbindungen zu schließen. Für die Installation und Deinstallation sind jeweils Administratorrechte erforderlich.",
-    "statusDesc": "Argus verbindet sich während der Ausführung automatisch mit dem Dienst. Ist die Erfassung des Netzwerkverkehrs nicht verfügbar, werden die Netzwerkspalten ausgeblendet. Unter jeder Regel steht ihr Anwendungsergebnis.",
+    "desc": "Ermöglicht Argus, das als Standardbenutzer ausgeführt wird, Systemprozesse und Dienste zu verwalten und Daten zu erfassen, für die Administratorrechte nötig sind.",
+    "statusDesc": "Argus verbindet sich während der Ausführung automatisch mit dem Dienst.",
     "state": {
       "busy": "Warten auf Administratorberechtigung oder Arbeiten am Dienst…",
       "checking": "Dienststatus wird überprüft…",
@@ -212,7 +212,7 @@
     },
     "uninstall": {
       "title": "Privilegierten Dienst deinstallieren?",
-      "body": "Zuerst wird der Windows-Task-Manager wiederhergestellt, dann wird der Hintergrunddienst beendet und entfernt. Schlägt die Wiederherstellung fehl, wird die Deinstallation angehalten. Argus läuft weiter; Aktionen für Systemprozesse und Dienste unterliegen wieder den aktuellen Berechtigungen. Die Deinstallation erfordert eine Administratorfreigabe.",
+      "body": "Zuerst wird der Windows-Task-Manager wiederhergestellt, dann wird der Hintergrunddienst beendet und entfernt. Aktionen für Systemprozesse und Dienste unterliegen danach wieder den aktuellen Berechtigungen. Die Deinstallation erfordert eine Administratorfreigabe.",
       "confirm": "Dienst deinstallieren",
       "action": "Deinstallieren"
     },
@@ -226,7 +226,7 @@
       "notice": "Der privilegierte Dienst ist beschädigt und kann nicht gestartet werden. Siehe Einstellungen → Berechtigungen.",
       "view": "Anzeigen"
     },
-    "deletePending": "Der Dienst wurde deinstalliert. Windows entfernt seine Registrierung, sobald andere Programme ihre Handles auf den Dienst schließen. Schließen Sie Programme, die den Dienst anzeigen, etwa die Konsole „Dienste“, und aktualisieren Sie dann den Status; ein Neustart von Windows schließt das Entfernen ebenfalls ab.",
+    "deletePending": "Der Dienst wurde deinstalliert. Windows schließt das Entfernen ab, sobald Programme geschlossen sind, die den Dienst anzeigen, etwa die Konsole „Dienste“; aktualisieren Sie den Status zur Kontrolle. Ein Neustart von Windows schließt es ebenfalls ab.",
     "repair": {
       "title": "Privilegierten Dienst reparieren?",
       "body": "Der Autorisierungseintrag ist verloren gegangen; das Konto, für das der Dienst autorisiert war, kann nicht bestätigt werden. Die Reparatur installiert die Dienstdateien neu und autorisiert den Dienst für das aktuelle Windows-Konto; ein aktivierter Task-Manager-Ersatz wird zuvor auf den Windows-Task-Manager zurückgesetzt.",
@@ -236,7 +236,7 @@
   },
   "taskManager": {
     "title": "Task-Manager ersetzen",
-    "desc": "Öffnet mit Strg+Umschalt+Esc und anderen Task-Manager-Tastenkombinationen Argus. Standardmäßig deaktiviert; das eigenständige Wiederherstellungstool ist nicht von der Schnittstelle oder dem Dienst abhängig. Durch die Aktualisierung des privilegierten Dienstes wird auch der Ersatz aktualisiert und bleibt aktiviert. Durch die Deinstallation des Dienstes wird Windows-Task-Manager wiederhergestellt.",
+    "desc": "Strg+Umschalt+Esc und andere Task-Manager-Aufrufe öffnen dann Argus.",
     "confirm": {
       "title": "Task-Manager ersetzen?",
       "body": "Strg+Umschalt+Esc und andere Task-Manager-Aufrufe öffnen Argus. Die Änderung gilt für den gesamten PC; andere Konten öffnen weiterhin den Windows-Task-Manager. Die Aktivierung erfordert eine Administratorfreigabe. Schlägt der Start fehl, wird versucht, den Windows-Task-Manager zu öffnen. Bewahren Sie das unabhängige Wiederherstellungsprogramm auf, damit die Wiederherstellung auch ohne Oberfläche oder Dienst möglich bleibt."
@@ -265,7 +265,7 @@
   "motion": {
     "window": {
       "title": "Fensterübergänge",
-      "desc": "Blendet das Fenster beim Anzeigen, Ausblenden, Minimieren und Wiederherstellen sanft ein oder aus. Bei deaktivierter Option übernimmt Windows oder ein anderes Fensterverwaltungsprogramm die Übergänge. Folgt standardmäßig der Windows-Einstellung „Animationseffekte“."
+      "desc": "Blendet das Fenster beim Anzeigen, Ausblenden, Minimieren und Wiederherstellen sanft ein oder aus. Folgt standardmäßig der Windows-Einstellung „Animationseffekte“."
     },
     "ui": {
       "title": "Oberflächenanimationen",
@@ -273,7 +273,7 @@
     },
     "chart": {
       "title": "Diagrammanimationen",
-      "desc": "Höhere Bildraten ergeben flüssigere Kurven und benötigen mehr Ressourcen: „Flüssig“ belegt etwa 10 %–15 % eines Kerns, „Ausgewogen“ etwa die Hälfte. „Energiesparend“ verschiebt die Kurve jeweils um ein ganzes Pixel; kleinere Diagramme bewegen sich dadurch in Schritten.",
+      "desc": "Höhere Bildraten ergeben flüssigere Kurven und benötigen mehr Ressourcen.",
       "fluid": "Flüssig ({fps} fps)",
       "balanced": "Ausgewogen ({fps} fps)",
       "pixel": "Energiesparend (Pixelschritte)",
@@ -281,7 +281,7 @@
     },
     "acceleration": {
       "title": "Hardwarebeschleunigung",
-      "desc": "Zeichnet die Oberfläche standardmäßig mit der GPU. Bei deaktivierter Option zeichnet die CPU, und Argus belegt die GPU nicht mehr. Das hilft, wenn die Oberfläche bei voll ausgelasteter GPU ruckelt oder Argus die GPU nicht beanspruchen soll. Die CPU-Auslastung steigt; bei Bedarf lassen sich die Diagrammanimationen reduzieren. Wird sofort wirksam, ohne Neustart.",
+      "desc": "Bei deaktivierter Option zeichnet die CPU statt der GPU die Oberfläche; die CPU-Auslastung steigt.",
       "error": "Die Hardwarebeschleunigung konnte nicht geändert werden: {error}"
     }
   },
@@ -289,28 +289,28 @@
     "intervalDesc": "Kürzere Intervalle ergeben feinere Diagramme, führen aber dazu, dass Argus selbst mehr Ressourcen verbraucht.",
     "minimized": {
       "title": "Intervall bei minimiertem Fenster",
-      "desc": "Erfassungsintervall bei minimiertem Fenster. Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Erfassungsintervall bei ausgeblendetem Fenster im Infobereich. Das Symbol im Infobereich und sein Hinweis werden im gleichen Takt aktualisiert. Längere Intervalle verringern den Hintergrundaufwand, verzögern Regeln für neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
     },
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
     },
     "releaseHidden": {
       "title": "Speicher bei ausgeblendetem Fenster freigeben",
-      "desc": "Wenn das Fenster für diese Dauer minimiert oder im Infobereich verborgen ist, gibt Argus seine Diagrammbilder frei und gibt ungenutzten Speicher an Windows zurück. Datenerfassung und Verlauf laufen weiter. Beim erneuten Öffnen werden die Diagramme zunächst neu gezeichnet, was einen Moment dauern kann.",
+      "desc": "Ist das Fenster für diese Dauer minimiert oder im Infobereich verborgen, gibt Argus den Speicher der Diagramme frei. Das erneute Öffnen kann dann einen Moment dauern.",
       "option": "Nach {minutes} Min.",
       "never": "Nie"
     },
     "netUnit": {
       "title": "Einheit der Netzwerkgeschwindigkeit",
-      "desc": "Bytes entsprechen der Einheit der Festplattengeschwindigkeit; Bits passen zu den Verbindungsgeschwindigkeiten der Netzwerkadapter und den Breitbandplänen. Die Netzwerkansicht auf der Seite „Leistung“ zeigt beides."
+      "desc": "Bytes entsprechen der Einheit der Festplattengeschwindigkeit; Bits passen zu den Verbindungsgeschwindigkeiten der Netzwerkadapter und den Breitbandplänen."
     },
     "history": {
       "title": "Verlauf aufzeichnen",
-      "on": "Zeichnet die Ressourcennutzung und die am stärksten ausgelasteten Prozesse alle 5 Sekunden auf. Bei längerem Intervall im minimierten Zustand oder im Infobereich gilt dieses Intervall. Die Daten bleiben ausschließlich auf diesem PC und sind unter „Verlauf“ verfügbar.",
+      "on": "Zeichnet die Ressourcennutzung und die am stärksten ausgelasteten Prozesse normalerweise alle 5 Sekunden auf. Die Daten bleiben ausschließlich auf diesem PC.",
       "off": "Aus. Vorhandene Datensätze werden weiterhin nach den Aufbewahrungsgrenzen entfernt oder können jetzt gelöscht werden.",
       "error": "Die Verlaufseinstellung konnte nicht geändert werden: {error}",
       "saved": "Gespeicherter Verlauf",
@@ -327,7 +327,7 @@
       "clearError": "Der Verlauf konnte nicht gelöscht werden: {error}",
       "record": {
         "title": "Aufgezeichnete Werte",
-        "desc": "Alles, was aufgezeichnet werden kann, ist standardmäßig aktiv; Werte, die den privilegierten Dienst benötigen, werden aufgezeichnet, sobald er verfügbar ist.",
+        "desc": "Werte, die den privilegierten Dienst benötigen, werden aufgezeichnet, sobald er verfügbar ist.",
         "always": "Systemwerte",
         "alwaysDesc": "Gesamtwerte von CPU, Arbeitsspeicher, Datenträgern, Netzwerk, GPU und Akku",
         "alwaysBadge": "Immer aufgezeichnet",
@@ -358,7 +358,7 @@
         "processes20": "Etwa 20 (Standard)",
         "processes40": "Etwa 40",
         "processes0": "Alle aktiven Prozesse",
-        "estimate": "Mit dieser Auswahl belegt ein ganzer Tag Aufzeichnung etwa {size}; solange Argus nicht läuft oder der PC im Energiesparmodus ist, wird nichts aufgezeichnet."
+        "estimate": "Mit dieser Auswahl belegt ein ganzer Tag Aufzeichnung etwa {size}."
       },
       "limit": {
         "title": "Aufbewahrungsgrenzen",
@@ -387,8 +387,7 @@
         "full": "Alle 5-Sekunden-Aufzeichnungen behalten",
         "minute7": "Nach 7 Tagen eine pro Minute",
         "minute30": "Nach 30 Tagen eine pro Minute",
-        "fullDesc": "Jeder 5-Sekunden-Frame bleibt erhalten.",
-        "mergedDesc": "Zusammengefasste Tage behalten Mittelwert, Höchstwert und die aktivsten Prozesse jeder Minute bei etwa einem Achtel der Größe; kurze Schwankungen innerhalb einer Minute bleiben nicht erhalten.",
+        "mergedDesc": "Zusammengefasste Tage behalten Mittelwert, Höchstwert und die aktivsten Prozesse jeder Minute bei etwa einem Achtel der Größe.",
         "confirmTitle": "Ältere Aufzeichnungen zusammenfassen?",
         "confirmBody": {
           "one": "Aufzeichnungen, die älter als {count} Tag sind, werden zu einem Frame pro Minute zusammengefasst; nur Mittelwerte, Höchstwerte und die aktivsten Prozesse bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
@@ -475,7 +474,7 @@
     },
     "current": "Aktuelle Version {version} · {build}",
     "detail": {
-      "ready": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird während der Installation beendet; das Installationsprogramm zeigt nur den Fortschritt an und startet Argus neu, wenn es fertig ist.",
+      "ready": "Für die Installation ist eine Administratorberechtigung erforderlich. Argus wird währenddessen beendet und danach neu gestartet.",
       "portable": "Die portable Version wird nicht automatisch aktualisiert. Laden Sie die neue Version von der Release-Seite herunter.",
       "downloaded": "{received} von {source} heruntergeladen.",
       "downloadedOf": "{received} von {total} von {source} heruntergeladen.",
@@ -488,11 +487,11 @@
     "check": "Nach Updates suchen",
     "auto": {
       "title": "Automatisch nach Updates suchen",
-      "desc": "Überprüft etwa 1 Minute nach dem Start, dann einmal täglich. Neue Versionen werden im Hintergrund heruntergeladen und erst nach Bestätigung installiert."
+      "desc": "Überprüft einmal täglich. Neue Versionen werden im Hintergrund heruntergeladen und erst nach Bestätigung installiert."
     },
     "whatsNew": {
       "title": "Neuerungen nach dem Update anzeigen",
-      "desc": "Zeigt die Neuerungen beim ersten Öffnen nach einem Update an, einmal pro Version. Bei deaktivierter Option erscheint nur unten rechts ein Hinweis auf das abgeschlossene Update.",
+      "desc": "Bei deaktivierter Option erscheint nur unten rechts ein Hinweis auf das abgeschlossene Update.",
       "view": "Änderungen dieser Version anzeigen"
     },
     "channel": {
@@ -503,7 +502,7 @@
     },
     "route": {
       "label": "Downloadquelle",
-      "desc": "GitHub-Proxys werden von Dritten betrieben und können die IP-Adresse dieses PC und die heruntergeladenen Dateien sehen. Installer-Signaturen decken auch die Versionsnummer ab, sodass ein Proxy ein Update nicht manipulieren oder eine alte Version als neue ausgeben kann.",
+      "desc": "GitHub-Proxys werden von Dritten betrieben. Sie können die IP-Adresse dieses PCs und die heruntergeladenen Dateien sehen. Installationspakete müssen die Signatur- und Versionsprüfung bestehen.",
       "auto": "Automatisch (GitHub, offizieller Spiegel, dann Proxys)",
       "direct": "Nur GitHub",
       "proxy": "Nur über GitHub-Proxy"
@@ -522,7 +521,7 @@
     },
     "star": {
       "title": "Stern-Erinnerung",
-      "desc": "Zeigt einmal täglich unten rechts im Fenster eine Karte mit der Bitte um einen Stern auf GitHub an. Wird automatisch deaktiviert, nachdem GitHub über die Karte geöffnet oder die Erinnerung abgestellt wurde."
+      "desc": "Zeigt einmal täglich unten rechts im Fenster eine Karte mit der Bitte um einen Stern auf GitHub an."
     }
   },
   "about": {
@@ -579,12 +578,12 @@
     },
     "log": {
       "title": "Protokoll",
-      "desc": "Zeichnet die Laufzeitumgebung, den Funktionsstatus, fehlgeschlagene Schritte, Fehlercodes und tatsächliche Pfade zugehöriger Dateien oder Ordner auf. Lokal gespeichert, mit bis zu 1 MB pro Datei und 3 vorherigen Protokollen. Befehlszeilen, Anmeldeinformationen und Dateiinhalte sind ausgeschlossen. Verwenden Sie diesen Eintrag, um Diagnoseprotokolle für Fehlerberichte zu finden.",
+      "desc": "Diagnoseprotokolle bleiben auf diesem PC und enthalten keine Befehlszeilen, Anmeldeinformationen oder Dateiinhalte. Fügen Sie das Protokoll einem Fehlerbericht bei; prüfen Sie vor dem Veröffentlichen, ob die Pfade darin Benutzernamen enthalten.",
       "open": "Protokollordner öffnen"
     },
     "diagnostics": {
       "title": "Diagnoseinformationen",
-      "desc": "Kopiert die aktuelle Version, den Laufzeitstatus sowie Hardware- und Anzeigeeinstellungen für einen Fehlerbericht. Fehlende Angaben werden als unbekannt gekennzeichnet.",
+      "desc": "Kopiert die aktuelle Version, den Laufzeitstatus sowie Hardware- und Anzeigeeinstellungen für einen Fehlerbericht.",
       "copy": "Diagnoseinformationen kopieren",
       "unknown": "Unbekannt",
       "version": "Vollständige Argus-Version",
@@ -612,7 +611,7 @@
   },
   "sensors": {
     "title": "Kernelsensoren",
-    "desc": "Beim Aktivieren wird PawnIO geprüft. Fehlt der Treiber oder ist er veraltet, wird der offizielle Treiber installiert; andernfalls wird er gestartet. Eine Administratorfreigabe ist erforderlich. Installieren und starten Sie zuerst den privilegierten Argus-Dienst. Das Deaktivieren beendet nur die Datenerfassung durch Argus.",
+    "desc": "Aktivieren Sie zuerst den privilegierten Dienst. Für die Installation, Aktualisierung oder den Start des PawnIO-Treibers ist eine Administratorfreigabe erforderlich. Beim Ausschalten beendet Argus die Erfassung der Kernelsensoren; der Treiber bleibt installiert.",
     "off": "Aus; Windows-Sensoren bleiben verfügbar.",
     "driver": "PawnIO-Website",
     "preparing": "Der Treiber wird vorbereitet. Bestätigen Sie eine gegebenenfalls angezeigte Administratorfreigabe. Bei der ersten Installation müssen Dateien heruntergeladen werden."
@@ -634,15 +633,15 @@
   },
   "appearance": {
     "scaleTitle": "Oberflächenskalierung",
-    "scaleDesc": "Ändern Sie die Größe von Text, Symbolen und Steuerelementen von 80 % auf 150 % (Standard: 100 %). Änderungen gelten sofort und werden automatisch gespeichert.",
+    "scaleDesc": "Ändern Sie die Größe von Text, Symbolen und Steuerelementen zwischen 80 % und 150 %.",
     "fontTitle": "Schriftgröße",
-    "fontDesc": "Basisschriftgröße: 11–20 px, standardmäßig 13 px. Überschriften und ergänzende Texte werden proportional angepasst. Die Einstellung kann mit der Oberflächenskalierung kombiniert werden.",
+    "fontDesc": "Basisschriftgröße: 11–20 px. Überschriften und ergänzende Texte werden proportional angepasst.",
     "reset": "Zurücksetzen",
     "saveFailed": "Schnittstelleneinstellungen konnten nicht gespeichert werden. Überprüfen Sie, ob der Konfigurationsordner beschreibbar ist."
   },
   "leaks": {
     "title": "Hinweise auf Ressourcenlecks",
-    "desc": "Beobachtet die Handle- und Unterprozessanzahl jedes Prozesses und markiert auf der Seite „Prozesse“ Programme, die anscheinend Handles oder Prozesse verlieren.",
+    "desc": "Markiert auf der Seite „Prozesse“ Programme, die anscheinend Handles oder Prozesse verlieren.",
     "restore": {
       "one": "{count} ignoriertes Programm wiederherstellen",
       "other": "{count} ignorierte Programme wiederherstellen"

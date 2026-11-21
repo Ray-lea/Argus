@@ -8,8 +8,8 @@
     "copy": "複製規格為文字",
     "copyWhat": "本機規格",
     "copyPart": "{kind}：{name}",
-    "selectTip": "在清單中按一下應用程式或處理程序，即可在此檢視其詳細資料；再次按一下取消選取。",
-    "closeTip": "詳細資料窗格預設常駐，按一下視窗右上角的 {icon} 可收合。",
+    "selectTip": "點選應用程式或處理程序可檢視詳細資料，再次點選可取消選取。",
+    "closeTip": "按一下頁面列的 {icon} 可收合面板。",
     "tips": "操作提示",
     "tipsCollapse": "收合操作提示",
     "tipsExpand": "展開操作提示",
@@ -30,8 +30,7 @@
     "health": "健康度 {percent}%"
   },
   "exited": {
-    "title": "處理程序已結束",
-    "hint": "選取清單中的其他處理程序以檢視詳細資料。"
+    "title": "處理程序已結束"
   },
   "group": {
     "count": "{count} 個處理程序",
@@ -43,6 +42,7 @@
   "section": {
     "process": "處理程序",
     "resources": "資源",
+    "totals": "累計",
     "location": "檔案位置",
     "commandLine": "命令列",
     "version": "檔案版本"
@@ -78,10 +78,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "專用 GPU 記憶體",
   "gpuShared": "共用 GPU 記憶體",
+  "powerTrend": "{level} · 趨勢：{trend}",
   "netNeedsAdmin": "以系統管理員身分執行後可檢視",
   "threads": "執行緒",
   "handles": "控制代碼",
-  "noAccess": "無法開啟此處理程序以讀取命令列和使用者資訊。以系統管理員身分執行 Argus 後可檢視。",
+  "noAccess": "目前的權限無法讀取命令列和使用者資訊，可使用系統管理員權限重試。",
   "product": "產品",
-  "version": "版本"
+  "version": "版本",
+  "copy": {
+    "action": "複製詳細資料（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

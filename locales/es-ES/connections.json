@@ -54,5 +54,5 @@
   "noMatch": "No hay conexiones coincidentes",
   "noMatchPort": "No hay conexiones coincidentes: ningún programa está utilizando el puerto {port}",
   "clearFilter": "Borrar filtros",
-  "note": "Se actualiza cada 2 segundos. Haga doble clic en una fila para ir al proceso correspondiente."
+  "note": "Haga doble clic en una conexión para ir a su proceso."
 }

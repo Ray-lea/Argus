@@ -337,7 +337,7 @@ export function Startup({
           <span>
             {`已启用 ${enabled} / 共 ${items.length} 项`}
           </span>
-          <span>禁用操作与任务管理器的“启动应用”使用同一开关，可重新启用；“所有用户”的项需要管理员权限。</span>
+          <span>禁用后可重新启用。更改“所有用户”的启动项需要管理员权限。</span>
         </footer>
       </div>
     </div>
@@ -349,6 +349,7 @@ type ConnectionCol = "name" | "pid" | "protocol" | "local" | "localPort" | "remo
 export function Connections({
   alive,
   filter,
+  grouped,
   query,
   hidden,
   onShowAll,
@@ -357,6 +358,7 @@ export function Connections({
 }: {
   alive: Process[];
   filter: ConnectionFilter;
+  grouped: boolean;
   query: string;
   /** While system processes are hidden: whether a process is one of them. */
   hidden?: (proc: Process) => boolean;
@@ -365,6 +367,7 @@ export function Connections({
   onMenu: OpenMenu;
 }) {
   const [sort, setSort] = useSort<ConnectionCol>("name");
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<number | null>(null);
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const living = new Set(alive.map((p) => p.pid));
@@ -409,6 +412,39 @@ export function Connections({
     sort.desc,
   );
   const listen = connections.filter((c) => c.state === "listen").length;
+  type Entry = (typeof rows)[number];
+  const groups = new Map<string, Entry[]>();
+  const shown: { entry: Entry; group?: string; count?: number; child?: boolean; pid?: number }[] = [];
+  if (grouped) {
+    for (const entry of rows) {
+      const key = entry.pid === 0 ? "|unowned" : !living.has(entry.pid) || !entry.proc ? "|exited"
+        : (entry.proc.path || entry.proc.exe).toLowerCase();
+      const group = groups.get(key);
+      if (group) group.push(entry);
+      else groups.set(key, [entry]);
+    }
+    for (const [group, members] of groups) {
+      const first = members[0];
+      if (members.length === 1) {
+        shown.push({ entry: first });
+        continue;
+      }
+      const pid = members.every((entry) => entry.pid === first.pid) ? first.pid : undefined;
+      shown.push({ entry: first, group, count: members.length, pid });
+      if (q || opened.has(group)) shown.push(...members.map((entry) => ({ entry, child: true })));
+    }
+  } else {
+    for (const entry of rows) shown.push({ entry });
+  }
+  const toggle = (group: string) => {
+    if (q) return;
+    setOpened((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
   const established = connections.filter((c) => c.state === "established").length;
   const udp = connections.filter((c) => c.protocol === "UDP").length;
   const endpoint = (address: string, p?: number) => (address.includes(":") ? `[${address}]:${p}` : `${address}:${p}`);
@@ -442,8 +478,33 @@ export function Connections({
               ) : (
                 <p className="a-empty">{port !== null ? `没有匹配的连接：没有程序在使用端口 ${port}` : "没有匹配的连接"}</p>
               ))}
-            {rows.map((c) => {
+            {shown.map(({ entry: c, group, count, child, pid }) => {
               const gone = !living.has(c.pid);
+              if (group !== undefined) {
+                const expanded = Boolean(q) || opened.has(group);
+                const name = group === "|unowned" ? "无所属进程" : group === "|exited" ? "已退出" : c.proc?.name;
+                return (
+                  <div key={group} role="row" className="a-tr" onDoubleClick={() => toggle(group)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      onMenu(event, [
+                        { label: expanded ? "折叠" : "展开", disabled: Boolean(q), run: () => toggle(group) },
+                        { label: "转到进程", icon: "goTo", disabled: gone || !pid, run: () => pid && onOpen(pid) },
+                      ]);
+                    }}>
+                    <span role="gridcell" className="a-td a-td-name" title={gone ? undefined : c.proc?.path}>
+                      <button type="button" className="a-fold" aria-expanded={expanded} aria-label={expanded ? "折叠" : "展开"}
+                        disabled={Boolean(q)} onClick={() => toggle(group)} onDoubleClick={(event) => event.stopPropagation()}>
+                        <Icon name="chevronRight" size={12} />
+                      </button>
+                      <ProcessIcon glyph={gone ? "app" : c.proc?.glyph ?? "app"} />
+                      <span className="a-name is-strong">{name}</span>
+                      <span className="a-count">{count}</span>
+                    </span>
+                    <span role="gridcell" className="a-td is-end is-faint a-c-pid">{pid || ""}</span>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={c.index}
@@ -469,7 +530,8 @@ export function Connections({
                     ]);
                   }}
                 >
-                  <span role="gridcell" className="a-td" title={c.proc?.path}>
+                  <span role="gridcell" className="a-td" title={c.proc?.path} style={grouped ? { paddingLeft: child ? 26 : 6 } : undefined}>
+                    {grouped && <span className="a-fold-gap" />}
                     <ProcessIcon glyph={c.proc?.glyph ?? "app"} />
                     <span className="a-cell-text">{c.proc?.exe ?? "PID " + c.pid}</span>
                     {gone && <span className="a-tag">已退出</span>}
@@ -506,7 +568,7 @@ export function Connections({
           <span>
             监听 {listen} · 已连接 {established} · UDP {udp}
           </span>
-          <span>每 2 秒刷新一次。双击某行可转到对应进程。</span>
+          <span>双击连接可转到对应进程。</span>
         </footer>
       </div>
     </div>
@@ -778,7 +840,7 @@ export function History({
           </div>
         </div>
         <p className="a-busy-note">
-          每 5 秒记录 CPU、内存、I/O、GPU 和网络占用最高的进程（最小化或后台常驻时的刷新间隔更长时按该间隔），保留 7 天。
+          通常每 5 秒记录一次，后台采样较慢时按实际间隔记录。最近 10 分钟保留每次采样的读数。
         </p>
       </div>
     </div>
@@ -832,9 +894,9 @@ export function VisibilityDialog({
     >
       <div className="a-dialog-body a-scroll">
         <h3 id="a-dialog-title">编辑隐藏规则</h3>
-        <p className="a-dialog-text">按 Windows 组件信息识别系统进程。两页共用以下规则，隐藏开关分别保存。</p>
-        {field("始终显示", "即使属于系统进程，也保留这些程序。此名单优先于额外隐藏。", keep, setKeep)}
-        {field("额外隐藏", "开启隐藏时一并隐藏这些程序。留空时仅隐藏系统进程。", hide, setHide, "额外隐藏")}
+        <p className="a-dialog-text">进程页和连接页共用以下规则，分别保存隐藏开关。</p>
+        {field("始终显示", "优先于系统进程和“额外隐藏”规则。", keep, setKeep)}
+        {field("额外隐藏", "仅在开启“隐藏系统进程”时生效。", hide, setHide, "额外隐藏")}
         <p className="a-rule-note">填写程序文件名，以逗号或分号分隔，不区分大小写，每项名单最多 128 个。</p>
         {invalid && (
           <p className="a-rule-error" role="alert">
@@ -1077,7 +1139,7 @@ export function Settings({
       <div className="a-settings-body">
         <section>
           <h2>语言与外观</h2>
-          <Setting icon="globe" title="界面语言" desc="立即生效，托盘菜单与提示信息也随之切换。“跟随系统”使用 Windows 的显示语言。">
+          <Setting icon="globe" title="界面语言">
             <Select
               label="界面语言"
               value={languageChoice}
@@ -1092,7 +1154,7 @@ export function Settings({
               options={[{ value: "system", label: "跟随系统" }, ...languages.map(item => ({ value: item.id, label: item.name }))]}
             />
           </Setting>
-          <Setting icon="theme" title="主题" desc="“跟随系统”使用 Windows 的应用模式，系统切换浅色或深色时随之切换。">
+          <Setting icon="theme" title="主题">
             <Segments
               label="主题"
               value={theme}
@@ -1107,7 +1169,7 @@ export function Settings({
           <Setting
             icon={navLeft ? "navSide" : "navTop"}
             title="导航栏位置"
-            desc="侧边导航栏默认仅显示图标，可通过左上角的 ☰ 按钮展开显示页面名称；顶部导航栏以标签形式排列在工具栏下方。"
+            desc="侧边导航栏默认仅显示图标，可单击左上角的 ☰ 展开。"
           >
             <Segments
               label="导航栏位置"
@@ -1119,17 +1181,17 @@ export function Settings({
               ]}
             />
           </Setting>
-          <Setting icon="interfaceScale" title="界面缩放" desc="整体调整文字、图标与控件，范围 80%–150%，默认 100%。立即生效并自动保存。">
+          <Setting icon="interfaceScale" title="界面缩放" desc="整体调整文字、图标与控件，范围 80%–150%。">
             <NumberBox label="界面缩放" value={scale} range={[80, 150]} onChange={onScale} />
             <span className="a-unit">%</span>
             <Button onClick={() => onScale(100)}>恢复默认</Button>
           </Setting>
-          <Setting icon="fontSize" title="字体大小" desc="基础字号为 11–20 px，默认 13 px；标题与辅助文字按比例调整，可与界面缩放组合使用。">
+          <Setting icon="fontSize" title="字体大小" desc="基础字号 11–20 px，标题与辅助文字按比例调整。">
             <NumberBox label="字体大小" value={fontSize} range={[11, 20]} onChange={onFontSize} />
             <span className="a-unit">px</span>
             <Button onClick={() => onFontSize(13)}>恢复默认</Button>
           </Setting>
-          <Setting icon="gauge" title="进程概况带" desc="自动模式预留概况带与 10 行进程的空间，空间不足时收起。折叠或筛选不影响此判断。">
+          <Setting icon="gauge" title="进程概况带" desc="自动模式在窗口空间不足时收起概况带。">
             <Select
               label="进程概况带"
               context="vitals"
@@ -1148,7 +1210,7 @@ export function Settings({
           <Setting
             icon="users"
             title="按用户分组进程"
-            desc="进程页按登录用户分组，各组内的视图、分类、排序与搜索不变。自动模式仅在多个用户同时登录（含已断开连接的会话）时分组；系统服务等无用户登录的会话归入“系统”。"
+            desc="自动模式仅在多个用户同时登录时分组，包括已断开连接的会话。"
           >
             <Select
               label="按用户分组进程"
@@ -1165,7 +1227,7 @@ export function Settings({
         </section>
         <section>
           <h2>启动与后台</h2>
-          <Setting icon="power" title="登录 Windows 时启动" desc="以托盘方式静默启动，可通过快捷键或单击托盘图标打开窗口。">
+          <Setting icon="power" title="登录 Windows 时启动" desc="在托盘中静默启动。">
             <Switch state label="登录 Windows 时启动" checked={values.autostart} onChange={(v) => set("autostart", v)} />
           </Setting>
           <Setting icon="processes" title="默认页面" desc="启动 Argus 后首次显示窗口时打开的页面。">
@@ -1183,7 +1245,7 @@ export function Settings({
               ]}
             />
           </Setting>
-          <Setting icon="tray" title="从托盘打开" desc="通过托盘或快捷键重新打开窗口时生效。最小化恢复仍保留当前页面。">
+          <Setting icon="tray" title="从托盘打开" desc="通过托盘或快捷键重新打开窗口时生效。">
             <Select
               label="从托盘打开"
               value={values.trayPage}
@@ -1197,7 +1259,7 @@ export function Settings({
           <Setting
             icon="tray"
             title="关闭窗口时保留在托盘"
-            desc="保持常驻，可快速重新打开。隐藏期间按“后台常驻时的刷新间隔”采样，历史记录与规则照常运行。"
+            desc="隐藏期间历史记录与规则照常运行。"
           >
             <Switch state label="关闭窗口时保留在托盘" checked={values.tray} onChange={(v) => set("tray", v)} />
           </Setting>
@@ -1207,7 +1269,7 @@ export function Settings({
           <Setting
             icon="keyboard"
             title="显示或隐藏 Argus"
-            desc="在大多数程序中可用。组合通常包含 Ctrl、Alt 或 Win 之一和一个普通键，修饰键不区分左右。"
+            desc="在大多数程序中可用。"
           >
             <span className="a-keys">
               <kbd>Ctrl</kbd>
@@ -1217,7 +1279,7 @@ export function Settings({
             <Button>更改</Button>
             <Switch state label="显示或隐藏 Argus" checked={values.hotkey} onChange={(v) => set("hotkey", v)} />
           </Setting>
-          <Setting icon="keyboard" title="快捷键说明" desc="查看页面切换、刷新暂停、进程操作等快捷键。">
+          <Setting icon="keyboard" title="快捷键说明">
             <Button onClick={() => onSay("Ctrl+1–8 切换页面；Ctrl+F 搜索进程；Delete 结束选中的进程；按住 Ctrl 暂停刷新。")}>
               查看快捷键
             </Button>
@@ -1231,14 +1293,14 @@ export function Settings({
           <Setting
             icon="shield"
             title="特权服务"
-            desc="使以标准权限运行的 Argus 能够管理系统进程、自动应用规则、采集每进程网络流量与磁盘读写、查询文件占用与磁盘 SMART 信息，以及控制服务和断开 IPv4 TCP 连接。安装和卸载均需要管理员授权。"
+            desc="使以标准权限运行的 Argus 能够管理系统进程与服务，并采集需要管理员权限的数据。"
           >
             <span className="a-pill is-ok">{`已连接 · ${appVersion}`}</span>
           </Setting>
           <Setting
             icon="bolt"
             title="内核传感器"
-            desc="开启时自动检查 PawnIO：缺少或版本过旧时安装官方驱动，已安装时启动驱动；需要管理员授权。需先安装并启动 Argus 特权服务。关闭仅停止 Argus 的采集。"
+            desc="需先启用特权服务。安装、更新或启动 PawnIO 驱动需要管理员授权。关闭后停止 Argus 的内核采集，保留驱动。"
           >
             <Button icon="external">PawnIO 官网</Button>
             <Switch state label="内核传感器" checked onChange={() => onSay("演示窗口不会停止内核传感器的采集。")} />
@@ -1246,7 +1308,7 @@ export function Settings({
           <Setting
             icon="keyboard"
             title="替换系统任务管理器"
-            desc="使 Ctrl+Shift+Esc 等入口打开 Argus。默认关闭；独立恢复程序不依赖界面或服务。更新特权服务时同步更新替换程序并保持开启；卸载服务时恢复 Windows 任务管理器。"
+            desc="使 Ctrl+Shift+Esc 等入口打开 Argus。"
           >
             <span className="a-pill">使用 Windows 任务管理器</span>
             <Button
@@ -1260,7 +1322,7 @@ export function Settings({
         </section>
         <section>
           <h2>动画</h2>
-          <Setting icon="genericApp" title="窗口过渡动画" desc="窗口显示、隐藏、最小化与还原时的淡入淡出。关闭后由系统或其他窗口管理软件处理窗口过渡。默认跟随 Windows 的“动画效果”设置。">
+          <Setting icon="genericApp" title="窗口过渡动画" desc="窗口显示、隐藏、最小化与还原时的淡入淡出。默认跟随 Windows 的“动画效果”设置。">
             <Switch state label="窗口过渡动画" checked={values.windowMotion} onChange={(v) => set("windowMotion", v)} />
           </Setting>
           <Setting icon="sparkle" title="界面动画" desc="页面和弹窗的过渡、滑动的选中标记，以及图标的动效。默认跟随 Windows 的“动画效果”设置。">
@@ -1269,7 +1331,7 @@ export function Settings({
           <Setting
             icon="pulse"
             title="曲线动画"
-            desc="帧率越高，曲线越流畅，资源占用也越高：流畅模式约占单核 10%–15%，均衡模式约为其一半；省电模式每次移动一个整像素，较小图表的移动不连续。"
+            desc="帧率越高，曲线越流畅，资源占用也越高。"
           >
             <Select
               label="曲线动画"
@@ -1284,7 +1346,7 @@ export function Settings({
           <Setting
             icon="gpu"
             title="硬件加速"
-            desc="默认使用 GPU 绘制界面。关闭后改由 CPU 绘制，Argus 不再占用 GPU，适用于 GPU 满载时界面卡顿，或不希望 Argus 占用 GPU 的情况。CPU 占用随之升高，可同时调低曲线动画。立即生效，无需重新启动。"
+            desc="关闭后改由 CPU 绘制界面，不再占用 GPU，CPU 占用随之升高。"
           >
             <Switch
               state
@@ -1302,18 +1364,18 @@ export function Settings({
           <Setting
             icon="minimize"
             title="最小化时的刷新间隔"
-            desc="窗口最小化后按此间隔采样。间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
+            desc="间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
           >
             <Select label="最小化时的刷新间隔" value={values.minimized} onChange={(v) => set("minimized", v)} options={slow} />
           </Setting>
           <Setting
             icon="tray"
             title="后台常驻时的刷新间隔"
-            desc="隐藏到托盘后按此间隔采样，托盘的悬停提示随之更新。间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
+            desc="间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
           >
             <Select label="后台常驻时的刷新间隔" value={values.background} onChange={(v) => set("background", v)} options={slow} />
           </Setting>
-          <Setting icon="memory" title="隐藏时释放内存" desc="窗口最小化或隐藏到托盘达到设定时长后，Argus 释放图表图像，并将未使用的内存归还 Windows。采样和历史记录照常进行。再次打开窗口时会先重绘图表，可能稍有停顿。">
+          <Setting icon="memory" title="隐藏时释放内存" desc="窗口最小化或隐藏到托盘达到设定时长后，释放图表图像等占用的内存，再次打开窗口时可能稍有停顿。">
             <Select
               label="隐藏时释放内存"
               value={values.release}
@@ -1327,7 +1389,7 @@ export function Settings({
           <Setting
             icon="transfer"
             title="网络速率单位"
-            desc="字节与磁盘速率的单位一致，比特与网卡链路速率、宽带带宽的单位一致。性能页的网络视图同时显示两种单位。"
+            desc="字节与磁盘速率一致，比特与网卡链路速率、宽带带宽一致。"
           >
             <Segments
               label="网络速率单位"
@@ -1344,8 +1406,8 @@ export function Settings({
             title="记录历史"
             desc={
               values.history
-                ? "每 5 秒记录一次资源占用及占用最高的进程；最小化或后台常驻时的刷新间隔长于 5 秒时，按该间隔记录。数据仅保存在本机，保留 7 天，可在“历史”页查看。"
-                : "已关闭。现有记录将在 7 天后过期，也可立即清除。"
+                ? "通常每 5 秒记录一次资源占用及占用最高的进程，数据仅保存在本机。"
+                : "已关闭。现有记录仍按保留上限删除，也可立即清除。"
             }
           >
             <Switch state label="记录历史" checked={values.history} onChange={(v) => set("history", v)} />
@@ -1372,10 +1434,10 @@ export function Settings({
           <Setting icon="update" title="已是最新版本" desc={`当前版本 ${appVersion} · 稳定版`} note="更新来自 GitHub Releases 或 Argus 官方镜像，安装前校验安装包签名。">
             <Button onClick={() => onSay("已是最新版本。")}>检查更新</Button>
           </Setting>
-          <Setting icon="timer" title="自动检查更新" desc="启动约 1 分钟后检查一次，此后每天检查一次。新版本在后台下载，安装需手动确认。">
+          <Setting icon="timer" title="自动检查更新" desc="每天检查一次，新版本在后台下载，安装前需手动确认。">
             <Switch state label="自动检查更新" checked={values.autoUpdate} onChange={(v) => set("autoUpdate", v)} />
           </Setting>
-          <Setting icon="notes" title="更新后显示更新内容" desc="更新完成后首次打开窗口时显示新版本的更新内容，每个版本仅显示一次。关闭此项后，仅在右下角提示已更新。">
+          <Setting icon="notes" title="更新后显示更新内容" desc="关闭后仅在右下角提示已更新。">
             <Button onClick={() => onSay("演示窗口不显示更新内容，可在官网的“更新日志”页查看。")}>查看本版本更新</Button>
             <Switch state label="更新后显示更新内容" checked={values.whatsNew} onChange={(v) => set("whatsNew", v)} />
           </Setting>
@@ -1390,7 +1452,7 @@ export function Settings({
               ]}
             />
           </Setting>
-          <Setting icon="globe" title="下载线路" desc="加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件。安装包签名同时覆盖版本号，代理无法篡改更新，也无法以旧版本冒充新版本。">
+          <Setting icon="globe" title="下载线路" desc="加速代理由第三方提供，可获知本机的 IP 地址及所下载的文件；安装包须通过签名与版本号校验。">
             <Select
               label="下载线路"
               value={values.route}
@@ -1431,7 +1493,7 @@ export function Settings({
               <Button disabled={!customProxy.trim()}>保存</Button>
             </Setting>
           )}
-          <Setting icon="star" title="Star 提醒" desc="每天在窗口右下角提醒一次，邀请在 GitHub 上为 Argus 点亮 Star。从提醒前往 GitHub 或选择“不再提醒”后，此项自动关闭。">
+          <Setting icon="star" title="Star 提醒" desc="每天在窗口右下角提醒一次，邀请在 GitHub 上为 Argus 点亮 Star。">
             <Switch state label="Star 提醒" checked={values.star} onChange={(v) => set("star", v)} />
           </Setting>
         </section>
@@ -1571,7 +1633,7 @@ export function About({
         <Setting
           icon="storage"
           title="日志"
-          desc="记录运行环境、功能状态、失败步骤、错误码及相关文件或目录的实际路径。仅保存在本机，每个文件最多 1 MB，并保留最近 3 份旧日志；不记录命令行、凭据或文件内容。缺陷报告请使用此入口打开的诊断日志。"
+          desc="仅保存在本机，不记录命令行、凭据或文件内容。公开附上日志前，请检查路径中的用户名。"
         >
           <Button onClick={() => onSay("演示窗口不会打开日志文件夹。")}>打开日志文件夹</Button>
         </Setting>

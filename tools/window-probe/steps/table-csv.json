@@ -1,0 +1,25 @@
+{
+  "about": "从进程、服务、启动、连接页的“更多操作”菜单导出，通过 inspectLayout.tableCsv 检查模拟快照的导出结果（name 为默认文件名，content 为 CSV 文本）。覆盖搜索、进程列顺序与排序、空表，以及性能页菜单。",
+  "window": [960, 680],
+  "steps": [
+    {"control":{"page":"processes","view":"list","details":"closed","motion":"off","pointerOutside":true,"sample":{"set":{"/processes":[{"pid":10002,"name":"ContosoB.exe","createTime":2,"threads":3},{"pid":10001,"name":"ContosoA.exe","createTime":1,"threads":4},{"pid":10003,"name":"Other.exe","createTime":3,"threads":5}]}},"preference":{"processColumns":{"selected":["name","pid","threads"],"order":["name","threads","pid"],"autoWidth":true},"processSort":{"key":"pid","desc":false}}},"wait":600},
+    {"control":{"query":"Contoso"},"wait":400},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-processes","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false},"capture":"processes-more"},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-processes","expect":{"page":"processes","tableCsv.content":"\uFEFF名称,线程,PID\r\nContosoA.exe,4,10001\r\nContosoB.exe,3,10002\r\n"}},
+    {"control":{"page":"services","query":"Dnscache","pointerOutside":true},"wait":850},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-services","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-services","expect":{"page":"services","tableCsv.content":"\uFEFF服务,名称,PID,状态,启动类型,描述\r\nDNS Client,Dnscache,1785,正在运行,手动,缓存 DNS 查询结果，并注册此计算机的完整名称。\r\n"}},
+    {"control":{"page":"startup","query":"OldUpdater","pointerOutside":true},"wait":850},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-startup","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-startup","expect":{"page":"startup","tableCsv.content":"\uFEFF名称,发布者,状态,位置,命令\r\nOldUpdater,—,已启用,注册表（所有用户，32 位）,\"\"\"C:\\Program Files (x86)\\Gone\\updater.exe\"\" /silent\"\r\n"}},
+    {"control":{"page":"network","query":"135","pointerOutside":true},"wait":850},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-network","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-network","expect":{"page":"network","tableCsv.content":"\uFEFF进程,PID,协议,本地地址,本地端口,远程地址,远程端口,状态\r\n已退出,1785,TCP,0.0.0.0,135,,,监听\r\n已退出,1785,TCP,::,135,,,监听\r\n"}},
+    {"control":{"query":"NoSuchContosoConnection"},"wait":400},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-empty","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-empty","expect":{"page":"network","tableCsv.content":"\uFEFF进程,PID,协议,本地地址,本地端口,远程地址,远程端口,状态\r\n"}},
+    {"control":{"page":"performance","pointerOutside":true},"wait":600},
+    {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-performance","expect":{"state.items":["运行新任务…","查找占用文件的进程…","","快捷键说明"]}},
+    {"control":{"keys":["escape"]},"wait":100}
+  ]
+}

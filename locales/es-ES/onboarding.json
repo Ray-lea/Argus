@@ -40,7 +40,7 @@
     "minimizedInterval": "Actualización al minimizar",
     "minimizedIntervalHint": "El valor predeterminado es 5 segundos; reducirlo aumenta el uso de recursos en segundo plano.",
     "trayInterval": "Actualización en la bandeja",
-    "trayIntervalHint": "Se toman muestras con este intervalo al permanecer en la bandeja. Si supera los 5 segundos, los registros del historial quedan más espaciados.",
+    "trayIntervalHint": "Si supera los 5 segundos, los registros del historial quedan más espaciados.",
     "hotkey": "Pulse {hotkey} para mostrar u ocultar Argus. Puede cambiar el atajo en Configuración.",
     "hotkeyOff": "El atajo para mostrar u ocultar Argus está desactivado. Puede volver a activarlo en Configuración.",
     "hotkeyTaken": "{shortcut} está en uso por Windows u otra aplicación, posiblemente otra instancia de Argus. Elija otro atajo en Configuración.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automático",
     "routeDirect": "GitHub solamente",
     "routeProxy": "Solo mediante proxy de GitHub",
-    "proxyNotice": "Los proxies de GitHub son operados por terceros y pueden conocer la dirección IP de este equipo y los archivos que descarga. La verificación de firma impide instalar actualizaciones manipuladas.",
+    "proxyNotice": "Los proxies de GitHub son operados por terceros y pueden conocer la dirección IP de este equipo y los archivos que descarga. Los instaladores deben superar la comprobación de firma y de versión.",
     "unavailable": "Esta versión no se puede actualizar sola."
   },
   "privilege": {

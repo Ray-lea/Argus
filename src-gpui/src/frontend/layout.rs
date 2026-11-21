@@ -935,6 +935,16 @@ impl Desktop {
             .icon("LockIcon")
             .detail(label("shell.more.fileLockDetail")),
         ];
+        if matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        ) {
+            items.push(
+                MenuItem::new(label("shell.more.exportCsv"), Action::ExportTableCsv)
+                    .icon("DownloadIcon")
+                    .disabled(self.exportable_table(cx).is_none()),
+            );
+        }
         if self.page == "history" {
             items.push(MenuItem::separator());
             items.extend(self.history_more_items());

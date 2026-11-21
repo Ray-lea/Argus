@@ -71,7 +71,7 @@
       "ipv4Only": "IPv4 TCP 接続のみを閉じることができます"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager で対象を確認できませんでした。以下はハンドル検索の結果です。"
+      "restartManagerFailed": "ファイルの確認を完了できませんでした。結果はハンドル検索のみによるものです。"
     },
     "handles": {
       "tooMany": "一度に最大 32 のパスをチェックでき、合計の長さは最大 8 KiB",

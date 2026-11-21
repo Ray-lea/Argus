@@ -37,6 +37,9 @@ impl NameFacts {
             efficiency_count += usize::from(boolean(member, "efficiency"));
             all_suspended &= boolean(member, "suspended");
         }
+        let members = row.raw["connectionCount"]
+            .as_u64()
+            .map_or(row.members.len(), |n| n as usize);
         Self {
             efficiency_count,
             all_suspended,
@@ -45,8 +48,8 @@ impl NameFacts {
                 && row.raw["path"].is_null()
                 && row.members.len() <= 1,
             icon_id: icon_id(&row.raw),
-            members: row.members.len(),
-            member_count: row.members.len().to_string().into(),
+            members,
+            member_count: members.to_string().into(),
             entry_count: row.raw["entryCount"].to_string().into(),
             startup_disabled: !boolean(&row.raw, "enabled"),
             startup_missing: !boolean(&row.raw, "exists") && !row.raw["path"].is_null(),
@@ -419,7 +422,7 @@ impl NativeTable {
                     .child(value);
             }
             // A program's heading has no state of its own.
-            CellKind::ConnectionState if row.members.len() > 1 => {}
+            CellKind::ConnectionState if row.expandable => {}
             CellKind::ConnectionState => {
                 let state = text(&row.raw, "state");
                 element = element.gap(px(7.)).child(dot(match state {

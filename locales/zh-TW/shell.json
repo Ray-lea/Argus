@@ -58,7 +58,12 @@
     "label": "更多動作",
     "runTask": "執行新工作…",
     "fileLock": "查詢使用檔案的處理程序…",
-    "fileLockDetail": "可拖放檔案"
+    "fileLockDetail": "可拖放檔案",
+    "exportCsv": "將目前頁面匯出為 CSV…",
+    "csvFile": "CSV 檔案",
+    "csvSaved": "已匯出 CSV 檔案。",
+    "csvFailed": "無法儲存 CSV 檔案。請檢查目的資料夾的寫入權限，以及檔案是否正被使用。",
+    "csvRows": "{count}列"
   },
   "details": {
     "label": "詳細資料窗格",

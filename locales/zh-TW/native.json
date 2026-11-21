@@ -69,7 +69,7 @@
       "ipv4Only": "只能關閉 IPv4 TCP 連線"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager 無法檢查目標，以下為控制代碼查詢結果"
+      "restartManagerFailed": "未能完成檔案檢查，結果僅來自控制代碼查詢"
     },
     "handles": {
       "tooMany": "一次最多查詢 32 個路徑，路徑總長度不能超過 8 KiB",

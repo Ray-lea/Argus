@@ -1,6 +1,6 @@
 {
   "title": "Welche Prozesse verwenden die Datei?",
-  "intro": "Wenn beim Löschen oder Verschieben „Datei wird verwendet“ erscheint, können Sie hier die verwendenden Prozesse suchen. Die Datei kann auch direkt auf das Argus-Fenster gezogen werden.",
+  "intro": "Eine Datei oder einen Ordner zum Prüfen auf das Fenster ziehen.",
   "dropZone": "Dateien oder Ordner auf das Fenster legen, oder",
   "pickFile": "Datei auswählen",
   "pickFolder": "Ordner auswählen",
@@ -29,17 +29,17 @@
   "showProcess": "In Prozessen anzeigen",
   "end": "Task beenden",
   "checked": {
-    "one": "Restart Manager hat {count} Datei geprüft. {handles}",
-    "other": "Restart Manager hat {count} Dateien geprüft. {handles}"
+    "one": "{count} Datei geprüft. {handles}",
+    "other": "{count} Dateien geprüft. {handles}"
   },
   "handles": {
     "service": {
-      "one": "Der privilegierte Dienst hat {count} Dateihandle geprüft, einschließlich Verzeichnishandles.",
-      "other": "Der privilegierte Dienst hat {count} Dateihandles geprüft, einschließlich Verzeichnishandles."
+      "one": "Der privilegierte Dienst hat {count} Handle geprüft.",
+      "other": "Der privilegierte Dienst hat {count} Handles geprüft."
     },
     "local": {
-      "one": "Lokal wurde {count} Dateihandle geprüft, einschließlich Verzeichnishandles.",
-      "other": "Lokal wurden {count} Dateihandles geprüft, einschließlich Verzeichnishandles."
+      "one": "{count} Handle lokal geprüft.",
+      "other": "{count} Handles lokal geprüft."
     },
     "unfinished": "Die Handle-Abfrage wurde nicht abgeschlossen."
   },
@@ -47,9 +47,9 @@
   "limitReached": "Das Abfragelimit wurde erreicht.",
   "serviceHint": "Aktivieren Sie den privilegierten Dienst in den Einstellungen, um weitere Systemprozesse zu überprüfen.",
   "unchecked": {
-    "one": "Restart Manager konnte {count} weitere Datei nicht prüfen, möglicherweise wegen Berechtigungen oder eines geänderten Dateizustands.",
-    "other": "Restart Manager konnte {count} weitere Dateien nicht prüfen, möglicherweise wegen Berechtigungen oder geänderter Dateizustände."
+    "one": "{count} weitere Datei konnte nicht geprüft werden.",
+    "other": "{count} weitere Dateien konnten nicht geprüft werden."
   },
   "truncated": "Der Ordner enthält zu viele Dateien; es wurden nur die ersten {count} überprüft.",
-  "footerHint": "Die Handle-Abfrage erkennt auch die Nutzung als aktuelles Arbeitsverzeichnis; geschützte Prozesse können weiterhin unzugänglich sein."
+  "footerHint": "Dateizugriffe geschützter Prozesse werden möglicherweise nicht angezeigt."
 }

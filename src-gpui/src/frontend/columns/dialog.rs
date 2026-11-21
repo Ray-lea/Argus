@@ -478,6 +478,7 @@ impl Desktop {
             .px(px(8.))
             .rounded(px(6.))
             .text_size(theme::font(13.))
+            .line_height(theme::line_height())
             .text_color(p.ink)
             .role(Role::CheckBox)
             .aria_toggled(if selected {

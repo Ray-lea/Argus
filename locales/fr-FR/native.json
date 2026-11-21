@@ -73,7 +73,7 @@
       "ipv4Only": "Seules les connexions IPv4 TCP peuvent être fermées"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager n’a pas pu vérifier la cible ; les résultats ci-dessous proviennent de la recherche de handles"
+      "restartManagerFailed": "La vérification des fichiers n’a pas pu aboutir ; les résultats proviennent uniquement de la recherche de handles"
     },
     "handles": {
       "tooMany": "Vous pouvez rechercher jusqu’à 32 chemins à la fois, pour une longueur totale maximale de 8 KiB",

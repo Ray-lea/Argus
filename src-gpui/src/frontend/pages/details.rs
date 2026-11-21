@@ -2,7 +2,10 @@
 use super::*;
 use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
+use sheet::{Fact, Look};
 use std::hash::{Hash, Hasher};
+
+mod sheet;
 
 impl Desktop {
     /// Whether the process page shows its details pane now.
@@ -459,19 +462,30 @@ impl Desktop {
         if let Some(company) = process["company"].as_str().filter(|c| !c.is_empty()) {
             subtitle = subtitle.child(company.to_owned());
         }
-        let close = self.details_icon_button(
-            "deselect-process",
-            "DismissIcon",
-            label("details.deselect"),
-            Action::Select(String::new()),
-            px(14.),
-            cx,
-        );
+        let controls = div()
+            .flex()
+            .gap(px(2.))
+            .child(self.details_icon_button(
+                "copy-process-details",
+                "CopyIcon",
+                label("details.copy.action"),
+                Action::CopyDetails(key.to_owned()),
+                px(14.),
+                cx,
+            ))
+            .child(self.details_icon_button(
+                "deselect-process",
+                "DismissIcon",
+                label("details.deselect"),
+                Action::Select(String::new()),
+                px(14.),
+                cx,
+            ));
         let head = self.details_head(
             self.details_process_icon(process, window, cx),
             model::title(process),
             Some(subtitle),
-            close.into_any_element(),
+            controls.into_any_element(),
             cx,
         );
         let sum = |field: &str| {
@@ -521,426 +535,124 @@ impl Desktop {
             .children(leak)
             .child(charts);
 
-        let pids: HashSet<u64> = picked
-            .members
-            .iter()
-            .filter_map(|m| m["pid"].as_u64())
-            .collect();
-        let hosted: Vec<&Value> = self
-            .data
-            .get("services")
-            .map(values)
-            .unwrap_or_default()
-            .iter()
-            .filter(|s| s["pid"].as_u64().is_some_and(|pid| pids.contains(&pid)))
-            .collect();
+        let hosted = self.hosted_service_list(&picked.members);
         if !hosted.is_empty() {
             body = body
                 .child(self.details_section_title(tr!("details.services", count = hosted.len())))
                 .child(self.details_services(&hosted, cx));
         }
 
-        if picked.group {
-            let mut rows = self.details_resources(&picked.members, true);
-            rows.push((
-                label("details.cpuTime"),
-                sum("cpuTime")
-                    .map(cpu_time)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ));
-            let earliest = picked
-                .members
-                .iter()
-                .filter_map(|m| model::process_metric(m, "createTime"))
-                .reduce(f64::min);
-            rows.push((
-                label("details.group.earliest"),
-                earliest
-                    .map(date_time)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ));
+        let sheet = self.details_sheet(picked, info);
+        if !picked.group {
             body = body
-                .child(self.details_section_title(label("details.section.resources")))
-                .child(self.details_facts(rows))
+                .child(self.details_section_title(label("details.section.process")))
+                .child(self.details_fact_rows(sheet.process, cx));
+        }
+        body = body
+            .child(self.details_section_title(label("details.section.resources")))
+            .child(self.details_fact_rows(sheet.resources, cx))
+            .child(self.details_section_title(label("details.section.totals")))
+            .child(self.details_fact_rows(sheet.totals, cx));
+        if picked.group {
+            body = body
                 .child(self.details_section_title(tr!(
                     "details.group.members",
                     count = picked.members.len()
                 )))
                 .child(self.details_members(&picked.members, cx));
-            let mut paths: Vec<&str> = Vec::new();
-            for path in picked
-                .members
-                .iter()
-                .filter_map(|m| m["path"].as_str())
-                .filter(|path| !path.is_empty())
-            {
-                if !paths.contains(&path) {
-                    paths.push(path);
-                }
-            }
-            if !paths.is_empty() {
-                body = body.child(self.details_section_title(label("details.section.location")));
-                for (index, path) in paths.into_iter().enumerate() {
-                    body = body.child(
-                        self.details_path_row(&format!("group-path-{index}"), path, &mono, cx)
-                            .when(index > 0, |row| row.mt(px(4.))),
-                    );
-                }
-            }
-        } else {
-            body = body
-                .child(self.details_section_title(label("details.section.process")))
-                .child(self.details_facts(self.details_process_facts(process, info, cx)))
-                .child(self.details_section_title(label("details.section.resources")))
-                .child(self.details_facts(self.details_resources(&picked.members, false)));
-            if let Some(path) = process["path"].as_str().filter(|path| !path.is_empty()) {
-                body = body
-                    .child(self.details_section_title(label("details.section.location")))
-                    .child(self.details_path_row("process-path", path, &mono, cx));
-            }
-            if let Some(command) = info
-                .and_then(|info| info["commandLine"].as_str())
-                .filter(|command| !command.is_empty())
-            {
-                body = body
-                    .child(self.details_section_title(label("details.section.commandLine")))
-                    .child(self.details_code("process-command", command, &mono));
-            }
-            if info.is_some_and(|info| !boolean(info, "accessible")) {
+        }
+        if !sheet.paths.is_empty() {
+            body = body.child(self.details_section_title(label("details.section.location")));
+            for (index, path) in sheet.paths.iter().enumerate() {
+                let id = if picked.group {
+                    format!("group-path-{index}")
+                } else {
+                    "process-path".into()
+                };
                 body = body.child(
-                    div()
-                        .mt(px(14.))
-                        .px(px(10.))
-                        .py(px(8.))
-                        .flex()
-                        .gap(px(8.))
-                        .rounded(px(6.))
-                        .bg(p.hover)
-                        .text_color(p.muted)
-                        .text_size(theme::font(12.))
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .mt(px(1.))
-                                .child(icon("InfoIcon", p.muted)),
-                        )
-                        .child(div().flex_1().min_w_0().child(label("details.noAccess"))),
+                    self.details_path_row(&id, path, &mono, cx)
+                        .when(index > 0, |row| row.mt(px(4.))),
                 );
             }
         }
+        if let Some(command) = &sheet.command_line {
+            body = body
+                .child(self.details_section_title(label("details.section.commandLine")))
+                .child(self.details_code("process-command", command, &mono));
+        }
+        if !picked.group && info.is_some_and(|info| !boolean(info, "accessible")) {
+            body = body.child(
+                div()
+                    .mt(px(14.))
+                    .px(px(10.))
+                    .py(px(8.))
+                    .flex()
+                    .gap(px(8.))
+                    .rounded(px(6.))
+                    .bg(p.hover)
+                    .text_color(p.muted)
+                    .text_size(theme::font(12.))
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .mt(px(1.))
+                            .child(icon("InfoIcon", p.muted)),
+                    )
+                    .child(div().flex_1().min_w_0().child(label("details.noAccess"))),
+            );
+        }
 
-        let version = info.map(|info| &info["version"]);
-        let product = version
-            .and_then(|v| v["productName"].as_str())
-            .filter(|s| !s.is_empty());
-        let file_version = version
-            .and_then(|v| v["fileVersion"].as_str())
-            .filter(|s| !s.is_empty());
-        if product.is_some() || file_version.is_some() {
-            let mut rows = Vec::new();
-            if let Some(product) = product {
-                rows.push((
-                    label("details.product"),
-                    selectable("details-product", product),
-                ));
-            }
-            if let Some(file_version) = file_version {
-                rows.push((
-                    label("details.version"),
-                    selectable("details-file-version", file_version),
-                ));
-            }
+        if !sheet.version.is_empty() {
             body = body
                 .child(self.details_section_title(label("details.section.version")))
-                .child(self.details_facts(rows));
+                .child(self.details_fact_rows(sheet.version, cx));
         }
         body.into_any_element()
     }
 
-    fn details_process_facts(
-        &self,
-        process: &Value,
-        info: Option<&Value>,
-        cx: &Context<Self>,
-    ) -> Vec<(String, AnyElement)> {
+    /// Facts as the pane shows them: name and value in two columns.
+    fn details_fact_rows(&self, facts: Vec<Fact>, cx: &Context<Self>) -> AnyElement {
         let p = self.palette;
-        let missing = || label("format.missing");
-        let parent = values(&self.snapshot["processes"])
-            .iter()
-            .find(|candidate| {
-                !process["ppid"].is_null()
-                    && candidate["pid"] == process["ppid"]
-                    && model::parent_predates(candidate, process)
-            });
-        let parent = match parent {
-            Some(parent) => {
-                let key = model::identity(parent);
-                let accent = p.accent;
-                Button::new("details-parent")
-                    .justify_start()
-                    .line_height(relative(1.4))
-                    .text_color(accent)
-                    .hover(|style| style.underline())
-                    .child(tr!(
-                        "details.parentLink",
-                        name = text(parent, "name"),
-                        pid = parent["pid"]
-                    ))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.act(Action::Select(key.clone()), window, cx)
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .into_any_element()
-            }
-            None => div()
-                .text_color(p.faint)
-                .child(tr!("details.noParent", pid = process["ppid"]))
-                .into_any_element(),
-        };
-        let localized = |field: &str, namespace: &str| {
-            info.and_then(|info| info[field].as_str())
-                .map(|value| label(&format!("{namespace}.{value}")))
-                .unwrap_or_else(missing)
-        };
-        let priority = tables::base_priority(process).unwrap_or_else(missing);
-        // I/O and memory priority as the menus name them.
-        let level = |key: &str| {
-            process[key]
-                .as_str()
-                .map(|value| label(&format!("processes.{key}.{value}")))
-                .unwrap_or_else(missing)
-        };
-        let plain = |value: &Value| {
-            value
-                .as_u64()
-                .map(|v| v.to_string())
-                .unwrap_or_else(missing)
-        };
-        vec![
-            (
-                label("processes.column.pid.label"),
-                selectable("details-pid", plain(&process["pid"])),
-            ),
-            (label("details.parent"), parent),
-            (
-                label("details.started"),
-                selectable(
-                    "details-started",
-                    model::process_metric(process, "createTime")
-                        .map(date_time)
-                        .unwrap_or_else(missing),
-                ),
-            ),
-            (
-                label("details.cpuTime"),
-                selectable(
-                    "details-cpu-time",
-                    model::process_metric(process, "cpuTime")
-                        .map(cpu_time)
-                        .unwrap_or_else(missing),
-                ),
-            ),
-            (
-                label("details.user"),
-                selectable(
-                    "details-user",
-                    info.and_then(|info| info["user"].as_str())
-                        .map(str::to_owned)
-                        .unwrap_or_else(missing),
-                ),
-            ),
-            (
-                label("details.integrity"),
-                selectable(
-                    "details-integrity",
-                    localized("integrity", "details.integrityLevel"),
-                ),
-            ),
-            (
-                label("details.architecture"),
-                selectable(
-                    "details-architecture",
-                    localized("architecture", "details.arch"),
-                ),
-            ),
-            (
-                label("details.priority"),
-                selectable("details-priority", priority),
-            ),
-            (
-                label("processes.column.ioPriority.label"),
-                selectable("details-io-priority", level("ioPriority")),
-            ),
-            (
-                label("processes.column.memoryPriority.label"),
-                selectable("details-memory-priority", level("memoryPriority")),
-            ),
-            (
-                label("common.efficiencyMode"),
-                selectable(
-                    "details-efficiency",
-                    if boolean(process, "countersPending") {
-                        missing()
-                    } else {
-                        label(if boolean(process, "efficiency") {
-                            "common.on"
-                        } else {
-                            "common.off"
-                        })
-                    },
-                ),
-            ),
-            (
-                label("details.session"),
-                selectable(
-                    "details-session",
-                    if boolean(process, "countersPending") {
-                        missing()
-                    } else {
-                        plain(&process["sessionId"])
-                    },
-                ),
-            ),
-        ]
-    }
-
-    /// Resource facts of one process, or of an app group's members added up.
-    fn details_resources(&self, members: &[&Value], group: bool) -> Vec<(String, AnyElement)> {
-        let p = self.palette;
-        let sum = |field: &str| members.iter().map(|m| number(m, field)).sum::<f64>();
-        let measured = |field: &str| {
-            members
-                .iter()
-                .filter_map(|m| model::process_metric(m, field))
-                .reduce(|a, b| a + b)
-        };
-        let mut rows = vec![
-            (
-                label("details.privateWs"),
-                measured("privateWs")
-                    .map(theme::memory)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ),
-            (
-                label("details.workingSet"),
-                measured("workingSet")
-                    .map(theme::memory)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ),
-            (
-                label("details.commit"),
-                measured("commit")
-                    .map(theme::memory)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ),
-        ];
-        for field in ["diskRead", "diskWrite"] {
-            // Only measured members count; none measured is no reading at all.
-            let measured = members
-                .iter()
-                .filter_map(|m| model::process_metric(m, field))
-                .reduce(|a, b| a + b);
-            let (value, tip) = match measured {
-                Some(rate) => (
-                    byte_rate(rate),
-                    label(&format!("processes.column.{field}.title")),
-                ),
-                None => (label("format.missing"), self.missing_disk_hint()),
-            };
-            rows.push((
-                label(&format!("processes.column.{field}.label")),
-                div()
-                    .id(SharedString::from(format!("details-{field}")))
-                    .child(value)
-                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
-                    .into_any_element(),
-            ));
-        }
-        if !values(&self.snapshot["hardware"]["gpus"]).is_empty() {
-            let busiest = members
-                .iter()
-                .copied()
-                .max_by(|a, b| number(a, "gpu").total_cmp(&number(b, "gpu")));
-            let engine = busiest
-                .filter(|b| !group || number(b, "gpu") > 0.)
-                .and_then(|b| b["gpuEngine"].as_str())
-                .filter(|engine| !engine.is_empty());
-            rows.push((
-                label("common.resource.gpu"),
-                div()
-                    .child(format!("{}%", theme::cpu(sum("gpu").min(100.))))
-                    .when_some(engine, |d, engine| {
-                        d.child(
-                            div()
-                                .text_color(p.faint)
-                                .child(tr!("details.gpuEngine", engine = engine)),
-                        )
-                    })
-                    .flex()
-                    .flex_wrap()
-                    .into_any_element(),
-            ));
-            rows.push((
-                label("details.gpuDedicated"),
-                members
-                    .iter()
-                    .try_fold(0., |sum, member| {
-                        member["gpuDedicated"].as_f64().map(|value| sum + value)
-                    })
-                    .map(theme::memory)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ));
-            rows.push((
-                label("details.gpuShared"),
-                members
-                    .iter()
-                    .try_fold(0., |sum, member| {
-                        member["gpuShared"].as_f64().map(|value| sum + value)
-                    })
-                    .map(theme::memory)
-                    .unwrap_or_else(|| label("format.missing"))
-                    .into_any_element(),
-            ));
-        }
-        rows.push((
-            label("common.resource.network"),
-            if boolean(&self.snapshot, "processNetwork") && measured("netSent").is_none() {
-                label("format.missing").into_any_element()
-            } else if boolean(&self.snapshot, "processNetwork") {
-                tr!(
-                    "processes.netRates",
-                    sent = self.network_rate(sum("netSent")),
-                    received = self.network_rate(sum("netReceived"))
-                )
-                .into_any_element()
-            } else {
-                div()
-                    .text_color(p.faint)
-                    .child(label("details.netNeedsAdmin"))
-                    .into_any_element()
-            },
-        ));
-        rows.push((
-            label("details.threads"),
-            measured("threads")
-                .map(theme::count)
-                .unwrap_or_else(|| label("format.missing"))
-                .into_any_element(),
-        ));
-        rows.push((
-            label("details.handles"),
-            measured("handles")
-                .map(theme::count)
-                .unwrap_or_else(|| label("format.missing"))
-                .into_any_element(),
-        ));
-        rows
+        let rows = facts
+            .into_iter()
+            .map(|fact| {
+                let value = match fact.look {
+                    Look::Plain => fact.text.into_any_element(),
+                    Look::Selectable(id) => selectable(id, fact.text),
+                    Look::Faint => div()
+                        .text_color(p.faint)
+                        .child(fact.text)
+                        .into_any_element(),
+                    Look::Hinted(id, tip) => div()
+                        .id(SharedString::from(id))
+                        .child(fact.text)
+                        .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+                        .into_any_element(),
+                    Look::Quiet(quiet) => div()
+                        .child(fact.text)
+                        .child(div().text_color(p.faint).child(quiet))
+                        .flex()
+                        .flex_wrap()
+                        .into_any_element(),
+                    Look::Link(key) => {
+                        let accent = p.accent;
+                        Button::new("details-parent")
+                            .justify_start()
+                            .line_height(relative(1.4))
+                            .text_color(accent)
+                            .hover(|style| style.underline())
+                            .child(fact.text)
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.act(Action::Select(key.clone()), window, cx)
+                            }))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .into_any_element()
+                    }
+                };
+                (fact.label, value)
+            })
+            .collect();
+        self.details_facts(rows)
     }
 
     /// Why a process shows no disk reading.
@@ -1218,15 +930,11 @@ impl Desktop {
         self.details_head(
             glyph,
             label("details.exited.title"),
-            Some(
-                div()
-                    .mt(px(2.))
-                    .text_color(p.muted)
-                    .child(label("details.exited.hint")),
-            ),
+            None,
             close.into_any_element(),
             cx,
         )
+        .items_center()
         .into_any_element()
     }
 
@@ -1541,6 +1249,7 @@ impl Desktop {
             .relative()
             .w_full()
             .h(px(TIP_HEADING_HEIGHT))
+            .line_height(relative(TIP_LINE_HEIGHT))
             .px(px(12.))
             .gap(px(8.))
             .justify_start()

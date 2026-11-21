@@ -1224,16 +1224,16 @@ function Overview({ onDevice, onCopy }: { onDevice: (device: Device) => void; on
             <div className="a-tips-body">
               <p>
                 <Icon name="pointer" size={14} />
-                <span>在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。</span>
+                <span>单击应用或进程查看详细信息，再次单击取消选中。</span>
               </p>
               <p>
                 <Icon name="panel" size={14} />
                 <span>
-                  详细信息面板默认常驻，单击窗口右上角的
+                  单击页面栏的
                   <span className="a-key" aria-label="详细信息面板按钮">
                     <Icon name="panel" size={12} />
                   </span>
-                  可收起。
+                  可收起面板。
                 </span>
               </p>
             </div>

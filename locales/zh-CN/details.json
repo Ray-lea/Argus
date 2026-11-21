@@ -8,8 +8,8 @@
     "copy": "复制配置为文字",
     "copyWhat": "本机配置",
     "copyPart": "{kind}：{name}",
-    "selectTip": "在列表中单击应用或进程，即可在此查看其详细信息；再次单击取消选中。",
-    "closeTip": "详细信息面板默认常驻，单击窗口右上角的 {icon} 可收起。",
+    "selectTip": "单击应用或进程查看详细信息，再次单击取消选中。",
+    "closeTip": "单击页面栏的 {icon} 可收起面板。",
     "tips": "操作提示",
     "tipsCollapse": "收起操作提示",
     "tipsExpand": "展开操作提示",
@@ -30,8 +30,7 @@
     "health": "健康度 {percent}%"
   },
   "exited": {
-    "title": "进程已退出",
-    "hint": "选择列表中的其他进程查看详细信息。"
+    "title": "进程已退出"
   },
   "group": {
     "count": "{count} 个进程",
@@ -43,6 +42,7 @@
   "section": {
     "process": "进程",
     "resources": "资源",
+    "totals": "累计",
     "location": "文件位置",
     "commandLine": "命令行",
     "version": "文件版本"
@@ -78,10 +78,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "专用 GPU 内存",
   "gpuShared": "共享 GPU 内存",
+  "powerTrend": "{level} · 趋势：{trend}",
   "netNeedsAdmin": "以管理员身份运行后可查看",
   "threads": "线程",
   "handles": "句柄",
-  "noAccess": "无法打开此进程以读取命令行和用户信息。以管理员身份运行 Argus 后可查看。",
+  "noAccess": "当前权限无法读取命令行和用户信息，可用管理员权限重试。",
   "product": "产品",
-  "version": "版本"
+  "version": "版本",
+  "copy": {
+    "action": "复制详细信息（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

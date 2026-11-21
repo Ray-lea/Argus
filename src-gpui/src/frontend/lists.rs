@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 /// What a connection row shows of the process that owns it.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Owner {
+    app_key: String,
     pub name: String,
     pub description: String,
     pub icon: Value,
@@ -37,6 +38,11 @@ pub(super) fn owners(processes: &[Value], connections: &[Value]) -> Owners {
             Some((
                 pid,
                 Owner {
+                    app_key: if text(p, "path").is_empty() {
+                        text(p, "name").to_lowercase()
+                    } else {
+                        model::normalized_image_path(text(p, "path"))
+                    },
                     name: text(p, "name").to_owned(),
                     description: text(p, "description").to_owned(),
                     icon: p["icon"].clone(),
@@ -309,17 +315,12 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
 /// The key of a connection row's group heading.
 pub(super) const APP_PREFIX: &str = "c:";
 
-/// Which program a connection belongs to, as its group knows it: the owner's
-/// executable name, else the row's title (no owner, or one that exited).
-fn app_key(row: &Row, owners: &Owners) -> String {
-    match row.raw["pid"]
-        .as_u64()
-        .filter(|pid| *pid != 0)
-        .and_then(|pid| owners.get(&pid))
-    {
-        Some(owner) => owner.name.to_lowercase(),
-        // A bar keeps these apart from an executable of the same name.
-        None => format!("|{}", row.title),
+/// Unknown owners keep their fold state across interface languages.
+fn app_key<'a>(row: &Row, owners: &'a Owners) -> &'a str {
+    match row.raw["pid"].as_u64() {
+        Some(0) => "|unowned",
+        Some(pid) => owners.get(&pid).map_or("|exited", |owner| &owner.app_key),
+        None => "|exited",
     }
 }
 
@@ -329,12 +330,12 @@ fn app_key(row: &Row, owners: &Owners) -> String {
 /// opened (`ListSpec::opened`), or while a search narrows the list.
 fn group_connections(rows: Vec<Row>, spec: &ListSpec, owners: &Owners) -> Vec<Row> {
     let searching = !spec.query.trim().is_empty();
-    let mut order: Vec<String> = Vec::new();
-    let mut groups: HashMap<String, Vec<Row>> = HashMap::new();
+    let mut order = Vec::new();
+    let mut groups: HashMap<&str, Vec<Row>> = HashMap::new();
     for row in rows {
         let app = app_key(&row, owners);
         groups
-            .entry(app.clone())
+            .entry(app)
             .or_insert_with(|| {
                 order.push(app);
                 Vec::new()
@@ -343,7 +344,7 @@ fn group_connections(rows: Vec<Row>, spec: &ListSpec, owners: &Owners) -> Vec<Ro
     }
     let mut grouped = Vec::new();
     for app in order {
-        let mut members = groups.remove(&app).unwrap_or_default();
+        let mut members = groups.remove(app).expect("group in insertion order");
         if members.len() == 1 {
             grouped.append(&mut members);
             continue;
@@ -356,10 +357,10 @@ fn group_connections(rows: Vec<Row>, spec: &ListSpec, owners: &Owners) -> Vec<Ro
         let raw = json!({
             "icon": first.raw["icon"].clone(),
             "pid": if one { pid.clone() } else { Value::Null },
+            "connectionCount": members.len(),
         });
-        let opened = searching || spec.opened.contains(&app);
+        let opened = searching || spec.opened.contains(app);
         let mut heading = Row::item(raw, format!("{APP_PREFIX}{app}"), first.title.clone());
-        heading.members = members.iter().map(|row| row.raw.clone()).collect();
         heading.expandable = true;
         heading.expanded = opened;
         grouped.push(heading);
@@ -779,14 +780,24 @@ mod tests {
         spec.grouped = true;
         let shape = |rows: &[Row]| {
             rows.iter()
-                .map(|row| (row.key.clone(), row.depth, row.members.len(), row.expanded))
+                .map(|row| {
+                    (
+                        row.key.clone(),
+                        row.depth,
+                        row.raw["connectionCount"].as_u64(),
+                        row.expanded,
+                    )
+                })
                 .collect::<Vec<_>>()
         };
         // Folded: one heading for the server's three, the browser's one as it is.
         let rows = list_rows(&spec, &source, &owners);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].key, "c:server.exe");
-        assert_eq!((rows[0].depth, rows[0].members.len()), (0, 3));
+        assert_eq!(
+            (rows[0].depth, rows[0].raw["connectionCount"].as_u64()),
+            (0, Some(3))
+        );
         assert!(rows[0].expandable && !rows[0].expanded);
         assert_eq!(rows[0].title, "server.exe");
         assert_eq!(rows[0].raw["pid"], 10);
@@ -808,8 +819,36 @@ mod tests {
         spec.opened.clear();
         spec.query = "8080".into();
         let rows = list_rows(&spec, &source, &owners);
-        assert_eq!(shape(&rows)[0], ("c:server.exe".to_owned(), 0, 2, true));
+        assert_eq!(
+            shape(&rows)[0],
+            ("c:server.exe".to_owned(), 0, Some(2), true)
+        );
         assert_eq!(ports(&rows[1..]), [(8080, None), (8080, Some(51000))]);
+    }
+
+    #[test]
+    fn connections_separate_paths_and_group_names_without_a_path() {
+        let source = (1..=5)
+            .map(|pid| json!({"pid":pid,"localPort":pid}))
+            .collect::<Vec<_>>();
+        let processes = [
+            json!({"pid":1,"name":"App.exe","path":r"C:\Apps\App.exe"}),
+            json!({"pid":2,"name":"app.exe","path":r"\\?\C:\APPS\app.exe"}),
+            json!({"pid":3,"name":"app.exe","path":r"D:\Apps\app.exe"}),
+            json!({"pid":4,"name":"APP.exe"}),
+            json!({"pid":5,"name":"app.exe","path":""}),
+        ];
+        let mut spec = spec("localPort", false, "", Value::Null);
+        spec.grouped = true;
+        let owners = owners(&processes, &source);
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].key, r"c:c:\apps\app.exe");
+        assert_eq!(rows[0].raw["connectionCount"], 2);
+        assert_eq!(rows[1].raw["pid"], 3);
+        assert!(!rows[1].expandable);
+        assert_eq!(rows[2].key, "c:app.exe");
+        assert_eq!(rows[2].raw["connectionCount"], 2);
     }
 
     #[test]
@@ -830,10 +869,10 @@ mod tests {
         let rows = list_rows(&spec, &source, &owners);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].key, "c:chrome.exe");
-        assert_eq!(rows[0].members.len(), 2);
+        assert_eq!(rows[0].raw["connectionCount"], 2);
         assert!(rows[0].raw["pid"].is_null());
         // Connections whose processes exited gather under that title.
-        assert_eq!(rows[1].members.len(), 2);
+        assert_eq!(rows[1].raw["connectionCount"], 2);
         assert!(rows[1].key.starts_with("c:|"));
     }
 

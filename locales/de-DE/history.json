@@ -8,8 +8,8 @@
   },
   "noRecordAt": "Keine Aufzeichnung für diesen Zeitpunkt",
   "earliest": "Frühester Datensatz",
-  "note": "Werte und die aktivsten Prozesse werden alle 5 Sekunden aufgezeichnet, dazu Sekundenwerte der letzten 10 Minuten; im minimierten Zustand oder im Infobereich im dortigen Intervall, wenn es länger ist.",
-  "off": "Die Verlaufsaufzeichnung ist deaktiviert; neue Daten werden nicht aufgezeichnet. <link>Einstellungen öffnen</link>",
+  "note": "Aufzeichnung in der Regel alle 5 Sekunden, bei langsamerer Erfassung im Hintergrund entsprechend seltener. Für die letzten 10 Minuten ist jeder Messwert verfügbar.",
+  "off": "Die Verlaufsaufzeichnung ist ausgeschaltet. <link>Einstellungen öffnen</link>",
   "watch": {
     "title": "Prozessbeobachtung",
     "empty": "In den Details eines einzelnen Prozesses „Diese Instanz beobachten“ wählen, um Speicher auch unterhalb der Spitzenliste aufzuzeichnen.",
@@ -17,7 +17,7 @@
     "target": "Beobachtung: {name} (PID {pid})",
     "stop": "Aufzeichnung stoppen",
     "delete": "Aufzeichnung löschen",
-    "note": "Nur diese Instanz; bis zu 1 Stunde, 720 Punkte und 1 MiB. Messungen meist alle 5 Sekunden; langsamere Hintergrundabfragen können Lücken lassen. Ein wachsender Arbeitssatz allein belegt kein Speicherleck. Stoppen behält Daten; Löschen stoppt und entfernt diese Aufzeichnung.",
+    "note": "Nur diese Instanz wird aufgezeichnet, bis zu 1 Stunde lang. Stoppen behält die Daten bei. Löschen beendet die Beobachtung und entfernt die Aufzeichnung.",
     "metric": {
       "memory": "Privater Arbeitssatz",
       "commit": "Privat zugesicherter Speicher"
@@ -45,8 +45,8 @@
     "runSummary": "{shown}/{total} Starts angezeigt; {points} gespeicherte Punkte in diesem Start",
     "earlier": "Frühere Punkte",
     "latest": "Neueste Punkte",
-    "programNote": "Aktuelle und künftige Starts dieses Abbildpfads werden getrennt erfasst. Bis zu 7 Tage, 131072 Punkte und 9 MiB; beim ersten erreichten Limit werden die ältesten Daten entfernt. Bis zu 512 gleichzeitige Instanzen. Die Liste zeigt die letzten 256 Starts; jede Seite bis zu 1000 gespeicherte Punkte und Lückenmarkierungen. Frühere Punkte bleiben abrufbar. Meist 5 Sekunden Abstand; langsamere Abtastung lässt Lücken. Ein wachsender Arbeitssatz beweist kein Speicherleck. Stoppen behält Daten, Löschen entfernt sie. Ein Neustart von Argus setzt die Aufzeichnung nicht fort.",
-    "damaged": "Einige Datensätze haben die Integritätsprüfung nicht bestanden; fehlende Intervalle bleiben Lücken.",
+    "programNote": "Jeder Start vom selben Pfad wird separat aufgezeichnet. Die Daten bleiben bis zu 7 Tage erhalten. Bei Erreichen des Speicherlimits werden die ältesten Daten früher gelöscht. Stoppen behält die Daten bei. Löschen beendet die Beobachtung und entfernt die Aufzeichnung. Nach einem Neustart von Argus die Beobachtung erneut starten.",
+    "damaged": "Einige Einträge sind beschädigt. Die betroffenen Zeiträume bleiben leer.",
     "earlierRuns": "Frühere Starts",
     "latestRuns": "Neueste Starts",
     "waiting": "Warten auf einen weiteren Start",
@@ -69,9 +69,9 @@
   "now": "Jetzt",
   "live": {
     "on": "Live",
-    "onTitle": "Zeigt die neuesten Werte: bis 6 Stunden jede Sekunde, längere Bereiche jede Minute aktualisiert. Klicken zum Anhalten",
+    "onTitle": "Automatisches Folgen der neuesten Werte pausieren",
     "off": "Zu den neuesten",
-    "offTitle": "Zu den neuesten Werten zurückkehren und weiter aktualisieren (auch per Rechtsklick in das Diagramm oder mit Ende)"
+    "offTitle": "Neuesten Werten wieder folgen (Rechtsklick im Diagramm oder Ende)"
   },
   "toast": {
     "latest": "Zurück bei den neuesten Werten",
@@ -89,7 +89,6 @@
     "showTitle": "In der aktuellen Spur anzeigen",
     "addTitle": "Spur hinzufügen",
     "overlayTitle": "Zweiten Wert überlagern (rechte Achse)",
-    "foot": "Klicken zeigt den Wert in dieser Spur; + oder Ziehen ins Diagramm fügt eine Spur hinzu",
     "byService": "Vom privilegierten Dienst bereitgestellt"
   },
   "group": {
@@ -203,9 +202,9 @@
   },
   "unrecorded": {
     "title": "Keine Aufzeichnungen für {name}",
-    "hint": "Dieser Wert wird auf diesem Computer nicht aufgezeichnet; das nötige Gerät oder der Zähler fehlt möglicherweise.",
+    "hint": "Das benötigte Gerät oder der Leistungsindikator ist möglicherweise nicht verfügbar.",
     "serviceTitle": "{name} benötigt den privilegierten Dienst",
-    "serviceHint": "Der privilegierte Dienst liest die Prozessorsensoren über die festen PawnIO-Module. Nach der Installation beginnt die Aufzeichnung mit der nächsten Messung; frühere Zeiträume bleiben leer.",
+    "serviceHint": "Die Aufzeichnung beginnt mit der nächsten Messung nach Aktivierung des Dienstes. Frühere Zeiträume bleiben leer.",
     "install": "Privilegierten Dienst installieren…"
   },
   "tip": {
@@ -244,7 +243,7 @@
     },
     "search": "Prozesse suchen",
     "emptyRange": "In diesem Bereich sind keine Prozesse aufgezeichnet",
-    "netService": "Netzwerkwerte je Prozess benötigen den privilegierten Dienst; Argus läuft mit Standardrechten, daher hat die Spalte „Netzwerk“ keine Aufzeichnungen.",
+    "netService": "Mit Standardrechten wird zum Aufzeichnen der Netzwerknutzung pro Prozess der privilegierte Dienst benötigt.",
     "live": "Neueste Prozesse"
   },
   "column": {

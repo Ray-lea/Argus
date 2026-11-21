@@ -264,6 +264,7 @@ export default function Replica({
   const [queries, setQueries] = useState<Partial<Record<Page, string>>>({});
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("all");
+  const [connectionView, setConnectionView] = useState<"apps" | "list">("list");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1h");
   const [historyAt, setHistoryAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -969,6 +970,17 @@ export default function Replica({
     ) : page === "connections" ? (
       <>
         <Segments
+          key="connection-view"
+          label="视图"
+          value={connectionView}
+          onChange={setConnectionView}
+          iconsOnly
+          items={[
+            { value: "apps", label: "按应用", icon: "apps" },
+            { value: "list", label: "列表", icon: "list" },
+          ]}
+        />
+        <Segments
           key="connections"
           label="筛选"
           value={connectionFilter}
@@ -1316,6 +1328,7 @@ export default function Replica({
                   <Connections
                     alive={alive}
                     filter={connectionFilter}
+                    grouped={connectionView === "apps"}
                     query={queries.connections ?? ""}
                     hidden={hideSystem.connections ? hides : undefined}
                     onShowAll={() => showAll("connections")}
@@ -1406,9 +1419,7 @@ export default function Replica({
               <div className="a-dialog is-lock" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
                 <div className="a-dialog-body a-scroll">
                   <h3 id="a-dialog-title">谁在占用文件</h3>
-                  <p className="a-dialog-text">
-                    删除或移动文件时提示“文件正在使用”，可在此查找占用该文件的进程，也可将文件直接拖放到 Argus 窗口。
-                  </p>
+                  {lock && <p className="a-dialog-text">可将文件或文件夹拖到窗口中查询。</p>}
                   <FileLock
                     result={lock}
                     checking={checking}
@@ -1419,7 +1430,7 @@ export default function Replica({
                   />
                 </div>
                 <div className="a-dialog-foot">
-                  <p>句柄查询可发现当前目录占用；受保护进程仍可能无法检查。</p>
+                  <p>受保护进程的文件占用可能无法显示。</p>
                   <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)} data-primary>
                     关闭
                   </button>
@@ -1481,7 +1492,7 @@ export default function Replica({
                         以管理员身份运行
                         <Icon name="shield" size={14} />
                       </span>
-                      <small>{elevated ? "需要 Windows 授权；取消授权后不会运行。" : "未勾选时，以普通权限运行。"}</small>
+                      <small>{elevated ? "启动前需经 Windows 授权。" : "新任务将以普通权限运行。"}</small>
                     </div>
                   </div>
                   <div style={{ minHeight: 54 }} />

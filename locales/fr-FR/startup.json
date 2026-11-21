@@ -17,7 +17,7 @@
     "done": "L’application de démarrage {name} a été supprimée.",
     "error": {
       "accessDenied": "Accès refusé : impossible de supprimer l’application de démarrage {name}. Les éléments destinés à tous les utilisateurs nécessitent d’exécuter Argus en tant qu’administrateur ; les autres peuvent être protégés par des autorisations de fichier ou de registre.",
-      "notFound": "L’application de démarrage {name} n’existe plus ; elle a peut-être déjà été supprimée.",
+      "notFound": "L’élément de démarrage {name} est introuvable.",
       "refused": "L’application de démarrage {name} ne peut pas être supprimée. Les tâches de démarrage des packages d’application peuvent seulement être désactivées.",
       "generic": "Impossible de supprimer l’application de démarrage {name} : {error}"
     },
@@ -47,5 +47,5 @@
   "loading": "Lecture des applications de démarrage…",
   "noMatch": "Aucune application correspondante",
   "summary": "Activés : {enabled} sur {total}",
-  "note": "La désactivation utilise le même commutateur que les applications de démarrage dans Gestionnaire des tâches et peut être annulée. Les éléments destinés à tous les utilisateurs nécessitent des droits d’administrateur."
+  "note": "Les éléments désactivés peuvent être réactivés. Modifier un élément de démarrage pour tous les utilisateurs nécessite des droits d’administrateur."
 }

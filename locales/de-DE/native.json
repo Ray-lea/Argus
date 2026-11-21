@@ -72,7 +72,7 @@
       "ipv4Only": "Nur IPv4 TCP Verbindungen können geschlossen werden"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager konnte das Ziel nicht überprüfen; die folgenden Ergebnisse stammen aus einer Handle-Suche"
+      "restartManagerFailed": "Die Dateiprüfung konnte nicht abgeschlossen werden; die Ergebnisse stammen nur aus einer Handle-Suche"
     },
     "handles": {
       "tooMany": "Es können bis zu 32 Pfade gleichzeitig überprüft werden, mit einer Gesamtlänge von maximal 8 KiB",
