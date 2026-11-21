@@ -137,7 +137,7 @@ NVMe 使用标准 Identify Controller 和健康日志，覆盖开放该接口的
 
 128 位累计计数序列化为十进制字符串，保留全部精度。NVMe 读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。寿命估计取 `max(0, 100 - percentageUsed)`，严重警告位独立返回，前端应分别展示。序列号只进入显式请求的详情结果，不写入诊断日志或周期快照。
 
-普通权限下先查询 `IOCTL_STORAGE_PREDICT_FAILURE`；仅 ATA／SATA 总线的有效 SMART 扇区按 ATA 布局解析。服务使用固定的 ATA IDENTIFY、SMART READ DATA／READ THRESHOLDS／RETURN STATUS，经 ATA pass-through 或 SAT 16／12 字节命令读取；ATA 身份查询未成功时尝试 SCSI VPD 80h、LOG SENSE 2Fh／0Dh／03h／02h。每条透传命令超时为 2 秒，20 秒预算用尽后停止发起后续命令。服务内仅允许一个磁盘详情查询执行。查询不启用 SMART、不触发自检、不发送写入命令。
+普通权限下先查询 `IOCTL_STORAGE_PREDICT_FAILURE`；仅 ATA／SATA 总线的有效 SMART 扇区按 ATA 布局解析。服务使用固定的 ATA IDENTIFY、SMART READ DATA／READ THRESHOLDS／RETURN STATUS，经 ATA pass-through 或 SAT 16／12 字节命令读取。SAT 命令中只有 SMART RETURN STATUS 要求设备回传 ATA 寄存器（CK_COND），回传的寄存器从描述符格式或固定格式的感测数据中读取；读取数据的命令不设此位，与 smartmontools、CrystalDiskInfo 一致，否则成功的命令也以 CHECK CONDITION 结束，USB 桥接设备与存储驱动可能因此丢失数据或感测数据。ATA 身份查询未成功时尝试 SCSI VPD 80h、LOG SENSE 2Fh／0Dh／03h／02h。每条透传命令超时为 2 秒，20 秒预算用尽后停止发起后续命令。服务内仅允许一个磁盘详情查询执行。查询不启用 SMART、不触发自检、不发送写入命令。
 
 ATA 扇区校验长度、校验和及重复属性编号，阈值按属性编号关联；仅预故障属性的有效阈值参与失败判定。原始属性按字节保留，`ata_health` 按型号与固件解析剩余寿命、温度、累计主机读写、通电时间、通电次数、异常断电和不可校正错误，Intel 的已适配型号还提供备用空间比例与阈值。Samsung 750／830／840／850／860／870 及部分 OEM、Crucial MX100／200／300／500、BX300／500、M500／M550、Micron 1100／1300／M600、Intel 已适配 SATA 系列、Kingston A400／UV400／UV500／KC600、WD Blue／Red／Green SATA 与 SanDisk Ultra 3D 使用各自的映射。未识别型号保留原始属性，寿命与累计读写保持未知。
 
