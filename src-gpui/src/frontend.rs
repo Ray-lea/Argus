@@ -107,6 +107,11 @@ enum Action {
     View(String),
     Select(String),
     Fold(String),
+    /// Copies the selected row: its name, or with `true` every column shown.
+    CopyRow(bool),
+    /// Copies every column shown of the row a menu opened on, kept as it was
+    /// then: by the click the list may have dropped or re-keyed it.
+    CopyDetails(Box<model::Row>),
     TreeExpand(String, bool),
     TreeExpandAll(bool),
     /// The details pane's next mode, or the one given.

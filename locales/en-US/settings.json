@@ -101,6 +101,8 @@
     "ends": "Select the first / last item",
     "expand": "Processes: collapse / expand a group or category, or select a parent / child",
     "details": "Processes: open details",
+    "copy": "Copy the name of the selection",
+    "copyDetails": "Copy every column shown for the selection; a process also gets its path and command line",
     "endTable": "Processes: end the selection, with confirmation",
     "endDirect": "Processes: end the selection without confirmation",
     "clear": "Clear selection; clear the process search first if one is active.",

@@ -129,6 +129,7 @@
   "copyWhat": {
     "path": "パス",
     "name": "名前",
+    "details": "詳細",
     "version": "バージョン番号"
   }
 }

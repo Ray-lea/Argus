@@ -4181,6 +4181,8 @@ impl Desktop {
                     ("Home / End", "settings.shortcuts.ends"),
                     ("← / →", "settings.shortcuts.expand"),
                     ("Enter", "settings.shortcuts.details"),
+                    ("Ctrl+C", "settings.shortcuts.copy"),
+                    ("Ctrl+Shift+C", "settings.shortcuts.copyDetails"),
                     ("Delete", "settings.shortcuts.endTable"),
                     ("Shift+Delete", "settings.shortcuts.endDirect"),
                     ("Esc", "settings.shortcuts.clear"),

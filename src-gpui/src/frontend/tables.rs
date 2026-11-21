@@ -434,6 +434,17 @@ fn entry_cell(raw: &Value, field: &Field) -> String {
     }
 }
 
+impl NativeTable {
+    /// The columns shown for `row` as (heading, text), as the table draws
+    /// them; empty cells are left out.
+    pub(super) fn row_cells(&self, row: &Row) -> Vec<(String, String)> {
+        self.fields
+            .iter()
+            .map(|field| (field.label.clone(), display_cell(row, field, self.bits)))
+            .filter(|(_, value)| !value.trim().is_empty())
+            .collect()
+    }
+}
 fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
     if field.kind == CellKind::NetworkRate {
         row.metric(field.key)

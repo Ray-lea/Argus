@@ -20,6 +20,7 @@
   "command": "命令",
   "copyName": "复制名称",
   "copyPath": "复制路径",
+  "copyDetails": "复制详细信息",
   "openFileLocation": "打开文件位置",
   "goToProcess": "转到进程",
   "endProcess": "结束进程",

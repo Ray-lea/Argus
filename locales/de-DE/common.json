@@ -20,6 +20,7 @@
   "command": "Befehl",
   "copyName": "Namen kopieren",
   "copyPath": "Pfad kopieren",
+  "copyDetails": "Details kopieren",
   "openFileLocation": "Dateipfad öffnen",
   "goToProcess": "Zum Prozess wechseln",
   "endProcess": "Task beenden",

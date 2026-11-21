@@ -103,6 +103,7 @@
   "copyWhat": {
     "path": "路徑",
     "name": "名稱",
+    "details": "詳細資料",
     "version": "版本號"
   }
 }

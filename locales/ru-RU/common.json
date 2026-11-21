@@ -20,6 +20,7 @@
   "command": "Команда",
   "copyName": "Копировать имя",
   "copyPath": "Копировать путь",
+  "copyDetails": "Копировать сведения",
   "openFileLocation": "Открыть папку с файлом",
   "goToProcess": "Перейти к процессу",
   "endProcess": "Снять задачу",

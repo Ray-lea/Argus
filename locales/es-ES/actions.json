@@ -155,6 +155,7 @@
   "copyWhat": {
     "path": "ruta",
     "name": "nombre",
+    "details": "detalles",
     "version": "número de versión"
   }
 }

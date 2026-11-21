@@ -142,6 +142,7 @@
   "copyWhat": {
     "path": "path",
     "name": "name",
+    "details": "details",
     "version": "version number"
   }
 }

@@ -101,6 +101,8 @@
     "ends": "Seleccione el primer/último elemento",
     "expand": "Procesos: contraer/expandir un grupo o categoría, o seleccionar un padre/hijo",
     "details": "Procesos: abrir detalles",
+    "copy": "Copiar el nombre de la selección",
+    "copyDetails": "Copiar todas las columnas mostradas de la selección; en un proceso, también su ruta y línea de comandos",
     "endTable": "Procesos: finalizar la selección, con confirmación",
     "endDirect": "Procesos: finalizar la selección sin confirmación",
     "clear": "Borrar selección; borre primero la búsqueda de procesos si hay alguna activa.",

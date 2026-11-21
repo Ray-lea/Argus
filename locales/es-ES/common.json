@@ -20,6 +20,7 @@
   "command": "Comando",
   "copyName": "Copiar nombre",
   "copyPath": "Copiar ruta",
+  "copyDetails": "Copiar detalles",
   "openFileLocation": "Abrir ubicación del archivo",
   "goToProcess": "Ir al proceso",
   "endProcess": "Finalizar tarea",

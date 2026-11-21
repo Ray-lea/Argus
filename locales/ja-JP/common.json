@@ -20,6 +20,7 @@
   "command": "コマンド",
   "copyName": "名前をコピー",
   "copyPath": "パスをコピー",
+  "copyDetails": "詳細をコピー",
   "openFileLocation": "ファイルの場所を開く",
   "goToProcess": "プロセスに移動",
   "endProcess": "タスクの終了",

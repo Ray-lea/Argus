@@ -101,6 +101,8 @@
     "ends": "Wählen Sie das erste / letzte Element aus",
     "expand": "Prozesse: Reduzieren/Erweitern einer Gruppe oder Kategorie oder Auswählen eines übergeordneten/untergeordneten Elements",
     "details": "Prozesse: Details öffnen",
+    "copy": "Namen der Auswahl kopieren",
+    "copyDetails": "Alle angezeigten Spalten der Auswahl kopieren; bei Prozessen zusätzlich Pfad und Befehlszeile",
     "endTable": "Prozesse: Auswahl beenden, mit Bestätigung",
     "endDirect": "Prozesse: Auswahl ohne Bestätigung beenden",
     "clear": "Auswahl löschen; löschen Sie zuerst die Prozesssuche, falls eine aktiv ist.",
