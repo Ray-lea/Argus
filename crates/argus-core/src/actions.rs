@@ -512,14 +512,23 @@ fn read_cpu_sets(
     sets: &HybridSets,
 ) -> Option<CpuSets> {
     use windows::Win32::System::Threading::GetProcessDefaultCpuSets;
-    let mut ids = vec![0u32; sets.performance.len() + sets.efficient.len()];
-    let mut count = 0u32;
-    unsafe { GetProcessDefaultCpuSets(process, Some(&mut ids), &mut count) }
-        .as_bool()
-        .then(|| {
-            ids.truncate(count as usize);
-            classify_sets(&mut ids, sets)
+    // Read for every process on every sample: one buffer per thread, no
+    // allocation, and most processes (no default sets) skip the sort.
+    thread_local! {
+        static IDS: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    IDS.with_borrow_mut(|ids| {
+        ids.resize(sets.performance.len() + sets.efficient.len(), 0);
+        let mut count = 0u32;
+        if !unsafe { GetProcessDefaultCpuSets(process, Some(ids), &mut count) }.as_bool() {
+            return None;
+        }
+        Some(if count == 0 {
+            CpuSets::All
+        } else {
+            classify_sets(&mut ids[..count as usize], sets)
         })
+    })
 }
 
 /// Sets the CPU Sets of a process instance and returns the ones it ended up
@@ -841,6 +850,45 @@ mod tests {
         assert_eq!(read(&[259, 260]), CpuSets::Efficient);
         assert_eq!(read(&[256, 259]), CpuSets::Custom);
         assert!(!CpuSets::Custom.settable());
+    }
+
+    /// The per-sample cost of reading every process's CPU Sets, on any CPU:
+    /// the system's sets split in half stand in for a hybrid CPU's.
+    /// `cargo test -p argus-core --lib cpu_set_read_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore = "measurement"]
+    fn cpu_set_read_cost() {
+        use super::HybridSets;
+        let mut ids: Vec<u32> = super::system_cpu_sets().iter().map(|s| s.0).collect();
+        ids.sort_unstable();
+        let efficient = ids.split_off(ids.len() / 2);
+        let sets = HybridSets {
+            performance: ids,
+            efficient,
+        };
+        let handles: Vec<_> = crate::process::list_lineage()
+            .into_iter()
+            .filter_map(|(pid, ..)| unsafe {
+                super::OpenProcess(super::PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()
+            })
+            .map(super::OwnedHandle)
+            .collect();
+        let rounds = 200;
+        let started = std::time::Instant::now();
+        let mut read = 0;
+        for _ in 0..rounds {
+            for handle in &handles {
+                read += usize::from(super::read_cpu_sets(handle.0, &sets).is_some());
+            }
+        }
+        let per_sample = started.elapsed() / rounds;
+        println!(
+            "{} processes: {:?} per sample, {:?} per process ({} reads)",
+            handles.len(),
+            per_sample,
+            per_sample / handles.len().max(1) as u32,
+            read / rounds as usize
+        );
     }
 
     #[test]
