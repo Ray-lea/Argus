@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 
 /** The figures compared, in the order shown. `frames` marks those that count per presented frame. */
 export const FIGURES = [
+  { key: "drawP50Ms", name: "draw P50 ms", digits: 3 },
+  { key: "drawP90Ms", name: "draw P90 ms", digits: 3 },
   { key: "mcyclesPerFrame", name: "Mcycles/frame", digits: 2, frames: true },
   { key: "mcyclesPerSecond", name: "Mcycles/s", digits: 0 },
   { key: "cpuMsPerSecond", name: "CPU ms/s", digits: 1 },
@@ -39,22 +41,32 @@ export function sides(pair) {
 const finite = (value) => (Number.isFinite(value) ? value : null);
 const cycles = (mark) => mark.processes.reduce((total, process) => total + (process.cpuCycles ?? 0), 0);
 
+const quantile = (sorted, q) => (sorted.length ? sorted[Math.floor((sorted.length - 1) * q)] : null);
+
 /**
  * The phases of one perf-native result with the figures compared. Process
  * cycles come from the probe's marks: unlike thread times, which advance in
  * scheduler ticks, they resolve the small CPU use of an idle interface.
+ * Draw times are there when the run had ARGUS_GPUI_FRAME_TRACE set: the
+ * duration of each draw on the interface thread (`frame-phases`). Their
+ * median hardly moves with other load on the machine, which the per-second
+ * figures follow closely.
  */
 export function phaseFigures(result) {
   const marks = new Map(result.events.filter((event) => event.event === "mark").map((event) => [event.tag, event]));
+  const draws = result.events.filter((event) => event.event === "frame-phases" && Number.isFinite(event.atQpc) && Number.isFinite(event.totalUs));
   return result.summaries.map((summary) => {
     const before = marks.get(`${summary.tag}-begin`);
     const after = marks.get(`${summary.tag}-end`);
     const spent = before && after ? cycles(after) - cycles(before) : null;
     const frames = summary.observedFrames;
+    const drawn = before && after ? draws.filter((event) => event.atQpc >= before.qpc100ns && event.atQpc <= after.qpc100ns).map((event) => event.totalUs / 1000).sort((a, b) => a - b) : [];
     return {
       phase: summary.tag,
       busy: finite(summary.systemBusyPercent),
       figures: {
+        drawP50Ms: quantile(drawn, 0.5),
+        drawP90Ms: quantile(drawn, 0.9),
         mcyclesPerFrame: spent !== null && frames > 0 ? spent / frames / 1e6 : null,
         mcyclesPerSecond: spent !== null && summary.durationMs > 0 ? spent / (summary.durationMs / 1000) / 1e6 : null,
         cpuMsPerSecond: finite(summary.cpuMsPerSecond),

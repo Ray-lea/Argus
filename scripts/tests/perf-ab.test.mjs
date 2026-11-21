@@ -4,9 +4,9 @@ import { assignments, compare, format, phaseFigures, sides } from "../lib/perf-a
 
 // A perf-native result with one phase: `cycles` spent over ten seconds and `frames` presented.
 function result(cycles, frames, extra = {}) {
-  const mark = (tag, total) => ({ event: "mark", tag, processes: [{ cpuCycles: total * 0.75 }, { cpuCycles: total * 0.25 }] });
+  const mark = (tag, total, qpc100ns) => ({ event: "mark", tag, qpc100ns, processes: [{ cpuCycles: total * 0.75 }, { cpuCycles: total * 0.25 }] });
   return {
-    events: [mark("0-scroll-begin", 1e9), mark("0-scroll-end", 1e9 + cycles), { event: "sample" }],
+    events: [mark("0-scroll-begin", 1e9, 1000), mark("0-scroll-end", 1e9 + cycles, 2000), { event: "sample" }, ...(extra.draws ?? [])],
     summaries: [
       { tag: "0-scroll", durationMs: 10000, observedFrames: frames, presentedFps: frames / 10, systemBusyPercent: 30, cpuMsPerSecond: cycles / 3e7, uiThreadCpuMsPerSecond: null, gpuBusiestEnginePercent: 1.5, privateMiB: 180, frameP95Ms: 9, ...extra },
     ],
@@ -25,6 +25,12 @@ test("figures come from the marks and the phase summary", () => {
   const [blind] = phaseFigures(result(12e9, null, { presentedFps: null, frameP95Ms: null }));
   assert.equal(blind.figures.mcyclesPerFrame, null);
   assert.equal(blind.figures.mcyclesPerSecond, 1200);
+  // Draw times only with a frame trace, and only those inside the phase.
+  assert.equal(phase.figures.drawP50Ms, null);
+  const draw = (atQpc, totalUs) => ({ event: "frame-phases", atQpc, totalUs });
+  const [traced] = phaseFigures(result(12e9, 1200, { draws: [draw(900, 90000), draw(1000, 2300), draw(1500, 2100), draw(1600, 2500), draw(1700, 8000), draw(2000, 2200), draw(2100, 70000)] }));
+  assert.equal(traced.figures.drawP50Ms, 2.3);
+  assert.equal(traced.figures.drawP90Ms, 2.5);
 });
 
 test("sides take turns and assignments split at the first equals sign", () => {
