@@ -149,6 +149,9 @@ pub fn find_handle_lockers(paths: Vec<String>) -> argus_core::handles::HandleRep
         Err(error) => Fallback::Note(tr!("service.handles.serviceUnavailable", error = error)),
     };
     let mut report = handles::scan_local(paths);
+    // The message explains the service; the interface does not also suggest
+    // enabling it.
+    report.summary.service_asked = !matches!(fallback, Fallback::NoService);
     report.summary.error = fallback.error(report.summary.error.take());
     report
 }

@@ -58,6 +58,11 @@ pub struct HandleLocker {
 pub struct HandleSummary {
     pub available: bool,
     pub via_service: bool,
+    /// The scan ran locally after the privileged service was asked and did
+    /// not answer; `error` says why. Set by the host only, never sent over
+    /// the service pipe.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub service_asked: bool,
     pub elevated: bool,
     pub checked: usize,
     pub denied_processes: usize,

@@ -385,7 +385,11 @@ impl Desktop {
                     }
                 )));
             }
-            if !boolean(handles, "viaService") && !boolean(handles, "elevated") {
+            // When the service was asked and failed, the error below names it.
+            if !boolean(handles, "viaService")
+                && !boolean(handles, "serviceAsked")
+                && !boolean(handles, "elevated")
+            {
                 column = column.child(note(label("fileLock.serviceHint")));
             }
             if let Some(error) = handles["error"].as_str() {
