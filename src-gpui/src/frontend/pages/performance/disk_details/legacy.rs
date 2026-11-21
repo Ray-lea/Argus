@@ -73,6 +73,26 @@ fn ata_name(id: u64, details: &Value) -> String {
     label(&format!("performance.disk.ata.{key}"))
 }
 
+/// Whether the drive predicts its failure: its own verdict (SMART RETURN
+/// STATUS or Windows' prediction) where that came back. USB bridges often
+/// lose the registers that carry it; then, as smartmontools does, the
+/// attribute check stands in, since the drive fails SMART exactly when a
+/// pre-failure attribute reaches its threshold (`failing`). Without any
+/// threshold there is nothing to check against.
+fn predicted_failure(health: &Value) -> Option<bool> {
+    health["predictFailure"].as_bool().or_else(|| {
+        let attributes = values(&health["attributes"]);
+        attributes
+            .iter()
+            .any(|attribute| attribute["threshold"].is_u64())
+            .then(|| {
+                attributes
+                    .iter()
+                    .any(|attribute| boolean(attribute, "failing"))
+            })
+    })
+}
+
 fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static str>) {
     let mut reasons = Vec::new();
     let spare_low = summary["availableSparePercent"]
@@ -100,11 +120,12 @@ fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static
             reasons.push(reason);
         }
     }
-    let state = if health["predictFailure"].as_bool() == Some(true) || spare_low {
+    let predicted = predicted_failure(health);
+    let state = if predicted == Some(true) || spare_low {
         "bad"
     } else if !reasons.is_empty() {
         "caution"
-    } else if health["predictFailure"].as_bool() == Some(false) {
+    } else if predicted == Some(false) {
         "good"
     } else {
         "unknown"
@@ -504,5 +525,33 @@ mod tests {
             assess_legacy(&json!({"predictFailure":true}), &sectors).0,
             "bad"
         );
+    }
+
+    #[test]
+    fn without_the_drives_verdict_the_thresholds_decide() {
+        // A USB bridge that returned the attributes and thresholds but not
+        // the registers of SMART RETURN STATUS.
+        let attributes = |failing: bool| {
+            json!({"predictFailure": null, "attributes": [
+                {"id": 5, "current": 100, "worst": 100, "threshold": 5, "failing": false},
+                {"id": 1, "current": 10, "worst": 10, "threshold": 16, "failing": failing},
+            ]})
+        };
+        assert_eq!(assess_legacy(&attributes(false), &json!({})).0, "good");
+        assert_eq!(assess_legacy(&attributes(true), &json!({})).0, "bad");
+        let sectors = json!({"reallocatedSectors": "1"});
+        assert_eq!(
+            assess_legacy(&attributes(false), &sectors),
+            ("caution", vec!["reallocated"])
+        );
+        // Without thresholds nothing says the drive passes.
+        let bare = json!({"attributes": [
+            {"id": 5, "current": 100, "worst": 100, "threshold": null, "failing": false},
+        ]});
+        assert_eq!(assess_legacy(&bare, &json!({})).0, "unknown");
+        // The drive's own verdict is not overruled.
+        let mut failed = attributes(false);
+        failed["predictFailure"] = json!(true);
+        assert_eq!(assess_legacy(&failed, &json!({})).0, "bad");
     }
 }

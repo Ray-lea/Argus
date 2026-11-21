@@ -153,7 +153,7 @@ HDD 映射覆盖 Seagate BarraCuda／IronWolf／Exos 等 ST 系列、WD、HGST/H
 
 映射依据：[smartmontools 型号数据库](https://github.com/smartmontools/smartmontools/blob/main/drivedb/drivedb.h)、[CrystalDiskInfo 厂商解析](https://github.com/hiyohiyo/CrystalDiskInfo/blob/master/AtaSmart.cpp)、[Intel 730 规格](https://www.intel.com/content/dam/www/public/us/en/documents/product-specifications/ssd-730-series-spec.pdf)、[Kingston UV400 SMART](https://media.kingston.com/support/downloads/UV400-SMART-attribute.pdf)、[Kingston KC600 SMART](https://media.kingston.com/support/downloads/KC600-SMART-attribute.pdf)、[ATA IDENTIFY 字段](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ata/ns-ata-_identify_device_data)。
 
-SCSI 页面校验页号、参数长度和重复编号，保留 ASC／ASCQ。未取得故障预测且没有已解析的异常指标时，健康状态显示“未知”。厂商专用 USB／RAID 命令及其余型号映射见[路线图](../roadmap.md)。
+SCSI 页面校验页号、参数长度和重复编号，保留 ASC／ASCQ。未取得故障预测时（USB 桥接设备常丢失 SMART RETURN STATUS 回传的寄存器），界面与 smartmontools 一样按属性判定：预故障属性达到阈值即预测故障，否则视为通过；属性没有任何阈值且没有已解析的异常指标时，健康状态显示“未知”。厂商专用 USB／RAID 命令及其余型号映射见[路线图](../roadmap.md)。
 
 接口依据：[Windows NVMe 查询](https://learn.microsoft.com/en-us/windows/win32/fileio/working-with-nvme-devices)、[NVMe 健康日志字段](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_health_info_log)、[NVMe 控制器身份](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_identify_controller_data)。
 
