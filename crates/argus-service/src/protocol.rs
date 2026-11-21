@@ -1,4 +1,4 @@
-use argus_core::actions::{self, ActionError, IoPriority, MemoryPriority, Priority};
+use argus_core::actions::{self, ActionError, CpuSets, IoPriority, MemoryPriority, Priority};
 use argus_core::connections;
 use argus_core::rules::{self, ProcessRule};
 use argus_core::services::{ServiceAction, ServiceCatalog, StartType};
@@ -93,6 +93,11 @@ pub enum Operation {
         create_time: i64,
         priority: MemoryPriority,
     },
+    CpuSets {
+        pid: u32,
+        create_time: i64,
+        sets: CpuSets,
+    },
     Suspend {
         pid: u32,
         create_time: i64,
@@ -174,6 +179,17 @@ impl Operation {
                 pid, create_time, ..
             } => {
                 if *pid <= 4 || *pid == std::process::id() || *create_time <= 0 {
+                    return Err(ActionError::Refused);
+                }
+            }
+            // A custom set is only read, never sent.
+            Self::CpuSets {
+                pid,
+                create_time,
+                sets,
+            } => {
+                if *pid <= 4 || *pid == std::process::id() || *create_time <= 0 || !sets.settable()
+                {
                     return Err(ActionError::Refused);
                 }
             }
@@ -306,6 +322,11 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             create_time,
             priority,
         } => actions::set_memory_priority(pid, create_time, priority).map(|_| ()),
+        Operation::CpuSets {
+            pid,
+            create_time,
+            sets,
+        } => actions::set_cpu_sets(pid, create_time, sets).map(|_| ()),
         // Suspending the host would freeze the window that asked.
         Operation::Suspend { pid, .. } if pid == client_pid => Err(ActionError::Refused),
         Operation::Suspend {
@@ -408,6 +429,41 @@ mod tests {
             r#"{"op":"ioPriority","pid":1234,"create_time":1,"priority":"idle"}"#,
             r#"{"op":"memoryPriority","pid":1234,"create_time":1,"priority":6}"#,
             r#"{"op":"memoryPriority","pid":1234,"create_time":1,"priority":"low","tree":true}"#,
+        ] {
+            assert!(serde_json::from_str::<Operation>(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn cpu_sets_refuse_custom_sets_and_protected_targets() {
+        let sets = |pid, create_time, sets| Operation::CpuSets {
+            pid,
+            create_time,
+            sets,
+        };
+        for (pid, create_time) in [(0, 1), (4, 1), (std::process::id(), 1), (1234, 0)] {
+            assert!(matches!(
+                sets(pid, create_time, CpuSets::Performance).validate(),
+                Err(ActionError::Refused)
+            ));
+        }
+        assert!(matches!(
+            sets(1234, 1, CpuSets::Custom).validate(),
+            Err(ActionError::Refused)
+        ));
+        for choice in [CpuSets::All, CpuSets::Performance, CpuSets::Efficient] {
+            assert!(sets(1234, 1, choice).validate().is_ok());
+        }
+        assert!(
+            serde_json::from_str::<Operation>(
+                r#"{"op":"cpuSets","pid":1234,"create_time":1,"sets":"efficient"}"#
+            )
+            .is_ok()
+        );
+        for invalid in [
+            r#"{"op":"cpuSets","pid":1234,"create_time":1,"sets":"pCores"}"#,
+            r#"{"op":"cpuSets","pid":1234,"create_time":1,"sets":[1,2]}"#,
+            r#"{"op":"cpuSets","pid":1234,"create_time":1,"sets":"all","mask":3}"#,
         ] {
             assert!(serde_json::from_str::<Operation>(invalid).is_err());
         }

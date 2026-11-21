@@ -307,6 +307,12 @@
     "belowNormal": "Ниже среднего",
     "normal": "Обычный"
   },
+  "cpuSets": {
+    "all": "Все ядра",
+    "performance": "Только P-ядра",
+    "efficient": "Только E-ядра",
+    "custom": "Особый набор"
+  },
   "power": {
     "veryLow": "Очень низкое",
     "low": "Низкое",
@@ -324,6 +330,7 @@
     "setPriority": "Задать приоритет",
     "ioPriority": "Приоритет I/O",
     "memoryPriority": "Приоритет памяти",
+    "cpuSets": "Ядра CPU",
     "suspend": "Приостановить процесс",
     "resume": "Возобновить процесс",
     "addRule": "Добавить правило",

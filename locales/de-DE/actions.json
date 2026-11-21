@@ -82,6 +82,20 @@
     },
     "done": "Die Speicherpriorität von {name} wurde auf „{priority}“ gesetzt."
   },
+  "cpuSets": {
+    "failed": "Die Kerne von {name} konnten nicht geändert werden. {error}",
+    "error": {
+      "accessDenied": "Zugriff verweigert. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus. Bei geschützten Prozessen lässt sich dies möglicherweise weiterhin nicht ändern.",
+      "refused": "Die Kerne von {name} können nicht geändert werden.",
+      "serviceOutdated": "Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+      "notFound": "{name} wurde bereits beendet."
+    },
+    "partial": {
+      "one": "Kerne von {count} Prozess geändert; nicht geändert: {failed}. {error}",
+      "other": "Kerne von {count} Prozessen geändert; nicht geändert: {failed}. {error}"
+    },
+    "done": "{name} läuft jetzt auf: {priority}."
+  },
   "efficiency": {
     "on": {
       "failed": "Der Effizienzmodus konnte für {name} nicht aktiviert werden",

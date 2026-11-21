@@ -292,6 +292,12 @@
     "belowNormal": "低于正常",
     "normal": "正常"
   },
+  "cpuSets": {
+    "all": "全部核心",
+    "performance": "仅性能核",
+    "efficient": "仅能效核",
+    "custom": "自定义"
+  },
   "power": {
     "veryLow": "非常低",
     "low": "低",
@@ -304,6 +310,7 @@
     "setPriority": "设置优先级",
     "ioPriority": "I/O 优先级",
     "memoryPriority": "内存优先级",
+    "cpuSets": "CPU 核心",
     "suspend": "暂停进程",
     "resume": "恢复进程",
     "addRule": "添加规则",
