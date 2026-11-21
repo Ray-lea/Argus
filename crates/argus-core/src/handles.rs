@@ -1,7 +1,7 @@
 //! On-demand file-handle scanning. Run only in a disposable helper process:
 //! querying or closing a foreign file handle can block inside a filesystem.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -22,8 +22,8 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::IO::IO_STATUS_BLOCK;
 use windows::Win32::System::Threading::{
-    GetCurrentProcess, GetProcessTimes, OpenProcess, PROCESS_DUP_HANDLE,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    GetCurrentProcess, GetProcessTimes, OpenProcess, PROCESS_ACCESS_RIGHTS, PROCESS_DUP_HANDLE,
+    PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::core::{PCWSTR, PWSTR};
 
@@ -86,8 +86,10 @@ pub struct HandleReport {
 }
 
 /// A cursor is emitted before any potentially blocking foreign-handle call,
-/// including DuplicateHandle/GetFileType and the final CloseHandle. The host
-/// watchdog can retain hits and resume strictly after an interrupted cursor.
+/// including DuplicateHandle/GetFileType and the final CloseHandle, and before
+/// each process is opened and its handles listed (with `handle: u64::MAX`,
+/// so a stall there skips the process). The host watchdog can retain hits and
+/// resume strictly after an interrupted cursor.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ScanEvent {
     Ready,
@@ -315,6 +317,92 @@ fn targets(paths: &[String]) -> Result<Vec<Target>, ActionError> {
         .collect()
 }
 
+struct Instance {
+    /// FILETIME ticks.
+    created: i64,
+    name: String,
+    handles: usize,
+}
+
+/// Where the scan finds each process's file handles.
+enum Listing {
+    /// The system-wide handle table, grouped by process in handle order.
+    Table(BTreeMap<u32, Vec<usize>>),
+    /// The system-wide table is too large to read at once (a process leaking
+    /// millions of handles has made it hundreds of MB), so each process's own
+    /// table is read once the process is open. Processes that cannot be
+    /// opened are skipped without reading anything.
+    PerProcess { file_type: u32, buffer: AlignedBuf },
+}
+
+/// Bounds one process's table in `Listing::PerProcess`, inside the helper's
+/// 256 MB job limit. A process with more handles (about 3 million) is left
+/// out and the result marked truncated.
+const MAX_PROCESS_TABLE_BYTES: usize = 128 * 1024 * 1024;
+
+/// `anchor` is a File handle of this process; its type index is the one
+/// file handles have.
+fn listing(me: u32, anchor: HANDLE, after: Option<Cursor>) -> Result<Listing, ActionError> {
+    let mut table = AlignedBuf::with_capacity(1024 * 1024);
+    let returned =
+        match nt::query_system_information(nt::SYSTEM_EXTENDED_HANDLE_INFORMATION, &mut table) {
+            Ok(returned) => returned,
+            Err(status) if status.0 == nt::STATUS_INFO_LENGTH_MISMATCH => {
+                drop(table);
+                let mut buffer = AlignedBuf::with_capacity(64 * 1024);
+                let own = nt::process_handles(
+                    unsafe { GetCurrentProcess() },
+                    0,
+                    MAX_PROCESS_TABLE_BYTES,
+                    &mut buffer,
+                )
+                .map_err(|s| nt_error(s.0))?;
+                let file_type = own
+                    .iter()
+                    .find(|e| e.handle == anchor.0 as usize)
+                    .map(|e| e.object_type)
+                    .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType")))?;
+                return Ok(Listing::PerProcess { file_type, buffer });
+            }
+            Err(status) => return Err(nt_error(status.0)),
+        };
+    let entries = nt::handle_entries(&table, returned)
+        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
+    let file_type = entries
+        .iter()
+        .find(|e| e.pid == me as usize && e.handle == anchor.0 as usize)
+        .map(|e| e.object_type)
+        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType")))?;
+    let mut processes: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    for e in entries {
+        if e.object_type == file_type
+            && e.pid <= u32::MAX as usize
+            && e.pid != me as usize
+            && after.is_none_or(|after| {
+                Cursor {
+                    pid: e.pid as u32,
+                    handle: e.handle as u64,
+                } > after
+            })
+        {
+            processes.entry(e.pid as u32).or_default().push(e.handle);
+        }
+    }
+    for handles in processes.values_mut() {
+        handles.sort_unstable();
+    }
+    Ok(Listing::Table(processes))
+}
+
+/// Opens `pid` if it is still the instance created at `created` (FILETIME ticks).
+fn open_instance(pid: u32, created: i64, access: PROCESS_ACCESS_RIGHTS) -> Option<OwnedHandle> {
+    let process = OwnedHandle(unsafe { OpenProcess(access, false, pid) }.ok()?);
+    let (mut c, mut e, mut k, mut u) = Default::default();
+    (unsafe { GetProcessTimes(process.0, &mut c, &mut e, &mut k, &mut u) }.is_ok()
+        && filetime_ticks(c) == created)
+        .then_some(process)
+}
+
 pub fn scan(
     paths: &[String],
     after: Option<Cursor>,
@@ -338,179 +426,211 @@ pub fn scan(
     let mut processes = AlignedBuf::with_capacity(1024 * 1024);
     nt::query_system_information(SystemProcessInformation, &mut processes)
         .map_err(|s| nt_error(s.0))?;
-    let identities: HashMap<_, _> = ProcessIter::new(&processes)
+    let instances: HashMap<u32, Instance> = ProcessIter::new(&processes)
         .map(|p| {
             (
                 p.info.unique_process_id.0 as usize as u32,
-                (p.info.create_time, unsafe {
-                    p.info.image_name.to_string_lossy()
-                }),
+                Instance {
+                    created: p.info.create_time,
+                    name: unsafe { p.info.image_name.to_string_lossy() },
+                    handles: p.info.handle_count as usize,
+                },
             )
         })
         .collect();
-    let mut table = AlignedBuf::with_capacity(1024 * 1024);
-    let returned = nt::query_system_information(nt::SYSTEM_EXTENDED_HANDLE_INFORMATION, &mut table)
-        .map_err(|s| nt_error(s.0))?;
-    let entries = nt::handle_entries(&table, returned)
-        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
-    let file_type = entries
-        .iter()
-        .find(|e| e.pid == me as usize && e.handle == anchor.0.0 as usize)
-        .map(|e| e.object_type)
-        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType")))?;
-    let mut entries: Vec<_> = entries
-        .iter()
-        .filter(|e| {
-            e.object_type == file_type
-                && e.pid <= u32::MAX as usize
-                && e.pid != me as usize
-                && after.is_none_or(|after| {
-                    Cursor {
-                        pid: e.pid as u32,
-                        handle: e.handle as u64,
-                    } > after
+    drop(processes);
+    let mut listing = listing(me, anchor.0, after)?;
+    let (pids, access): (Vec<u32>, _) = match &listing {
+        Listing::Table(processes) => (
+            processes.keys().copied().collect(),
+            PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION,
+        ),
+        Listing::PerProcess { .. } => {
+            let mut pids: Vec<u32> = instances
+                .keys()
+                .copied()
+                .filter(|&pid| {
+                    pid != 0 && pid != me && after.is_none_or(|after| whole_process(pid) > after)
                 })
-        })
-        .copied()
-        .collect();
-    entries.sort_unstable_by_key(|e| (e.pid, e.handle));
+                .collect();
+            pids.sort_unstable();
+            (pids, PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION)
+        }
+    };
     let mut summary = HandleSummary {
         available: true,
         elevated: crate::privilege::is_elevated(),
         ..Default::default()
     };
     let resolver = PathResolver::new();
-    let mut last_pid = None;
-    let mut process = None;
     let mut hit_pids = HashSet::new();
-    for entry in entries {
-        if start.elapsed() > Duration::from_secs(12)
+    let over_budget = |summary: &HandleSummary| {
+        start.elapsed() > Duration::from_secs(12)
             || summary.checked + summary.skipped >= MAX_HANDLES
-        {
+    };
+    'processes: for pid in pids {
+        if over_budget(&summary) {
             summary.truncated = true;
             break;
         }
-        let pid = entry.pid as u32;
-        let Some((created, name)) = identities.get(&pid) else {
+        let Some(instance) = instances.get(&pid) else {
             continue;
         };
-        let cursor = Cursor {
-            pid,
-            handle: entry.handle as u64,
-        };
+        // Reading a table with millions of entries takes a while: report
+        // progress first, and should it stall, a restart skips the process.
         if !emit(ScanEvent::Progress {
-            cursor,
+            cursor: whole_process(pid),
             checked: summary.checked,
             denied: summary.denied_processes,
             skipped: summary.skipped,
         }) {
             return Ok(());
         }
-        if last_pid != Some(pid) {
-            last_pid = Some(pid);
-            process = unsafe {
-                OpenProcess(
-                    PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION,
-                    false,
-                    pid,
-                )
-            }
-            .ok()
-            .map(OwnedHandle);
-            if let Some(handle) = &process {
-                let (mut c, mut e, mut k, mut u) = Default::default();
-                if unsafe { GetProcessTimes(handle.0, &mut c, &mut e, &mut k, &mut u) }.is_err()
-                    || filetime_ticks(c) != *created
-                {
-                    process = None;
+        let Some(process) = open_instance(pid, instance.created, access) else {
+            summary.denied_processes += 1;
+            continue;
+        };
+        let handles = match &mut listing {
+            Listing::Table(processes) => processes.remove(&pid).unwrap_or_default(),
+            Listing::PerProcess { file_type, buffer } => {
+                match nt::process_handles(
+                    process.0,
+                    instance.handles,
+                    MAX_PROCESS_TABLE_BYTES,
+                    buffer,
+                ) {
+                    Ok(entries) => {
+                        let mut handles: Vec<usize> = entries
+                            .iter()
+                            .filter(|e| {
+                                e.object_type == *file_type
+                                    && after.is_none_or(|after| {
+                                        Cursor {
+                                            pid,
+                                            handle: e.handle as u64,
+                                        } > after
+                                    })
+                            })
+                            .map(|e| e.handle)
+                            .collect();
+                        handles.sort_unstable();
+                        handles
+                    }
+                    Err(status) if status.0 == nt::STATUS_INFO_LENGTH_MISMATCH => {
+                        summary.truncated = true;
+                        continue;
+                    }
+                    Err(_) => {
+                        summary.denied_processes += 1;
+                        continue;
+                    }
                 }
             }
-            if process.is_none() {
-                summary.denied_processes += 1;
-            }
-        }
-        let Some(process) = &process else {
-            continue;
         };
-        let mut duplicate = HANDLE::default();
-        if unsafe {
-            DuplicateHandle(
-                process.0,
-                HANDLE(entry.handle as *mut _),
-                GetCurrentProcess(),
-                &mut duplicate,
-                0,
-                false,
-                DUPLICATE_SAME_ACCESS,
-            )
-        }
-        .is_err()
-        {
-            summary.skipped += 1;
-            continue;
-        }
-        let duplicate = OwnedHandle(duplicate);
-        // A handle can be reused after enumeration. Recheck its type before any
-        // file query, and avoid pipes/devices whose name queries can block.
-        let Some(kind) = object_text(duplicate.0, 2) else {
-            summary.skipped += 1;
-            continue;
-        };
-        if kind != "File" {
-            continue;
-        }
-        let file_type = unsafe { GetFileType(duplicate.0) };
-        if file_type != FILE_TYPE_DISK {
-            if file_type.0 == 0 {
-                summary.skipped += 1;
-            }
-            continue;
-        }
-        let Some(path) = object_text(duplicate.0, 1) else {
-            summary.skipped += 1;
-            continue;
-        };
-        summary.checked += 1;
-        let mut identity = None;
-        let mut identity_read = false;
-        let matched = targets.iter().any(|target| {
-            if target.directory {
-                return beneath(&path, &target.name);
-            }
-            // Only query file IDs on the target's volume, so hard-link aliases
-            // match without probing unrelated network filesystem handles.
-            if !beneath(&path, &target.volume) {
-                return false;
-            }
-            if !identity_read {
-                identity = file_identity(duplicate.0);
-                identity_read = true;
-            }
-            match (target.identity, identity) {
-                (Some(a), Some(b)) => a == b,
-                _ => eq_path(&path, &target.name),
-            }
-        });
-        if matched {
-            if !hit_pids.contains(&pid) && hit_pids.len() >= MAX_LOCKERS {
+        for handle in handles {
+            if over_budget(&summary) {
                 summary.truncated = true;
-                break;
+                break 'processes;
             }
-            hit_pids.insert(pid);
-            let path = resolver.to_dos(&path).unwrap_or(path);
-            if !emit(ScanEvent::Found(HandleLocker {
-                pid,
-                create_time: ticks_to_unix_ms(*created),
-                name: name.chars().take(256).collect(),
-                path: path.chars().take(1024).collect(),
-                count: 1,
-            })) {
+            if !emit(ScanEvent::Progress {
+                cursor: Cursor {
+                    pid,
+                    handle: handle as u64,
+                },
+                checked: summary.checked,
+                denied: summary.denied_processes,
+                skipped: summary.skipped,
+            }) {
                 return Ok(());
+            }
+            let mut duplicate = HANDLE::default();
+            if unsafe {
+                DuplicateHandle(
+                    process.0,
+                    HANDLE(handle as *mut _),
+                    GetCurrentProcess(),
+                    &mut duplicate,
+                    0,
+                    false,
+                    DUPLICATE_SAME_ACCESS,
+                )
+            }
+            .is_err()
+            {
+                summary.skipped += 1;
+                continue;
+            }
+            let duplicate = OwnedHandle(duplicate);
+            // A handle can be reused after enumeration. Recheck its type before any
+            // file query, and avoid pipes/devices whose name queries can block.
+            let Some(kind) = object_text(duplicate.0, 2) else {
+                summary.skipped += 1;
+                continue;
+            };
+            if kind != "File" {
+                continue;
+            }
+            let file_type = unsafe { GetFileType(duplicate.0) };
+            if file_type != FILE_TYPE_DISK {
+                if file_type.0 == 0 {
+                    summary.skipped += 1;
+                }
+                continue;
+            }
+            let Some(path) = object_text(duplicate.0, 1) else {
+                summary.skipped += 1;
+                continue;
+            };
+            summary.checked += 1;
+            let mut identity = None;
+            let mut identity_read = false;
+            let matched = targets.iter().any(|target| {
+                if target.directory {
+                    return beneath(&path, &target.name);
+                }
+                // Only query file IDs on the target's volume, so hard-link aliases
+                // match without probing unrelated network filesystem handles.
+                if !beneath(&path, &target.volume) {
+                    return false;
+                }
+                if !identity_read {
+                    identity = file_identity(duplicate.0);
+                    identity_read = true;
+                }
+                match (target.identity, identity) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => eq_path(&path, &target.name),
+                }
+            });
+            if matched {
+                if !hit_pids.contains(&pid) && hit_pids.len() >= MAX_LOCKERS {
+                    summary.truncated = true;
+                    break 'processes;
+                }
+                hit_pids.insert(pid);
+                let path = resolver.to_dos(&path).unwrap_or(path);
+                if !emit(ScanEvent::Found(HandleLocker {
+                    pid,
+                    create_time: ticks_to_unix_ms(instance.created),
+                    name: instance.name.chars().take(256).collect(),
+                    path: path.chars().take(1024).collect(),
+                    count: 1,
+                })) {
+                    return Ok(());
+                }
             }
         }
     }
     emit(ScanEvent::Done(summary));
     Ok(())
+}
+
+/// The cursor after every handle of `pid`: resuming after it skips the process.
+fn whole_process(pid: u32) -> Cursor {
+    Cursor {
+        pid,
+        handle: u64::MAX,
+    }
 }
 
 #[cfg(test)]

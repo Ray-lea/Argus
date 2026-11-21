@@ -76,7 +76,7 @@ SCM 的改动立即进入注册表，注册表延迟写入磁盘：断电或蓝�
 
 每次扫描启动自身程序的辅助模式，在原生窗口、单实例与采样器初始化之前分流。子进程先等待一个启动字节，父进程将它放入关闭即终止的 Job 后才放行；Job 限制为一个进程、256 MiB 私有内存。子进程不创建窗口，工作目录固定为系统目录，避免自己制造待查目录的占用。
 
-`argus-core::handles` 用 `NtQuerySystemInformation(SystemExtendedHandleInformation)` 读取句柄表，并根据自己持有的 NUL 句柄动态识别 File 类型索引。结构布局参考 [phnt](https://github.com/winsiderss/phnt/blob/master/ntexapi.h)，读取前检查返回长度与条目数。源进程打开后核对创建时间，再用 `DuplicateHandle` 复制句柄；复核类型、排除管道和设备后，以 `NtQueryObject` 读取名称。只关闭复制件，不关闭来源句柄。
+`argus-core::handles` 用 `NtQuerySystemInformation(SystemExtendedHandleInformation)` 读取句柄表，并根据自己持有的 NUL 句柄动态识别 File 类型索引。结构布局参考 [phnt](https://github.com/winsiderss/phnt/blob/master/ntexapi.h)，读取前检查返回长度与条目数。整张表超过 64 MiB 时（有进程泄漏数百万个句柄，每个条目 40 字节，表可达数百 MB），改为逐个打开进程，用 `NtQueryInformationProcess(ProcessHandleInformation)` 读取该进程自己的句柄表：这需要 `PROCESS_QUERY_INFORMATION` 与 `PROCESS_DUP_HANDLE`，打不开的进程不读取，单个进程的表以 128 MiB 为限。源进程打开后核对创建时间，再用 `DuplicateHandle` 复制句柄；复核类型、排除管道和设备后，以 `NtQueryObject` 读取名称。只关闭复制件，不关闭来源句柄。
 
 文件优先比较卷号与文件 ID，识别硬链接；不提供文件 ID 时退回名称匹配。目录按路径分隔符边界匹配自身及其后代，不将 `folder-other` 算作 `folder`。结果包含 PID、启动时间、进程名、首个匹配路径和句柄数，Restart Manager 的结果仍用于补充加载模块等引用。
 

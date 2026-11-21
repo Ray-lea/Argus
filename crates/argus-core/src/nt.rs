@@ -2,6 +2,7 @@
 //! Layouts follow the phnt headers (System Informer) for x64.
 
 use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS};
+use windows::Wdk::System::Threading::{NtQueryInformationProcess, PROCESSINFOCLASS};
 use windows::Win32::Foundation::{HANDLE, NTSTATUS};
 
 use crate::util::AlignedBuf;
@@ -122,6 +123,92 @@ pub fn handle_entries(buf: &AlignedBuf, returned: usize) -> Option<&[SystemHandl
         return None;
     }
     Some(unsafe { std::slice::from_raw_parts(buf.as_ptr().add(header).cast(), count) })
+}
+
+/// `ProcessHandleInformation` (Windows 8 and later): one process's handle
+/// table. The process handle needs `PROCESS_QUERY_INFORMATION` and
+/// `PROCESS_DUP_HANDLE`; the limited query right is refused.
+pub const PROCESS_HANDLE_INFORMATION: PROCESSINFOCLASS = PROCESSINFOCLASS(51);
+
+/// `PROCESS_HANDLE_TABLE_ENTRY_INFO`. `object_type` is the same type index as
+/// `SystemHandleEntry::object_type`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ProcessHandleEntry {
+    pub handle: usize,
+    pub handle_count: usize,
+    pub pointer_count: usize,
+    pub granted_access: u32,
+    pub object_type: u32,
+    pub attributes: u32,
+    pub reserved: u32,
+}
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<ProcessHandleEntry>() == 40);
+
+/// Reads the handle table of `process` into `buf` (`PROCESS_HANDLE_SNAPSHOT_INFORMATION`:
+/// two ULONG_PTRs, then the entries). `expected` handles size the first
+/// attempt; a table that needs more than `max_bytes` fails with
+/// `STATUS_INFO_LENGTH_MISMATCH`, like a table that keeps outgrowing the buffer.
+pub fn process_handles(
+    process: HANDLE,
+    expected: usize,
+    max_bytes: usize,
+    buf: &mut AlignedBuf,
+) -> Result<&[ProcessHandleEntry], NTSTATUS> {
+    let header = 2 * std::mem::size_of::<usize>();
+    let entry = std::mem::size_of::<ProcessHandleEntry>();
+    let sized = |handles: usize| header + (handles + handles / 8 + 64) * entry;
+    let mut wanted = sized(expected).min(max_bytes);
+    for _ in 0..4 {
+        if wanted > buf.len() {
+            // The old contents are not needed: release them first, so a
+            // large table is never held twice.
+            *buf = AlignedBuf::with_capacity(0);
+            *buf = AlignedBuf::with_capacity(wanted);
+        }
+        let mut returned = 0u32;
+        let status = unsafe {
+            NtQueryInformationProcess(
+                process,
+                PROCESS_HANDLE_INFORMATION,
+                buf.as_mut_ptr(),
+                buf.len().min(u32::MAX as usize) as u32,
+                &mut returned,
+            )
+        };
+        match status.0 {
+            STATUS_INFO_LENGTH_MISMATCH | STATUS_BUFFER_TOO_SMALL => {
+                let needed = returned as usize;
+                if needed > max_bytes {
+                    break;
+                }
+                // The table can grow between calls; leave headroom.
+                wanted = if needed > 0 {
+                    sized(needed.saturating_sub(header) / entry).max(needed)
+                } else {
+                    buf.len() * 2
+                }
+                .min(max_bytes);
+            }
+            s if s < 0 => return Err(status),
+            _ => {
+                let available = (returned as usize).min(buf.len());
+                if available < header {
+                    return Err(NTSTATUS(STATUS_INFO_LENGTH_MISMATCH));
+                }
+                let count = unsafe { *buf.as_ptr().cast::<usize>() };
+                if count > (available - header) / entry {
+                    return Err(NTSTATUS(STATUS_INFO_LENGTH_MISMATCH));
+                }
+                return Ok(unsafe {
+                    std::slice::from_raw_parts(buf.as_ptr().add(header).cast(), count)
+                });
+            }
+        }
+    }
+    Err(NTSTATUS(STATUS_INFO_LENGTH_MISMATCH))
 }
 
 #[repr(C)]
@@ -328,5 +415,36 @@ mod handle_tests {
             *buffer.as_mut_ptr().cast::<usize>() = 1;
         }
         assert_eq!(handle_entries(&buffer, 56).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn lists_this_process_file_and_directory_handles_as_one_type() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::AsRawHandle;
+        let file = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
+        // FILE_FLAG_BACKUP_SEMANTICS opens a directory.
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(0x0200_0000)
+            .open(std::env::temp_dir())
+            .unwrap();
+        let process = unsafe { windows::Win32::System::Threading::GetCurrentProcess() };
+        // No size hint: the first attempt is too small and must grow.
+        let mut buffer = AlignedBuf::with_capacity(0);
+        let entries = process_handles(process, 0, 64 << 20, &mut buffer).unwrap();
+        let kind = |handle: usize| {
+            entries
+                .iter()
+                .find(|e| e.handle == handle)
+                .map(|e| e.object_type)
+        };
+        let file_type = kind(file.as_raw_handle() as usize);
+        assert!(file_type.is_some());
+        assert_eq!(kind(directory.as_raw_handle() as usize), file_type);
+        let mut small = AlignedBuf::with_capacity(0);
+        assert_eq!(
+            process_handles(process, 0, 64, &mut small).err(),
+            Some(NTSTATUS(STATUS_INFO_LENGTH_MISMATCH))
+        );
     }
 }
