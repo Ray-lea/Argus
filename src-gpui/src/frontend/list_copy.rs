@@ -49,6 +49,36 @@ pub(super) fn copy_position(items: &[MenuItem]) -> usize {
         .map_or(items.len(), |at| at + 1)
 }
 
+/// Whether a menu item copies text.
+fn is_copy(item: &MenuItem) -> bool {
+    matches!(item.action, Action::Copy(..) | Action::CopyAs(..))
+}
+
+/// `items` with their copy items and `more` in one "Copy" submenu (`title`),
+/// as the process list's menu has it: where the first copy item was, else
+/// at the end. A long menu then keeps its height in a short window.
+pub(super) fn gather_copies(
+    items: Vec<MenuItem>,
+    more: Vec<MenuItem>,
+    title: String,
+) -> Vec<MenuItem> {
+    let at = items.iter().position(is_copy);
+    let (mut copies, mut rest): (Vec<_>, Vec<_>) = items.into_iter().partition(is_copy);
+    for copy in &mut copies {
+        // Submenu entries go without the icon the menu gives the submenu.
+        copy.icon = None;
+    }
+    copies.extend(more);
+    let at = at.unwrap_or(rest.len());
+    rest.insert(
+        at,
+        MenuItem::new(title, Action::CloseOverlay)
+            .icon("CopyIcon")
+            .submenu(copies),
+    );
+    rest
+}
+
 impl Desktop {
     /// The details of `row` on a list that copies its cells: every column
     /// the table shows. None when there is nothing to copy.
@@ -68,7 +98,54 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
-    use super::{Action, MenuItem, cell_lines, copies_cells, copy_position, lines_text};
+    use super::{
+        Action, MenuItem, cell_lines, copies_cells, copy_position, gather_copies, lines_text,
+    };
+
+    #[test]
+    fn copies_gather_in_one_submenu_where_the_first_was() {
+        let item = |label: &str, action| MenuItem::new(label, action);
+        let copy = |label: &str| {
+            item(label, Action::Copy("x".into(), "actions.copyWhat.name")).icon("CopyIcon")
+        };
+        let menu = vec![
+            item("start", Action::CloseOverlay),
+            item("open", Action::CloseOverlay),
+            copy("service name"),
+            MenuItem::separator(),
+            item("delete", Action::CloseOverlay),
+            copy("late copy"),
+        ];
+        let more = vec![
+            item("display name", Action::CopyAs("y".into(), "name".into())),
+            MenuItem::separator(),
+            item("details", Action::CopyAs("z".into(), "details".into())),
+        ];
+        let menu = gather_copies(menu, more, "Copy".into());
+        let labels: Vec<_> = menu.iter().map(|item| item.label.as_str()).collect();
+        assert_eq!(labels, ["start", "open", "Copy", "", "delete"]);
+        let submenu = &menu[2];
+        assert_eq!(submenu.icon, Some("CopyIcon"));
+        let children: Vec<_> = submenu
+            .children
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect();
+        assert_eq!(
+            children,
+            ["service name", "late copy", "display name", "", "details"]
+        );
+        assert!(submenu.children.iter().all(|child| child.icon.is_none()));
+        // The cell's own copy then follows the submenu.
+        assert_eq!(copy_position(&menu), 3);
+        // A menu without copies takes the submenu at its end.
+        let plain = gather_copies(
+            vec![item("a", Action::CloseOverlay)],
+            Vec::new(),
+            "Copy".into(),
+        );
+        assert_eq!(plain.last().map(|item| item.label.as_str()), Some("Copy"));
+    }
 
     fn cell(name: &str, value: &str) -> (String, String) {
         (name.into(), value.into())

@@ -19,7 +19,6 @@
   "filterColumn": "Nach „{column}“ filtern",
   "command": "Befehl",
   "copyName": "Namen kopieren",
-  "copyDetails": "Details kopieren",
   "copyPath": "Pfad kopieren",
   "openFileLocation": "Dateipfad öffnen",
   "goToProcess": "Zum Prozess wechseln",

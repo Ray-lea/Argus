@@ -19,7 +19,6 @@
   "filterColumn": "按“{column}”筛选",
   "command": "命令",
   "copyName": "复制名称",
-  "copyDetails": "复制详细信息",
   "copyPath": "复制路径",
   "openFileLocation": "打开文件位置",
   "goToProcess": "转到进程",

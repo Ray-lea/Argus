@@ -1109,42 +1109,37 @@ impl Desktop {
             })
             .and_then(|key| self.cell_copy(&row, key, cx));
         let mut items = self.row_menu(&row);
-        // After the menu's own copy items: the name, the cell's copy, then
-        // the details.
-        let mut at = list_copy::copy_position(&items);
-        if let Some((name, value)) = name_cell {
-            items.insert(
-                at,
+        // The other lists gather their copies in one submenu, as the process
+        // list does, so the menu keeps its height: the page's own copies,
+        // then the name (Ctrl+C) and the details (Ctrl+Shift+C).
+        if let Some(details) = details {
+            let mut more = Vec::new();
+            if let Some((name, value)) = name_cell {
+                more.push(
+                    MenuItem::new(name, Action::CopyAs(value, label("actions.copyWhat.name")))
+                        .hint("Ctrl+C"),
+                );
+            }
+            more.push(MenuItem::separator());
+            more.push(
                 MenuItem::new(
-                    tr!("processes.menu.copyColumn", column = &name),
-                    Action::CopyAs(value, label("actions.copyWhat.name")),
+                    label("processes.menu.details"),
+                    Action::CopyAs(details, label("actions.copyWhat.details")),
                 )
-                .icon("CopyIcon")
-                .hint("Ctrl+C"),
+                .hint("Ctrl+Shift+C"),
             );
-            at += 1;
+            items = list_copy::gather_copies(items, more, label("common.edit.copy"));
         }
+        // The cell's own copy follows the copy submenu.
         if let Some((name, value)) = cell {
             let nothing = value.is_empty() || value == label("format.missing");
             items.insert(
-                at,
+                list_copy::copy_position(&items),
                 MenuItem::new(
                     tr!("processes.menu.copyColumn", column = &name),
                     Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
                 )
                 .disabled(nothing),
-            );
-            at += 1;
-        }
-        if let Some(details) = details {
-            items.insert(
-                at,
-                MenuItem::new(
-                    label("common.copyDetails"),
-                    Action::CopyAs(details, label("actions.copyWhat.details")),
-                )
-                .icon("CopyIcon")
-                .hint("Ctrl+Shift+C"),
             );
         }
         self.open_popup(items, window, cx);

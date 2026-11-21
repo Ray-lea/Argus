@@ -19,7 +19,6 @@
   "filterColumn": "Filtrer par {column}",
   "command": "Commande",
   "copyName": "Copier le nom",
-  "copyDetails": "Copier les détails",
   "copyPath": "Copier le chemin",
   "openFileLocation": "Ouvrir l’emplacement du fichier",
   "goToProcess": "Accéder au processus",
