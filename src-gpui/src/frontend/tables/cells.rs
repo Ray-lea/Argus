@@ -418,6 +418,8 @@ impl NativeTable {
                     }))
                     .child(value);
             }
+            // A program's heading has no state of its own.
+            CellKind::ConnectionState if row.members.len() > 1 => {}
             CellKind::ConnectionState => {
                 let state = text(&row.raw, "state");
                 element = element.gap(px(7.)).child(dot(match state {
@@ -828,8 +830,14 @@ impl NativeTable {
                 ));
         }
         let processes = self.page == "processes";
+        // Connections gathered under their programs fold as process groups do.
+        let grouped = self.page == "network"
+            && self
+                .owner
+                .upgrade()
+                .is_some_and(|owner| owner.read(cx).connection_view == "apps");
         let mut element = element.gap_2();
-        if processes {
+        if processes || grouped {
             element = element.pl(px(6. + inset + row.depth as f32 * 20.));
             element = if row.expandable {
                 // The button carries the margin itself: a wrapper for it would
@@ -857,7 +865,7 @@ impl NativeTable {
                     .into_any_element()
             });
         }
-        let group = processes && facts.members > 1;
+        let group = (processes || grouped) && facts.members > 1;
         let off = self.page == "startup" && facts.startup_disabled;
         let name = plain_text(row.title.clone())
             .min_w_0()

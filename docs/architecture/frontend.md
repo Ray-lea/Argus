@@ -10,7 +10,7 @@
 
 `process_icons` 按当前快照保留程序及 WebView2 宿主的图标，表格、详情窗格和规则界面共用同一份图像。快照替换后，过期图标同时从 GPUI 解码缓存和窗口纹理图集中移除，GPU 页面可随之回收；暂停时继续持有原快照的 PNG。
 
-界面偏好在内存中立即生效，由后台线程写入磁盘，退出前完成写入。`tableSort.<表>` 保存各表排序，`tableWidths.<表>` 保存服务表与启动项表中拖动过的列宽，`services.filter` 和 `connections.filter` 分别保存服务与连接按状态的筛选条件，`connections.protocolFilter` 保存连接按协议的筛选条件。
+界面偏好在内存中立即生效，由后台线程写入磁盘，退出前完成写入。`tableSort.<表>` 保存各表排序，`tableWidths.<表>` 保存服务表与启动项表中拖动过的列宽，`services.filter` 和 `connections.filter` 分别保存服务与连接按状态的筛选条件，`connections.protocolFilter` 保存连接按协议的筛选条件，`connectionView` 保存连接页的视图（`list` 或按应用分组的 `apps`），`openedConnectionApps` 保存按应用视图中展开的分组（小写的可执行文件名）。
 
 性能页的 `cpuKernelTime` 保存 CPU 图表是否叠加内核时间，默认开启。`perfHiddenDevices` 保存设备列表中已隐藏设备的标识（`performance/rail.rs` 的 `stable_key`）：磁盘为总线、型号与容量，网络适配器为适配器型号与连接名称，显卡为名称，电池为名称与序列号；标识相同的设备按列表顺序追加序号。磁盘编号和适配器 LUID 随插拔顺序与重启变化，不用作标识。列表至少显示一项：保存的选择隐藏了当前全部设备时显示第一项。
 
