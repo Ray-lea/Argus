@@ -321,6 +321,8 @@
     "addRule": "Add rule",
     "copyPid": "Copy PID",
     "copyPidWhat": "PID",
+    "copyColumn": "Copy “{column}”",
+    "columnWhat": "“{column}”",
     "details": "Details"
   },
   "tree": {

@@ -292,6 +292,8 @@
     "addRule": "新增規則",
     "copyPid": "複製 PID",
     "copyPidWhat": " PID",
+    "copyColumn": "複製「{column}」",
+    "columnWhat": "「{column}」",
     "details": "詳細資料"
   },
   "tree": {

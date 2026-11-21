@@ -52,6 +52,7 @@
   "section": {
     "process": "Prozess",
     "resources": "Ressourcen",
+    "totals": "Gesamtwerte",
     "location": "Dateispeicherort",
     "commandLine": "Befehlszeile",
     "version": "Dateiversion"
@@ -87,10 +88,16 @@
   "gpuEngine": "({engine})",
   "gpuDedicated": "Dedizierter GPU-Speicher",
   "gpuShared": "Gemeinsamer GPU-Speicher",
+  "powerTrend": "{level} · Trend: {trend}",
   "netNeedsAdmin": "Führen Sie Argus als Administrator aus, um es anzuzeigen",
   "threads": "Threads",
   "handles": "Handles",
   "noAccess": "Dieser Prozess konnte nicht geöffnet werden, um seine Befehlszeile und seinen Benutzernamen zu lesen. Führen Sie Argus als Administrator aus, um sie anzuzeigen.",
   "product": "Produkt",
-  "version": "Version"
+  "version": "Version",
+  "copy": {
+    "action": "Details kopieren (Ctrl+Shift+C)",
+    "heading": "[{name}]",
+    "field": "{name}: {value}"
+  }
 }

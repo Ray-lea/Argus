@@ -121,6 +121,10 @@ enum Action {
     Preference(String, Value),
     /// Text to copy and the locale key naming it in the confirmation.
     Copy(String, &'static str),
+    /// Text to copy and its name in the confirmation.
+    CopyAs(String, String),
+    /// The details of the process row with this key, as text (`details_text`).
+    CopyDetails(String),
     /// A command of the history page.
     History(pages::history::Command),
     CloseOverlay,

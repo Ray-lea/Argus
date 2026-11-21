@@ -309,6 +309,8 @@
     "addRule": "添加规则",
     "copyPid": "复制 PID",
     "copyPidWhat": " PID",
+    "copyColumn": "复制“{column}”",
+    "columnWhat": "“{column}”",
     "details": "详细信息"
   },
   "tree": {

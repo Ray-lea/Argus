@@ -43,6 +43,7 @@
   "section": {
     "process": "进程",
     "resources": "资源",
+    "totals": "累计",
     "location": "文件位置",
     "commandLine": "命令行",
     "version": "文件版本"
@@ -78,10 +79,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "专用 GPU 内存",
   "gpuShared": "共享 GPU 内存",
+  "powerTrend": "{level} · 趋势：{trend}",
   "netNeedsAdmin": "以管理员身份运行后可查看",
   "threads": "线程",
   "handles": "句柄",
   "noAccess": "无法打开此进程以读取命令行和用户信息。以管理员身份运行 Argus 后可查看。",
   "product": "产品",
-  "version": "版本"
+  "version": "版本",
+  "copy": {
+    "action": "复制详细信息（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

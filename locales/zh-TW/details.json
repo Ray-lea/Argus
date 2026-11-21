@@ -43,6 +43,7 @@
   "section": {
     "process": "處理程序",
     "resources": "資源",
+    "totals": "累計",
     "location": "檔案位置",
     "commandLine": "命令列",
     "version": "檔案版本"
@@ -78,10 +79,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "專用 GPU 記憶體",
   "gpuShared": "共用 GPU 記憶體",
+  "powerTrend": "{level} · 趨勢：{trend}",
   "netNeedsAdmin": "以系統管理員身分執行後可檢視",
   "threads": "執行緒",
   "handles": "控制代碼",
   "noAccess": "無法開啟此處理程序以讀取命令列和使用者資訊。以系統管理員身分執行 Argus 後可檢視。",
   "product": "產品",
-  "version": "版本"
+  "version": "版本",
+  "copy": {
+    "action": "複製詳細資料（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

@@ -1070,6 +1070,8 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Taken whether or not a menu opens, so that it is never stale.
+        let column = self.take_context_column(cx);
         let Some(row) = self.rows.get(index).cloned() else {
             return;
         };
@@ -1079,11 +1081,36 @@ impl Desktop {
             table.update(cx, |state, cx| state.set_right_clicked_row(None, cx));
         }
         if row.section.is_none() {
-            self.selected.insert(self.page.clone(), row.key.clone());
+            self.deselect_due = None;
+            let before = self.selected.insert(self.page.clone(), row.key.clone());
+            // The details pane shows the row now: read what it lists, as a
+            // left press does.
+            if self.page == "processes" && before.as_ref() != Some(&row.key) {
+                self.details_track(&row.key, window, cx);
+            }
         } else if row.user.is_none() {
             return;
         }
-        let items = self.row_menu(&row);
+        let cell = column
+            .filter(|_| row.section.is_none() && self.page == "processes")
+            .and_then(|key| self.cell_copy(&row, key, cx));
+        let mut items = self.row_menu(&row);
+        if let Some((name, value)) = cell {
+            // After the copy submenu, as the cell's own copy.
+            let at = items
+                .iter()
+                .position(|item| !item.children.is_empty() && item.icon == Some("CopyIcon"))
+                .map_or(items.len(), |at| at + 1);
+            let nothing = value.is_empty() || value == label("format.missing");
+            items.insert(
+                at,
+                MenuItem::new(
+                    tr!("processes.menu.copyColumn", column = &name),
+                    Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
+                )
+                .disabled(nothing),
+            );
+        }
         self.open_popup(items, window, cx);
         cx.notify();
     }
@@ -1359,25 +1386,63 @@ impl Desktop {
             .icon("FolderIcon")
             .disabled(path.is_none()),
         );
-        items.push(
+        // What a process's row can copy; the details come together as
+        // the pane lists them.
+        let mut copies = vec![
             MenuItem::new(
-                label("common.copyPath"),
+                label("processes.column.name.label"),
+                Action::Copy(row.title.clone(), "actions.copyWhat.name"),
+            )
+            .hint("Ctrl+C"),
+            MenuItem::new(
+                label("processes.column.imageName.label"),
+                Action::Copy(text(&row.raw, "name").into(), "actions.copyWhat.imageName"),
+            ),
+        ];
+        if !group {
+            copies.push(MenuItem::new(
+                label("processes.column.pid.label"),
+                Action::Copy(row.raw["pid"].to_string(), "processes.menu.copyPidWhat"),
+            ));
+        }
+        copies.push(
+            MenuItem::new(
+                label("processes.column.path.label"),
                 Action::Copy(path.unwrap_or_default().into(), "actions.copyWhat.path"),
             )
-            .icon("CopyIcon")
             .disabled(path.is_none()),
         );
-        items.push(if group {
+        if !group {
+            let command = self
+                .data
+                .get(&format!("details:{}", row.key))
+                .and_then(|info| info["commandLine"].as_str())
+                .or_else(|| row.raw["commandLine"].as_str())
+                .filter(|command| !command.is_empty());
+            copies.push(
+                MenuItem::new(
+                    label("processes.column.commandLine.label"),
+                    Action::Copy(
+                        command.unwrap_or_default().into(),
+                        "actions.copyWhat.commandLine",
+                    ),
+                )
+                .disabled(command.is_none()),
+            );
+        }
+        copies.push(MenuItem::separator());
+        copies.push(
             MenuItem::new(
-                label("common.copyName"),
-                Action::Copy(text(&row.raw, "name").into(), "actions.copyWhat.name"),
+                label("processes.menu.details"),
+                Action::CopyDetails(row.key.clone()),
             )
-        } else {
-            MenuItem::new(
-                label("processes.menu.copyPid"),
-                Action::Copy(row.raw["pid"].to_string(), "processes.menu.copyPidWhat"),
-            )
-        });
+            .hint("Ctrl+Shift+C"),
+        );
+        items.push(
+            MenuItem::new(label("common.edit.copy"), Action::CloseOverlay)
+                .icon("CopyIcon")
+                .submenu(copies),
+        );
         items.push(MenuItem::separator());
         items.push(
             MenuItem::new(

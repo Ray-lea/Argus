@@ -169,7 +169,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `delayProcessQuery` | 毫秒数（最长 30 秒）：延迟下一次进程计数的回复；仅开发构建 |
 | `exit` | `true`：退出实例 |
 
-`ui-layout` 的顶层字段按界面的部分分组：`page`、`device`、`vitals`、`visibility`、`processTree`、`selectedRow`、`userGroups`、`performance`、`history`、`sections`、`dialog`、`toasts`、`tray`、`monitors`、`star`、`animations`、`graphics`、`nativeWindow`、`aboutScroll`、`skippedRequest`、`diagnosticCopy`、`systemBackdrop`、`backgroundAlpha`，以及视口的 `width`、`height`、`scaleFactor` 与 `remSize`。各组的字段见用到它们的步骤文件的 `about`。
+`ui-layout` 的顶层字段按界面的部分分组：`page`、`device`、`vitals`、`visibility`、`processTree`、`selectedRow`、`userGroups`、`performance`、`history`、`sections`、`dialog`、`toasts`、`tray`、`monitors`、`star`、`animations`、`graphics`、`nativeWindow`、`aboutScroll`、`skippedRequest`、`diagnosticCopy`、`lastCopy`、`systemBackdrop`、`backgroundAlpha`，以及视口的 `width`、`height`、`scaleFactor` 与 `remSize`。各组的字段见用到它们的步骤文件的 `about`。模拟快照下的复制操作（菜单、快捷键与详细信息面板的复制按钮）不写入系统剪贴板，最近一次复制的文字记在 `lastCopy`。
 
 ### 探针命令
 

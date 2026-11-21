@@ -317,6 +317,8 @@
     "addRule": "ルールを追加",
     "copyPid": "PIDをコピー",
     "copyPidWhat": "PID",
+    "copyColumn": "「{column}」をコピー",
+    "columnWhat": "「{column}」",
     "details": "詳細"
   },
   "tree": {

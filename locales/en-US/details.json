@@ -52,6 +52,7 @@
   "section": {
     "process": "Process",
     "resources": "Resources",
+    "totals": "Totals",
     "location": "File location",
     "commandLine": "Command line",
     "version": "File version"
@@ -87,10 +88,16 @@
   "gpuEngine": " ({engine})",
   "gpuDedicated": "Dedicated GPU memory",
   "gpuShared": "Shared GPU memory",
+  "powerTrend": "{level} · trend: {trend}",
   "netNeedsAdmin": "Run Argus as administrator to view",
   "threads": "Threads",
   "handles": "Handles",
   "noAccess": "Couldn't open this process to read its command line and user name. Run Argus as administrator to view them.",
   "product": "Product",
-  "version": "Version"
+  "version": "Version",
+  "copy": {
+    "action": "Copy details (Ctrl+Shift+C)",
+    "heading": "[{name}]",
+    "field": "{name}: {value}"
+  }
 }

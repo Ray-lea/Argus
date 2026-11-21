@@ -985,13 +985,12 @@ impl Desktop {
                 self.open_popup(items, window, cx);
             }
             Action::Preference(key, value) => self.preference(&key, value, window, cx),
-            Action::Copy(value, what) => {
-                cx.write_to_clipboard(ClipboardItem::new_string(value));
-                self.notify_toast_for(
-                    widgets::ToastKind::Success,
-                    tr!("actions.copied", what = label(what)),
-                    1800,
-                );
+            Action::Copy(value, what) => self.copy_text(value, label(what), cx),
+            Action::CopyAs(value, what) => self.copy_text(value, what, cx),
+            Action::CopyDetails(key) => {
+                if let Some(details) = self.details_text(&key) {
+                    self.copy_text(details, label("actions.copyWhat.details"), cx);
+                }
             }
             Action::History(command) => self.history_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
@@ -1199,6 +1198,29 @@ impl Desktop {
             cx.stop_propagation();
             return;
         }
+        // Ctrl+C copies the selected process's name and Ctrl+Shift+C its
+        // details, unless text is selected: the window copies that instead.
+        if self.page == "processes"
+            && key == "c"
+            && m.control
+            && !m.alt
+            && !m.platform
+            && !gpui_kit::base::TextSelection::has_selection(window, cx)
+        {
+            if let Some(row) = selected
+                .and_then(|index| self.rows.get(index))
+                .filter(|row| row.section.is_none())
+            {
+                let action = if m.shift {
+                    Action::CopyDetails(row.key.clone())
+                } else {
+                    Action::Copy(row.title.clone(), "actions.copyWhat.name")
+                };
+                self.act(action, window, cx);
+                cx.stop_propagation();
+            }
+            return;
+        }
         if self.page == "processes" && (key == "delete" || (m.alt && !m.shift && key == "e")) {
             self.open_selected_action("end", window, cx);
             if key == "delete" && m.shift {
@@ -1231,6 +1253,21 @@ impl Desktop {
             cx.stop_propagation();
             cx.notify();
         }
+    }
+    /// Puts `value` on the clipboard and confirms it by `what` it is. Fixture
+    /// input must not overwrite the user's clipboard: the text goes to
+    /// `inspectLayout.lastCopy` instead.
+    fn copy_text(&mut self, value: String, what: String, cx: &mut Context<Self>) {
+        if self.options.fixture.is_some() {
+            self.data.insert("lastCopy".into(), json!(value));
+        } else {
+            cx.write_to_clipboard(ClipboardItem::new_string(value));
+        }
+        self.notify_toast_for(
+            widgets::ToastKind::Success,
+            tr!("actions.copied", what = what),
+            1800,
+        );
     }
     /// Ctrl+F and "/": the process search, with its text selected.
     fn focus_process_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {

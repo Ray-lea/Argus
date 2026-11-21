@@ -4181,9 +4181,16 @@ impl Desktop {
                     ("Home / End", "settings.shortcuts.ends"),
                     ("← / →", "settings.shortcuts.expand"),
                     ("Enter", "settings.shortcuts.details"),
+                    ("Ctrl+C", "settings.shortcuts.copyName"),
+                    ("Ctrl+Shift+C", "settings.shortcuts.copyDetails"),
                     ("Delete", "settings.shortcuts.endTable"),
                     ("Shift+Delete", "settings.shortcuts.endDirect"),
                     ("Esc", "settings.shortcuts.clear"),
+                    // A gesture, named in words.
+                    (
+                        "settings.shortcuts.mouse.shiftWheel",
+                        "settings.shortcuts.scrollSideways",
+                    ),
                 ],
             ),
             (
@@ -4350,7 +4357,7 @@ impl Desktop {
                                                 .text_color(p.muted)
                                                 .child(label(text_key)),
                                         )
-                                        .child(if key == "historyMouse" {
+                                        .child(if keys.starts_with("settings.") {
                                             self.shortcut_gesture(&label(keys))
                                         } else {
                                             self.shortcut_keys(keys)

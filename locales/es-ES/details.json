@@ -55,6 +55,7 @@
   "section": {
     "process": "Proceso",
     "resources": "Recursos",
+    "totals": "Acumulados",
     "location": "Ubicación del archivo",
     "commandLine": "Línea de comandos",
     "version": "Versión del archivo"
@@ -90,10 +91,16 @@
   "gpuEngine": "({engine})",
   "gpuDedicated": "Memoria dedicada de GPU",
   "gpuShared": "Memoria compartida de GPU",
+  "powerTrend": "{level} · tendencia: {trend}",
   "netNeedsAdmin": "Ejecute Argus como administrador para ver",
   "threads": "Subprocesos",
   "handles": "Identificadores",
   "noAccess": "No se pudo abrir este proceso para leer su línea de comandos y la información del usuario. Ejecute Argus como administrador para consultarlas.",
   "product": "Producto",
-  "version": "Versión"
+  "version": "Versión",
+  "copy": {
+    "action": "Copiar detalles (Ctrl+Shift+C)",
+    "heading": "[{name}]",
+    "field": "{name}: {value}"
+  }
 }

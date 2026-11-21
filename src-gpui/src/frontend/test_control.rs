@@ -766,6 +766,9 @@ impl Desktop {
                 "settingsScrollY":f32::from(self.settings_rail.scroll.max_offset().y),"settingsTop":self.settings_rail.scroll.top_item(),"sections":self.section_rail_state()});
             layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
             layout["watchAction"] = json!(self.data.get("watchLastAction"));
+            // What a copy put in place of the clipboard (`Desktop::copy_text`).
+            layout["lastCopy"] =
+                json!(self.options.fixture.as_ref().and(self.data.get("lastCopy")));
             layout["caption"] = json!({"keepOnTop":self.keeps_on_top(),"keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags});
             println!("{layout}");
         }

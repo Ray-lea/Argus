@@ -142,6 +142,9 @@
   "copyWhat": {
     "path": "path",
     "name": "name",
+    "imageName": "image name",
+    "commandLine": "command line",
+    "details": "details",
     "version": "version number"
   }
 }

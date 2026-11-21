@@ -49,6 +49,7 @@
   "section": {
     "process": "プロセス",
     "resources": "リソース",
+    "totals": "累計",
     "location": "ファイルの場所",
     "commandLine": "コマンドライン",
     "version": "ファイルバージョン"
@@ -84,10 +85,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "専用 GPU メモリ",
   "gpuShared": "共有 GPU メモリ",
+  "powerTrend": "{level} · 傾向：{trend}",
   "netNeedsAdmin": "Argus を管理者として実行して表示します",
   "threads": "スレッド",
   "handles": "ハンドル",
   "noAccess": "このプロセスのコマンド ラインとユーザー情報を読み取るためにプロセスを開けませんでした。確認するには Argus を管理者として実行してください。",
   "product": "製品",
-  "version": "バージョン"
+  "version": "バージョン",
+  "copy": {
+    "action": "詳細をコピー（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

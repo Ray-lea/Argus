@@ -329,6 +329,8 @@
     "addRule": "Добавить правило",
     "copyPid": "Копировать PID",
     "copyPidWhat": "PID",
+    "copyColumn": "Копировать «{column}»",
+    "columnWhat": "«{column}»",
     "details": "Сведения"
   },
   "tree": {

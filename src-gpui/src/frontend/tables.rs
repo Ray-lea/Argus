@@ -524,6 +524,9 @@ pub(super) struct NativeTable {
     edge_fitted: Option<&'static str>,
     /// The process list's user and category groups (`groups`).
     group_view: groups::GroupView,
+    /// The column under the pointer when a row was last right-pressed,
+    /// for the menu it opens (`Desktop::open_row_menu` takes it).
+    pub(super) context_column: Option<&'static str>,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -803,6 +806,7 @@ impl NativeTable {
             resizing: None,
             edge_fitted: None,
             group_view: Default::default(),
+            context_column: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -2876,6 +2880,26 @@ impl Desktop {
         values(&self.snapshot["processes"])
             .iter()
             .find(|process| process["pid"].as_u64() == Some(pid))
+    }
+    /// The column a right press on a row was over, once: the menu it opens
+    /// takes it.
+    pub(in crate::frontend) fn take_context_column(&self, cx: &mut App) -> Option<&'static str> {
+        self.table
+            .as_ref()?
+            .update(cx, |state, _| state.delegate_mut().context_column.take())
+    }
+    /// The name of the current table's column `key`, and `row`'s cell in it
+    /// as the table shows it.
+    pub(in crate::frontend) fn cell_copy(
+        &self,
+        row: &Row,
+        key: &str,
+        cx: &App,
+    ) -> Option<(String, String)> {
+        let state = self.table.as_ref()?.read(cx);
+        let delegate = state.delegate();
+        let field = delegate.fields.iter().find(|field| field.key == key)?;
+        Some((field.label.clone(), display_cell(row, field, delegate.bits)))
     }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {

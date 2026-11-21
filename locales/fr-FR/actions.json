@@ -155,6 +155,9 @@
   "copyWhat": {
     "path": "chemin",
     "name": "nom",
+    "imageName": "nom de l’image",
+    "commandLine": "ligne de commande",
+    "details": "détails",
     "version": "numéro de version"
   }
 }
