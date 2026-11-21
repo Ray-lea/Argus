@@ -1109,9 +1109,18 @@ impl Desktop {
             })
             .and_then(|key| self.cell_copy(&row, key, cx));
         let mut items = self.row_menu(&row);
-        // The other lists gather their copies in one submenu, as the process
-        // list does, so the menu keeps its height: the page's own copies,
-        // then the name (Ctrl+C) and the details (Ctrl+Shift+C).
+        let column_item = |(name, value): (String, String)| {
+            let nothing = value.is_empty() || value == label("format.missing");
+            MenuItem::new(
+                tr!("processes.menu.copyColumn", column = &name),
+                Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
+            )
+            .disabled(nothing)
+        };
+        // The other lists gather their copies in one submenu, the clicked
+        // column's too, so the menu keeps its height whatever it holds (a
+        // note adds a row): the page's own copies, the name (Ctrl+C), the
+        // column, then the details (Ctrl+Shift+C).
         if let Some(details) = details {
             let mut more = Vec::new();
             if let Some((name, value)) = name_cell {
@@ -1120,6 +1129,7 @@ impl Desktop {
                         .hint("Ctrl+C"),
                 );
             }
+            more.extend(cell.map(column_item));
             more.push(MenuItem::separator());
             more.push(
                 MenuItem::new(
@@ -1129,18 +1139,9 @@ impl Desktop {
                 .hint("Ctrl+Shift+C"),
             );
             items = list_copy::gather_copies(items, more, label("common.edit.copy"));
-        }
-        // The cell's own copy follows the copy submenu.
-        if let Some((name, value)) = cell {
-            let nothing = value.is_empty() || value == label("format.missing");
-            items.insert(
-                list_copy::copy_position(&items),
-                MenuItem::new(
-                    tr!("processes.menu.copyColumn", column = &name),
-                    Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
-                )
-                .disabled(nothing),
-            );
+        } else if let Some(cell) = cell {
+            // The process list's cell copy follows its copy submenu.
+            items.insert(list_copy::copy_position(&items), column_item(cell));
         }
         self.open_popup(items, window, cx);
         cx.notify();
