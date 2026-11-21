@@ -129,36 +129,57 @@ pub fn find_handle_lockers(paths: Vec<String>) -> argus_core::handles::HandleRep
             })
             .transpose()
         });
-    let warning = match service {
+    let fallback = match service {
         Ok(Some(Reply::Handles(mut report))) if report.summary.available => {
             report.summary.via_service = true;
             return report;
         }
-        Ok(Some(Reply::Handles(report))) => {
-            let error = report
+        Ok(Some(Reply::Handles(report))) => Fallback::ServiceFailed(
+            report
                 .summary
                 .error
-                .unwrap_or_else(|| tr!("service.handles.unavailable"));
-            Some(tr!("service.handles.serviceIncomplete", error = error))
+                .unwrap_or_else(|| tr!("service.handles.unavailable")),
+        ),
+        Ok(None) => Fallback::NoService,
+        Ok(Some(Reply::Error(argus_core::actions::ActionError::Os(message)))) => {
+            Fallback::ServiceFailed(message)
         }
-        Ok(None) => None,
-        Ok(Some(Reply::Error(error))) => Some(match error {
-            argus_core::actions::ActionError::Os(message) => {
-                tr!("service.handles.serviceIncomplete", error = message)
-            }
-            _ => tr!("service.handles.serviceIncompleteLocal"),
-        }),
-        Ok(_) => Some(tr!("service.handles.serviceOutdated")),
-        Err(error) => Some(tr!("service.handles.serviceUnavailable", error = error)),
+        Ok(Some(Reply::Error(_))) => Fallback::Note(tr!("service.handles.serviceIncompleteLocal")),
+        Ok(_) => Fallback::Note(tr!("service.handles.serviceOutdated")),
+        Err(error) => Fallback::Note(tr!("service.handles.serviceUnavailable", error = error)),
     };
     let mut report = handles::scan_local(paths);
-    if let Some(warning) = warning {
-        report.summary.error = Some(match report.summary.error.take() {
-            Some(error) => tr!("app.join", first = warning, second = error),
-            None => warning,
-        });
-    }
+    report.summary.error = fallback.error(report.summary.error.take());
     report
+}
+
+/// Why handles were scanned locally rather than by the service.
+enum Fallback {
+    NoService,
+    /// Shown with the local results.
+    Note(String),
+    /// The service's scan failed with this error.
+    ServiceFailed(String),
+}
+
+impl Fallback {
+    /// The message for a local scan that ended with `local`.
+    fn error(self, local: Option<String>) -> Option<String> {
+        let note = match self {
+            Self::NoService => return local,
+            Self::Note(note) => note,
+            // Both scans read the same system tables, so they often fail the
+            // same way: say it once.
+            Self::ServiceFailed(error) if local.as_ref() == Some(&error) => {
+                return Some(tr!("service.handles.bothIncomplete", error = error));
+            }
+            Self::ServiceFailed(error) => tr!("service.handles.serviceIncomplete", error = error),
+        };
+        Some(match local {
+            Some(local) => tr!("app.join", first = note, second = local),
+            None => note,
+        })
+    }
 }
 
 /// On-demand disk reads reuse only an already-running, authenticated service.
@@ -280,5 +301,28 @@ mod tests {
             issue(Some(util::message(5))).as_deref(),
             Some("access denied (os error 5)")
         );
+    }
+
+    #[test]
+    fn a_failure_shared_by_the_service_and_the_local_scan_is_shown_once() {
+        let error = "0xC0000004".to_owned();
+        let once = Fallback::ServiceFailed(error.clone())
+            .error(Some(error.clone()))
+            .unwrap();
+        assert_eq!(once.matches(&error).count(), 1);
+        let both = Fallback::ServiceFailed(error.clone())
+            .error(Some("0xC0000022".into()))
+            .unwrap();
+        assert!(both.contains(&error) && both.contains("0xC0000022"));
+        assert_eq!(
+            Fallback::ServiceFailed(error.clone())
+                .error(None)
+                .unwrap()
+                .matches(&error)
+                .count(),
+            1
+        );
+        assert_eq!(Fallback::NoService.error(None), None);
+        assert_eq!(Fallback::NoService.error(Some(error.clone())), Some(error));
     }
 }

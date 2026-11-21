@@ -121,6 +121,7 @@
       "helperExited": "El asistente de búsqueda de identificadores salió antes de tiempo; solo se muestran los resultados completados",
       "serviceIncomplete": "El servicio privilegiado no completó esta búsqueda, por lo que se muestran resultados locales: {error}",
       "serviceIncompleteLocal": "El servicio privilegiado no completó esta búsqueda; se muestran los resultados de la búsqueda local.",
+      "bothIncomplete": "Ni el servicio privilegiado ni la búsqueda local se completaron: {error}",
       "unavailable": "La búsqueda no está disponible temporalmente",
       "serviceOutdated": "El servicio privilegiado no admite búsquedas de identificadores, así que actualice el servicio; se muestran los resultados de la búsqueda local.",
       "serviceUnavailable": "El servicio privilegiado no está disponible, por lo que se muestran los resultados de la búsqueda local: {error}"
