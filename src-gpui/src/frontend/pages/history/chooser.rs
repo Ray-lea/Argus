@@ -372,7 +372,7 @@ impl Desktop {
             .min(viewport.width - width - margin)
             .max(margin);
         // Under the control when it fits there, else over it.
-        let tall = px(LIST_MAX + 130.);
+        let tall = px(LIST_MAX + 90.);
         let below = anchor.bottom() + px(4.) + tall <= viewport.height - margin
             || anchor.top() - px(4.) - tall < margin;
 
@@ -636,16 +636,6 @@ impl Desktop {
                 window,
                 cx,
             ));
-        let foot = chooser.add.then(|| {
-            div()
-                .px(px(12.))
-                .py(px(7.))
-                .border_t_1()
-                .border_color(p.stroke)
-                .text_size(theme::font(12.))
-                .text_color(p.faint)
-                .child(label("history.menu.foot"))
-        });
         let panel = div()
             .id("history-chooser")
             .absolute()
@@ -676,8 +666,7 @@ impl Desktop {
                     .min_h(px(200.))
                     .child(rail)
                     .child(list.child(div().h(px(4.)).flex_shrink_0())),
-            )
-            .children(foot);
+            );
         Some(
             deferred(
                 anchored().position(point(px(0.), px(0.))).child(

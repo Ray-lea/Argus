@@ -265,10 +265,16 @@ impl Desktop {
                             .line_height(relative(1.4))
                             .child(
                                 self.dialog_title(modal.title.clone())
-                                    .line_height(relative(1.4))
-                                    .mb(px(10.)),
+                                    .line_height(relative(1.4)),
                             )
-                            .child(div().text_color(p.muted).child(modal.body.clone()))
+                            .when(has_paths, |d| {
+                                d.child(
+                                    div()
+                                        .mt(px(10.))
+                                        .text_color(p.muted)
+                                        .child(modal.body.clone()),
+                                )
+                            })
                             .child(chosen)
                             .child(result),
                     ),

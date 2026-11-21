@@ -26,13 +26,13 @@
     },
     "moved": {
       "title": "Zone de notification et composants",
-      "desc": "L’icône, le panneau rapide, le comportement à la fermeture de la fenêtre et l’actualisation dans la zone de notification se trouvent désormais sur la page Composants.",
+      "desc": "L’icône, le panneau rapide, le comportement à la fermeture de la fenêtre et l’actualisation dans la zone de notification.",
       "open": "Ouvrir Composants"
     }
   },
   "metrics": {
     "title": "Mesures affichées",
-    "desc": "Les mesures choisies s’affichent dans l’ordre ci-dessous, modifiable en faisant glisser une catégorie ou une mesure. Avec plusieurs GPU, disques ou adaptateurs réseau, elles peuvent être choisies pour chaque périphérique. Sans périphérique choisi, les mesures GPU proviennent du GPU doté du plus de mémoire dédiée, les débits disque et réseau sont des totaux, et le temps d’activité et la température disque indiquent la valeur la plus élevée parmi les disques.",
+    "desc": "Faites glisser une catégorie ou une mesure pour changer l’ordre. Avec plusieurs GPU, disques ou adaptateurs réseau, les mesures peuvent être choisies pour chaque périphérique.",
     "group": {
       "cpu": "CPU",
       "memory": "Mémoire",
@@ -157,16 +157,15 @@
   },
   "desktop": {
     "title": "Moniteur de bureau",
-    "desc": "Affiche les mesures choisies dans une petite fenêtre sur le bureau. Faites-la glisser pour la déplacer, double-cliquez pour ouvrir Argus et cliquez avec le bouton droit pour ouvrir le menu. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "desc": "Affiche les mesures choisies dans une petite fenêtre sur le bureau. Double-cliquez pour ouvrir Argus et cliquez avec le bouton droit pour ouvrir le menu.",
     "layout": {
       "title": "Disposition",
-      "desc": "Un panneau affiche les mesures regroupées par appareil, les unes sous les autres ; une bande les place toutes sur une ligne au bord de l’écran et passe à la ligne entre les groupes si elle est trop large.",
+      "desc": "Un panneau empile les groupes de périphériques ; une bande les dispose horizontalement et passe à la ligne entre les groupes si la place manque.",
       "panel": "Panneau",
       "strip": "Bande"
     },
     "style": {
       "title": "Style",
-      "desc": "Aperçu de chaque style du panneau avec les mesures choisies ; cliquez sur un style pour l’utiliser.",
       "list": "Liste",
       "curves": "Courbes",
       "gauges": "Jauges"
@@ -179,20 +178,17 @@
       "rules": "Séparateurs"
     },
     "topmost": {
-      "title": "Toujours au premier plan",
-      "desc": "S’affiche au-dessus des autres fenêtres."
+      "title": "Toujours au premier plan"
     },
     "locked": {
-      "title": "Verrouiller la position",
-      "desc": "Une fois verrouillée, la fenêtre ne peut plus être déplacée."
+      "title": "Verrouiller la position"
     },
     "clickThrough": {
       "title": "Laisser passer les clics",
       "desc": "Les clics et les glissements atteignent la fenêtre située en dessous. Une fois activée, cette option ne peut être désactivée que sur cette page."
     },
     "opacity": {
-      "title": "Opacité",
-      "desc": "Opacité de toute la fenêtre."
+      "title": "Opacité"
     },
     "menu": {
       "open": "Ouvrir Argus",
@@ -209,7 +205,7 @@
   },
   "taskbar": {
     "title": "Moniteur de barre des tâches",
-    "desc": "Affiche les mesures choisies dans la barre des tâches. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées. Pendant l’affichage, Argus utilise la « Fréquence d’actualisation ».",
+    "desc": "Affiche les mesures choisies dans la barre des tâches. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées.",
     "place": {
       "title": "Position",
       "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
@@ -218,7 +214,7 @@
     },
     "display": {
       "title": "Écran",
-      "desc": "L’écran dont la barre des tâches affiche le moniteur. Si l’écran choisi n’est pas connecté ou n’affiche pas de barre des tâches, le moniteur s’affiche sur l’écran principal.",
+      "desc": "Si l’écran choisi n’est pas connecté ou n’affiche pas de barre des tâches, le moniteur s’affiche sur l’écran principal.",
       "primary": "Écran principal",
       "item": "{name} ({width} × {height})",
       "unnamed": "Écran {index}",
@@ -226,7 +222,7 @@
     },
     "style": {
       "title": "Style",
-      "desc": "Aperçu de chaque style dans la barre des tâches avec les deux premières mesures choisies ; cliquez sur un style pour l’utiliser. Les courbes, les pastilles et les grands chiffres demandent la hauteur de deux lignes de texte ; sur une barre des tâches plus basse, ils s’affichent en étiquettes.",
+      "desc": "Les courbes, les pastilles et les grands chiffres demandent la hauteur de deux lignes de texte ; sur une barre des tâches plus basse, ils s’affichent en étiquettes.",
       "labels": "Étiquettes",
       "curves": "Courbes",
       "capsules": "Pastilles",

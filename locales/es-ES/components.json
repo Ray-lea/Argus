@@ -26,13 +26,13 @@
     },
     "moved": {
       "title": "Bandeja y componentes",
-      "desc": "El icono de la bandeja, el panel rápido, lo que ocurre al cerrar la ventana y la actualización en la bandeja están ahora en la página Componentes.",
+      "desc": "El icono de la bandeja, el panel rápido, lo que ocurre al cerrar la ventana y la actualización en la bandeja.",
       "open": "Abrir Componentes"
     }
   },
   "metrics": {
     "title": "Lecturas mostradas",
-    "desc": "Las lecturas elegidas se muestran en el orden siguiente, que puede cambiarse arrastrando una categoría o una lectura. Con varias GPU, discos o adaptadores de red, se pueden elegir para cada dispositivo. Si no se elige ningún dispositivo, las lecturas de GPU corresponden a la GPU con más memoria dedicada; las velocidades de disco y de red son totales, y la actividad y la temperatura de disco muestran el valor más alto de todos los discos.",
+    "desc": "Arrastre una categoría o una lectura para cambiar el orden. Con varias GPU, discos o adaptadores de red, se pueden elegir para cada dispositivo.",
     "group": {
       "cpu": "CPU",
       "memory": "Memoria",
@@ -157,16 +157,15 @@
   },
   "desktop": {
     "title": "Monitor de escritorio",
-    "desc": "Muestra las lecturas elegidas en una pequeña ventana del escritorio. Arrástrela para moverla, haga doble clic para abrir Argus o clic derecho para abrir el menú. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "desc": "Muestra las lecturas elegidas en una pequeña ventana del escritorio. Haga doble clic para abrir Argus o clic derecho para abrir el menú.",
     "layout": {
       "title": "Disposición",
-      "desc": "Un panel muestra las lecturas agrupadas por dispositivo, una debajo de otra; una franja las muestra todas en una fila junto a un borde de la pantalla y salta de línea entre grupos si es demasiado ancha.",
+      "desc": "Un panel apila los grupos de dispositivos; una franja los dispone en horizontal y salta de línea entre grupos si falta espacio.",
       "panel": "Panel",
       "strip": "Franja"
     },
     "style": {
       "title": "Estilo",
-      "desc": "Vista previa de cada estilo del panel con las lecturas elegidas; haga clic en uno para usarlo.",
       "list": "Lista",
       "curves": "Curvas",
       "gauges": "Indicadores"
@@ -179,20 +178,17 @@
       "rules": "Divisores"
     },
     "topmost": {
-      "title": "Siempre visible",
-      "desc": "Se muestra por encima de las demás ventanas."
+      "title": "Siempre visible"
     },
     "locked": {
-      "title": "Bloquear posición",
-      "desc": "Al bloquearla, no se puede arrastrar."
+      "title": "Bloquear posición"
     },
     "clickThrough": {
       "title": "Dejar pasar los clics",
       "desc": "Los clics y arrastres llegan a la ventana de debajo. Una vez activada, esta opción solo se puede desactivar en esta página."
     },
     "opacity": {
-      "title": "Opacidad",
-      "desc": "Opacidad de toda la ventana."
+      "title": "Opacidad"
     },
     "menu": {
       "open": "Abrir Argus",
@@ -209,7 +205,7 @@
   },
   "taskbar": {
     "title": "Monitor en la barra de tareas",
-    "desc": "Muestra las lecturas elegidas en la barra de tareas. Un clic muestra u oculta la ventana; un clic derecho abre un panel para cambiar el estilo y las lecturas mostradas. Mientras está visible, utiliza la «Frecuencia de actualización».",
+    "desc": "Muestra las lecturas elegidas en la barra de tareas. Un clic muestra u oculta la ventana; un clic derecho abre un panel para cambiar el estilo y las lecturas mostradas.",
     "place": {
       "title": "Posición",
       "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados. En otros casos, el monitor aparece junto a la bandeja.",
@@ -218,7 +214,7 @@
     },
     "display": {
       "title": "Pantalla",
-      "desc": "La pantalla en cuya barra de tareas aparece el monitor. Si la pantalla elegida no está conectada o no muestra la barra de tareas, el monitor aparece en la pantalla principal.",
+      "desc": "Si la pantalla elegida no está conectada o no muestra la barra de tareas, el monitor aparece en la pantalla principal.",
       "primary": "Pantalla principal",
       "item": "{name} ({width} × {height})",
       "unnamed": "Pantalla {index}",
@@ -226,7 +222,7 @@
     },
     "style": {
       "title": "Estilo",
-      "desc": "Vista previa de cada estilo en la barra de tareas con las dos primeras lecturas elegidas; haga clic en uno para usarlo. Las curvas, las cápsulas y las cifras grandes necesitan espacio para dos filas de texto; en una barra de tareas más baja se muestran como etiquetas.",
+      "desc": "Las curvas, las cápsulas y las cifras grandes necesitan espacio para dos filas de texto; en una barra de tareas más baja se muestran como etiquetas.",
       "labels": "Etiquetas",
       "curves": "Curvas",
       "capsules": "Cápsulas",

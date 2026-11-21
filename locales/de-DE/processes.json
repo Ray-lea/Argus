@@ -5,11 +5,11 @@
     "processHint": "Windows-Komponenten und -Prozesse in der zusätzlichen Ausblendliste ausblenden und die immer angezeigte Liste beibehalten. Ändert nur die angezeigte Liste.",
     "networkHint": "Versteckt Verbindungen, die Systemprozessen gehören, und Einträge ohne besitzenden Prozess (PID 0). Ändert nur die angezeigte Liste.",
     "edit": "Ausblendregeln bearbeiten",
-    "description": "Systemprozesse werden anhand der Windows-Komponenteninformationen identifiziert. Beide Seiten teilen sich diese Regeln und speichern ihre Ausblendungsschalter separat.",
+    "description": "Prozesse und Verbindungen verwenden dieselben Regeln. Jede Seite hat einen eigenen Schalter.",
     "keep": "Immer anzeigen",
-    "keepHint": "Halten Sie diese Programme sichtbar, einschließlich Systemprozesse. Diese Liste hat Vorrang vor zusätzlichem Verstecken.",
+    "keepHint": "Hat Vorrang vor dem Systemprozessfilter und der zusätzlichen Ausblendliste.",
     "hide": "Auch ausblenden",
-    "hideHint": "Diese Programme ausblenden, wenn das Ausblenden aktiviert ist. Leer lassen, um nur Systemprozesse auszublenden.",
+    "hideHint": "Gilt nur, wenn „Systemprozesse ausblenden“ aktiviert ist.",
     "namesHint": "Geben Sie die Namen ausführbarer Dateien durch Kommas oder Semikolons getrennt ein, bis zu 128 pro Liste. Bei Namen wird die Groß-/Kleinschreibung nicht beachtet.",
     "invalid": "Geben Sie gültige ausführbare Namen ohne Pfade oder Platzhalter ein, bis zu 128 pro Liste.",
     "reset": "Standardregeln wiederherstellen",
@@ -20,12 +20,12 @@
   "countersPending": "Ressourcenzähler für diesen Prozess werden erfasst.",
   "refreshPending": "Prozessdaten aktualisieren. Zeigt den letzten erfolgreich erfassten Messwert an.",
   "diskUnavailable": {
-    "pending": "Noch keine Datenträgermesswerte: Neu hinzugekommene Prozesse erhalten Werte bei der nächsten Aktualisierung.",
-    "enable": "Keine Datenträgermesswerte: Windows stellt diese Daten nicht direkt bereit. Aktivieren Sie in den Einstellungen den privilegierten Dienst, um sie zu erfassen.",
-    "update": "Keine Datenträgermesswerte: Die Dienstversion stimmt nicht mit Argus überein. Aktualisieren Sie den Dienst in den Einstellungen.",
-    "start": "Keine Datenträgermesswerte: Der privilegierte Dienst ist beendet. Starten Sie ihn in den Einstellungen.",
-    "service": "Datenträgermesswerte konnten nicht vom privilegierten Dienst gelesen werden. Prüfen Sie seinen Status in den Einstellungen.",
-    "unavailable": "Keine Datenträgermesswerte: Die Zähler je Prozess können vorübergehend nicht gelesen werden."
+    "pending": "Datenträgerwerte neuer Prozesse erscheinen in der Regel nach der nächsten Aktualisierung.",
+    "enable": "Für Datenträgerwerte pro Prozess den privilegierten Dienst in den Einstellungen aktivieren.",
+    "update": "Die Version des privilegierten Dienstes ist inkompatibel. Für Datenträgerwerte den Dienst in den Einstellungen aktualisieren.",
+    "start": "Der privilegierte Dienst ist beendet. Für Datenträgerwerte den Dienst in den Einstellungen starten.",
+    "service": "Datenträgerwerte konnten nicht gelesen werden. Den Status des privilegierten Dienstes in den Einstellungen prüfen.",
+    "unavailable": "Für diesen Prozess sind keine Datenträgerwerte verfügbar."
   },
   "serviceHost": "Diensthost: {names}",
   "webView": {
@@ -50,7 +50,7 @@
     "other": "{total} ({count} ausgeblendet)"
   },
   "filtered": "Die Liste wird durch die Suche gefiltert",
-  "orderHeld": "Sortierung angehalten: Die Zeilen bleiben an ihrem Platz, die Werte werden weiter aktualisiert. Sie werden neu sortiert, sobald der Zeiger die Liste verlässt oder das Menü bzw. der Dialog geschlossen wird.",
+  "orderHeld": "Die Sortierung pausiert, die Werte werden weiter aktualisiert. Zum Fortsetzen den Zeiger wegbewegen oder das Menü bzw. den Dialog schließen.",
   "groupIn": "{user} · {group}",
   "groupPlace": "{index} / {total}",
   "column": {
@@ -128,7 +128,7 @@
     },
     "elevated": {
       "label": "Erhöht",
-      "title": "Ob der Prozess mit Administratorrechten (erhöhtem Token) ausgeführt wird."
+      "title": "Gibt an, ob der Prozess mit Administratorrechten läuft."
     },
     "commandLine": {
       "label": "Befehlszeile",
@@ -172,7 +172,7 @@
     },
     "basePriority": {
       "label": "Basispriorität",
-      "title": "Von Windows gemeldete Basispriorität des Prozesses als Prioritätsklasse. Ein Wert zwischen den Klassen, den Windows manchen Systemprozessen gibt, wird als Zahl angezeigt."
+      "title": "Üblicherweise wird die Prioritätsklasse angezeigt. Basisprioritäten zwischen zwei Klassen erscheinen als Zahlen."
     },
     "workingSet": {
       "label": "Arbeitssatz",
@@ -337,9 +337,9 @@
     "acpiTemperature": "ACPI Temperatur der thermischen Zone"
   },
   "memoryScope": {
-    "vital": "Belegter physischer Speicher des gesamten Systems: Gesamtspeicher abzüglich verfügbarem Speicher, einschließlich verwendeter und geänderter Seiten. Prozesszeilen zeigen ihren eigenen privaten Arbeitssatz, der in Summe kleiner ist. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch).",
-    "header": "Der Prozentwert oben ist der Anteil des belegten physischen Speichers des gesamten Systems. Die Zeilen zeigen den privaten Arbeitssatz: physischen Speicher, den der Prozess allein nutzt; App-Gruppen und Kategorien summieren ihn. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch).",
-    "section": "Summe der privaten Arbeitssätze der Prozesse dieser Kategorie. Die Systembelegung umfasst zusätzlich gemeinsam genutzte Seiten, Kernel und Treiber, Seitentabellen, den genutzten Systemcache und geänderte Seiten und liegt daher über der Summe der Kategorien. Die ausführliche Aufschlüsselung steht im Benutzerhandbuch docs/guide/README.md (auf Chinesisch)."
+    "vital": "Der belegte physische Speicher entspricht dem Gesamtspeicher abzüglich des verfügbaren Speichers. Er umfasst verwendeten und geänderten Speicher.",
+    "header": "Der Prozentwert zeigt die systemweite physische Speicherauslastung. Prozesszeilen zeigen private Arbeitssätze, Gruppen deren Summe.",
+    "section": "Summe der privaten Arbeitssätze in dieser Kategorie. Gemeinsamer Speicher und Systemspeicher werden separat gezählt."
   },
   "columns": {
     "choose": "Spalten auswählen",
@@ -355,7 +355,7 @@
     "sortAscending": "Aufsteigend sortieren",
     "sortDescending": "Absteigend sortieren",
     "hide": "{name}-Spalte ausblenden",
-    "description": "Markieren Sie die anzuzeigenden Spalten. Verschieben Sie Einträge in der rechten Liste oder ziehen Sie die Spaltenüberschriften, um die Reihenfolge zu ändern.",
+    "description": "Zum Ändern der Spaltenreihenfolge Einträge in der rechten Liste oder die Spaltenköpfe ziehen.",
     "networkUnavailable": "Ausgewählte Netzwerkspalten werden angezeigt, wenn Verkehrsdaten verfügbar sind.",
     "gpuUnavailable": "Keine GPU erkannt. Ausgewählte GPU-Spalten sind ausgeblendet.",
     "category": {
@@ -379,8 +379,8 @@
     "selectionSummary": "{count} ausgewählt",
     "virtualAliases": "Virtueller Speicher virtuelle Bytes Adressreservierung"
   },
-  "basePriorityBetween": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt; sie liegt zwischen {below} und {above}.",
-  "basePriorityCustom": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt.",
+  "basePriorityBetween": "Von Windows festgelegte Basispriorität zwischen {below} und {above}.",
+  "basePriorityCustom": "Von Windows festgelegte Basispriorität dieses Prozesses.",
   "leak": {
     "kind": {
       "handles": "Handle-Leck",
@@ -388,8 +388,8 @@
       "orphans": "Zurückgebliebener Prozess"
     },
     "mark": {
-      "one": "{count} mögliches Ressourcenleck. Zum Anzeigen klicken.",
-      "other": "{count} mögliche Ressourcenlecks. Zum Anzeigen klicken."
+      "one": "{count} mögliches Ressourcenleck",
+      "other": "{count} mögliche Ressourcenlecks"
     },
     "handlesExtreme": "Hält {handles} Handles, weit mehr als Prozesse üblicherweise",
     "handlesExtremeGrowing": "Hält {handles} Handles, weit mehr als Prozesse üblicherweise, und kam in {span} auf {growth} weitere",

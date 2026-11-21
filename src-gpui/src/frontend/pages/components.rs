@@ -1198,18 +1198,20 @@ impl Desktop {
         cards.extend(style);
         cards.extend(grouping);
         cards.extend([
-            self.setting_text(
+            self.setting(
                 "desktopTopmost",
-                "PinIcon",
-                "components.desktop.topmost.title",
-                "components.desktop.topmost.desc",
+                self.glyph("PinIcon"),
+                label("components.desktop.topmost.title"),
+                None,
+                None,
                 vec![topmost],
             ),
-            self.setting_text(
+            self.setting(
                 "desktopLocked",
-                "LockIcon",
-                "components.desktop.locked.title",
-                "components.desktop.locked.desc",
+                self.glyph("LockIcon"),
+                label("components.desktop.locked.title"),
+                None,
+                None,
                 vec![locked],
             ),
             self.setting_text(
@@ -1219,11 +1221,12 @@ impl Desktop {
                 "components.desktop.clickThrough.desc",
                 vec![through],
             ),
-            self.setting_text(
+            self.setting(
                 "desktopOpacity",
-                "EyeIcon",
-                "components.desktop.opacity.title",
-                "components.desktop.opacity.desc",
+                self.glyph("EyeIcon"),
+                label("components.desktop.opacity.title"),
+                None,
+                None,
                 vec![opacity],
             ),
         ]);
@@ -1303,12 +1306,14 @@ impl Desktop {
             .gap(px(STYLE_GAP))
             .children(cards)
             .into_any_element();
-        self.setting_with_body(
+        self.setting_card(
             "desktopStyle",
-            "ThemeIcon",
-            "components.desktop.style.title",
-            "components.desktop.style.desc",
-            body,
+            self.glyph("ThemeIcon"),
+            label("components.desktop.style.title"),
+            None,
+            None,
+            Vec::new(),
+            Some(body),
         )
     }
 

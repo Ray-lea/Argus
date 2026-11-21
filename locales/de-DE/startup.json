@@ -17,7 +17,7 @@
     "done": "Autostart-App {name} wurde gelöscht.",
     "error": {
       "accessDenied": "Zugriff verweigert: Autostart-App {name} konnte nicht gelöscht werden. Elemente für alle Benutzer erfordern, dass Argus als Administrator ausgeführt wird; andere Elemente sind möglicherweise durch Datei- oder Registry-Berechtigungen geschützt.",
-      "notFound": "Autostart-App {name} ist nicht mehr vorhanden; sie wurde möglicherweise bereits gelöscht.",
+      "notFound": "Autostarteintrag {name} wurde nicht gefunden.",
       "refused": "Autostart-App {name} kann nicht gelöscht werden. Starttasks von App-Paketen können nur deaktiviert werden.",
       "generic": "Autostart-App {name} konnte nicht gelöscht werden: {error}"
     },
@@ -47,5 +47,5 @@
   "loading": "Autostart-Apps werden gelesen…",
   "noMatch": "Keine passenden Autostart-Apps",
   "summary": "{enabled} von {total} aktiviert",
-  "note": "Das Deaktivieren verwendet denselben Schalter wie Start-Apps in Task-Manager und kann rückgängig gemacht werden. Elemente für alle Benutzer benötigen Administratorrechte."
+  "note": "Deaktivierte Einträge lassen sich wieder aktivieren. Änderungen an Autostarteinträgen für alle Benutzer erfordern Administratorrechte."
 }

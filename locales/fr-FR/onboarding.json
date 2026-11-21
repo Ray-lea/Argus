@@ -40,7 +40,7 @@
     "minimizedInterval": "Actualisation lorsque la fenêtre est réduite",
     "minimizedIntervalHint": "Valeur par défaut : 5 secondes. Des intervalles plus courts utilisent davantage de ressources en arrière-plan.",
     "trayInterval": "Actualisation dans la zone de notification",
-    "trayIntervalHint": "Les données sont collectées à cet intervalle lorsque la fenêtre est masquée dans la zone de notification. Au-delà de 5 secondes, les enregistrements de l’historique sont plus espacés.",
+    "trayIntervalHint": "Au-delà de 5 secondes, les enregistrements de l’historique sont plus espacés.",
     "hotkey": "Appuyez sur {hotkey} pour afficher ou masquer Argus. Ce raccourci peut être modifié dans les paramètres.",
     "hotkeyOff": "Le raccourci permettant d’afficher ou de masquer Argus est désactivé. Vous pouvez le réactiver dans les paramètres.",
     "hotkeyTaken": "{shortcut} est utilisé par Windows ou une autre application, éventuellement une autre instance d’Argus. Choisissez une autre combinaison dans les paramètres.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automatique",
     "routeDirect": "GitHub uniquement",
     "routeProxy": "Via le proxy GitHub uniquement",
-    "proxyNotice": "Les proxys GitHub sont exploités par des tiers, qui peuvent voir l’adresse IP de ce PC et les fichiers téléchargés. La vérification de signature protège contre les mises à jour modifiées.",
+    "proxyNotice": "Les proxys GitHub sont exploités par des tiers, qui peuvent voir l’adresse IP de ce PC et les fichiers téléchargés. Les programmes d’installation doivent passer la vérification de signature et de version.",
     "unavailable": "Cette version ne peut pas se mettre à jour."
   },
   "privilege": {

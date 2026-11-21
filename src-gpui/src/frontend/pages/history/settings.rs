@@ -471,15 +471,14 @@ impl Desktop {
             },
             cx,
         );
-        self.setting_text(
+        // Keeping every record needs no words beyond the option's own name.
+        self.setting(
             "historyDetail",
-            "ChartLineIcon",
-            "settings.data.history.detail.title",
-            if current == "full" {
-                "settings.data.history.detail.fullDesc"
-            } else {
-                "settings.data.history.detail.mergedDesc"
-            },
+            self.glyph("ChartLineIcon"),
+            label("settings.data.history.detail.title"),
+            (current != "full")
+                .then(|| label("settings.data.history.detail.mergedDesc").into_any_element()),
+            None,
             vec![select],
         )
     }

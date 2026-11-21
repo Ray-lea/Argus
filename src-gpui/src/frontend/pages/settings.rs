@@ -889,20 +889,22 @@ impl Desktop {
         let mut cards: Vec<AnyElement> = vec![];
         match section {
             "language" => {
-                cards.push(self.setting_text(
+                cards.push(self.setting(
                     "language",
-                    "GlobeIcon",
-                    "settings.language.title",
-                    "settings.language.desc",
+                    self.glyph("GlobeIcon"),
+                    label("settings.language.title"),
+                    None,
+                    None,
                     vec![self.language_select("settings-language", cx)],
                 ));
                 let themes = ["system", "light", "dark"]
                     .map(|value| (value, label(&format!("settings.theme.{value}"))));
-                cards.push(self.setting_text(
+                cards.push(self.setting(
                     "theme",
-                    "ThemeIcon",
-                    "settings.theme.title",
-                    "settings.theme.desc",
+                    self.glyph("ThemeIcon"),
+                    label("settings.theme.title"),
+                    None,
+                    None,
                     vec![self.setting_choices(
                         "theme",
                         text(settings, "theme"),
@@ -1032,11 +1034,12 @@ impl Desktop {
                         this.open_dialog("shortcuts", json!({}), window, cx)
                     }))
                     .into_any_element();
-                cards.push(self.setting_text(
+                cards.push(self.setting(
                     "shortcuts",
-                    "KeyboardIcon",
-                    "settings.shortcuts.title",
-                    "settings.shortcuts.desc",
+                    self.glyph("KeyboardIcon"),
+                    label("settings.shortcuts.title"),
+                    None,
+                    None,
                     vec![view],
                 ));
             }

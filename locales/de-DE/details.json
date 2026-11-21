@@ -8,8 +8,8 @@
     "copy": "PC-Spezifikationen als Text kopieren",
     "copyWhat": "PC-Spezifikationen",
     "copyPart": "{kind}: {name}",
-    "selectTip": "Klicken Sie auf eine App oder einen Prozess in der Liste, um hier Details anzuzeigen. Ein erneuter Klick hebt die Auswahl auf.",
-    "closeTip": "Der Detailbereich bleibt standardmäßig geöffnet. Klicken Sie oben rechts im Fenster auf {icon}, um ihn einzuklappen.",
+    "selectTip": "App oder Prozess anklicken, um Details zu sehen. Erneut anklicken, um die Auswahl aufzuheben.",
+    "closeTip": "Mit {icon} in der Seitenwerkzeugleiste lässt sich der Bereich einklappen.",
     "tips": "Hinweise",
     "tipsCollapse": "Hinweise reduzieren",
     "tipsExpand": "Hinweise erweitern",
@@ -36,8 +36,7 @@
     "health": "Zustand {percent} %"
   },
   "exited": {
-    "title": "Prozess wurde beendet",
-    "hint": "Wählen Sie einen anderen Prozess in der Liste aus, um dessen Details anzuzeigen."
+    "title": "Prozess wurde beendet"
   },
   "group": {
     "count": {
@@ -92,7 +91,7 @@
   "netNeedsAdmin": "Führen Sie Argus als Administrator aus, um es anzuzeigen",
   "threads": "Threads",
   "handles": "Handles",
-  "noAccess": "Dieser Prozess konnte nicht geöffnet werden, um seine Befehlszeile und seinen Benutzernamen zu lesen. Führen Sie Argus als Administrator aus, um sie anzuzeigen.",
+  "noAccess": "Die aktuellen Rechte reichen zum Lesen von Befehlszeile und Benutzerinformationen nicht aus. Argus als Administrator starten und erneut versuchen.",
   "product": "Produkt",
   "version": "Version",
   "copy": {

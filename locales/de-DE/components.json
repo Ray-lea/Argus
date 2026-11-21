@@ -26,13 +26,13 @@
     },
     "moved": {
       "title": "Infobereich und Komponenten",
-      "desc": "Symbol, Schnellfenster, Verhalten beim Schließen und das Intervall im Infobereich befinden sich jetzt auf der Seite „Komponenten“.",
+      "desc": "Symbol, Schnellfenster, Verhalten beim Schließen und das Intervall im Infobereich.",
       "open": "Komponenten öffnen"
     }
   },
   "metrics": {
     "title": "Angezeigte Werte",
-    "desc": "Die ausgewählten Werte erscheinen in der unten aufgeführten Reihenfolge, die sich durch Ziehen einer Kategorie oder eines Werts ändern lässt. Bei mehreren GPUs, Datenträgern oder Netzwerkadaptern lassen sie sich für jedes Gerät einzeln auswählen. Ohne ausgewähltes Gerät stammen GPU-Werte von der GPU mit dem meisten dedizierten Speicher, Datenträger- und Netzwerkdatenraten sind Summen, und aktive Zeit und Temperatur zeigen den höchsten Wert aller Datenträger.",
+    "desc": "Ziehen Sie eine Kategorie oder einen Wert, um die Reihenfolge zu ändern. Bei mehreren GPUs, Datenträgern oder Netzwerkadaptern lassen sich die Werte für jedes Gerät einzeln auswählen.",
     "group": {
       "cpu": "CPU",
       "memory": "Speicher",
@@ -157,16 +157,15 @@
   },
   "desktop": {
     "title": "Desktopanzeige",
-    "desc": "Zeigt die ausgewählten Werte in einem kleinen Fenster auf dem Desktop. Ziehen verschiebt das Fenster, ein Doppelklick öffnet Argus, ein Rechtsklick das Menü. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "desc": "Zeigt die ausgewählten Werte in einem kleinen Fenster auf dem Desktop. Ein Doppelklick öffnet Argus, ein Rechtsklick das Menü.",
     "layout": {
       "title": "Darstellung",
-      "desc": "Ein Bereich zeigt die Werte nach Gerät gruppiert untereinander; eine Leiste zeigt alle Werte in einer Zeile am Bildschirmrand und bricht zwischen Gruppen um, wenn sie zu breit wird.",
+      "desc": "Ein Bereich zeigt die Gerätegruppen untereinander; eine Leiste ordnet sie nebeneinander an und bricht bei Platzmangel zwischen den Gruppen um.",
       "panel": "Bereich",
       "strip": "Leiste"
     },
     "style": {
       "title": "Stil",
-      "desc": "Vorschau jedes Bereichsstils mit den gewählten Werten; zum Wechseln einen Stil anklicken.",
       "list": "Liste",
       "curves": "Kurven",
       "gauges": "Anzeigen"
@@ -179,20 +178,17 @@
       "rules": "Trennlinien"
     },
     "topmost": {
-      "title": "Immer im Vordergrund",
-      "desc": "Bleibt über anderen Fenstern."
+      "title": "Immer im Vordergrund"
     },
     "locked": {
-      "title": "Position sperren",
-      "desc": "Gesperrt lässt sich das Fenster nicht verschieben."
+      "title": "Position sperren"
     },
     "clickThrough": {
       "title": "Klicks durchlassen",
       "desc": "Klicks und Ziehen wirken auf das Fenster darunter. Einmal aktiviert, lässt sich die Option nur auf dieser Seite wieder ausschalten."
     },
     "opacity": {
-      "title": "Deckkraft",
-      "desc": "Deckkraft des gesamten Fensters."
+      "title": "Deckkraft"
     },
     "menu": {
       "open": "Argus öffnen",
@@ -209,7 +205,7 @@
   },
   "taskbar": {
     "title": "Taskleistenanzeige",
-    "desc": "Zeigt die ausgewählten Werte in der Taskleiste. Ein Klick zeigt oder verbirgt das Fenster, ein Rechtsklick öffnet einen Bereich, in dem sich Stil und angezeigte Werte ändern lassen. Während der Anzeige gilt das „Aktualisierungsintervall“.",
+    "desc": "Zeigt die ausgewählten Werte in der Taskleiste. Ein Klick zeigt oder verbirgt das Fenster, ein Rechtsklick öffnet einen Bereich, in dem sich Stil und angezeigte Werte ändern lassen.",
     "place": {
       "title": "Position",
       "desc": "„Linke Seite“ gilt nur für die Taskleiste von Windows 11 mit zentrierten Schaltflächen. Andernfalls erscheint die Anzeige neben dem Infobereich.",
@@ -218,7 +214,7 @@
     },
     "display": {
       "title": "Bildschirm",
-      "desc": "Der Bildschirm, in dessen Taskleiste die Anzeige erscheint. Ist der gewählte Bildschirm nicht verbunden oder zeigt er keine Taskleiste, erscheint sie auf dem Hauptbildschirm.",
+      "desc": "Ist der gewählte Bildschirm nicht verbunden oder zeigt er keine Taskleiste, erscheint die Anzeige auf dem Hauptbildschirm.",
       "primary": "Hauptbildschirm",
       "item": "{name} ({width} × {height})",
       "unnamed": "Bildschirm {index}",
@@ -226,7 +222,7 @@
     },
     "style": {
       "title": "Stil",
-      "desc": "Vorschau jedes Stils auf der Taskleiste mit den ersten beiden gewählten Werten; zum Wechseln einen Stil anklicken. Kurven, Kapseln und große Zahlen brauchen Platz für zwei Textzeilen; auf einer niedrigeren Taskleiste erscheinen sie als Beschriftungen.",
+      "desc": "Kurven, Kapseln und große Zahlen brauchen Platz für zwei Textzeilen; auf einer niedrigeren Taskleiste erscheinen sie als Beschriftungen.",
       "labels": "Beschriftungen",
       "curves": "Kurven",
       "capsules": "Kapseln",

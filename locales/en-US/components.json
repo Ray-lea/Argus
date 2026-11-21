@@ -26,13 +26,13 @@
     },
     "moved": {
       "title": "Tray and components",
-      "desc": "The tray icon, the quick panel, what closing the window does and the refresh rate in the tray are now on the Components page.",
+      "desc": "The tray icon, the quick panel, what closing the window does and the refresh rate in the tray.",
       "open": "Open Components"
     }
   },
   "metrics": {
     "title": "Readings shown",
-    "desc": "Chosen readings appear in the order below, which can be changed by dragging a category or a reading. With more than one GPU, disk or network adapter, readings can be chosen for each device. When no device is chosen, GPU readings come from the GPU with the most dedicated memory, disk speeds and network rates are totals, and disk active time and temperature show the highest value of all disks.",
+    "desc": "Drag a category or a reading to change the order. With more than one GPU, disk or network adapter, readings can be chosen for each device.",
     "group": {
       "cpu": "CPU",
       "memory": "Memory",
@@ -157,16 +157,15 @@
   },
   "desktop": {
     "title": "Desktop monitor",
-    "desc": "Shows the chosen readings in a small window on the desktop. Drag to move it, double-click to open Argus, and right-click to open the menu. While it is shown, Argus samples at the “Refresh rate”.",
+    "desc": "Shows the chosen readings in a small window on the desktop. Double-click it to open Argus, or right-click it to open the menu.",
     "layout": {
       "title": "Layout",
-      "desc": "A panel shows the readings grouped by device, one group under another; a strip puts them all in one row along a screen edge and wraps between groups when too wide.",
+      "desc": "A panel stacks the device groups vertically; a strip lines them up horizontally and wraps between groups when space runs out.",
       "panel": "Panel",
       "strip": "Strip"
     },
     "style": {
       "title": "Style",
-      "desc": "Previews each panel style with the readings chosen; click one to use it.",
       "list": "List",
       "curves": "Curves",
       "gauges": "Gauges"
@@ -179,20 +178,17 @@
       "rules": "Dividers"
     },
     "topmost": {
-      "title": "Always on top",
-      "desc": "Stays above other windows."
+      "title": "Always on top"
     },
     "locked": {
-      "title": "Lock position",
-      "desc": "When locked, it can't be dragged."
+      "title": "Lock position"
     },
     "clickThrough": {
       "title": "Click-through",
       "desc": "Clicks and drags go to the window underneath. Once on, it can be turned off only on this page."
     },
     "opacity": {
-      "title": "Opacity",
-      "desc": "Opacity of the whole window."
+      "title": "Opacity"
     },
     "menu": {
       "open": "Open Argus",
@@ -209,7 +205,7 @@
   },
   "taskbar": {
     "title": "Taskbar monitor",
-    "desc": "Shows the chosen readings on the taskbar. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown. While it is shown, Argus samples at the “Refresh rate”.",
+    "desc": "Shows the chosen readings on the taskbar. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown.",
     "place": {
       "title": "Position",
       "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
@@ -218,7 +214,7 @@
     },
     "display": {
       "title": "Display",
-      "desc": "The display whose taskbar shows the monitor. While the chosen display is disconnected or shows no taskbar, the monitor appears on the main display.",
+      "desc": "While the chosen display is disconnected or shows no taskbar, the monitor appears on the main display.",
       "primary": "Main display",
       "item": "{name} ({width} × {height})",
       "unnamed": "Display {index}",
@@ -226,7 +222,7 @@
     },
     "style": {
       "title": "Style",
-      "desc": "Previews each style on the taskbar with the first two readings chosen; click one to use it. Curves, capsules and large figures need room for two rows of text; on a lower taskbar they show as labels.",
+      "desc": "Curves, capsules and large figures need room for two rows of text; on a lower taskbar they show as labels.",
       "labels": "Labels",
       "curves": "Curves",
       "capsules": "Capsules",

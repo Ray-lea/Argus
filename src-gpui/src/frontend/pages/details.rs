@@ -930,15 +930,11 @@ impl Desktop {
         self.details_head(
             glyph,
             label("details.exited.title"),
-            Some(
-                div()
-                    .mt(px(2.))
-                    .text_color(p.muted)
-                    .child(label("details.exited.hint")),
-            ),
+            None,
             close.into_any_element(),
             cx,
         )
+        .items_center()
         .into_any_element()
     }
 
