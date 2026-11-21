@@ -1015,6 +1015,13 @@ pub fn history_move(
     Ok(settings_view(&app))
 }
 
+pub fn history_reset_dir(
+    app: crate::native_runtime::Host,
+    move_records: bool,
+) -> Result<SettingsView, String> {
+    history_move(app, String::new(), move_records)
+}
+
 pub fn history_open_dir(dir: State<'_, HistoryDir>) -> Result<(), String> {
     open_folder(&dir.read()).map_err(|_| tr!("history.error.open"))
 }
