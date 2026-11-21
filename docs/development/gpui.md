@@ -55,7 +55,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
 
-`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（54 个文件约 15 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（55 个文件约 15 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
 
 不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
@@ -80,6 +80,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 [`window-restore.json`](../../tools/window-probe/steps/window-restore.json) 用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。
 
 [`window-maximized-restore.json`](../../tools/window-probe/steps/window-maximized-restore.json) 用 `restoreWindow` 向隐藏的模拟快照实例写入窗口位置，再经正式的位置恢复路径显示窗口，检查最大化、最小化后恢复、普通窗口恢复及深浅主题。`inspectLayout.nativeWindow` 记录实际客户区、最大化状态及其与界面视口是否一致。`cargo test -p argus --test restore_render_target` 在始终隐藏的原生窗口中检查最小化后放大、缩小与尺寸不变时的绘图缓冲区尺寸。
+
+[`caption-buttons.json`](../../tools/window-probe/steps/caption-buttons.json) 检查标题栏的窗口按钮：深浅主题下的静止、悬停关闭与最大化按钮、置顶显示按钮的提示与开启后的图钉，对话框遮罩下的按钮区，150% 界面缩放与最小窗口的侧边导航。`inspectLayout.caption` 输出 `keepOnTop`（偏好）、`keepOnTopIsClient`（置顶按钮不属于原生按钮或拖动区域）与 `underCaptionsDrags`（按钮下方可拖动窗口），`nativeWindow.topmost` 为窗口实际是否置顶：测试实例不改变窗口层级，它始终为假。置顶层的行为由 `activation::pressure_tests` 在独立桌面上核对（见[性能测量](performance.md)）。
 
 [`tray-page.json`](../../tools/window-probe/steps/tray-page.json) 检查从托盘打开的页面选择、对话框上下文及筛选保留。`hide` / `show` 经原生窗口消息触发托盘恢复；`close` 发送关闭按钮的 `WM_CLOSE`，在“关闭时隐藏到托盘”开启时经淡出进入托盘，`minimize` 不激活其他窗口地最小化，两者同样用 `show` 恢复；`show` 先输出带 `qpc100ns` 的 `restoring` 事件，可与帧跟踪的提交时刻对照恢复后的首帧。模拟快照实例的 `restored` 控制向同一事件入口注入首次显示与最小化恢复，核对页面策略。
 

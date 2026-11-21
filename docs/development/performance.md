@@ -100,7 +100,7 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `node scripts/resilience-native.mjs <标签> <EXE路径> --tray-delay 2000 --expect-responsive --capture` 在隔离实例中让托盘调用延迟两秒，记录窗口响应和采样推进。故障路径仅在独立标识的 `--test` 实例启用，调用由测试接收端处理。托盘线程、阻塞解析器队列的容量、字节预算和重试分别有源码回归测试。
 
-`cargo test -p argus --lib activation::pressure_tests -- --ignored --nocapture --test-threads=1` 在独立桌面创建停止响应的置顶窗口，验证激活、层级恢复及已有置顶状态。测试不调用 `SwitchDesktop`，持续检查实际桌面的前台；桌面与内部 GUI 辅助线程随测试进程退出回收。
+`cargo test -p argus --lib activation::pressure_tests -- --ignored --nocapture --test-threads=1` 在独立桌面创建停止响应的置顶窗口，验证激活、层级恢复、已有置顶状态及“置顶显示”的开关。测试不调用 `SwitchDesktop`，持续检查实际桌面的前台；桌面与内部 GUI 辅助线程随测试进程退出回收。
 
 `node scripts/build-leak-tools.mjs` 同时构建资源负载程序。`node scripts/pressure-native.mjs <标签> <EXE路径> --seconds 20 --headroom-mib 48 --rounds 3` 依次测量基线、CPU、GPU、三轮组合负载和恢复状态。CPU 负载使用固定亲和性并保留调度余量；内存负载保留系统可用内存，GPU 用有界 CUDA 批次并保留显存余量。结果同时记录实际系统 CPU 和 GPU 引擎占用、应用响应、呈现帧率、资源计数及采样序号，以观测到的负载标注覆盖范围。
 
