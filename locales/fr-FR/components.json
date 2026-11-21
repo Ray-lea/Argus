@@ -42,7 +42,7 @@
       "other": "Autres"
     },
     "all": {
-      "disk": "Tous les disques",
+      "disk": "Disques (intelligent)",
       "diskDetail": "Débit total, activité/temp. max.",
       "network": "Tous les adaptateurs réseau",
       "networkDetail": "Débit total"

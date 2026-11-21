@@ -42,7 +42,7 @@
       "other": "其他"
     },
     "all": {
-      "disk": "全部磁盘",
+      "disk": "磁盘智能显示",
       "diskDetail": "速度为合计，活动时间与温度取最高",
       "network": "全部网卡",
       "networkDetail": "速率为合计"

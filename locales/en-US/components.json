@@ -42,7 +42,7 @@
       "other": "Other"
     },
     "all": {
-      "disk": "All disks",
+      "disk": "Smart disk display",
       "diskDetail": "Total speed, max activity & temp",
       "network": "All network adapters",
       "networkDetail": "Total rate"

@@ -42,7 +42,7 @@
       "other": "Sonstiges"
     },
     "all": {
-      "disk": "Alle Datenträger",
+      "disk": "Datenträger (smart)",
       "diskDetail": "Summe, Aktivität/Temp. max.",
       "network": "Alle Netzwerkadapter",
       "networkDetail": "Datenrate summiert"

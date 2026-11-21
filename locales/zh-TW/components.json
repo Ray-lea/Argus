@@ -42,7 +42,7 @@
       "other": "其他"
     },
     "all": {
-      "disk": "所有磁碟",
+      "disk": "磁碟智慧顯示",
       "diskDetail": "合計速度、最高使用時間與溫度",
       "network": "所有網路介面卡",
       "networkDetail": "合計速率"
