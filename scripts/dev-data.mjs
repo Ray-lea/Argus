@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { t } from "./lib/console-language.mjs";
 
 const workspace = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STAMP = "dev-data.json";
@@ -120,10 +121,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (positional[0] === "clear") {
     const kinds = positional.slice(1);
     assert(kinds.length, `name the kinds to clear: ${Object.keys(KINDS).join(", ")}`);
-    console.log(`已从 ${profile.history} 删除 ${clear(profile, kinds).length} 个文件。`);
+    const removed = clear(profile, kinds).length;
+    console.log(t(`已从 ${profile.history} 删除 ${removed} 个文件。`, `Deleted ${removed} files from ${profile.history}.`));
   } else {
     assert(!positional.length, `unknown arguments: ${positional.join(" ")}`);
     const { stale, removed } = prepare(profile);
-    console.log(stale.length ? `已清除 ${stale.join("、")}：从 ${profile.history} 删除 ${removed.length} 个文件。` : "开发数据与当前格式一致，无需清除。");
+    console.log(
+      stale.length
+        ? t(
+            `已清除 ${stale.join("、")}：从 ${profile.history} 删除 ${removed.length} 个文件。`,
+            `Cleared ${stale.join(", ")}: deleted ${removed.length} files from ${profile.history}.`,
+          )
+        : t("开发数据与当前格式一致，无需清除。", "Development data matches the current formats; nothing to clear."),
+    );
   }
 }

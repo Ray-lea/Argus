@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { t } from "./lib/console-language.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "THIRD-PARTY-NOTICES.txt";
@@ -17,7 +18,7 @@ const LICENSE_FILE = /^(licen[cs]e|copying|copyright|notice|unlicense)([-_.].*)?
 const NOT_TEXT = /\.(rs|toml|json|js|ts|html|py|sh)$/i;
 
 function fail(message) {
-  console.error(`[错误] ${message}`);
+  console.error(`${t("[错误]", "[error]")} ${message}`);
   process.exit(1);
 }
 
@@ -50,11 +51,16 @@ function crates() {
       ),
     );
   } catch (e) {
-    fail(`cargo metadata 失败（需要本地已有依赖源码，先运行 cargo fetch）：${e.stderr ?? e.message}`);
+    fail(
+      t(
+        `cargo metadata 失败（需要本地已有依赖源码，先运行 cargo fetch）：${e.stderr ?? e.message}`,
+        `cargo metadata failed (it needs the dependency sources locally; run cargo fetch first): ${e.stderr ?? e.message}`,
+      ),
+    );
   }
   const packages = new Map(metadata.packages.map((p) => [p.id, p]));
   const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
-  const procMacro = (p) => p.targets.some((t) => t.kind.includes("proc-macro"));
+  const procMacro = (p) => p.targets.some((target) => target.kind.includes("proc-macro"));
   const app = metadata.packages.find((p) => p.name === "argus" && p.source === null);
   const seen = new Set();
   const stack = [app.id];
@@ -163,11 +169,16 @@ const text = render(crates(), [...vendored(),{name:"Native installer templates (
 const path = join(root, OUT);
 if (process.argv.includes("--check")) {
   if (!existsSync(path) || readFileSync(path, "utf8") !== text) {
-    fail(`${OUT} 与当前依赖不符，运行 node scripts/notices.mjs 重新生成后提交`);
+    fail(
+      t(
+        `${OUT} 与当前依赖不符，运行 node scripts/notices.mjs 重新生成后提交`,
+        `${OUT} does not match the dependencies; run node scripts/notices.mjs and commit the result`,
+      ),
+    );
   }
-  console.log(`[通过] ${OUT} 与当前依赖一致`);
+  console.log(t(`[通过] ${OUT} 与当前依赖一致`, `[pass] ${OUT} matches the dependencies`));
 } else {
   writeFileSync(path, text);
   const kb = Math.round(Buffer.byteLength(text) / 1024);
-  console.log(`已写入 ${OUT}（${kb} KB）`);
+  console.log(t(`已写入 ${OUT}（${kb} KB）`, `Wrote ${OUT} (${kb} KB)`));
 }

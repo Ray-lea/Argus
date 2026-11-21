@@ -102,6 +102,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
+- 开发脚本的控制台提示同时写中文与英文：Node 脚本用 `scripts/lib/console-language.mjs` 的 `t(中文, 英文)`，批处理用 `scripts\lib\console-language.cmd` 设置的 `ZH` 与 `call :say "中文" "英文"`（文字里不放括号与重定向符号）。批处理在 `chcp 65001` 之前与恢复代码页之后的行只写 ASCII。脚本生成的文件（发布说明、许可声明、README 素材等）按其自身的语言规则，不随提示语言变化。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
 - 在 Git Bash 里用 `node -e "…"`、`sed` 写入含反引号或 `$` 的文本时，它们会被 shell 当成命令替换或变量，悄悄改坏写入的 Rust 注释和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。
 - Git Bash 会把以 `/` 开头的参数改写成路径：NSIS 的 `/S`、`/D=…` 因此失效，安装程序会弹出界面。运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`；GitHub Actions 的 Windows 机器上同样如此，工作流里这类步骤写成 `shell: pwsh`。
