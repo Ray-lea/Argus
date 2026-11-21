@@ -5,11 +5,12 @@ rem Messages follow scripts\lib\console-language.cmd, as in start.bat.
 rem Lines before chcp and after :quit stay ASCII: cmd reads them in the console's code page.
 for /f "tokens=2 delims=:." %%C in ('chcp') do for /f %%D in ("%%C") do set "CODEPAGE=%%D"
 chcp 65001 >nul
-set "RC=1"
+rem The exit code; not named RC, see start.bat.
+set "EXITCODE=1"
 pushd "%~dp0" || goto :quit
 set "PUSHED=1"
 call scripts\lib\console-language.cmd
-set "RC=0"
+set "EXITCODE=0"
 if /i "%~1"=="help" goto :help
 if /i "%~1"=="--help" goto :help
 if "%~1"=="/?" goto :help
@@ -26,7 +27,7 @@ if /i "%~1"=="check" goto :built
 set "first=%~1"
 if "%first:~0,1%"=="-" goto :dev
 call :say "未知命令：%~1。运行 start-website.bat help 查看用法。" "Unknown command: %~1. Run start-website.bat help for usage."
-set "RC=2"
+set "EXITCODE=2"
 goto :quit
 
 :dev
@@ -41,12 +42,12 @@ if errorlevel 1 goto :done
 :run
 call pnpm --dir website run %*
 :done
-set "RC=%errorlevel%"
+set "EXITCODE=%errorlevel%"
 goto :quit
 
 :missing
 call :say "请安装 Git 和 pnpm，再运行 start-website.bat。" "Install Git and pnpm, then run start-website.bat again."
-set "RC=1"
+set "EXITCODE=1"
 goto :quit
 
 :help
@@ -83,4 +84,4 @@ exit /b 0
 :quit
 if defined PUSHED popd
 if defined CODEPAGE chcp %CODEPAGE% >nul
-exit /b %RC%
+exit /b %EXITCODE%

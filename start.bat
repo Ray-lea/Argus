@@ -9,7 +9,9 @@ chcp 65001 >nul
 cd /d "%~dp0"
 call scripts\lib\console-language.cmd
 if defined ZH (title Argus 开发) else (title Argus development)
-set "RC=0"
+rem The exit code. Not RC: child processes inherit it, and Cargo build scripts
+rem (embed-resource) take RC as the path of the resource compiler.
+set "EXITCODE=0"
 
 set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=dev"
@@ -31,13 +33,13 @@ if /i "%ACTION%"=="build" goto :build
 if /i "%ACTION%"=="clean" goto :clean
 call :say "[错误] 未知命令：%ACTION%" "[error] Unknown command: %ACTION%"
 echo.
-set "RC=2"
+set "EXITCODE=2"
 goto :help
 
 :dev
 set "RUST_BACKTRACE=1"
 call pnpm app %2 %3 %4 %5 %6 %7 %8 %9
-set "RC=%errorlevel%"
+set "EXITCODE=%errorlevel%"
 goto :quit
 
 :check
@@ -99,10 +101,10 @@ if not defined ZH echo(%~2
 exit /b 0
 
 :fail
-set "RC=1"
+set "EXITCODE=1"
 rem Keep the window open when launched by double-click so the error stays readable.
 echo %cmdcmdline% | find /i "%~nx0" >nul && (echo. & pause)
 
 :quit
 if defined CODEPAGE chcp %CODEPAGE% >nul
-exit /b %RC%
+exit /b %EXITCODE%
