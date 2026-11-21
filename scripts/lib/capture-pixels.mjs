@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 import assert from "node:assert/strict";
 
-function pixels(path) {
+/** An 8-bit RGB or RGBA PNG as `{ width, height, channels, data }`, rows top to bottom. */
+export function pixels(path) {
   const bytes = readFileSync(path), parts = [];
   let width, height, channels;
   for (let at = 8; at < bytes.length;) {
@@ -38,6 +39,33 @@ function pixels(path) {
     }
   }
   return { width, height, channels, data: result };
+}
+
+/**
+ * Where two decoded captures differ in colour (alpha is ignored): the count of
+ * changed pixels, the largest channel difference, the box around them as
+ * [x, y, width, height], and the runs of rows that hold any, as [first, last].
+ * `tolerance` is the largest channel difference that still counts as equal.
+ */
+export function differences(a, b, tolerance = 0) {
+  assert(a.width === b.width && a.height === b.height, "capture dimensions differ");
+  let changedPixels = 0, maxChannelDelta = 0;
+  let left = a.width, top = a.height, right = -1, bottom = -1;
+  const rows = [];
+  for (let y = 0; y < a.height; y++) {
+    let any = false;
+    for (let x = 0; x < a.width; x++) {
+      let delta = 0;
+      for (let channel = 0; channel < 3; channel++) delta = Math.max(delta, Math.abs(a.data[(y * a.width + x) * a.channels + channel] - b.data[(y * b.width + x) * b.channels + channel]));
+      if (delta <= tolerance) continue;
+      changedPixels++; maxChannelDelta = Math.max(maxChannelDelta, delta); any = true;
+      left = Math.min(left, x); right = Math.max(right, x);
+    }
+    if (!any) continue;
+    top = Math.min(top, y); bottom = y;
+    if (rows.length && rows.at(-1)[1] === y - 1) rows.at(-1)[1] = y; else rows.push([y, y]);
+  }
+  return { changedPixels, maxChannelDelta, box: changedPixels ? [left, top, right - left + 1, bottom - top + 1] : null, rows };
 }
 
 export function compareChartPixels(left, right, charts, scale) {
