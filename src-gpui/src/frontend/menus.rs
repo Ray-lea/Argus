@@ -1291,14 +1291,12 @@ impl Desktop {
                     ),
             );
         }
-        // The cores a hybrid CPU's processes run on (CPU Sets); other CPUs
-        // report none and get no submenu. A set chosen elsewhere shows as
-        // "Custom", checked but not offered.
-        if row
-            .members
-            .iter()
-            .any(|member| member["cpuSets"].is_string())
-        {
+        // The cores a hybrid CPU's processes run on (CPU Sets). Whether to
+        // offer them is the CPU's to say, not the rows': a process Argus
+        // can't query (another user's) reads no sets, yet the privileged
+        // service may still change them, so only the check goes unknown.
+        // A set chosen elsewhere shows as "Custom", checked but not offered.
+        if hybrid_cpu(&self.snapshot) {
             let current = shared_text(&row.members, "cpuSets");
             let mut levels: Vec<MenuItem> = CPU_SETS
                 .iter()
@@ -1623,6 +1621,15 @@ impl Desktop {
 /// The I/O priorities a user can set; Windows keeps high and critical.
 const IO_PRIORITIES: [&str; 3] = ["veryLow", "low", "normal"];
 const MEMORY_PRIORITIES: [&str; 5] = ["veryLow", "low", "medium", "belowNormal", "normal"];
+/// Whether the CPU has performance and efficiency cores: the topology the
+/// core sets are built from (`actions::cpu_sets_available`) counts its
+/// performance cores only then.
+fn hybrid_cpu(snapshot: &Value) -> bool {
+    snapshot["hardware"]["cpu"]["performanceCores"]
+        .as_u64()
+        .is_some_and(|cores| cores > 0)
+}
+
 /// The CPU Sets a user can choose on a hybrid CPU.
 const CPU_SETS: [&str; 3] = ["all", "performance", "efficient"];
 
@@ -1638,8 +1645,16 @@ fn shared_text<'a>(members: &'a [Value], key: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
-    use super::{Action, MenuItem, menu_origin, submenu_origin, tidy};
+    use super::{Action, MenuItem, hybrid_cpu, menu_origin, submenu_origin, tidy};
     use gpui_kit::{point, px, size};
+
+    #[test]
+    fn the_core_submenu_follows_the_cpu_not_the_process() {
+        let snapshot = |cores| serde_json::json!({"hardware":{"cpu":{"performanceCores":cores}}});
+        assert!(hybrid_cpu(&snapshot(serde_json::json!(8))));
+        assert!(!hybrid_cpu(&snapshot(serde_json::json!(0))));
+        assert!(!hybrid_cpu(&serde_json::json!({})));
+    }
 
     fn item(label: &str) -> MenuItem {
         MenuItem::new(label, Action::CloseOverlay)
