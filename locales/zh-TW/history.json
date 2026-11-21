@@ -3,12 +3,13 @@
     "peak": "最高 {value}"
   },
   "copied": {
-    "name": "名稱"
+    "name": "名稱",
+    "namePid": "名稱與 PID"
   },
   "noRecordAt": "該時刻無記錄",
   "earliest": "最早的記錄",
-  "note": "每 5 秒記錄一次讀數與使用量最高的處理程序，最近 10 分鐘另有每秒讀數；最小化或在背景常駐時的重新整理間隔更長時，按該間隔記錄。保留 7 天。",
-  "off": "歷程記錄已關閉，不再記錄新的資料。<link>開啟設定</link>",
+  "note": "通常每 5 秒記錄一次，背景取樣較慢時依實際間隔記錄。最近 10 分鐘保留每次取樣的讀數。",
+  "off": "歷程記錄已關閉。<link>開啟設定</link>",
   "watch": {
     "title": "處理程序觀察",
     "empty": "在單一處理程序的詳細資料中選擇「觀察此執行個體」，即可記錄未進入排行榜的記憶體變化。",
@@ -16,7 +17,7 @@
     "target": "觀察 {name}（PID {pid}）",
     "stop": "停止記錄",
     "delete": "刪除記錄",
-    "note": "僅觀察此執行個體；最多 1 小時、720 個記錄點、1 MiB。通常每 5 秒記錄一次，較慢的背景取樣可能產生缺漏。工作集增長本身不證明記憶體洩漏。停止會保留資料；刪除會停止並移除此記錄。",
+    "note": "僅記錄此執行個體，最長 1 小時。停止後保留資料，刪除會結束觀察並清除記錄。",
     "metric": {
       "memory": "私人工作集",
       "commit": "私人認可用量"
@@ -44,8 +45,8 @@
     "runSummary": "顯示 {shown}/{total} 個執行個體；所選個體共 {points} 個記錄點",
     "earlier": "較早的記錄",
     "latest": "最新記錄",
-    "programNote": "同一映像路徑的目前及後續執行個體分別記錄。最多保留 7 天、131072 個點及 9 MiB，先到的上限觸發舊記錄清理；最多同時觀察 512 個個體。清單顯示最近 256 個個體，每頁最多 1000 個已存點及空缺標記，可查看較早記錄。通常每 5 秒記錄；較慢取樣保留空缺。工作集成長不證明記憶體洩漏。停止保留資料，刪除移除記錄；重啟 Argus 不自動繼續。",
-    "damaged": "部分儲存記錄未通過完整性檢查；缺失區間保留為空缺。",
+    "programNote": "相同路徑的每次執行分別記錄。最多保留 7 天，達到容量上限時會提前清除最舊記錄。停止後保留資料，刪除會結束觀察並清除記錄。重新啟動 Argus 後需重新開始觀察。",
+    "damaged": "部分記錄損毀，對應時段留白。",
     "earlierRuns": "較早的執行個體",
     "latestRuns": "最新執行個體",
     "waiting": "等待後續執行",
@@ -55,29 +56,40 @@
   "range": {
     "5m": "5 分鐘",
     "1h": "1 小時",
+    "3h": "3 小時",
     "6h": "6 小時",
     "1d": "1 天",
+    "3d": "3 天",
     "7d": "7 天",
     "30d": "30 天",
-    "all": "全部"
+    "all": "全部",
+    "custom": "自訂",
+    "customMenu": "自訂…"
   },
   "now": "現在",
   "live": {
     "on": "即時",
-    "onTitle": "顯示最新讀數：6 小時以內每秒更新，更長的範圍每分鐘更新。按一下可暫停",
+    "onTitle": "暫停跟隨最新讀數",
     "off": "回到最新",
-    "offTitle": "回到最新讀數並繼續更新（也可在圖表上按一下滑鼠右鍵或按 End）"
+    "offTitle": "繼續跟隨最新讀數（以滑鼠右鍵點選圖表或按 End）"
   },
   "toast": {
     "latest": "已回到最新",
     "paused": "已暫停自動更新"
   },
-  "more": "更多",
   "menu": {
     "band": "顯示最低到最高的範圍",
     "settings": "歷程記錄設定…",
     "needsService": "需要特權服務",
-    "notRecorded": "暫無記錄"
+    "notRecorded": "暫無記錄",
+    "curve": "在圖表上顯示曲線",
+    "curveOff": "不在圖表上顯示",
+    "copy": "複製名稱與 PID",
+    "none": "不疊加",
+    "showTitle": "在目前軌道顯示",
+    "addTitle": "新增軌道",
+    "overlayTitle": "疊加第二個讀數（右側縱軸）",
+    "byService": "由特權服務提供"
   },
   "group": {
     "cpu": "處理器",
@@ -178,20 +190,23 @@
     "add": "疊加",
     "addTitle": "疊加第二個讀數，使用右側縱軸",
     "shared": "共用左軸",
-    "right": "右軸"
+    "right": "右軸",
+    "remove": "取消疊加",
+    "change": "變更疊加的讀數"
   },
   "unrecorded": {
     "title": "{name}暫無記錄",
-    "hint": "這部電腦沒有記錄此讀數，所需的裝置或計數器可能不存在。",
+    "hint": "所需的裝置或計數器可能無法使用。",
     "serviceTitle": "{name}需要特權服務",
-    "serviceHint": "特權服務透過 PawnIO 固定模組讀取處理器感應器；安裝後從下一次取樣開始記錄，先前的時段保持空白。",
+    "serviceHint": "從服務啟用後的下一次取樣開始記錄，先前的時段留白。",
     "install": "安裝特權服務…"
   },
   "tip": {
     "second": "每秒讀數",
     "frame": "5 秒記錄",
     "average": "平均值",
-    "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除"
+    "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除",
+    "otherPrograms": "其餘 {count} 個程式"
   },
   "tab": {
     "add": "在新軌道中顯示",
@@ -206,7 +221,18 @@
     "loading": "正在讀取…",
     "modeMoment": "此刻",
     "modeRange": "區間",
-    "columns": "欄"
+    "columns": "欄",
+    "chooser": {
+      "moment": "「此刻」顯示的欄",
+      "range": "「區間」顯示的欄"
+    },
+    "trend": "趨勢迷你曲線",
+    "resetColumns": "還原預設欄",
+    "rest": "其餘 {count} 個處理程序",
+    "search": "搜尋處理程序",
+    "emptyRange": "此範圍內暫無處理程序記錄",
+    "netService": "標準權限下需啟用特殊權限服務，才能記錄各處理程序的網路用量。",
+    "live": "最新的處理程序"
   },
   "column": {
     "moment": {
@@ -239,7 +265,8 @@
       "threads": "執行緒",
       "handles": "控制代碼"
     },
-    "trend": "趨勢 · {name}"
+    "trend": "趨勢 · {name}",
+    "trendTitle": "所選範圍內的變化，讀數與最上方的軌道一致"
   },
   "trend": {
     "cpu": "CPU",
@@ -251,5 +278,93 @@
   "clearCursor": "清除游標（Esc）",
   "selection": {
     "zoom": "放大到選取範圍"
+  },
+  "copy": {
+    "text": "{name}（PID {pids}）"
+  },
+  "error": {
+    "directory": "請選擇可寫入、以完整路徑表示的資料夾；新位置與目前位置不能互相包含。",
+    "move": "無法移動歷程記錄。請檢查目標資料夾中是否有同名檔案，以及兩個資料夾的存取權限。",
+    "save": "無法儲存歷程記錄設定。",
+    "open": "無法在檔案總管中開啟歷程記錄資料夾。",
+    "clear": "無法清除歷程記錄。請檢查資料夾權限以及檔案是否正在使用中。"
+  },
+  "picker": {
+    "title": "自訂時間範圍",
+    "last5m": "最近 5 分鐘",
+    "last15m": "最近 15 分鐘",
+    "last1h": "最近 1 小時",
+    "last6h": "最近 6 小時",
+    "last24h": "最近 24 小時",
+    "today": "今天",
+    "yesterday": "昨天",
+    "last7d": "最近 7 天",
+    "last30d": "最近 30 天",
+    "all": "全部記錄",
+    "month": "{year} 年 {month} 月",
+    "weekdays": "一 二 三 四 五 六 日",
+    "start": "開始",
+    "end": "結束",
+    "apply": "套用",
+    "follow": "結束於目前時間時跟隨最新記錄",
+    "overview": "顯示 30 天概覽與事件",
+    "dayTip": "{date} · 記錄 {count} 小時 · 平均 CPU {cpu}",
+    "error": {
+      "format": "時間格式應為 {example}",
+      "order": "結束時間應晚於開始時間",
+      "none": "所選時間內沒有記錄（最早記錄於 {first}）",
+      "empty": "暫無記錄"
+    },
+    "heatTitle": "30 天概覽",
+    "heatHint": "每格 1 小時",
+    "noRecord": "無記錄",
+    "heat": {
+      "cpu": "CPU 使用率",
+      "gpu": "GPU 使用率",
+      "mem": "記憶體使用率",
+      "temp": "CPU 溫度",
+      "net": "網路接收"
+    },
+    "eventsTitle": "事件",
+    "eventsCount": "{range} · {count} 項",
+    "noEvents": "所選日期內沒有事件",
+    "eventsLoading": "正在尋找事件…",
+    "filter": {
+      "all": "全部",
+      "cpu": "CPU",
+      "temp": "溫度",
+      "mem": "記憶體",
+      "gpu": "GPU",
+      "net": "網路",
+      "disk": "磁碟",
+      "gap": "無記錄"
+    },
+    "event": {
+      "cpu": "CPU 高負載",
+      "temp": "CPU 溫度過高",
+      "mem": "記憶體吃緊",
+      "gpu": "GPU 長時間高負載",
+      "net": "大量下載",
+      "disk": "磁碟忙碌"
+    },
+    "eventPeak": "{time} · 最高 {peak}"
+  },
+  "chooser": {
+    "search": "搜尋讀數",
+    "all": "全部",
+    "empty": "沒有符合的讀數"
+  },
+  "devicePart": {
+    "diskOf": "讀寫",
+    "diskActive": "使用時間",
+    "diskResponse": "平均回應時間",
+    "deviceTemp": "溫度",
+    "nicOf": "收發",
+    "gpuUtil": "使用率",
+    "gpuDedicated": "專用 GPU 記憶體",
+    "gpuShared": "共用 GPU 記憶體",
+    "gpuPower": "功耗",
+    "gpuClock": "速度",
+    "gpuFan": "風扇"
   }
 }

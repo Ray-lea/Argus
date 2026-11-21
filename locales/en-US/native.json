@@ -72,7 +72,7 @@
       "ipv4Only": "Only IPv4 TCP connections can be closed"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager couldn't check the target; the results below come from a handle search"
+      "restartManagerFailed": "Couldn't finish checking the files; the results come only from a handle search"
     },
     "handles": {
       "tooMany": "Up to 32 paths can be checked at a time, with a total length of at most 8 KiB",
@@ -120,6 +120,7 @@
       "helperExited": "The handle search helper exited early; only completed results are shown",
       "serviceIncomplete": "The privileged service didn't complete this search, so local results are shown: {error}",
       "serviceIncompleteLocal": "The privileged service didn't complete this search; local search results are shown",
+      "bothIncomplete": "Neither the privileged service nor the local search completed: {error}",
       "unavailable": "Search is temporarily unavailable",
       "serviceOutdated": "The privileged service doesn't support handle searches, so update the service; local search results are shown",
       "serviceUnavailable": "The privileged service is unavailable, so local search results are shown: {error}"

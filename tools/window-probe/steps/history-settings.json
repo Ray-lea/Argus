@@ -1,0 +1,20 @@
+{
+  "about": "设置页的历史记录卡片：记录内容、保留上限、保存位置与移动面板，并截取浅色主题。",
+  "window": [1280, 900],
+  "steps": [
+    { "control": { "page": "settings", "settingsSection": "data", "pointerOutside": true,
+        "data": { "historyUsage": {
+          "bytes": 327155712, "first": 1790640000000, "days": 30,
+          "breakdown": { "system": 35651584, "processes": 281018368, "watch": 10485760 },
+          "limit": { "days": 30, "bytes": 2147483648 }, "estimate": { "bytesPerDay": 9437184 },
+          "dir": "C:\\Users\\Example\\AppData\\Local\\dev.argus.taskmanager\\history",
+          "defaultDir": "C:\\Users\\Example\\AppData\\Local\\dev.argus.taskmanager\\history",
+          "custom": false } } },
+      "wait": 900 },
+    { "control": { "locate": { "section": "data", "item": "historyRecord" } }, "wait": 900, "capture": "record" },
+    { "control": { "wheel": { "x": 740, "y": 600, "lines": -8 } }, "wait": 700, "capture": "limits" },
+    { "control": { "wheel": { "x": 740, "y": 600, "lines": -5 } }, "wait": 700, "capture": "place" },
+    { "control": { "data": { "historyMoveTo": "D:\\ArgusData\\history", "historyMoveRecords": true } }, "wait": 500, "capture": "move" },
+    { "control": { "theme": "light" }, "wait": 700, "capture": "move-light" }
+  ]
+}

@@ -3,7 +3,11 @@ use super::*;
 mod body;
 mod cell_text;
 mod cells;
+mod export;
 mod groups;
+/// A category heading's tint and its count's, for lists drawn like the
+/// process list's groups (the history page's table).
+pub(in crate::frontend) use groups::{COUNT_TINT, HEADING_TINT};
 mod header;
 pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};
@@ -521,6 +525,9 @@ pub(super) struct NativeTable {
     edge_fitted: Option<&'static str>,
     /// The process list's user and category groups (`groups`).
     group_view: groups::GroupView,
+    /// The column under the pointer when a row was last right-pressed,
+    /// for the menu it opens (`Desktop::open_row_menu` takes it).
+    pub(super) context_column: Option<&'static str>,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -800,6 +807,7 @@ impl NativeTable {
             resizing: None,
             edge_fitted: None,
             group_view: Default::default(),
+            context_column: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -1634,6 +1642,50 @@ impl TableDelegate for NativeTable {
         {
             let app = owner.read(cx);
             let total = self.totals.get(field.key).cloned().unwrap_or_default();
+            // Leak alerts: a mark after the count, which lists them.
+            let alerts = if field.key == "name" {
+                app.leak_alerts().len()
+            } else {
+                0
+            };
+            let leak_mark = (alerts > 0).then(|| {
+                let tip = theme::counted("processes.leak.mark", alerts as u64, &[]);
+                let owner = self.owner.clone();
+                let tint = p.io;
+                div()
+                    .id(leaks::MARK)
+                    .relative()
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap(px(3.))
+                    .h(px(18.))
+                    .px(px(6.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(tint.opacity(0.45))
+                    .bg(tint.opacity(0.1))
+                    .text_color(tint)
+                    .text_size(theme::font(11.))
+                    .line_height(px(16.))
+                    .font_family(cx.theme().font_family.clone())
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(tint.opacity(0.18)))
+                    .child(icon("WarningIcon", tint).size(px(11.)))
+                    .child(theme::count(alerts as f64))
+                    .child(layout::anchor_probe(leaks::MARK, app.ui.anchors.clone()))
+                    // Its press never reaches the header, which would sort.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        let owner = owner.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = owner.update(cx, |this, cx| this.open_leak_menu(window, cx));
+                        });
+                    })
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+            });
             cell = cell.child(
                 div()
                     .flex()
@@ -1659,7 +1711,8 @@ impl TableDelegate for NativeTable {
                                 }),
                         )
                     })
-                    .child(raised_brackets(total, theme::font(15.))),
+                    .child(raised_brackets(total, theme::font(15.)))
+                    .children(leak_mark),
             );
         }
         let owner = self.owner.clone();
@@ -2828,6 +2881,26 @@ impl Desktop {
         values(&self.snapshot["processes"])
             .iter()
             .find(|process| process["pid"].as_u64() == Some(pid))
+    }
+    /// The column a right press on a row was over, once: the menu it opens
+    /// takes it.
+    pub(in crate::frontend) fn take_context_column(&self, cx: &mut App) -> Option<&'static str> {
+        self.table
+            .as_ref()?
+            .update(cx, |state, _| state.delegate_mut().context_column.take())
+    }
+    /// The name of the current table's column `key`, and `row`'s cell in it
+    /// as the table shows it.
+    pub(in crate::frontend) fn cell_copy(
+        &self,
+        row: &Row,
+        key: &str,
+        cx: &App,
+    ) -> Option<(String, String)> {
+        let state = self.table.as_ref()?.read(cx);
+        let delegate = state.delegate();
+        let field = delegate.fields.iter().find(|field| field.key == key)?;
+        Some((field.label.clone(), display_cell(row, field, delegate.bits)))
     }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {

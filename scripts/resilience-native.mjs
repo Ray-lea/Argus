@@ -4,7 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -18,6 +18,7 @@ const option = (name, fallback) => {
   return at < 0 ? fallback : process.argv[at + 1];
 };
 const output = resolve("target/native-validation", label);
+const logs = [];
 mkdirSync(output, { recursive: true });
 const executable = join(output, "argus.exe");
 copyFileSync(resolve(input), executable);
@@ -115,9 +116,9 @@ try {
   report.exitCode = exitCode;
   report.stderr = stderr;
   writeFileSync(join(output, "result.json"), JSON.stringify(report, null, 2));
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
-assert.equal(exitCode, 0, stderr);
+assert.equal(exitCode, 0, [stderr, ...panics(logs)].join("\n"));
 assert(!events.some((event) => event.event === "focusViolation"));
 if (process.argv.includes("--expect-responsive")) {
   assert(report.ui.elapsedMs < 400, `UI blocked ${report.ui.elapsedMs.toFixed(1)} ms`);

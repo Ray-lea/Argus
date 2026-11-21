@@ -56,7 +56,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-zh-TW-dark.svg"><img src="docs/images/features/performance-zh-TW-light.svg" width="390" alt="效能頁顯示 CPU 使用率、速度、溫度與功耗，以及每個效能核心與效率核心的折線"></picture><br><b>效能</b>：CPU 各核心、時脈、溫度與功耗，以及記憶體、磁碟、網路與 GPU</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-TW-dark.svg"><img src="docs/images/features/history-zh-TW-light.svg" width="390" alt="在歷程記錄頁的 7 天折線上先後按一下兩個時刻，下方列出各時刻最忙碌的處理程序"></picture><br><b>歷程記錄</b>：按一下 7 天折線上的任意時刻，檢視當時最忙碌的處理程序</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-TW-dark.svg"><img src="docs/images/features/history-zh-TW-light.svg" width="390" alt="在歷程記錄頁的時間範圍清單中選擇 3 天，再先後按一下折線上的兩個時段，下方列出各時段最忙碌的處理程序"></picture><br><b>歷程記錄</b>：選擇時間範圍後按一下折線上的任意時刻，檢視當時最忙碌的處理程序</td>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-zh-TW-dark.svg"><img src="docs/images/features/files-zh-TW-light.svg" width="390" alt="將試算表檔案拖放至視窗後，對話方塊列出使用它的 Excel 與檔案總管，並結束其中一個處理程序"></picture><br><b>檔案使用狀況</b>：將檔案或資料夾拖放至視窗，列出使用它的處理程序</td>
 </tr>
 <tr>

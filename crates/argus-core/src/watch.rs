@@ -22,6 +22,8 @@ pub const SAMPLE_MS: i64 = 5_000;
 pub const MAX_POINTS: usize = 720;
 pub const MAX_BYTES: u64 = 1 << 20;
 const FILE_NAME: &str = "process-watch.jsonl";
+/// The layout of `FILE_NAME` and of the views returned to the interface.
+const VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
@@ -164,6 +166,27 @@ pub struct WatchRecorder {
 }
 
 impl WatchRecorder {
+    pub fn suspend(mut self) -> impl FnOnce(PathBuf) -> Result<Self, WatchError> {
+        self.file = None;
+        let program = self
+            .program_watch
+            .take()
+            .map(program::ProgramWatch::suspend);
+        move |dir| {
+            if let Some(resume) = program {
+                self.program_watch = Some(resume(&dir)?);
+            } else if self.handle.is_some() {
+                self.file = Some(
+                    OpenOptions::new()
+                        .append(true)
+                        .open(dir.join(FILE_NAME))
+                        .map_err(|_| WatchError::Storage)?,
+                );
+            }
+            self.dir = dir;
+            Ok(self)
+        }
+    }
     pub fn storage_bytes(dir: &std::path::Path) -> u64 {
         [FILE_NAME, store::FILE_NAME]
             .iter()
@@ -232,7 +255,7 @@ impl WatchRecorder {
         else {
             return Err(WatchError::Invalid);
         };
-        if !matches!(version, 1 | 2) || program.as_ref().is_some_and(|program| !program.valid()) {
+        if version != VERSION || program.as_ref().is_some_and(|program| !program.valid()) {
             return Err(WatchError::Invalid);
         }
         let mut view = WatchView {
@@ -314,7 +337,7 @@ impl WatchRecorder {
                     .open(self.dir.join(FILE_NAME))
                     .map_err(|_| WatchError::Storage)?;
                 let mut header = serde_json::to_vec(&Record::Header {
-                    version: 2,
+                    version: VERSION,
                     pid,
                     created: create_time,
                     name: name.clone(),
@@ -333,7 +356,7 @@ impl WatchRecorder {
                 self.started = Some(Instant::now());
                 self.last = None;
                 self.view = Some(WatchView {
-                    version: 2,
+                    version: VERSION,
                     pid,
                     create_time,
                     name,
@@ -595,6 +618,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: vec![ProcessRow {
                 pid: view.pid,
@@ -607,19 +631,34 @@ mod tests {
     }
 
     #[test]
-    fn legacy_observation_has_no_invented_program_identity_and_is_not_rewritten() {
-        let dir = folder("legacy-program");
+    fn observation_without_program_identity_gets_none_invented_and_is_not_rewritten() {
+        let dir = folder("no-program");
         fs::create_dir(&dir).unwrap();
         let header =
             b"{\"kind\":\"header\",\"version\":1,\"pid\":42,\"created\":1,\"name\":\"same.exe\"}\n";
         fs::write(dir.join(FILE_NAME), header).unwrap();
         let recorder = WatchRecorder::open(dir.clone()).unwrap();
         let view = recorder.view().unwrap();
-        assert_eq!(view.version, 1);
+        assert_eq!(view.version, VERSION);
         assert!(view.program.is_none());
         assert_eq!(fs::read(dir.join(FILE_NAME)).unwrap(), header);
         WatchRecorder::delete_saved(&dir).unwrap();
         fs::remove_dir(dir).unwrap();
+    }
+
+    #[test]
+    fn observation_of_another_version_is_rejected_and_kept() {
+        let dir = folder("other-version");
+        fs::create_dir(&dir).unwrap();
+        let header =
+            b"{\"kind\":\"header\",\"version\":2,\"pid\":42,\"created\":1,\"name\":\"same.exe\"}\n";
+        fs::write(dir.join(FILE_NAME), header).unwrap();
+        assert!(matches!(
+            WatchRecorder::open(dir.clone()),
+            Err(WatchError::Invalid)
+        ));
+        assert_eq!(fs::read(dir.join(FILE_NAME)).unwrap(), header);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

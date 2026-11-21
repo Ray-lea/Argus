@@ -1,0 +1,11 @@
+[
+  {"name":"processes-sampled","seconds":15,"state":{"page":"processes","view":"apps","details":"closed","motion":"fluid"}, "repeat": [
+    {"app":{"sample":{"at":0,"set":{}}},"waitMs":1000}
+  ]},
+  {"name":"performance-sampled","seconds":15,"state":{"page":"performance","cpuMode":"overall","motion":"fluid"}, "repeat": [
+    {"app":{"sample":{"at":0,"set":{}}},"waitMs":1000}
+  ]},
+  {"name":"logical-sampled","seconds":15,"state":{"page":"performance","cpuMode":"logical","motion":"fluid"}, "repeat": [
+    {"app":{"sample":{"at":0,"set":{}}},"waitMs":1000}
+  ]}
+]

@@ -8,8 +8,8 @@
     "copy": "PC の仕様をテキストとしてコピー",
     "copyWhat": "PC の仕様",
     "copyPart": "{kind}：{name}",
-    "selectTip": "リスト内のアプリまたはプロセスをクリックすると、その詳細がここに表示されます。もう一度クリックすると選択が解除されます。",
-    "closeTip": "詳細ペインは既定で常に表示されます。ウィンドウ右上の {icon} をクリックすると折りたためます。",
+    "selectTip": "アプリまたはプロセスをクリックすると詳細が表示されます。もう一度クリックすると選択が解除されます。",
+    "closeTip": "ページのツールバーにある {icon} でパネルを折りたためます。",
     "tips": "操作のヒント",
     "tipsCollapse": "操作のヒントを折りたたむ",
     "tipsExpand": "操作のヒントを展開",
@@ -34,8 +34,7 @@
     "health": "正常性 {percent}%"
   },
   "exited": {
-    "title": "プロセスが終了しました",
-    "hint": "リスト内の別のプロセスを選択して、その詳細を表示します。"
+    "title": "プロセスが終了しました"
   },
   "group": {
     "count": {
@@ -49,6 +48,7 @@
   "section": {
     "process": "プロセス",
     "resources": "リソース",
+    "totals": "累計",
     "location": "ファイルの場所",
     "commandLine": "コマンドライン",
     "version": "ファイルバージョン"
@@ -84,10 +84,16 @@
   "gpuEngine": "（{engine}）",
   "gpuDedicated": "専用 GPU メモリ",
   "gpuShared": "共有 GPU メモリ",
+  "powerTrend": "{level} · 傾向：{trend}",
   "netNeedsAdmin": "Argus を管理者として実行して表示します",
   "threads": "スレッド",
   "handles": "ハンドル",
-  "noAccess": "このプロセスのコマンド ラインとユーザー情報を読み取るためにプロセスを開けませんでした。確認するには Argus を管理者として実行してください。",
+  "noAccess": "現在の権限ではコマンドラインとユーザー情報を読み取れません。Argus を管理者として実行して再試行できます。",
   "product": "製品",
-  "version": "バージョン"
+  "version": "バージョン",
+  "copy": {
+    "action": "詳細をコピー（Ctrl+Shift+C）",
+    "heading": "【{name}】",
+    "field": "{name}：{value}"
+  }
 }

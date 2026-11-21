@@ -50,11 +50,20 @@
   },
   "pause": "暂停刷新",
   "resume": "继续刷新",
+  "window": {
+    "onTop": "置顶显示",
+    "onTopOff": "取消置顶显示"
+  },
   "more": {
     "label": "更多操作",
     "runTask": "运行新任务…",
     "fileLock": "查找占用文件的进程…",
-    "fileLockDetail": "可拖放文件"
+    "fileLockDetail": "可拖放文件",
+    "exportCsv": "导出当前页为 CSV…",
+    "csvFile": "CSV 文件",
+    "csvSaved": "已导出 CSV 文件。",
+    "csvFailed": "无法保存 CSV 文件。请检查目标文件夹的写入权限及文件是否被占用。",
+    "csvRows": "{count}行"
   },
   "details": {
     "label": "详细信息面板",

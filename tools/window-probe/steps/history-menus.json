@@ -1,0 +1,27 @@
+{
+  "about": "历史页的读数选择器（搜索与设备分组）、第二读数、轨道名称菜单和“更多”菜单，以及历史页的快捷键说明；核对所选读数与选择器的状态，并截取浅色主题。",
+  "window": [1280, 900],
+  "steps": [
+    { "control": { "page": "history", "pointerOutside": true }, "wait": 1500, "inspect": "layout", "label": "default",
+      "expect": { "history.lanes.0.reading": "cpu", "history.lanes.0.overlay": "cpuTemp" } },
+    { "control": { "clickAnchor": "history-tab-more" }, "wait": 500, "inspect": "layout", "label": "readings", "capture": "readings",
+      "expect": { "history.chooser.open": true, "history.chooser.devices": 5 } },
+    { "control": { "formValues": { "historyReadingSearch": "温度" } }, "wait": 400, "inspect": "layout", "label": "readings-search", "capture": "readings-search",
+      "expect": { "history.chooser.choices": 3, "history.chooser.devices": 2 } },
+    { "control": { "keys": ["escape"] }, "wait": 300, "inspect": "layout", "label": "readings-closed", "expect": { "history.chooser": null } },
+    { "control": { "clickAnchor": "history-overlay-1" }, "wait": 500, "inspect": "layout", "label": "overlay", "capture": "overlay",
+      "expect": { "history.chooser.open": true } },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+    { "control": { "clickAnchor": "history-lane-name-1" }, "wait": 500, "inspect": "layout", "label": "lane-name", "capture": "lane-name",
+      "expect": { "history.chooser.open": true } },
+    { "control": { "keys": ["down", "enter"] }, "wait": 600, "inspect": "layout", "label": "lane-changed",
+      "expect": { "history.lanes.0.reading": "cpuKernel" } },
+    { "control": { "clickAnchor": "toolbar-more" }, "wait": 500, "inspect": "menu", "label": "more", "capture": "more",
+      "expect": { "state.open": true } },
+    { "control": { "keys": ["escape"] }, "wait": 300 },
+    { "control": { "dialog": "shortcuts", "args": { "open": { "history": true, "historyMouse": true } } }, "wait": 700, "capture": "shortcuts" },
+    { "control": { "wheel": { "x": 640, "y": 450, "lines": -100 } }, "wait": 600, "capture": "shortcuts-mouse" },
+    { "control": { "theme": "light", "keys": ["escape"] }, "wait": 400 },
+    { "control": { "clickAnchor": "history-tab-more" }, "wait": 500, "capture": "readings-light" }
+  ]
+}

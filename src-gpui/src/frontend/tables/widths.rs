@@ -150,6 +150,8 @@ enum NameShape {
         members: usize,
         efficiency: bool,
         suspended: bool,
+        /// A leak alert's tag (`leaks::row_kind`).
+        leak: Option<&'static str>,
     },
 }
 
@@ -185,6 +187,7 @@ impl<'a> Name<'a> {
                         .members
                         .iter()
                         .all(|member| boolean(member, "suspended")),
+                leak: crate::frontend::leaks::row_kind(&row.members),
             }
         };
         Self {
@@ -575,7 +578,7 @@ impl AutoWidths {
         const FOLD: f32 = 18.;
         let edges = CELL_PADDING * 2. + 6.;
         let inset = |nested: bool| if nested { USER_INSET } else { 0. };
-        let (nested, depth, members, efficiency, suspended) = match name.shape {
+        let (nested, depth, members, efficiency, suspended, leak) = match name.shape {
             NameShape::User => {
                 return edges
                     + FOLD
@@ -601,7 +604,8 @@ impl AutoWidths {
                 members,
                 efficiency,
                 suspended,
-            } => (nested, depth, members, efficiency, suspended),
+                leak,
+            } => (nested, depth, members, efficiency, suspended, leak),
         };
         // The fold button overlaps the icon's gap by 4 px; a row that cannot
         // fold keeps 14 px in its place.
@@ -629,6 +633,15 @@ impl AutoWidths {
         if suspended {
             width +=
                 GAP + self.measure(&label("processes.suspended"), Role::Badge, system, cx) + 14.;
+        }
+        if let Some(kind) = leak {
+            width +=
+                GAP + self.measure(
+                    &crate::frontend::leaks::tag_label(kind),
+                    Role::Badge,
+                    system,
+                    cx,
+                ) + 14.;
         }
         if name.pinned {
             width += GAP + 16.;

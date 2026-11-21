@@ -50,11 +50,24 @@
   },
   "pause": "Suspendre l’actualisation",
   "resume": "Reprendre l’actualisation",
+  "window": {
+    "onTop": "Toujours au premier plan",
+    "onTopOff": "Ne plus garder au premier plan"
+  },
   "more": {
     "label": "Autres actions",
     "runTask": "Exécuter une nouvelle tâche…",
     "fileLock": "Rechercher les processus utilisant un fichier…",
-    "fileLockDetail": "Ou déposer des fichiers"
+    "fileLockDetail": "Ou déposer des fichiers",
+    "exportCsv": "Exporter la page actuelle au format CSV…",
+    "csvFile": "Fichiers CSV",
+    "csvSaved": "Fichier CSV exporté.",
+    "csvFailed": "Impossible d’enregistrer le fichier CSV. Vérifiez les droits d’écriture du dossier et si le fichier est en cours d’utilisation.",
+    "csvRows": {
+      "one": "{count} ligne",
+      "many": "{count} lignes",
+      "other": "{count} lignes"
+    }
   },
   "details": {
     "label": "Volet Détails",

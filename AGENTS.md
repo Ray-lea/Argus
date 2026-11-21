@@ -1,9 +1,16 @@
 # AGENTS.md
 
-给在本仓库工作的 AI 代理看的规则与经验。面向人的说明在 `README.md` 和 `docs/`（索引：`docs/README.md`），这里不重复。子目录的 AGENTS.md 补充各自的规则：
+给在本仓库工作的 AI 代理看的规则与经验。面向人的说明在 `README.md` 和 `docs/`（索引：`docs/README.md`），这里不重复。本文件只放处处适用的规则；改动下列目录中的文件之前，先读该目录的 AGENTS.md：
 
 - `crates/argus-core/AGENTS.md`：采集层
+- `crates/argus-app/AGENTS.md`：以普通权限启动程序、加速代理预设
 - `src-gpui/AGENTS.md`：原生宿主、窗口与界面
+- `vendor/AGENTS.md`：vendored GPUI 的补丁与升级
+- `tools/window-probe/AGENTS.md`：测试实例的启动方式、步骤文件、模拟快照与测量场景
+- `scripts/AGENTS.md`：脚本的写法与发布脚本的验证
+- `changelog/AGENTS.md`：更新日志的内容、译文与格式；发布或整理更新日志前必读
+- `.github/AGENTS.md`：工作流的触发方式、action 版本与发布标签
+- `packaging/AGENTS.md`：安装程序的文案与测试
 - `docs/AGENTS.md`：文档的组织与写法
 - `website/AGENTS.md`：官网设计与浏览器复核
 
@@ -14,30 +21,34 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 ## 硬性约束
 
 - 新增需要管理员权限、内核驱动或特权服务的能力，**先征得用户同意**。硬件数据只经现有的特权服务与 PawnIO 固定模块读取，拿不到的记入路线图，不要绕路去拿。
-- 开始前先看 `git status` 和 `git diff`：以当前工作区为准，识别其他人或其他代理尚未提交的改动。不要悄悄覆盖别人未提交的改动；需要替换时先把原改动另存为补丁，并在回复里说明。
+- 开始前先看 `git status` 和 `git diff`：以当前工作区为准，识别其他人或其他代理尚未提交的改动。不要悄悄覆盖别人未提交的改动；需要替换时先把原改动另存为补丁，并在回复里说明。构建在自己没有碰过的符号上失败，通常是别人的改动正写到一半，稍后重试或改在独立的工作树里构建。
 - 按问题选择证据：功能缺陷优先用现有复现、日志或相关测试验证关键假设，性能结论须有测量依据，窗口视觉问题用窗口捕获核对实际画面（见 `docs/design/window.md`）。文档、注释和静态文字修改按下文范围核对。
 - 不要自己提权。需要管理员环境的代码（特权服务、任务管理器替换）先在普通权限下用等价实验验证关键假设（例如令牌行为可以对受限令牌的关联令牌、低完整性进程做同样的操作），在回复里说明哪些部分未经实测、需要用户在什么环境下检查。
+- 破坏性变更（不再读取旧的数据格式、移除兼容代码、删除功能）每次都要先征得用户同意，并说明收益与维护负担；一次同意只对那一项有效。默认保持已有的数据与行为可用。读取或迁移 0.1–0.3.4 版写下的设置与数据的代码是升级兼容，不要当作遗留代码清理。
+- 推送、打标签和发布要等用户明确要求。版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本；只在用户要求发布时运行它，推送 `v*` 标签就是正式发布。
+- 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要取消签名对版本号的校验；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。
+- 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式（见 `packaging/AGENTS.md`）。
 
 ## 不要打扰正在使用的桌面
 
 开发机通常有人在同时使用。
 
 - 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录）。
-- 测试实例用 `--test --identifier dev.argus.taskmanager.test.<标签>` 指定独立标识，测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的实例与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
-- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。
-- 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，只按进程 ID 可能拿到单实例转交用的隐藏辅助窗口（类名 `<标识>-sic`）。
-- 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
+- 启动测试实例用现成的脚本（`scripts/ui-shots.mjs`、`ui-steps.mjs`、`ui-smoke.mjs`、`perf-native.mjs` 等）：它们使用独立标识 `--test --identifier dev.argus.taskmanager.test.<标签>`，隐藏启动后不激活地显示在最底层，全程监视前台，并在结束时删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的实例与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。需要自己写启动代码时照 `tools/window-probe/AGENTS.md` 办理。
+- 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径；需要验证系统焦点时在独立桌面上进行（同见 `tools/window-probe/AGENTS.md`）。
+- 偶尔弹出一个窗口或对话框可以接受，接连弹出不行。可能显示界面的操作（外壳处理程序、文件关联、浏览器）先单独试一次，确认安静后再重复，次数尽量少，并清理临时注册的条目。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
-- 保留开发者自行启动的开发实例（`start.bat` 启动的 `target\native-dev\runs\...\argus.exe` 及其 Node 监视进程）。允许直接修改监视范围内的源文件，由开发脚本自动重建、重启并重新显示窗口，无需再次征求确认。
-- 自己启动的实例用完就关；测试控制仅使用隔离标识。
+- 保留开发者自行启动的开发实例（`start.bat` 启动的 `target\native-dev\runs\...\argus.exe` 及其 Node 监视进程）。允许直接修改监视范围内的源文件，由开发脚本自动重建、重启并重新显示窗口，无需再次征求确认。一次改动涉及多个文件、中途无法编译或画面只完成一半时，动手前运行 `node scripts/dev-hold.mjs on <原因>` 暂停自动重建，改完并自查后运行 `node scripts/dev-hold.mjs off`，开发者就不会看到中间状态；暂停默认 20 分钟后自动结束，收尾前确认已解除。
+- 自己启动的实例用完就关；测试控制仅使用隔离标识。耗时的构建（发布构建、全新工作树的首次构建）以低于正常的优先级运行。
 
-## 命令
+## 构建与界面核对
 
-- `start.bat check`（即 `pnpm check`）是完整检查入口，按下节决定是否运行；包含的步骤见 `docs/development/README.md`。
-- 脚本测试由 Node 直接运行 scripts/tests；release-notes.ts 保持可擦除的 TypeScript 语法。
-- start.bat build 构建原生发行 EXE，start.bat build installer 使用 NSIS 打包。
-- 在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
-- 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效，不要随手试。
+- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）。发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认；从全新的工作树构建时用 `node scripts/build.mjs`，它先构建要嵌入的辅助程序。
+- 需要发布构建的行为、又不需要最终数值时用快速构建（`node scripts/build.mjs --quick`，输出 `target/quick/argus.exe`，重编约 2 分钟）：开发过程中的性能对照、带符号的调用栈采样，以及交给用户在其他机器上试用的测试程序（开发构建换一台机器无法运行）。
+- 截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，用法与全部测试控制见 `docs/development/gpui.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。
+- 改动界面后用 `node scripts/ui-steps.mjs [名称…]` 运行受影响的步骤文件；不应改变画面的改动，用 `node scripts/compare-shots.mjs <新> <旧>…` 逐像素对照改动前后的截图。
+- `start.bat check`（即 `pnpm check`）是完整检查入口，按下节决定是否运行；包含的步骤与其他命令见 `docs/development/README.md`。在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
+- 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效，不要随手试。增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。
 
 ## 验证范围与频率
 
@@ -49,7 +60,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 | `locales/` 文案、资源配置 | 对应文件的格式与结构检查；涉及翻译键或占位符时运行 `pnpm i18n`；影响排版时只看相关界面 |
 | 局部 Rust 逻辑 | 相关 crate 的格式检查，按需选择编译检查、Clippy 或开发构建，并运行受影响逻辑的相关测试 |
 | 静态界面样式、布局、数字格式 | 复用或生成开发构建，核对受影响的画面与边界；按实际逻辑变更补相关测试 |
-| Node 脚本 | 对应脚本的语法检查与相关测试文件；发布脚本另遵循下文的隔离验证要求 |
+| Node 脚本 | 对应脚本的语法检查与相关测试文件；发布脚本另遵循 `scripts/AGENTS.md` 的隔离验证要求 |
 | 官网 | 遵循 `website/AGENTS.md`，只验证受影响的页面和交互 |
 
 - 已有检查覆盖当前相关代码、依赖和配置时复用结果；后续只改文档、注释或提交信息时不重跑代码检查。检查失败或新增改动时，只补跑受影响的项目；扩大范围须有具体的回归风险。
@@ -57,51 +68,48 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 完整检查用于用户明确要求全检、正式发布前，或公共接口、数据格式、依赖、构建链等广泛变更且局部验证难以覆盖的情况。本地提交、普通分支推送和任务收尾本身不触发全检。
 - 验证通过后即可收尾。回复简要说明实际完成的验证及与本次改动直接相关的遗漏。
 
-## 提交与发布
+## 提交
 
-规范与流程见 `docs/development/release.md`，这里只列容易做错的地方。
+规范与流程见 `docs/development/release.md`，这里只列容易做错的地方。发布、整理更新日志和改动工作流另见 `changelog/AGENTS.md` 与 `.github/AGENTS.md`。
 
-- 完成与改动范围相符的验证后可直接提交到当前分支，不必先征得用户同意；推送、打标签和发布仍要等用户明确要求。
-
+- 完成与改动范围相符的验证后可直接提交到当前分支，不必先征得用户同意。
 - 提交信息用 Conventional Commits，格式与 type 见 `docs/development/release.md`；scope 按模块用 core、service、host、ui，跨模块时省略。提交前用 `pnpm commitlint --message "<首行>"` 自查，它检查格式与 type，不检查 scope。
-- 环境不支持交互式 `git add -p`。同一文件里的改动要拆进不同提交时，用 `git diff -- <文件> > x.patch` 导出、删去不属于本提交的块后 `git apply --cached x.patch` 暂存；或先保存文件副本、暂时还原部分改动、提交后再恢复。
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
 - 首行写用户能看懂的变化，它会原样进入 `changelog/zh-CN.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
-- 版本号只通过 `pnpm release` 修改，不要手改 `Cargo.toml`、`Cargo.lock`、`package.json`、`resources/app.json` 里的版本，也不要手写 `changelog/` 下各语言更新日志的版本标题。只在用户要求发布时运行它；推送 `v*` 标签就是正式发布，同样要等用户明确要求。发布工作流在“Publish release”之前失败时，经用户同意可修复后覆盖该标签重新发布；已经发布的标签不要移动或删除（见 `release.md`）。
-- 发布说明按界面语言各有一份：`changelog/zh-CN.md` 是源文本，`changelog/` 下其他语言的文件与它逐条对应，小节标题与语言名称在 `resources/changelog.json`。`pnpm release` 在其他语言的文件中写入由中文条目生成的草稿，推送标签前要全部译完，润色中文时同步修改各语言，用词与 `locales/<语言标签>` 的界面文案一致；带标签的条目在繁中、日文写 `**标签**：`，其他语言写 `**Label**:`（冒号前不加空格）。`verify` 会拒绝仍含中文原文、小节与条目数不同或日期不同的译文条目。GitHub Release 正文完整显示中英文，顶部按 README 的写法链接其他语言的文件；应用与官网按界面语言显示对应译文。
-- 整理更新日志时按 `release.md` 的“更新日志的内容”：只写应用内用户可感知的变化，本周期新增后又修改的功能并入功能条目；外部贡献者的拉取请求在条目末尾写 `（@贡献者 #编号）` 并链接其主页与拉取请求（`gh pr list --state merged` 核对作者，以 GitHub 用户名为准，提交作者名可能不同）。
-- 不要给 CI 加 push 触发的检查、nightly 或定时构建（现有的触发方式见 `release.md`）；Rust 用 stable，不用 nightly 工具链。`.github/workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。
-- 修改 `scripts/release.mjs` 的发布行为后先用 `pnpm release --dry-run` 看结果，再在临时克隆里走一遍完整发布（把克隆的推送地址设成无效值）；不要在真实仓库里打测试标签。
-- 更新签名公钥在 `resources/app.json` 的 `updater.pubkey`。不要生成新密钥替换它（已安装的版本只认旧公钥，用户会收不到更新），不要取消签名对版本号的校验；私钥只在 GitHub Secrets 和维护者本机，不要读取或要求用户提供。测试签名流程用 scratchpad 里临时生成的密钥。
-- 工作流里的 action 固定到提交 SHA，行尾注释对应的版本号；升级时用 `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` 解析新标签（附注标签还要再解一层），不要改回版本标签。
-- 增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。
-- 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：记录启动信息、失败阶段、原始错误码及必要的实际路径。路径仅限直接参与失败的文件、目录或注册表键，用 `diagnostics::path` 限长并转义；不从任意错误文本提取路径。不要写入进程命令行、凭据、URL 参数、账户名、文件内容或未经筛选的异常原文。重复失败用 `diagnostics::warn` 限频，不用会耗尽的全局次数上限。
-- 加速代理预设只在 `crates/argus-app/src/config.rs` 的 `PROXY_PRESETS` 定义，更新器与设置页共用；加入新的代理前，用真实的 Release 文件实测它返回的内容与直连逐字节一致。
-- 不要在开发机上运行打包出来的安装程序：它会覆盖已安装 Argus 的卸载项和快捷方式。安装与卸载靠 `release.yml` 的静默安装测试和用户在虚拟机里的检查；卸载钩子的分支逻辑可以用 NSIS 的 makensis编一个替换了服务注册表项和 Program Files 路径的测试包，只写 scratchpad。
+- 环境不支持交互式 `git add -p`。同一文件里的改动要拆进不同提交、或文件里有别人未提交的改动时，用 `node scripts/stage-part.mjs <文件>` 列出各块，再以 `node scripts/stage-part.mjs <文件> <块号,…> [--leave <文字>]` 只暂存其中几块；它不改动工作区。提交前用 `git diff --cached` 核对暂存的内容：别人可能在同一文件里刚加了改动。
+- 数据格式与协议的版本号（历史文件、观察文件、特权服务 IPC 协议等）自上一个发布标签以来最多变更一次，开发构建写下的旧布局文件只由开发脚本清除，不写进应用代码。改动这些格式或协议前，按 `crates/argus-core/AGENTS.md` 的“格式与协议的版本号”一节办理。
+
+## 日志与隐私
+
+- 日志（`%LOCALAPPDATA%\<标识>\logs\diagnostics\argus.log`）会附在公开的缺陷报告里：不要写入进程命令行、凭据、URL 参数、账户名、文件内容或未经筛选的异常原文。可以记录什么、路径与限频的写法见 `crates/argus-core/AGENTS.md` 的“诊断日志”一节。
+- 提交进仓库的内容（文档、AGENTS.md、注释、模拟数据）不描述开发者自己的机器与使用习惯：不写用户名、用户目录、装了哪些软件、后台在运行什么、真实的序列号、MAC 与 IP 地址。验证环境的硬件规格（处理器与显卡型号、逻辑处理器数、刷新率）可以写。模拟数据用虚构值（Contoso、文档保留网段、本地管理的 MAC 地址）。
 
 ## 性能测量
 
 方法与测量条件（启动参数、等待时间、交替测量）见 `docs/development/performance.md`，要点：
 
 - 修改帧调度、动画、绘制路径、缓存或采样频率等影响持续开销的逻辑时，使用窗口探针测量实际呈现帧率、CPU、GPU 与内存；其他桌面负载会干扰读数。静态布局、字体、数值格式与文案变更默认只核对相关画面，出现性能回归迹象时再测量。
+- 前后对照用 `node scripts/perf-ab.mjs <标签> <基准EXE> <新EXE> -- <perf-native 的参数>`：它交替运行两侧、限定性能核、按呈现帧折算进程周期数，并给出各对结果是否一致。结论以各对一致为准；只有一对、各对方向不一或帧率不匹配时，不要下结论。常用场景在 `tools/window-probe/scenarios`。
+- 迭代时两侧可以都用快速构建；它只说明方向和明显差异的大致幅度，一成以内的差异、基线和写进提交信息的数值用发布构建重测，两侧不混用不同配置的构建。正在编译要拿去测量的构建时不要改源文件。
 - 详细的测量结果按需在回复中说明，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
+- 验证环境的显示器是 165 Hz。实际呈现帧率以窗口探针的 QPC / WGC 时间间隔为准，不用动画回调频率代替。
 
 ## 约定
 
-- 代码注释用英文。
-- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在其他语言的同一位置补齐译文；界面用 `theme::label` 读取静态文案，带占位符的文案用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
-- Rust 测试不要断言具体文案，也不要调用 `set_locale`（测试并行、语言是进程级的）。CI 在英文 Windows 上运行，本地用 `ARGUS_LOCALE=en-US cargo test --workspace` 模拟。
-- 安装程序钩子（`installer-hooks.nsh`）读不到 JSON 目录，提示文字在各语言的 `installer.json` 中维护，打包时生成 NSIS `LangString`，钩子通过 `ARGUS_TEXT` 宏引用文案键。
+- 与用户的交流（回复、进度说明、报告）使用用户所用的语言。代码注释用英文。
+- 用户可见的文字（界面、托盘、返回给界面的错误、SCM 显示名称）不写进代码，写进 `locales/`：先写简体中文源文案，再在其他语言的同一位置补齐译文（`node scripts/locale-keys.mjs add <文案文件>` 一次写入全部语言并运行检查）；界面用 `theme::label` 读取静态文案，带占位符的文案用 `argus_core::tr!`。用法、复数、术语表见 `docs/development/i18n.md`。日志、panic 和注释不翻译。
 - 中文界面文案、README 和使用指南用书面语：不用“你”等第二人称，不用口语（“由你决定”“几乎瞬间”“连不上”“这个”），用“单击”“可”“仅”“暂无”这类说法；同一概念的措辞与设置页保持一致。
+- Rust 测试不要断言具体文案，也不要调用 `set_locale`（测试并行、语言是进程级的）。CI 在英文 Windows 上运行，屏幕为 1024×768：本地用 `ARGUS_LOCALE=en-US cargo test --workspace` 模拟，测试不要请求更大的真实窗口。
 - 改了行为（快捷键、设置项、默认值、模块职责）要同步对应文档，规则见 `docs/AGENTS.md`。
-- 从管理员权限的进程以普通权限启动程序，经 `argus_app::tasks`：辅助进程作为桌面外壳的子进程创建，继承账户原有的标准令牌，并自行重建环境变量（子进程沿用的是创建者的环境）。`CreateRestrictedToken(LUA_TOKEN)` 过滤出的令牌仍属于提升的登录会话，`QueryDosDevice` 会拒绝访问、网络驱动器也不同，只作没有外壳时的回退。日志里 `standard user (elevated split token)` 或 `(no split token)` 与各盘符的 `paths.device_mapping` 拒绝访问同时出现，说明该实例运行在过滤令牌下。
+- 新功能的逻辑放进自己的模块并带测试；参数一多就收进结构体，文件在膨胀之前拆分，避免模块之间过度耦合。
+- 从管理员权限的进程以普通权限启动程序，只经 `argus_app::tasks`（原因与排查见 `crates/argus-app/AGENTS.md`）。
 
 ## 环境与工具
 
-- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。
-- 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
+- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。仓库目录之外的工作树没有这个 override，在那里用 `cargo +stable-x86_64-pc-windows-msvc`。需要与主工作区隔开的构建或改动，用 `node scripts/worktree.mjs add <名称>` 在 `target/worktrees/` 下建工作树（沿用 override，`remove` 负责清理）。
+- `target/` 只放构建产物与测试输出：`start.bat clean all` 即 `cargo clean`，会清空它。无法重新生成的资料不放在那里：进行中的设计稿及其工具放 `design.local/<主题>/`，结束的调查、测量原始数据和交付物放 `archives.local/<日期>/`，并在该目录的 `README.txt` 里记一行。两处都已被 `*.local` 忽略，不进 Git。
+- Cargo 按文件时间判断是否需要重编：用保留原时间的复制来还原文件，会让按另一份内容编出的产物看起来仍是最新的。还原后更新文件时间，或用写入的方式还原。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
-- 在 Git Bash 里用 `node -e "…"`、`sed` 写入含反引号或 `$` 的文本时，它们会被 shell 当成命令替换或变量，悄悄改坏写入的 Rust 注释和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。
-- Git Bash 会把以 `/` 开头的参数改写成路径：NSIS 的 `/S`、`/D=…` 因此失效，安装程序会弹出界面。运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`；GitHub Actions 的 Windows 机器上同样如此，工作流里这类步骤写成 `shell: pwsh`。
-- 验证环境的显示器是 165 Hz。实际呈现帧率以窗口探针的 QPC / WGC 时间间隔为准，不用动画回调频率代替。
+- 在 Git Bash 里用 `node -e "…"`、`sed` 或 heredoc 写入含反引号、`$` 或反斜杠的文本时，它们会被 shell 当成命令替换、变量或转义，悄悄改坏写入的 Rust 注释、路径和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。
+- Git Bash 会把以 `/` 开头的参数改写成路径（NSIS 的 `/S`、`taskkill` 的 `/PID` 等因此失效）：运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`。

@@ -40,7 +40,7 @@
     "minimizedInterval": "Intervall bei minimiertem Fenster",
     "minimizedIntervalHint": "Standard: 5 Sekunden. Kürzere Intervalle erhöhen den Ressourcenbedarf im Hintergrund.",
     "trayInterval": "Intervall im Infobereich",
-    "trayIntervalHint": "Bei ausgeblendetem Fenster werden Daten in diesem Intervall erfasst. Über 5 Sekunden wird der Verlauf in größeren Abständen aufgezeichnet.",
+    "trayIntervalHint": "Über 5 Sekunden wird der Verlauf in größeren Abständen aufgezeichnet.",
     "hotkey": "Mit {hotkey} lässt sich Argus jederzeit ein- oder ausblenden. Die Tastenkombination kann in den Einstellungen geändert werden.",
     "hotkeyOff": "Die Tastenkombination zum Ein- und Ausblenden von Argus ist deaktiviert. Sie kann in den Einstellungen wieder aktiviert werden.",
     "hotkeyTaken": "{shortcut} wird von Windows oder einer anderen Anwendung verwendet, möglicherweise von einer weiteren Argus-Instanz. In den Einstellungen eine andere Kombination wählen.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automatisch",
     "routeDirect": "Nur GitHub",
     "routeProxy": "Nur über GitHub-Proxy",
-    "proxyNotice": "GitHub-Proxys werden von Dritten betrieben. Sie können die IP-Adresse dieses PCs und die heruntergeladenen Dateien sehen. Die Signaturprüfung schützt vor manipulierten Updates.",
+    "proxyNotice": "GitHub-Proxys werden von Dritten betrieben. Sie können die IP-Adresse dieses PCs und die heruntergeladenen Dateien sehen. Installationspakete müssen die Signatur- und Versionsprüfung bestehen.",
     "unavailable": "Diese Version kann sich nicht selbst aktualisieren."
   },
   "privilege": {
@@ -105,7 +105,7 @@
     "pages": "{keys} wechselt die Seite, {search} öffnet die Prozesssuche",
     "menu": "Ein Rechtsklick auf einen Prozess bietet Beenden, Priorität, Effizienzmodus und Regeln an",
     "drop": "Eine Datei oder einen Ordner auf das Fenster ziehen, um die verwendenden Prozesse zu finden",
-    "history": "Der Verlauf enthält die Ressourcennutzung der letzten 7 Tage und die jeweils aktivsten Prozesse",
+    "history": "Der Verlauf enthält die Ressourcennutzung und die jeweils aktivsten Prozesse",
     "reopen": "Diese Einführung lässt sich jederzeit auf der Seite Info erneut öffnen."
   },
   "administrator": "Argus automatisch als Administrator ausführen, um Prozesse und Autostart-Einträge anderer Benutzer zu verwalten. Standardmäßig deaktiviert; bei der ersten Aktivierung fordert Windows eine Freigabe an."

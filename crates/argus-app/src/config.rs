@@ -46,6 +46,7 @@ pub fn identifier() -> &'static str {
 }
 /// A compiled development profile remains stable when the executable is copied
 /// for hot reload, while independent worktrees never share settings or locks.
+/// `scripts/dev-data.mjs` mirrors this derivation; change both together.
 pub fn development_identifier(workspace: &str) -> String {
     use sha2::{Digest, Sha256};
     let workspace = if cfg!(windows) {
@@ -105,6 +106,11 @@ mod tests {
         let one = super::development_identifier("D:/Projects/Argus/src-gpui");
         assert!(super::valid_identifier(&one));
         assert_ne!(one, super::identifier());
+        // scripts/dev-data.mjs derives the same name to find a development profile.
+        assert_eq!(
+            one,
+            format!("{}.devbuild.2d4d646ed1c5", super::identifier())
+        );
         assert_ne!(
             one,
             super::development_identifier("D:/Projects/Argus-worktree/src-gpui")

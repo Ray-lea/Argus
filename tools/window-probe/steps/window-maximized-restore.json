@@ -1,4 +1,5 @@
 {
+  "about": "用 `restoreWindow` 向隐藏的模拟快照实例写入窗口位置，再经正式的位置恢复路径显示窗口，检查最大化、最小化后恢复、普通窗口恢复及深浅主题。`inspectLayout.nativeWindow` 记录实际客户区、最大化状态及其与界面视口是否一致。`cargo test -p argus --test restore_render_target` 在始终隐藏的原生窗口中检查最小化后放大、缩小与尺寸不变时的绘图缓冲区尺寸。",
   "window": [1000, 680],
   "steps": [
     {"control":{"page":"processes","theme":"dark"},"wait":500,"capture":"initial"},

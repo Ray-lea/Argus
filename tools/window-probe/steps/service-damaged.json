@@ -1,4 +1,5 @@
 {
+  "about": "用 `data` 控制注入特权服务的“已损坏”与“正在移除”状态，核对设置页卡片在授权记录缺失、服务程序缺失和授权给其他账户时的说明与按钮、修复确认框，以及浅色主题、最小窗口加大字号下的排版；用 `resolve` 给出 `privileged_service_status` 的失败结果，核对错误显示在卡片上且不弹出通知；在其他页面读到损坏状态时只提示一次，单击通知中的按钮回到设置页。断言中的标题与通知文字为简体中文，更换 `--language` 时仅用于查看排版。",
   "window": [1280, 860],
   "steps": [
     { "note": "The record is gone: damaged, with a repair that asks as an installation does, and the removal." },

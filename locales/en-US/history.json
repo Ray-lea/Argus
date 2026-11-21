@@ -3,12 +3,13 @@
     "peak": "Peak {value}"
   },
   "copied": {
-    "name": "name"
+    "name": "name",
+    "namePid": "name and PID"
   },
   "noRecordAt": "No records at this moment",
   "earliest": "Earliest record",
-  "note": "Readings and the busiest processes are recorded every 5 seconds, plus per-second readings for the last 10 minutes; at the minimized or tray refresh rate when that is slower. Kept for 7 days.",
-  "off": "History recording is off; no new data is being recorded. <link>Open Settings</link>",
+  "note": "Usually recorded every 5 seconds, or less often if background sampling is slower. Every sample is available for the last 10 minutes.",
+  "off": "History recording is off. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
     "empty": "Choose “Watch this instance” in the details of a single process to record memory even below the top list.",
@@ -16,7 +17,7 @@
     "target": "Watching {name} (PID {pid})",
     "stop": "Stop recording",
     "delete": "Delete recording",
-    "note": "This instance only; up to 1 hour, 720 points and 1 MiB. Samples are usually 5 seconds apart; slower background sampling may leave gaps. Working set growth alone does not prove a memory leak. Stop keeps data; Delete stops and removes this recording.",
+    "note": "Records only this instance, for up to 1 hour. Stopping keeps the data. Deleting ends observation and erases the recording.",
     "metric": {
       "memory": "Private working set",
       "commit": "Private commit"
@@ -44,8 +45,8 @@
     "runSummary": "Showing {shown}/{total} launches; {points} saved points in this launch",
     "earlier": "Earlier points",
     "latest": "Latest points",
-    "programNote": "Current and future launches at this image path are recorded separately. Up to 7 days, 131072 points and 9 MiB; the first limit reached removes oldest data. Up to 512 concurrent instances. The list shows the latest 256 launches; each page shows up to 1000 saved points plus gap markers. Earlier points remain browsable. Samples are usually 5 seconds apart; slower sampling leaves gaps. Working set growth does not prove a leak. Stop keeps data; Delete removes it. Restarting Argus does not resume recording.",
-    "damaged": "Some stored records failed integrity checks; missing intervals remain gaps.",
+    "programNote": "Each launch from the same path is recorded separately. Data is kept for up to 7 days. Older data is cleared sooner if storage fills up. Stopping keeps the data. Deleting ends observation and erases the recording. Start observation again after restarting Argus.",
+    "damaged": "Some records are damaged. The affected intervals are blank.",
     "earlierRuns": "Earlier launches",
     "latestRuns": "Latest launches",
     "waiting": "Waiting for another launch",
@@ -55,29 +56,40 @@
   "range": {
     "5m": "5 minutes",
     "1h": "1 hour",
+    "3h": "3 hours",
     "6h": "6 hours",
     "1d": "1 day",
+    "3d": "3 days",
     "7d": "7 days",
     "30d": "30 days",
-    "all": "All"
+    "all": "All",
+    "custom": "Custom",
+    "customMenu": "Custom…"
   },
   "now": "Now",
   "live": {
     "on": "Live",
-    "onTitle": "Showing the latest readings: every second up to 6 hours, every minute for longer ranges. Click to pause",
+    "onTitle": "Pause following the latest readings",
     "off": "Back to latest",
-    "offTitle": "Go back to the latest readings and keep updating (or right-click the chart, or press End)"
+    "offTitle": "Resume following the latest readings (right-click the chart or press End)"
   },
   "toast": {
     "latest": "Back to the latest",
     "paused": "Updates paused"
   },
-  "more": "More",
   "menu": {
     "band": "Show the range from lowest to highest",
     "settings": "History settings…",
     "needsService": "Needs the privileged service",
-    "notRecorded": "Not recorded"
+    "notRecorded": "Not recorded",
+    "curve": "Show curve on the chart",
+    "curveOff": "Remove curve from the chart",
+    "copy": "Copy name and PID",
+    "none": "None",
+    "showTitle": "Show in the current lane",
+    "addTitle": "Add a lane",
+    "overlayTitle": "Overlay a second reading (right axis)",
+    "byService": "Provided by the privileged service"
   },
   "group": {
     "cpu": "Processor",
@@ -184,20 +196,26 @@
     "add": "Overlay",
     "addTitle": "Overlay a second reading on the right axis",
     "shared": "Shares the left axis",
-    "right": "Right axis"
+    "right": "Right axis",
+    "remove": "Remove the overlay",
+    "change": "Change the overlaid reading"
   },
   "unrecorded": {
     "title": "No records of {name}",
-    "hint": "This reading is not recorded on this computer; the device or counter it needs may be missing.",
+    "hint": "The required device or counter may be unavailable.",
     "serviceTitle": "{name} needs the privileged service",
-    "serviceHint": "The privileged service reads the processor sensors through the PawnIO fixed modules. Once installed, recording starts with the next sample; earlier periods stay blank.",
+    "serviceHint": "Recording starts with the next sample after the service is enabled. Earlier intervals stay blank.",
     "install": "Install the privileged service…"
   },
   "tip": {
     "second": "Per-second reading",
     "frame": "5-second record",
     "average": "Average",
-    "hint": "Click to pin · Right-click for the latest · Esc to clear"
+    "hint": "Click to pin · Right-click for the latest · Esc to clear",
+    "otherPrograms": {
+      "one": "{count} other program",
+      "other": "{count} other programs"
+    }
   },
   "tab": {
     "add": "Show in a new lane",
@@ -212,7 +230,21 @@
     "loading": "Reading…",
     "modeMoment": "Moment",
     "modeRange": "Range",
-    "columns": "Columns"
+    "columns": "Columns",
+    "chooser": {
+      "moment": "Columns for “Moment”",
+      "range": "Columns for “Range”"
+    },
+    "trend": "Trend sparklines",
+    "resetColumns": "Restore default columns",
+    "rest": {
+      "one": "{count} more process",
+      "other": "{count} more processes"
+    },
+    "search": "Search processes",
+    "emptyRange": "No processes recorded in this range",
+    "netService": "Recording network usage per process with standard permissions requires the privileged service.",
+    "live": "Latest processes"
   },
   "column": {
     "moment": {
@@ -245,7 +277,8 @@
       "threads": "Threads",
       "handles": "Handles"
     },
-    "trend": "Trend · {name}"
+    "trend": "Trend · {name}",
+    "trendTitle": "Change over the selected range, in the reading of the top lane"
   },
   "trend": {
     "cpu": "CPU",
@@ -257,5 +290,99 @@
   "clearCursor": "Clear the cursor (Esc)",
   "selection": {
     "zoom": "Zoom to selection"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Choose a writable folder given by its full path; the new and the current location cannot contain each other.",
+    "move": "Could not move the history. Check whether the destination has files with the same names, and the access rights of both folders.",
+    "save": "Could not save the history settings.",
+    "open": "Could not open the history folder in File Explorer.",
+    "clear": "Could not clear the history. Check the folder’s permissions and whether its files are in use."
+  },
+  "picker": {
+    "title": "Custom time range",
+    "last5m": "Last 5 minutes",
+    "last15m": "Last 15 minutes",
+    "last1h": "Last hour",
+    "last6h": "Last 6 hours",
+    "last24h": "Last 24 hours",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "last7d": "Last 7 days",
+    "last30d": "Last 30 days",
+    "all": "All records",
+    "month": "{month} {year}",
+    "weekdays": "Mo Tu We Th Fr Sa Su",
+    "start": "Start",
+    "end": "End",
+    "apply": "Apply",
+    "follow": "Follow the latest records when ending now",
+    "overview": "Show the 30-day overview and events",
+    "dayTip": {
+      "one": "{date} · {count} hour recorded · CPU average {cpu}",
+      "other": "{date} · {count} hours recorded · CPU average {cpu}"
+    },
+    "error": {
+      "format": "Enter times as {example}",
+      "order": "The end must be later than the start",
+      "none": "Nothing was recorded then (the first record is from {first})",
+      "empty": "No records yet"
+    },
+    "heatTitle": "30-day overview",
+    "heatHint": "One cell per hour",
+    "noRecord": "No records",
+    "heat": {
+      "cpu": "CPU usage",
+      "gpu": "GPU usage",
+      "mem": "Memory usage",
+      "temp": "CPU temperature",
+      "net": "Network receive"
+    },
+    "eventsTitle": "Events",
+    "eventsCount": {
+      "one": "{range} · {count} event",
+      "other": "{range} · {count} events"
+    },
+    "noEvents": "No events on the days picked",
+    "eventsLoading": "Looking for events…",
+    "filter": {
+      "all": "All",
+      "cpu": "CPU",
+      "temp": "Temperature",
+      "mem": "Memory",
+      "gpu": "GPU",
+      "net": "Network",
+      "disk": "Disk",
+      "gap": "No records"
+    },
+    "event": {
+      "cpu": "High CPU load",
+      "temp": "CPU too hot",
+      "mem": "Memory pressure",
+      "gpu": "Long high GPU load",
+      "net": "Heavy download",
+      "disk": "Busy disk"
+    },
+    "eventPeak": "{time} · peak {peak}"
+  },
+  "chooser": {
+    "search": "Search readings",
+    "all": "All",
+    "empty": "No matching readings"
+  },
+  "devicePart": {
+    "diskOf": "Read and write",
+    "diskActive": "Active time",
+    "diskResponse": "Average response time",
+    "deviceTemp": "Temperature",
+    "nicOf": "Send and receive",
+    "gpuUtil": "Utilization",
+    "gpuDedicated": "Dedicated GPU memory",
+    "gpuShared": "Shared GPU memory",
+    "gpuPower": "Power",
+    "gpuClock": "Speed",
+    "gpuFan": "Fan"
   }
 }

@@ -8,8 +8,8 @@
     "copy": "Copiar las especificaciones del PC como texto",
     "copyWhat": "especificaciones del equipo",
     "copyPart": "{kind}: {name}",
-    "selectTip": "Haga clic en una aplicación o proceso en la lista para ver sus detalles aquí; haga clic en él nuevamente para anular su selección.",
-    "closeTip": "El panel de detalles permanece abierto de forma predeterminada. Haga clic en {icon}, en la esquina superior derecha de la ventana, para contraerlo.",
+    "selectTip": "Seleccione una aplicación o un proceso para ver sus detalles. Vuelva a seleccionarlo para quitar la selección.",
+    "closeTip": "Use {icon} en la barra de la página para contraer el panel.",
     "tips": "Sugerencias",
     "tipsCollapse": "Contraer sugerencias",
     "tipsExpand": "Expandir sugerencias",
@@ -38,8 +38,7 @@
     "health": "Estado: {percent} %"
   },
   "exited": {
-    "title": "El proceso ha finalizado",
-    "hint": "Seleccione otro proceso en la lista para ver sus detalles."
+    "title": "El proceso ha finalizado"
   },
   "group": {
     "count": {
@@ -55,6 +54,7 @@
   "section": {
     "process": "Proceso",
     "resources": "Recursos",
+    "totals": "Acumulados",
     "location": "Ubicación del archivo",
     "commandLine": "Línea de comandos",
     "version": "Versión del archivo"
@@ -90,10 +90,16 @@
   "gpuEngine": "({engine})",
   "gpuDedicated": "Memoria dedicada de GPU",
   "gpuShared": "Memoria compartida de GPU",
+  "powerTrend": "{level} · tendencia: {trend}",
   "netNeedsAdmin": "Ejecute Argus como administrador para ver",
   "threads": "Subprocesos",
   "handles": "Identificadores",
-  "noAccess": "No se pudo abrir este proceso para leer su línea de comandos y la información del usuario. Ejecute Argus como administrador para consultarlas.",
+  "noAccess": "Los permisos actuales no permiten leer la línea de comandos ni los datos del usuario. Pruebe a ejecutar Argus como administrador.",
   "product": "Producto",
-  "version": "Versión"
+  "version": "Versión",
+  "copy": {
+    "action": "Copiar detalles (Ctrl+Shift+C)",
+    "heading": "[{name}]",
+    "field": "{name}: {value}"
+  }
 }

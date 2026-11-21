@@ -60,7 +60,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-ja-dark.svg"><img src="docs/images/features/performance-ja-light.svg" width="390" alt="パフォーマンス ページに CPU の使用率、速度、温度、消費電力と、P コア・E コアごとのグラフが表示される"></picture><br><b>パフォーマンス</b>：CPU のコア別負荷、速度、温度、消費電力に加え、メモリ、ディスク、ネットワーク、GPU</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-ja-dark.svg"><img src="docs/images/features/history-ja-light.svg" width="390" alt="履歴ページの 7 日間のグラフで 2 つの時刻をクリックし、それぞれの時点で最もビジーなプロセスが下に表示される"></picture><br><b>履歴</b>：7 日間のグラフ上の時刻をクリックすると、その時点で最もビジーなプロセスを表示</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-ja-dark.svg"><img src="docs/images/features/history-ja-light.svg" width="390" alt="履歴ページの期間の一覧で 3 日を選び、グラフ上の 2 つの時間帯を順にクリックすると、それぞれの時間帯で最もビジーなプロセスが下に表示される"></picture><br><b>履歴</b>：期間を選んでグラフ上の時刻をクリックすると、その時点で最もビジーなプロセスを表示</td>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-ja-dark.svg"><img src="docs/images/features/files-ja-light.svg" width="390" alt="スプレッドシートをウィンドウにドロップすると、使用中の Excel とエクスプローラーがダイアログに表示され、その一方を終了する"></picture><br><b>ファイルの使用状況</b>：ファイルやフォルダーをウィンドウにドロップすると、使用中のプロセスを一覧表示</td>
 </tr>
 <tr>

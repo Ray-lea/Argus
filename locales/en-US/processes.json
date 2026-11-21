@@ -5,11 +5,11 @@
     "processHint": "Hide Windows components and processes on the additional hide list, keeping the always-show list. Only changes the displayed list.",
     "networkHint": "Hide connections owned by system processes and entries with no owning process (PID 0). Only changes the displayed list.",
     "edit": "Edit hiding rules",
-    "description": "System processes are identified from Windows component information. Both pages share these rules and save their hiding switches separately.",
+    "description": "Processes and Connections share these rules. Each page has its own visibility switch.",
     "keep": "Always show",
-    "keepHint": "Keep these programs visible, including system processes. This list takes priority over additional hiding.",
+    "keepHint": "Takes precedence over system process filtering and the extra hide list.",
     "hide": "Also hide",
-    "hideHint": "Hide these programs when hiding is enabled. Leave empty to hide system processes only.",
+    "hideHint": "Applies only when Hide system processes is on.",
     "namesHint": "Enter executable names separated by commas or semicolons, up to 128 per list. Names are case-insensitive.",
     "invalid": "Enter valid executable names without paths or wildcards, up to 128 per list.",
     "reset": "Restore default rules",
@@ -20,12 +20,12 @@
   "countersPending": "Collecting resource counters for this process.",
   "refreshPending": "Updating process data. Showing the last successfully collected reading.",
   "diskUnavailable": {
-    "pending": "No disk reading yet. A process that has only just appeared gets one at the next refresh.",
-    "enable": "No disk reading. Windows doesn't provide these counters directly, so they come from the privileged service, which can be enabled in Settings.",
-    "update": "No disk reading. The privileged service version doesn't match Argus; update the service in Settings.",
-    "start": "No disk reading. The privileged service is stopped; it can be started in Settings.",
-    "service": "No disk reading. Couldn't read it from the privileged service; check the service status in Settings.",
-    "unavailable": "No disk reading. Per-process disk counters can't be read right now."
+    "pending": "Disk readings for a new process usually appear after the next refresh.",
+    "enable": "Enable the privileged service in Settings for per-process disk readings.",
+    "update": "The privileged service is incompatible. Update it in Settings for disk readings.",
+    "start": "The privileged service is stopped. Start it in Settings for disk readings.",
+    "service": "Couldn’t read disk data. Check the privileged service in Settings.",
+    "unavailable": "Disk readings are unavailable for this process."
   },
   "serviceHost": "Service host: {names}",
   "webView": {
@@ -50,7 +50,7 @@
     "other": "{total} ({count} hidden)"
   },
   "filtered": "The list is filtered by the search",
-  "orderHeld": "Sorting paused: rows keep their places while readings update. They re-sort once the pointer leaves the list or the menu or dialog closes.",
+  "orderHeld": "Sorting is paused. Readings still update. Move the pointer away or close the menu or dialog to resume sorting.",
   "groupIn": "{user} · {group}",
   "groupPlace": "{index} / {total}",
   "column": {
@@ -128,7 +128,7 @@
     },
     "elevated": {
       "label": "Elevated",
-      "title": "Whether the process runs with administrator rights (an elevated token)."
+      "title": "Whether the process runs with administrator rights."
     },
     "commandLine": {
       "label": "Command line",
@@ -172,7 +172,7 @@
     },
     "basePriority": {
       "label": "Base priority",
-      "title": "Process base priority reported by Windows, shown as its priority class. A value between the classes, which Windows gives some system processes, shows as a number."
+      "title": "Usually shown as a priority class. Base priorities between classes appear as numbers."
     },
     "workingSet": {
       "label": "Working set",
@@ -321,6 +321,8 @@
     "addRule": "Add rule",
     "copyPid": "Copy PID",
     "copyPidWhat": "PID",
+    "copyColumn": "Copy “{column}”",
+    "columnWhat": "“{column}”",
     "details": "Details"
   },
   "tree": {
@@ -335,9 +337,9 @@
     "acpiTemperature": "ACPI thermal-zone temperature"
   },
   "memoryScope": {
-    "vital": "Physical memory in use across the whole system: total minus available, including in-use and modified pages. Process rows show their own private working sets, which add up to less. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
-    "header": "The percentage above is the share of physical memory in use across the whole system. Rows show the private working set: physical memory used by the process alone; app groups and categories add these up. The full breakdown is in the user guide, docs/guide/README.md (in Chinese).",
-    "section": "Sum of the private working sets of the processes in this category. Whole-system usage also counts shared pages, the kernel and drivers, page tables, the in-use system cache and modified pages, so it is higher than the categories combined. The full breakdown is in the user guide, docs/guide/README.md (in Chinese)."
+    "vital": "System-wide physical memory usage is total minus available memory. It includes in-use and modified memory.",
+    "header": "The percentage is system-wide physical memory usage. Rows show private working sets, summed for groups.",
+    "section": "Sum of private working sets in this category. Shared and system memory are counted separately."
   },
   "columns": {
     "choose": "Select columns",
@@ -353,7 +355,7 @@
     "sortAscending": "Sort ascending",
     "sortDescending": "Sort descending",
     "hide": "Hide {name} column",
-    "description": "Check the columns to show. Drag them in the list on the right, or drag column headers, to change their order.",
+    "description": "Drag items in the right-hand list or drag column headers to reorder columns.",
     "networkUnavailable": "Selected network columns appear when traffic data is available.",
     "gpuUnavailable": "No GPU detected. Selected GPU columns are hidden.",
     "category": {
@@ -377,6 +379,45 @@
     "selectionSummary": "{count} selected",
     "virtualAliases": "virtual memory virtual bytes address reservation"
   },
-  "basePriorityBetween": "Not a priority class. Windows gives this base priority to some system processes directly; it lies between {below} and {above}.",
-  "basePriorityCustom": "Not a priority class. Windows gives this base priority to some system processes directly."
+  "basePriorityBetween": "Base priority set by Windows, between {below} and {above}.",
+  "basePriorityCustom": "Base priority set by Windows for this process.",
+  "leak": {
+    "kind": {
+      "handles": "Handle leak",
+      "children": "Piling children",
+      "orphans": "Leftover process"
+    },
+    "mark": {
+      "one": "{count} possible resource leak",
+      "other": "{count} possible resource leaks"
+    },
+    "handlesExtreme": "Holds {handles} handles, far more than processes usually do",
+    "handlesExtremeGrowing": "Holds {handles} handles, far more than processes usually do, and gained {growth} more in {span}",
+    "handlesGrowing": "Handle count kept rising for {span}, up {growth} to {handles}",
+    "childrenGrowing": "Started {growth} child processes in {span} that never exited; {children} are running now",
+    "orphansIdle": "{instances} {name} processes outlived their parent and used no processor time for at least {span}",
+    "brief": {
+      "handles": "{handles} handles",
+      "children": "{children} child processes",
+      "orphans": "{instances} leftover instances"
+    },
+    "title": {
+      "handles": "Possible handle leak",
+      "children": "Child processes keep piling up",
+      "orphans": "Leftover processes"
+    },
+    "advice": {
+      "handles": "Ending or restarting the process releases these handles. If it keeps happening, update or uninstall the software it belongs to.",
+      "children": "Expand the process to see its child processes and end the ones no longer needed. If it keeps happening, update or uninstall the software it belongs to.",
+      "orphans": "These are usually left behind by closed terminals or tools. End them once you're sure they're no longer needed."
+    },
+    "trend": {
+      "handles": "Handles · last {span}",
+      "children": "Child processes · last {span}"
+    },
+    "ignore": "Ignore this program",
+    "ignored": "Resource leaks in {name} won't be pointed out. You can restore this in Settings.",
+    "undo": "Undo",
+    "settings": "Leak alert settings"
+  }
 }

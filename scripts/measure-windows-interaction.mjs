@@ -188,6 +188,6 @@ try {
     if (backup) writeFileSync(nativeSettings, backup);
     else rmSync(nativeSettings, { force: true });
   }
-  cleanupTestProfile(identifier);
+  cleanupTestProfile(identifier, { logs: resolve(output, "logs") });
   writeJson(join(output, "finished.json"), { finished: new Date().toISOString(), nativeSettingsRestored: restoreNative });
 }

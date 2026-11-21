@@ -55,6 +55,39 @@ impl ProgramWatch {
         })
     }
 
+    /// Keep process handles and selection across a history-folder transaction.
+    /// Only the storage handle has to close for a cross-volume transfer.
+    pub(super) fn suspend(self) -> impl FnOnce(&Path) -> Result<Self, WatchError> {
+        let Self {
+            store,
+            handles,
+            seen,
+            unconfirmed,
+            selected,
+            before,
+            run_offset,
+            active,
+            state,
+            last,
+            last_ts,
+        } = self;
+        drop(store);
+        move |dir| {
+            Ok(Self {
+                store: Store::open(&dir.join(store::FILE_NAME), super::now_ms())?,
+                handles,
+                seen,
+                unconfirmed,
+                selected,
+                before,
+                run_offset,
+                active,
+                state,
+                last,
+                last_ts,
+            })
+        }
+    }
     pub fn open(dir: &Path) -> Result<Self, WatchError> {
         let store = Store::open(&dir.join(store::FILE_NAME), super::now_ms())?;
         // Restarting Argus never silently resumes an observation.
@@ -371,7 +404,7 @@ impl ProgramWatch {
         let start = end.saturating_sub(PREVIEW_RUNS);
         let runs = runs[start..end].to_vec();
         WatchView {
-            version: 2,
+            version: super::VERSION,
             pid: key.0,
             create_time: key.1,
             name: self.store.meta.name.clone(),
@@ -483,6 +516,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: vec![crate::ProcessRow {
                 pid: std::process::id(),
@@ -502,6 +536,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: Vec::new(),
         };
@@ -536,6 +571,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: keys
                 .iter()

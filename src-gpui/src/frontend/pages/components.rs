@@ -292,6 +292,7 @@ impl Desktop {
         );
         let card = self.setting_toggle(
             "trayCard",
+            "components.tray.card.title",
             settings["trayCard"].as_bool().unwrap_or(true),
             "set_tray",
             "card",
@@ -300,6 +301,7 @@ impl Desktop {
         );
         let close = self.setting_toggle(
             "closeToTray",
+            "settings.startup.closeToTray.title",
             boolean(settings, "closeToTray"),
             "set_close_to_tray",
             "value",
@@ -788,6 +790,7 @@ impl Desktop {
                 .px(px(8.))
                 .rounded(px(4.))
                 .text_size(theme::font(13.))
+                .line_height(theme::line_height())
                 .text_color(p.ink)
                 .role(Role::CheckBox)
                 .aria_toggled(if on { Toggled::True } else { Toggled::False })
@@ -1079,13 +1082,33 @@ impl Desktop {
         let monitor: DesktopMonitor =
             serde_json::from_value(settings["desktopMonitor"].clone()).unwrap_or_default();
         let command = "set_desktop_monitor";
-        let mut toggle = |id: &str, value: bool, field: &str| {
-            self.setting_toggle(id, value, command, field, window, cx)
+        let mut toggle = |id: &str, title: &str, value: bool, field: &str| {
+            self.setting_toggle(id, title, value, command, field, window, cx)
         };
-        let enabled = toggle("desktopMonitor", monitor.enabled, "enabled");
-        let topmost = toggle("desktopTopmost", monitor.topmost, "topmost");
-        let locked = toggle("desktopLocked", monitor.locked, "locked");
-        let through = toggle("desktopClickThrough", monitor.click_through, "clickThrough");
+        let enabled = toggle(
+            "desktopMonitor",
+            "components.desktop.title",
+            monitor.enabled,
+            "enabled",
+        );
+        let topmost = toggle(
+            "desktopTopmost",
+            "components.desktop.topmost.title",
+            monitor.topmost,
+            "topmost",
+        );
+        let locked = toggle(
+            "desktopLocked",
+            "components.desktop.locked.title",
+            monitor.locked,
+            "locked",
+        );
+        let through = toggle(
+            "desktopClickThrough",
+            "components.desktop.clickThrough.title",
+            monitor.click_through,
+            "clickThrough",
+        );
         let opacity = self.select(
             "components-desktop-opacity",
             label("components.desktop.opacity.title"),
@@ -1175,18 +1198,20 @@ impl Desktop {
         cards.extend(style);
         cards.extend(grouping);
         cards.extend([
-            self.setting_text(
+            self.setting(
                 "desktopTopmost",
-                "PinIcon",
-                "components.desktop.topmost.title",
-                "components.desktop.topmost.desc",
+                self.glyph("PinIcon"),
+                label("components.desktop.topmost.title"),
+                None,
+                None,
                 vec![topmost],
             ),
-            self.setting_text(
+            self.setting(
                 "desktopLocked",
-                "LockIcon",
-                "components.desktop.locked.title",
-                "components.desktop.locked.desc",
+                self.glyph("LockIcon"),
+                label("components.desktop.locked.title"),
+                None,
+                None,
                 vec![locked],
             ),
             self.setting_text(
@@ -1196,11 +1221,12 @@ impl Desktop {
                 "components.desktop.clickThrough.desc",
                 vec![through],
             ),
-            self.setting_text(
+            self.setting(
                 "desktopOpacity",
-                "EyeIcon",
-                "components.desktop.opacity.title",
-                "components.desktop.opacity.desc",
+                self.glyph("EyeIcon"),
+                label("components.desktop.opacity.title"),
+                None,
+                None,
                 vec![opacity],
             ),
         ]);
@@ -1225,18 +1251,6 @@ impl Desktop {
                 let key = String::from(style);
                 let name = label(&format!("components.desktop.style.{key}"));
                 let anchor = SharedString::from(format!("desktopStyle-{key}"));
-                let mark = div()
-                    .size(px(14.))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(if on { p.accent } else { p.stroke_strong })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .when(on, |mark| {
-                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
-                    });
                 Button::new(anchor.clone())
                     .relative()
                     .flex_1()
@@ -1264,18 +1278,7 @@ impl Desktop {
                             .p(px(8.))
                             .child(self.desk_preview(style, window, cx)),
                     )
-                    .child(
-                        div()
-                            .h(px(20.))
-                            .px(px(2.))
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .text_size(theme::font(13.))
-                            .text_color(p.ink)
-                            .child(mark)
-                            .child(div().min_w_0().truncate().child(name)),
-                    )
+                    .child(style_caption(name, on, p))
                     // Where tests take hold of it.
                     .when(test, |card| {
                         let anchors = anchors.clone();
@@ -1303,12 +1306,14 @@ impl Desktop {
             .gap(px(STYLE_GAP))
             .children(cards)
             .into_any_element();
-        self.setting_with_body(
+        self.setting_card(
             "desktopStyle",
-            "ThemeIcon",
-            "components.desktop.style.title",
-            "components.desktop.style.desc",
-            body,
+            self.glyph("ThemeIcon"),
+            label("components.desktop.style.title"),
+            None,
+            None,
+            Vec::new(),
+            Some(body),
         )
     }
 
@@ -1335,6 +1340,7 @@ impl Desktop {
         let command = "set_taskbar_monitor";
         let enabled = self.setting_toggle(
             "taskbarMonitor",
+            "components.taskbar.title",
             monitor.enabled,
             command,
             "enabled",
@@ -1435,18 +1441,6 @@ impl Desktop {
                 let on = chosen == style || (chosen.is_empty() && index == 0);
                 let name = label(&format!("components.taskbar.style.{style}"));
                 let anchor = SharedString::from(format!("taskbarStyle-{style}"));
-                let mark = div()
-                    .size(px(14.))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(if on { p.accent } else { p.stroke_strong })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .when(on, |mark| {
-                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
-                    });
                 // Scaled down to fit the card, never up, and on whole pixels
                 // at its own size.
                 let preview = previews.get(index).cloned().flatten().map(|image| {
@@ -1497,18 +1491,7 @@ impl Desktop {
                             .overflow_hidden()
                             .children(preview),
                     )
-                    .child(
-                        div()
-                            .h(px(20.))
-                            .px(px(2.))
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .text_size(theme::font(13.))
-                            .text_color(p.ink)
-                            .child(mark)
-                            .child(div().min_w_0().truncate().child(name)),
-                    )
+                    .child(style_caption(name, on, p))
                     // Where tests take hold of it.
                     .when(test, |card| {
                         let anchors = anchors.clone();
@@ -1578,6 +1561,32 @@ impl Desktop {
             vec![open],
         )
     }
+}
+
+fn style_caption(name: String, on: bool, p: Palette) -> Div {
+    let mark = div()
+        .size(px(14.))
+        .flex_shrink_0()
+        .rounded_full()
+        .border_1()
+        .border_color(if on { p.accent } else { p.stroke_strong })
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(on, |mark| {
+            mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
+        });
+    div()
+        .min_h(px(20.))
+        .px(px(2.))
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .text_size(theme::font(13.))
+        .line_height(theme::line_height())
+        .text_color(p.ink)
+        .child(mark)
+        .child(div().min_w_0().truncate().child(name))
 }
 
 /// The displays the taskbar monitor can sit on, as offered: the primary

@@ -260,6 +260,13 @@ impl Desktop {
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.act(Action::Page(page.into()), window, cx);
                 }))
+                .when(page == "history", |tab| {
+                    tab.on_hover(cx.listener(|this, hovered: &bool, window, cx| {
+                        if *hovered {
+                            this.history_prefetch(window, cx);
+                        }
+                    }))
+                })
                 .when(top, |tab| {
                     // Reserve the selected weight so choosing a tab never moves its neighbors.
                     tab.h(px(32.)).child(
@@ -553,35 +560,26 @@ impl Desktop {
                         .absolute()
                         .top_0()
                         .right_0()
-                        .w(dialogs::captions_width())
+                        .w(caption::width())
                         .h(height),
                 ),
             )
             .child(
-                TitleBar::new()
-                    .h(height)
-                    .flex_shrink_0()
-                    // The row below has the interface's own 12 px inset.
-                    .pl_0()
-                    // The row paints the background, under the dim behind
-                    // the caption buttons.
-                    .bg(gpui_kit::gpui::transparent_black())
-                    .border_0()
-                    .child(
-                        div()
-                            // Exactly the room before the caption buttons.
-                            .h_full()
-                            .w_0()
-                            .flex_grow(1.)
-                            .min_w_0()
-                            .overflow_hidden()
-                            .flex()
-                            .items_center()
-                            .pl(px(12.))
-                            .pr(px(4.))
-                            .child(start)
-                            .on_prepaint(track_title(2, self.toolbar_regions.clone(), owner)),
-                    ),
+                self.title_row(
+                    div()
+                        // Exactly the room before the caption buttons.
+                        .size_full()
+                        .overflow_hidden()
+                        .flex()
+                        .items_center()
+                        .pl(px(12.))
+                        .pr(px(4.))
+                        .child(start)
+                        .on_prepaint(track_title(2, self.toolbar_regions.clone(), owner)),
+                    height,
+                    window,
+                    cx,
+                ),
             );
         if self.has_search() {
             let regions = *self.toolbar_regions.borrow();
@@ -922,6 +920,20 @@ impl Desktop {
             .icon("LockIcon")
             .detail(label("shell.more.fileLockDetail")),
         ];
+        if matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        ) {
+            items.push(
+                MenuItem::new(label("shell.more.exportCsv"), Action::ExportTableCsv)
+                    .icon("DownloadIcon")
+                    .disabled(self.exportable_table(cx).is_none()),
+            );
+        }
+        if self.page == "history" {
+            items.push(MenuItem::separator());
+            items.extend(self.history_more_items());
+        }
         if self.page == "services" {
             items.push(
                 MenuItem::new(
@@ -931,11 +943,17 @@ impl Desktop {
                 .icon("ExternalIcon"),
             );
         }
+        // On the history page the chart's keys and gestures come open.
+        let open = if self.page == "history" {
+            json!({ "open": { "history": true, "historyMouse": true } })
+        } else {
+            json!({})
+        };
         items.push(MenuItem::separator());
         items.push(
             MenuItem::new(
                 label("settings.shortcuts.title"),
-                Action::Dialog("shortcuts".into(), json!({})),
+                Action::Dialog("shortcuts".into(), open),
             )
             .icon("KeyboardIcon"),
         );

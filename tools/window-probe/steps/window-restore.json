@@ -1,4 +1,5 @@
 {
+  "about": "用模拟快照实例的 `nativeResize` 控制，在界面更新期间同步调整原生客户区，检查恢复尺寸与分数缩放后的布局。`cargo test -p argus --test resize_reentry` 覆盖通知合并、嵌套消息循环、同步缩放及窗口关闭。",
   "window": [1000,680],
   "steps": [
     {"control":{"page":"processes","theme":"light"},"wait":500,"inspect":"layout","label":"initial","expect":{"width":1000,"height":680}},

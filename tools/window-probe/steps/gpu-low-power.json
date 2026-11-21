@@ -1,4 +1,5 @@
 {
+  "about": "用 `sample` 把模拟快照的显卡改为已断电（`lowPower` 为真，驱动读数为空），核对性能页不显示温度、频率与功耗，规格中出现“电源状态”一行及其悬停说明，并覆盖浅色主题与最小窗口加 20 px 字号；再改回使用中，核对该行消失、读数恢复。",
   "window": [1600, 1054],
   "steps": [
     {"note":"A GPU that has powered down: the readings its driver gives are absent, and the specs name the power state with the reason in a hint. In use again, the row leaves and the readings return."},

@@ -3,12 +3,13 @@
     "peak": "最高 {value}"
   },
   "copied": {
-    "name": "名称"
+    "name": "名称",
+    "namePid": "名称与 PID"
   },
   "noRecordAt": "该时刻无记录",
   "earliest": "最早的记录",
-  "note": "每 5 秒记录一次读数与占用最高的进程，最近 10 分钟另有每秒读数；最小化或后台常驻时的刷新间隔更长时按该间隔记录。保留 7 天。",
-  "off": "历史记录已关闭，不再记录新的数据。<link>打开设置</link>",
+  "note": "通常每 5 秒记录一次，后台采样较慢时按实际间隔记录。最近 10 分钟保留每次采样的读数。",
+  "off": "历史记录已关闭。<link>打开设置</link>",
   "watch": {
     "title": "进程观察",
     "empty": "在单个进程的详细信息中选择“观察此运行实例”，即可记录未进入排行榜的内存变化。",
@@ -16,7 +17,7 @@
     "target": "观察 {name}（PID {pid}）",
     "stop": "停止记录",
     "delete": "删除记录",
-    "note": "仅观察此运行实例；最多 1 小时、720 个记录点、1 MiB。通常每 5 秒记录一次，较慢的后台采样可能产生空缺。工作集增长本身不证明内存泄漏。停止保留数据；删除会停止并移除本条记录。",
+    "note": "仅记录此实例，最长 1 小时。停止后保留数据，删除会结束观察并清除记录。",
     "metric": {
       "memory": "专用工作集",
       "commit": "专用提交量"
@@ -44,8 +45,8 @@
     "runSummary": "显示 {shown}/{total} 个实例；所选实例共 {points} 个记录点",
     "earlier": "更早的记录",
     "latest": "最新记录",
-    "programNote": "同一映像路径的当前及后续实例分别记录。最多保存 7 天、131072 个点及 9 MiB，先到的上限触发旧记录清理；最多同时观察 512 个实例。列表显示最近 256 个实例，每页最多 1000 个已存点及空缺标记，可查看更早记录。通常每 5 秒记录；较慢采样保留空缺。工作集增长不证明内存泄漏。停止保留数据，删除移除记录；重启 Argus 不自动继续。",
-    "damaged": "部分存储记录未通过完整性检查；缺失区间保留为空缺。",
+    "programNote": "同一路径的各次运行分别记录。最多保留 7 天，达到容量上限时提前清理最旧记录。停止后保留数据，删除会结束观察并清除记录。重启 Argus 后需重新开始观察。",
+    "damaged": "部分记录损坏，相应时段留空。",
     "earlierRuns": "更早的实例",
     "latestRuns": "最新实例",
     "waiting": "等待后续运行",
@@ -55,29 +56,40 @@
   "range": {
     "5m": "5 分钟",
     "1h": "1 小时",
+    "3h": "3 小时",
     "6h": "6 小时",
     "1d": "1 天",
+    "3d": "3 天",
     "7d": "7 天",
     "30d": "30 天",
-    "all": "全部"
+    "all": "全部",
+    "custom": "自定义",
+    "customMenu": "自定义…"
   },
   "now": "现在",
   "live": {
     "on": "实时",
-    "onTitle": "显示最新读数：6 小时以内每秒更新，更长的范围每分钟更新。单击可暂停",
+    "onTitle": "暂停跟随最新读数",
     "off": "回到最新",
-    "offTitle": "回到最新读数并继续更新（也可右键单击图表或按 End）"
+    "offTitle": "继续跟随最新读数（右键单击图表或按 End）"
   },
   "toast": {
     "latest": "已回到最新",
     "paused": "已暂停自动更新"
   },
-  "more": "更多",
   "menu": {
     "band": "显示最低到最高的范围",
     "settings": "历史记录设置…",
     "needsService": "需要特权服务",
-    "notRecorded": "暂无记录"
+    "notRecorded": "暂无记录",
+    "curve": "在图表上显示曲线",
+    "curveOff": "不在图表上显示",
+    "copy": "复制名称与 PID",
+    "none": "不叠加",
+    "showTitle": "在当前轨道显示",
+    "addTitle": "添加轨道",
+    "overlayTitle": "叠加第二个读数（右侧纵轴）",
+    "byService": "由特权服务提供"
   },
   "group": {
     "cpu": "处理器",
@@ -178,20 +190,23 @@
     "add": "叠加",
     "addTitle": "叠加第二个读数，使用右侧纵轴",
     "shared": "共用左轴",
-    "right": "右轴"
+    "right": "右轴",
+    "remove": "取消叠加",
+    "change": "更换叠加的读数"
   },
   "unrecorded": {
     "title": "{name}暂无记录",
-    "hint": "本机没有记录该读数，所需的设备或计数器可能不存在。",
+    "hint": "所需设备或计数器可能不可用。",
     "serviceTitle": "{name}需要特权服务",
-    "serviceHint": "特权服务通过 PawnIO 固定模块读取处理器传感器；安装后从下一次采样开始记录，此前的时段保持空白。",
+    "serviceHint": "从服务启用后的下一次采样开始记录，此前的时段留空。",
     "install": "安装特权服务…"
   },
   "tip": {
     "second": "每秒读数",
     "frame": "5 秒记录",
     "average": "平均值",
-    "hint": "单击可固定 · 右键单击回到最新 · Esc 清除"
+    "hint": "单击可固定 · 右键单击回到最新 · Esc 清除",
+    "otherPrograms": "其余 {count} 个程序"
   },
   "tab": {
     "add": "在新轨道中显示",
@@ -206,7 +221,18 @@
     "loading": "正在读取…",
     "modeMoment": "此刻",
     "modeRange": "区间",
-    "columns": "列"
+    "columns": "列",
+    "chooser": {
+      "moment": "“此刻”显示的列",
+      "range": "“区间”显示的列"
+    },
+    "trend": "趋势迷你曲线",
+    "resetColumns": "恢复默认列",
+    "rest": "其余 {count} 个进程",
+    "search": "搜索进程",
+    "emptyRange": "此范围内暂无进程记录",
+    "netService": "标准权限下需启用特权服务，才能记录各进程的网络用量。",
+    "live": "最新的进程"
   },
   "column": {
     "moment": {
@@ -239,7 +265,8 @@
       "threads": "线程",
       "handles": "句柄"
     },
-    "trend": "趋势 · {name}"
+    "trend": "趋势 · {name}",
+    "trendTitle": "所选范围内的变化，读数与最上方的轨道一致"
   },
   "trend": {
     "cpu": "CPU",
@@ -251,5 +278,93 @@
   "clearCursor": "清除游标（Esc）",
   "selection": {
     "zoom": "放大到所选"
+  },
+  "copy": {
+    "text": "{name}（PID {pids}）"
+  },
+  "error": {
+    "directory": "请选择可写入、以完整路径表示的文件夹；新位置与当前位置不能互相包含。",
+    "move": "无法移动历史记录。请检查目标文件夹中是否有同名文件，以及两个文件夹的访问权限。",
+    "save": "无法保存历史记录设置。",
+    "open": "无法在文件资源管理器中打开历史记录文件夹。",
+    "clear": "无法清除历史记录。请检查文件夹权限以及文件是否正被占用。"
+  },
+  "picker": {
+    "title": "自定义时间范围",
+    "last5m": "最近 5 分钟",
+    "last15m": "最近 15 分钟",
+    "last1h": "最近 1 小时",
+    "last6h": "最近 6 小时",
+    "last24h": "最近 24 小时",
+    "today": "今天",
+    "yesterday": "昨天",
+    "last7d": "最近 7 天",
+    "last30d": "最近 30 天",
+    "all": "全部记录",
+    "month": "{year} 年 {month} 月",
+    "weekdays": "一 二 三 四 五 六 日",
+    "start": "开始",
+    "end": "结束",
+    "apply": "应用",
+    "follow": "结束于当前时间时跟随最新记录",
+    "overview": "显示 30 天概览与事件",
+    "dayTip": "{date} · 记录 {count} 小时 · 平均 CPU {cpu}",
+    "error": {
+      "format": "时间格式应为 {example}",
+      "order": "结束时间应晚于开始时间",
+      "none": "所选时间内没有记录（最早记录于 {first}）",
+      "empty": "暂无记录"
+    },
+    "heatTitle": "30 天概览",
+    "heatHint": "每格 1 小时",
+    "noRecord": "无记录",
+    "heat": {
+      "cpu": "CPU 使用率",
+      "gpu": "GPU 使用率",
+      "mem": "内存使用率",
+      "temp": "CPU 温度",
+      "net": "网络接收"
+    },
+    "eventsTitle": "事件",
+    "eventsCount": "{range} · {count} 项",
+    "noEvents": "所选日期内没有事件",
+    "eventsLoading": "正在查找事件…",
+    "filter": {
+      "all": "全部",
+      "cpu": "CPU",
+      "temp": "温度",
+      "mem": "内存",
+      "gpu": "GPU",
+      "net": "网络",
+      "disk": "磁盘",
+      "gap": "无记录"
+    },
+    "event": {
+      "cpu": "CPU 高负载",
+      "temp": "CPU 温度过高",
+      "mem": "内存紧张",
+      "gpu": "GPU 长时间高负载",
+      "net": "大量下载",
+      "disk": "磁盘繁忙"
+    },
+    "eventPeak": "{time} · 最高 {peak}"
+  },
+  "chooser": {
+    "search": "搜索读数",
+    "all": "全部",
+    "empty": "没有匹配的读数"
+  },
+  "devicePart": {
+    "diskOf": "读写",
+    "diskActive": "活动时间",
+    "diskResponse": "平均响应时间",
+    "deviceTemp": "温度",
+    "nicOf": "收发",
+    "gpuUtil": "使用率",
+    "gpuDedicated": "专用 GPU 内存",
+    "gpuShared": "共享 GPU 内存",
+    "gpuPower": "功耗",
+    "gpuClock": "频率",
+    "gpuFan": "风扇"
   }
 }

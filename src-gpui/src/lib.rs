@@ -53,7 +53,19 @@ pub(crate) fn stop_network_session() {
         argus_core::net_process::stop_session(session);
     }
 }
-pub struct HistoryDir(pub PathBuf, bool);
+pub struct HistoryDir {
+    path: RwLock<PathBuf>,
+    default: PathBuf,
+    recording_allowed: bool,
+}
+impl HistoryDir {
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, PathBuf> {
+        self.path.read().unwrap_or_else(|e| e.into_inner())
+    }
+    fn write(&self) -> std::sync::RwLockWriteGuard<'_, PathBuf> {
+        self.path.write().unwrap_or_else(|e| e.into_inner())
+    }
+}
 pub struct AppState {
     sampler: Sampler,
     elevated: bool,
@@ -255,19 +267,25 @@ pub fn run() -> anyhow::Result<()> {
     host.manage(hotkey::HotkeyState::default());
     host.manage(Latest::default());
     let local_data = host.path().app_local_data_dir()?;
-    let history = local_data.join("history");
+    let saved = host.state::<SettingsStore>().get();
+    let default = local_data.join("history");
+    let history = saved.history_dir.clone().unwrap_or_else(|| default.clone());
     let record_history =
         !options.test || std::env::var_os("ARGUS_TEST_HISTORY").is_some_and(|v| v == "1");
-    if record_history {
-        argus_core::history::prune_expired(&history);
-    }
     // Before the interface restores a disk's details page and reads for it.
     disk_reads::install(&local_data);
     leftovers::remove_webview_data(local_data);
-    host.manage(HistoryDir(history.clone(), record_history));
-    let saved = host.state::<SettingsStore>().get();
+    host.manage(HistoryDir {
+        path: RwLock::new(history.clone()),
+        default,
+        recording_allowed: record_history,
+    });
     let state = host.state::<AppState>();
     if record_history {
+        state.sampler.send(Control::SetHistoryOptions(
+            history.clone(),
+            saved.history_options(),
+        ));
         state
             .sampler
             .send(Control::SetHistoryDir(saved.history.then_some(history)));

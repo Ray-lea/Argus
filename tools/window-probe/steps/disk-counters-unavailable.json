@@ -1,4 +1,5 @@
 {
+  "about": "检查两块磁盘中一块性能计数不可用时的设备列表、未知数值、详情页与恢复后的读数，并覆盖小窗口。",
   "window": [1000,680],
   "steps": [
     {"control":{"sample":{"set":{"/hardware/disks":[{"info":{"index":0,"model":"Secondary NVMe","size":1024209543168,"bus":"nvme","ssd":true,"removable":false,"volumes":["E:"]},"active":null,"read":null,"write":null,"responseMs":null,"temperature":35,"temperatureWarning":80},{"info":{"index":1,"model":"System NVMe","size":1024209543168,"bus":"nvme","ssd":true,"removable":false,"volumes":["C:"]},"active":12,"read":1048576,"write":2097152,"responseMs":0.3,"temperature":38,"temperatureWarning":80}]}},"page":"performance","device":"disk:0","preference":{"diskPage":"overview"},"pointerOutside":true},"wait":700,"inspect":"layout","label":"unavailable-disk-visible","expect":{"page":"performance","device":"disk:0"},"capture":"disk-0-unavailable"},

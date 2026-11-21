@@ -121,9 +121,13 @@ impl Element for Plain {
                 if style.display == Display::None {
                     return;
                 }
-                for child in &mut self.children {
-                    child.prepaint(window, cx);
-                }
+                // As `div` does: text that is not painted is not reported to
+                // assistive technology.
+                window.with_a11y_text_hidden(style.visibility == Visibility::Hidden, |window| {
+                    for child in &mut self.children {
+                        child.prepaint(window, cx);
+                    }
+                })
             })
         })
     }
@@ -304,6 +308,11 @@ impl Element for PlainText {
         cx: &mut App,
     ) {
         let style = &layout.style;
+        // A text element reports its text to assistive technology as it
+        // prepaints (`Window::report_a11y_text`), unless it is not painted.
+        if style.visibility != Visibility::Hidden && style.display != Display::None {
+            window.report_a11y_text(&self.text, bounds);
+        }
         window.with_text_style(style.text_style().cloned(), |window| {
             window.with_content_mask(style.overflow_mask(bounds, window.rem_size()), |window| {
                 if let Some(prepainted) = self.prepainted.take() {

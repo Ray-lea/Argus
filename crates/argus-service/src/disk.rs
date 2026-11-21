@@ -259,6 +259,7 @@ mod tests {
             hardware: Default::default(),
             processes: Vec::new(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
         };
         client.enrich(&mut snapshot, Duration::from_secs(1));
@@ -306,6 +307,8 @@ mod tests {
             gpu_shared: Some(0),
             net_sent: 0,
             net_received: 0,
+            power: None,
+            power_trend: None,
             threads: 1,
             handles: 1,
             session_id: 1,
@@ -327,6 +330,7 @@ mod tests {
             hardware: Default::default(),
             processes,
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
         }
     }

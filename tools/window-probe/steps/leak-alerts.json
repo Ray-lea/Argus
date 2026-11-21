@@ -1,0 +1,13 @@
+{
+  "about": "资源泄漏提示（模拟快照）：经 sample 写入 /leaks 与对应进程的句柄数后，按句柄排序，核对表头标记与其菜单（clickAnchor leak-mark）、名称后的标签与句柄列的琥珀色，选中第一行核对详细信息卡片的说明、趋势图与建议；再经 preference 写入 leakIgnored 忽略该程序，标签与卡片随即消失，表头标记只剩一项。",
+  "window": [1480,920],
+  "steps": [
+    {"control":{"page":"processes","view":"list","details":"closed","sample":{"set":{"/processes/89/handles":2486120,"/leaks":[{"kind":"handles","evidence":"extreme","pid":13577,"createTime":1792249545479,"name":"rust-analyzer.exe","path":"C:\\Program Files\\App\\rust-analyzer.exe","count":2486120,"growth":8620,"spanMs":3600000,"since":1792728265090,"trend":[2477500,2477683,2477867,2478050,2478234,2478417,2478600,2478784,2478967,2479151,2479334,2479517,2479701,2479884,2480068,2480251,2480434,2480618,2480801,2480985,2481168,2481351,2481535,2481718,2481902,2482085,2482269,2482452,2482635,2482819,2483002,2483186,2483369,2483552,2483736,2483919,2484103,2484286,2484469,2484653,2484836,2485020,2485203,2485386,2485570,2485753,2485937,2486120],"members":[]},{"kind":"children","evidence":"growing","pid":12602,"createTime":1792249536394,"name":"Code.exe","path":"C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe","count":12,"growth":10,"spanMs":2520000,"since":1792731265090,"trend":[2,2,2,3,3,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,11,11,11,11,11,12,12,12],"members":[{"pid":12842,"createTime":1792249539423},{"pid":12894,"createTime":1792249540315},{"pid":12926,"createTime":1792249540860},{"pid":13133,"createTime":1792249541672},{"pid":13196,"createTime":1792249542685},{"pid":13418,"createTime":1792249543906},{"pid":13431,"createTime":1792249544443},{"pid":13577,"createTime":1792249545479},{"pid":13729,"createTime":1792249546110},{"pid":13954,"createTime":1792249546989}]}]}}},"wait":800},
+    {"control":{"sort":"handles"},"wait":700,"capture":"list"},
+    {"control":{"clickAnchor":"leak-mark"},"wait":600,"capture":"menu"},
+    {"control":{"dismiss":true},"wait":300},
+    {"control":{"details":"open"},"wait":300},
+    {"control":{"selectRow":0},"wait":900,"capture":"details"},
+    {"control":{"preference":{"leakIgnored":["c:\\program files\\app\\rust-analyzer.exe"]}},"wait":800,"capture":"ignored"}
+  ]
+}

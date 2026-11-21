@@ -1,14 +1,17 @@
-[
-  { "note": "Process page, sorted by name: the header menu of the CPU column." },
-  { "control": { "page": "processes", "sort": "name", "pointerOutside": true }, "wait": 1500 },
-  { "control": { "headerMenu": "cpu" }, "wait": 500, "inspect": "menu", "label": "opened",
-    "expect": { "state.open": true, "state.keyboard": true, "state.focus.item.label": "升序排序" } },
-  { "note": "Down to the CPU category, into its submenu, and check CPU time there." },
-  { "control": { "keys": ["down", "down", "down", "down", "right"] }, "wait": 600, "inspect": "menu", "label": "submenu",
-    "expect": { "state.focus.in": "submenu", "state.focus.item.label": "CPU" }, "capture": "menu-submenu" },
-  { "control": { "keys": ["down", "enter"] }, "wait": 500, "inspect": "menu", "label": "checked",
-    "expect": { "state.open": true, "state.focus.item.label": "CPU 时间", "state.focus.item.checked": true } },
-  { "control": { "keys": ["escape", "escape"] }, "wait": 400, "inspect": "menu", "label": "closed",
-    "expect": { "state.open": false } },
-  { "crop": { "from": "menu-submenu", "name": "menu-submenu-zoom", "region": [480, 230, 520, 420], "scale": 2 } }
-]
+{
+  "about": "用键盘操作进程页 CPU 列的表头菜单：打开菜单，进入“CPU”分类的子菜单并勾选“CPU 时间”，逐步核对菜单的焦点、展开的子菜单与勾选状态。",
+  "steps": [
+    { "note": "Process page, sorted by name: the header menu of the CPU column." },
+    { "control": { "page": "processes", "sort": "name", "pointerOutside": true }, "wait": 1500 },
+    { "control": { "headerMenu": "cpu" }, "wait": 500, "inspect": "menu", "label": "opened",
+      "expect": { "state.open": true, "state.keyboard": true, "state.focus.item.label": "升序排序" } },
+    { "note": "Down to the CPU category, into its submenu, and check CPU time there." },
+    { "control": { "keys": ["down", "down", "down", "down", "right"] }, "wait": 600, "inspect": "menu", "label": "submenu",
+      "expect": { "state.focus.in": "submenu", "state.focus.item.label": "CPU" }, "capture": "menu-submenu" },
+    { "control": { "keys": ["down", "enter"] }, "wait": 500, "inspect": "menu", "label": "checked",
+      "expect": { "state.open": true, "state.focus.item.label": "CPU 时间", "state.focus.item.checked": true } },
+    { "control": { "keys": ["escape", "escape"] }, "wait": 400, "inspect": "menu", "label": "closed",
+      "expect": { "state.open": false } },
+    { "crop": { "from": "menu-submenu", "name": "menu-submenu-zoom", "region": [480, 230, 520, 420], "scale": 2 } }
+  ]
+}

@@ -3,12 +3,12 @@
   "countersPending": "正在讀取該處理程序的資源計數。",
   "refreshPending": "正在更新處理程序資料，目前顯示最近一次成功讀取的數值。",
   "diskUnavailable": {
-    "pending": "暫無磁碟讀數：剛出現的處理程序要到下一次重新整理才有讀數。",
-    "enable": "暫無磁碟讀數：系統未直接提供該資料，需由特殊權限服務讀取，可在設定中啟用特殊權限服務。",
-    "update": "暫無磁碟讀數：特殊權限服務版本與 Argus 不一致，需在設定中更新服務。",
-    "start": "暫無磁碟讀數：特殊權限服務已停止，可在設定中啟動服務。",
-    "service": "暫無磁碟讀數：未能從特殊權限服務讀取，可在設定中檢視服務狀態。",
-    "unavailable": "暫無磁碟讀數：暫時無法讀取每個處理程序的磁碟計數。"
+    "pending": "新處理程序通常在下次重新整理後顯示磁碟讀數。",
+    "enable": "在設定中啟用特殊權限服務，即可檢視處理程序的磁碟讀數。",
+    "update": "特殊權限服務版本不相容，請在設定中更新後檢視磁碟讀數。",
+    "start": "特殊權限服務已停止，請在設定中啟動後檢視磁碟讀數。",
+    "service": "未能讀取磁碟資料，請在設定中檢查特殊權限服務狀態。",
+    "unavailable": "暫無此處理程序的磁碟讀數。"
   },
   "serviceHost": "服務主機：{names}",
   "webView": {
@@ -27,7 +27,7 @@
   "total": "{count} 個處理程序",
   "totalHidden": "{total} ({count} 個隱藏)",
   "filtered": "清單已依搜尋內容篩選",
-  "orderHeld": "排序已暫停：列位置保持不變，讀數照常更新。移開游標或關閉選單、對話方塊後重新排序。",
+  "orderHeld": "排序已暫停，讀數照常更新。移開指標或關閉選單、對話方塊後恢復排序。",
   "groupIn": "{user} · {group}",
   "groupPlace": "{index} / {total}",
   "column": {
@@ -105,7 +105,7 @@
     },
     "elevated": {
       "label": "已提高權限",
-      "title": "處理程序是否以系統管理員權限（提高權限的權杖）執行。"
+      "title": "處理程序是否以系統管理員權限執行。"
     },
     "commandLine": {
       "label": "命令列",
@@ -149,7 +149,7 @@
     },
     "basePriority": {
       "label": "基本優先順序",
-      "title": "Windows 回報的處理程序基本優先順序，以優先順序類別顯示。Windows 為部分系統處理程序設定的介於類別之間的值以數字顯示。"
+      "title": "通常顯示優先順序類別，介於兩類之間的基本優先順序以數字顯示。"
     },
     "workingSet": {
       "label": "工作集",
@@ -292,6 +292,8 @@
     "addRule": "新增規則",
     "copyPid": "複製 PID",
     "copyPidWhat": " PID",
+    "copyColumn": "複製「{column}」",
+    "columnWhat": "「{column}」",
     "details": "詳細資料"
   },
   "tree": {
@@ -306,9 +308,9 @@
     "acpiTemperature": "ACPI 熱區溫度"
   },
   "memoryScope": {
-    "vital": "整機已用實體記憶體：總記憶體減去可用記憶體，包含使用中與已修改的部分。處理程序列顯示各自的專用工作集，合計會小於此值。詳見使用指南（簡體中文）的「内存统计口径」。",
-    "header": "上方百分比為整機已用實體記憶體的比例；各列為專用工作集，即處理程序獨佔且駐留在實體記憶體中的部分，應用程式群組與分類依此合計。詳見使用指南（簡體中文）的「内存统计口径」。",
-    "section": "此分類各處理程序專用工作集的合計。整機使用量還包括共用分頁、核心與驅動程式、分頁表、使用中的系統快取和已修改分頁，因此高於各分類之和。詳見使用指南（簡體中文）的「内存统计口径」。"
+    "vital": "整台電腦的已用實體記憶體為總量減去可用記憶體，包含使用中與已修改的記憶體。",
+    "header": "百分比為整台電腦的實體記憶體使用率。處理程序列顯示專用工作集，群組顯示成員合計。",
+    "section": "此分類的專用工作集合計。共用記憶體與系統記憶體另計。"
   },
   "columns": {
     "choose": "選取資料欄",
@@ -324,7 +326,7 @@
     "sortAscending": "遞增排序",
     "sortDescending": "遞減排序",
     "hide": "隱藏「{name}」欄",
-    "description": "勾選要顯示的資料欄；拖曳右側清單或欄位標頭可調整順序。",
+    "description": "拖曳右側清單項目或欄標題即可調整欄位順序。",
     "networkUnavailable": "已選取的網路欄將在擷取可用時顯示。",
     "gpuUnavailable": "未偵測到 GPU，已選取的 GPU 欄暫不顯示。",
     "category": {
@@ -354,17 +356,53 @@
     "processHint": "隱藏 Windows 系統元件與額外隱藏清單中的處理程序，保留一律顯示清單中的項目。僅影響清單顯示。",
     "networkHint": "隱藏系統處理程序的連線，以及 PID 為 0 的無所屬處理程序記錄。僅影響清單顯示。",
     "edit": "編輯隱藏規則",
-    "description": "依 Windows 元件資訊識別系統處理程序。兩頁共用以下規則，隱藏開關分別儲存。",
+    "description": "處理程序頁與連線頁共用下列規則，隱藏開關分別儲存。",
     "keep": "一律顯示",
-    "keepHint": "即使屬於系統處理程序，也保留這些程式。此清單優先於額外隱藏。",
+    "keepHint": "優先於系統處理程序和「額外隱藏」規則。",
     "hide": "額外隱藏",
-    "hideHint": "開啟隱藏時一併隱藏這些程式。留空時僅隱藏系統處理程序。",
+    "hideHint": "僅在開啟「隱藏系統處理程序」時生效。",
     "namesHint": "填入程式檔案名稱，以逗號或分號分隔，不區分大小寫，每份清單最多 128 個。",
     "invalid": "請填入有效的程式檔案名稱，不含路徑或萬用字元，每份清單最多 128 個。",
     "reset": "還原預設規則",
     "empty": "目前篩選條件下沒有可顯示的項目。",
     "clear": "顯示全部並清除篩選"
   },
-  "basePriorityBetween": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序，介於{below}與{above}之間。",
-  "basePriorityCustom": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序。"
+  "basePriorityBetween": "Windows 設定的基本優先順序，介於{below}與{above}之間。",
+  "basePriorityCustom": "Windows 為此處理程序設定的基本優先順序。",
+  "leak": {
+    "kind": {
+      "handles": "控制代碼洩漏",
+      "children": "子處理程序累積",
+      "orphans": "殘留處理程序"
+    },
+    "mark": "{count} 項可能的資源洩漏",
+    "handlesExtreme": "持有 {handles} 個控制代碼，遠超一般處理程序",
+    "handlesExtremeGrowing": "持有 {handles} 個控制代碼，遠超一般處理程序；{span}內仍增加了 {growth} 個",
+    "handlesGrowing": "{span}內控制代碼數持續上升，增加了 {growth} 個，目前 {handles} 個",
+    "childrenGrowing": "{span}內新增 {growth} 個子處理程序且均未結束，目前共有 {children} 個子處理程序",
+    "orphansIdle": "{instances} 個 {name} 處理程序的父處理程序已結束，且至少 {span}未使用處理器",
+    "brief": {
+      "handles": "{handles} 個控制代碼",
+      "children": "{children} 個子處理程序",
+      "orphans": "{instances} 個殘留執行個體"
+    },
+    "title": {
+      "handles": "可能有控制代碼洩漏",
+      "children": "子處理程序不斷累積",
+      "orphans": "殘留處理程序"
+    },
+    "advice": {
+      "handles": "結束或重新啟動該處理程序即可釋放這些控制代碼；若反覆出現，可更新或解除安裝其所屬軟體。",
+      "children": "可展開該處理程序查看其子處理程序，確認不再需要後結束它們；若反覆出現，可更新或解除安裝其所屬軟體。",
+      "orphans": "通常是已關閉的終端機或工具遺留的處理程序，確認不再需要後可結束它們。"
+    },
+    "trend": {
+      "handles": "控制代碼數 · 近 {span}",
+      "children": "子處理程序數 · 近 {span}"
+    },
+    "ignore": "忽略此程式",
+    "ignored": "不再提示 {name} 的資源洩漏，可在設定中還原",
+    "undo": "復原",
+    "settings": "洩漏提示設定"
+  }
 }

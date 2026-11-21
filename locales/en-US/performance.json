@@ -254,7 +254,7 @@
     "limitHistory": "Logged",
     "limitLogged": "Recorded",
     "limitNever": "Not recorded",
-    "limitHistoryHint": "Hardware-latched history may predate this Argus session.",
+    "limitHistoryHint": "Events may predate this Argus session.",
     "columnCoreType": "Type",
     "pCore": "P-core",
     "eCore": "E-core",
@@ -292,7 +292,7 @@
     "inUseDescription": "Memory used by processes, drivers, or the operating system",
     "modifiedDescription": "Memory whose contents must be written to disk before it can be used for another purpose",
     "standbyDescription": "Memory that contains cached data and code that is not actively in use",
-    "freeDescription": "Memory that is not currently in use, and that will be repurposed first when processes, drivers, or the operating system need more memory",
+    "freeDescription": "Unused memory available for immediate allocation",
     "compressedDescription": "Memory that holds process pages in compressed form, counted as in use",
     "compressedSaving": "Compressed memory stores an estimated {stored} of data, saving the system {saved} of memory",
     "inUse": "In use",
@@ -337,12 +337,11 @@
     "unavailable": "No disk details.",
     "held": {
       "title": "Automatic reading paused",
-      "reason": "Argus did not exit normally after it last read disk details. Windows may have crashed, the power may have failed, or the Argus process may have been ended. This page no longer reads when it opens, so that the problem does not repeat at every start.",
-      "note": "Reading sends read-only queries to the storage driver. Automatic reading resumes after Argus has kept running normally for a while after a read. If Argus ends abnormally again, this notice appears at the next start.",
+      "reason": "Argus closed unexpectedly during or shortly after the last read. If Windows crashed, trying again could trigger another crash. Automatic reads resume after Argus runs normally for 2 minutes following the read.",
       "read": "Read anyway"
     },
     "performanceUnavailable": "Disk performance counters are temporarily unavailable.",
-    "volumeCounters": "Performance statistics come from volume {volumes} and cover that volume.",
+    "volumeCounters": "Figures cover only volume {volumes}.",
     "volumeCountersMultiple": "Read/write rates and response time are aggregated from volumes {volumes}; active time is unavailable.",
     "openFailed": "This disk could not be opened.",
     "errorCode": "Windows error code {code}",
@@ -386,8 +385,8 @@
       "unsupported": "The device or driver does not provide readable disk health information.",
       "unavailable": "Disk health information is temporarily unavailable.",
       "invalidData": "The device returned invalid disk health data.",
-      "serviceUnavailable": "More SMART information requires the privileged service. Install and start it in Settings → Permissions.",
-      "serviceOutdated": "More SMART information requires an updated privileged service. Update it in Settings → Permissions.",
+      "serviceUnavailable": "Install and start the privileged service in Settings → Permissions for more SMART data.",
+      "serviceOutdated": "Update the privileged service in Settings → Permissions for more SMART data.",
       "smartDisabled": "SMART is disabled on this device."
     },
     "device": "Device information",
@@ -417,6 +416,8 @@
     },
     "smart": "SMART attributes",
     "smartSource": "NVMe health log",
+    "rawDecimal": "Decimal",
+    "rawHex": "Hex",
     "group": {
       "health": "Health",
       "usage": "Usage",
@@ -523,7 +524,7 @@
     "mac": "Physical address"
   },
   "gpu": {
-    "utilizationHint": "Overall usage takes the busiest engine, supplemented by process engine counters and NVIDIA GPU-core utilization. Native engine charts and driver readings can cover different workloads and sampling windows.",
+    "utilizationHint": "Overall usage is based on the busiest engine, supplemented by process and driver readings. Sources may cover different activity and intervals.",
     "utilSource": {
       "windows": "Windows engines",
       "process": "Process engines",
@@ -546,12 +547,12 @@
     "vidHint": "Target supply voltage requested by the integrated GPU (VID).",
     "unsliceClock": "Un-slice clock",
     "unsliceClockHint": "Clock of the integrated GPU's shared logic (unslice), which can be gated independently of its graphics slices.",
-    "clockHint": "Kernel readings use the current multiplier and the manufacturer's nominal step, without measuring reference-clock deviation. Frequencies are displayed numerically, including zero; the minimum operating clock describes the supported range.",
+    "clockHint": "Kernel readings are derived from the clock ratio and nominal step size. A sleeping or powered-down core can show 0 MHz. The minimum operating frequency is a hardware specification.",
     "sharedMemoryClock": "Shared memory clock",
-    "sharedMemoryClockHint": "Clock of the system memory shared by the integrated GPU. Kernel readings use the controller configuration and nominal reference, without measuring reference-clock deviation. The DDR transfer rate is about twice this value.",
+    "sharedMemoryClockHint": "Kernel readings are derived from the memory controller configuration and nominal reference clock. The DDR transfer rate is about twice this frequency.",
     "gtActivity": "GT activity",
     "mediaActivity": "Media activity",
-    "activityHint": "Calculated from hardware activity counters over the sampling interval. Its scope differs from Windows engine busy time.",
+    "activityHint": "Hardware activity and Windows engine utilization measure different activity.",
     "minCoreClock": "Min operating clock",
     "referenceClock": "Reference clock",
     "performanceLimits": "Performance limits",
@@ -591,7 +592,7 @@
     "maxCoreClock": "Max core clock",
     "powerState": "Power state",
     "lowPower": "Sleeping",
-    "lowPowerHint": "The GPU is idle and in a low-power state. Reading its temperature, fan, clock, voltage and power would wake it, so they are not read. They are shown again when the GPU is in use.",
+    "lowPowerHint": "Temperature, fan speed, clock, voltage and power readings resume when the GPU wakes up.",
     "powerSource": "Power source",
     "sources": {
       "nvml": "NVIDIA NVML · board",
@@ -602,6 +603,10 @@
       "rapl": "Windows RAPL · integrated GPU",
       "raplMsr": "Intel RAPL MSR · integrated GPU"
     }
+  },
+  "npu": {
+    "utilizationChart": "% Utilization",
+    "utilization": "Utilization"
   },
   "battery": {
     "title": "Battery",
@@ -639,6 +644,6 @@
     "model": "Model",
     "serial": "Serial number",
     "manufactured": "Manufacture date",
-    "wornNote": "Full charge capacity has dropped to {percent}% of the design capacity, so a full charge won't last as long as it would on a new battery."
+    "wornNote": "Full charge capacity is down to {percent}% of design capacity."
   }
 }

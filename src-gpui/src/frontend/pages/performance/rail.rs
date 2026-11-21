@@ -248,6 +248,7 @@ pub(in crate::frontend) fn stable_key(kind: &str, info: &Value) -> String {
         // The connection name tells two ports of one adapter model apart.
         "network" => format!("nic:{}|{}", field(info, "description"), field(info, "name")),
         "gpu" => format!("gpu:{}", field(info, "name")),
+        "npu" => format!("npu:{}", field(info, "name")),
         "battery" => format!("bat:{}|{}", field(info, "name"), field(info, "serial")),
         other => other.to_owned(),
     }
@@ -700,6 +701,12 @@ mod tests {
             stable_key("gpu", &gpu("71234")),
             stable_key("gpu", &gpu("98765"))
         );
+        let npu = |luid: &str| json!({"id": luid, "name": "Neural Adapter", "util": null});
+        assert_eq!(
+            stable_key("npu", &npu("71234")),
+            stable_key("npu", &npu("98765"))
+        );
+        assert_eq!(stable_key("npu", &npu("71234")), "npu:Neural Adapter");
         assert_eq!(stable_key("cpu", &json!(null)), "cpu");
         assert_eq!(stable_key("memory", &json!(null)), "memory");
     }

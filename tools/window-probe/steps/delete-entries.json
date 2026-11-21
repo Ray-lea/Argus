@@ -1,4 +1,5 @@
 {
+  "about": "用 `data` 控制换上三个服务与三个启动项，核对右键菜单的“删除”：Argus 自己的特权服务与应用包启动任务不可删除；其余经菜单打开确认框、确认后发出 `delete_service` 或 `delete_startup_item`（`skippedRequest`），再用 `resolve` 模拟成功、标记删除与各类失败，核对通知中的原因，并捕获系统服务与注册表项的确认框。",
   "window": [1200, 800],
   "steps": [
     {"control":{"page":"services","motion":"off","pointerOutside":true,"data":{"services":[

@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { availableParallelism } from "node:os";
 import { createHash } from "node:crypto";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 import { summarizeFrames } from "./perf-frames.mjs";
 
 process.chdir(resolve(import.meta.dirname, ".."));
@@ -31,6 +31,7 @@ assert(Number.isInteger(seconds) && seconds >= 5 && seconds <= 40);
 assert(Number.isInteger(headroom) && headroom >= 16 && headroom <= 256);
 assert(Number.isInteger(rounds) && rounds >= 1 && rounds <= 4);
 const output = resolve("target/native-validation", label);
+const logs = [];
 assert(!existsSync(join(output, "result.json")), "use a new label to preserve earlier measurements");
 mkdirSync(output, { recursive: true });
 const identifier = `dev.argus.taskmanager.test.${label}`;
@@ -360,8 +361,8 @@ try {
   report.exitCode = code;
   report.stderr = stderr;
   writeFileSync(join(output, "result.json"), JSON.stringify(report, null, 2));
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
-assert.equal(code, 0, stderr);
+assert.equal(code, 0, [stderr, ...panics(logs)].join("\n"));
 assert(!report.events.some((e) => e.event === "focusViolation"));
 console.log(`Pressure validation: ${output}`);

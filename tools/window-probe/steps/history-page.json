@@ -1,4 +1,5 @@
 {
+  "about": "历史页的主要交互：悬停与固定时刻、选取区间、回到最新、添加第二条轨道、滚轮与键盘的缩放和平移、拖动后保持暂停、行菜单，并截取浅色主题。",
   "window": [1280, 900],
   "steps": [
     { "control": { "page": "history", "pointerOutside": true }, "wait": 1500, "inspect": "layout", "label": "default", "capture": "default",
@@ -6,7 +7,7 @@
     { "control": { "mouse": { "type": "move", "x": 700, "y": 360 } }, "wait": 400, "capture": "hover" },
     { "control": { "mouse": { "type": "down", "x": 700, "y": 360 } }, "wait": 60 },
     { "control": { "mouse": { "type": "up", "x": 700, "y": 360 } }, "wait": 400, "inspect": "layout", "label": "pinned", "capture": "pinned",
-      "expect": { "history.pin": 1792731731000, "history.mode": "moment", "history.follow": true } },
+      "expect": { "history.pin": 1792731731000, "history.mode": "moment", "history.follow": false } },
     { "control": { "keys": ["escape"] }, "wait": 300, "inspect": "layout", "label": "cleared", "expect": { "history.pin": null } },
     { "control": { "mouse": { "type": "move", "x": 420, "y": 380 } }, "wait": 40 },
     { "control": { "mouse": { "type": "down", "x": 420, "y": 380 } }, "wait": 40 },
@@ -33,8 +34,11 @@
       "expect": { "history.follow": false } },
     { "control": { "keys": ["end"] }, "wait": 400, "inspect": "layout", "label": "end", "expect": { "history.follow": true } },
     { "control": { "mouse": { "type": "down", "button": "right", "x": 400, "y": 707 } }, "wait": 300, "inspect": "menu", "label": "row-menu",
-      "expect": { "state.open": true, "state.disabled.0": true } },
+      "expect": { "state.open": true, "state.disabled.0": false, "state.disabled.1": true } },
     { "control": { "keys": ["escape"] }, "wait": 200 },
+    { "control": { "wheel": { "x": 400, "y": 300, "lines": 5 } }, "wait": 500, "inspect": "layout", "label": "wheel-zoom",
+      "expect": { "history.follow": false } },
+    { "control": { "keys": ["end"] }, "wait": 400, "inspect": "layout", "label": "wheel-end", "expect": { "history.follow": true } },
     { "control": { "theme": "light" }, "wait": 600, "capture": "light" }
   ]
 }

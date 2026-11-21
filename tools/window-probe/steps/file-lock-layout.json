@@ -1,4 +1,5 @@
 {
+  "about": "检查文件选择、查询状态与结果变化后的弹窗稳定性。模拟快照实例可通过 `contentZoom`（0.5–3）复现分数缩放布局；`inspectLayout` 的 `dialog.settled` 表示高度过渡已结束。",
   "steps": [
     {"control":{"contentZoom":1.75,"theme":"light"},"probe":"size 2170 1400","wait":500},
     {"control":{"dialog":"filelock"},"wait":500,"inspect":"layout","label":"picker-ready","expect":{"dialog.kind":"filelock","dialog.ready":true,"dialog.settled":true}},

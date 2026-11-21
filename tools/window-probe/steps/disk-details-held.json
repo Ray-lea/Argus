@@ -1,4 +1,5 @@
 {
+  "about": "检查上次会话在读取磁盘详情后异常结束时的详情页：用 `data` 控制把 `diskReadsHeld` 设为真（模拟快照不读取磁盘，也不读写标记文件），核对打开详情页不发出读取、显示说明，单击“仍要读取”后才请求读取，用 `hold` 与 `resolve` 走过读取中与读取完成两种画面，其他磁盘同样等待请求，已打开的说明在恢复自动读取后保留到离开该页，重新打开后自动读取；另截取浅色主题、小窗口加大字号与宽窗口的画面。`inspectLayout.performance.diskDetails` 输出当前详情页的磁盘编号与是否等待请求，`skippedRequest` 记录被模拟快照跳过的 `disk_details` 请求。更换 `--language` 可复核各语言的换行。标记文件的写入、保留与清除由 `cargo test -p argus-app read_marker` 覆盖。",
   "window": [1000,680],
   "steps": [
     {"note":"held: the page opens without reading","control":{"data":{"diskReadsHeld":true,"skippedRequest":{"command":"none"}},"page":"performance","device":"disk:0","preference":{"diskPage":"details"},"pointerOutside":true},"wait":800,"inspect":"layout","label":"held-not-read","expect":{"page":"performance","device":"disk:0","performance.diskDetails.disk":0,"performance.diskDetails.held":true,"skippedRequest.command":"none"},"capture":"held"},

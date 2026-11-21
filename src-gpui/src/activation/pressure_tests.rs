@@ -342,6 +342,54 @@ fn switching_to_a_topmost_window_and_hiding_both_end_temporary_elevation() {
 
 #[test]
 #[ignore = "creates windows on an inactive desktop"]
+fn keeping_on_top_outlasts_deactivation_and_ends_when_turned_off() {
+    on_desktop(|_| {
+        let target = window(false);
+        activation::install(target.0);
+        let blocker = window(true);
+        let topmost =
+            || (unsafe { GetWindowLongPtrW(target.0, GWL_EXSTYLE) } as u32) & WS_EX_TOPMOST.0 != 0;
+        let deactivate = || unsafe {
+            SendMessageW(
+                target.0,
+                WM_ACTIVATE,
+                Some(WPARAM(WA_INACTIVE as usize)),
+                Some(LPARAM(blocker.0.0 as isize)),
+            );
+        };
+        // Raised over the blocker for an activation, then kept on top: the
+        // end of the activation no longer lowers it, nor does hiding.
+        activation::focus(target.0);
+        assert!(topmost());
+        activation::keep_on_top(target.0, true).unwrap();
+        deactivate();
+        assert!(topmost(), "losing activation ended keeping on top");
+        unsafe {
+            let _ = ShowWindow(target.0, SW_HIDE);
+            let _ = ShowWindow(target.0, SW_SHOWNOACTIVATE);
+        }
+        assert!(topmost(), "hiding ended keeping on top");
+        activation::focus(target.0);
+        deactivate();
+        assert!(topmost());
+        // Turned off: the normal level, and activations raise it for their
+        // own time again.
+        activation::keep_on_top(target.0, false).unwrap();
+        assert!(!topmost());
+        activation::focus(target.0);
+        assert!(topmost());
+        deactivate();
+        assert!(!topmost());
+        // Kept on top from a normal level, as at a start.
+        activation::keep_on_top(target.0, true).unwrap();
+        deactivate();
+        assert!(topmost());
+        drop(blocker);
+    });
+}
+
+#[test]
+#[ignore = "creates windows on an inactive desktop"]
 fn only_an_ordinary_window_above_covers_argus() {
     on_desktop(|_| {
         let target = window(false);

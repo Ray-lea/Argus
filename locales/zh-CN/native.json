@@ -69,7 +69,7 @@
       "ipv4Only": "只能关闭 IPv4 TCP 连接"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager 无法检查目标，以下为句柄查询结果"
+      "restartManagerFailed": "未能完成文件检查，结果仅来自句柄查询"
     },
     "handles": {
       "tooMany": "一次最多查询 32 个路径，路径总长度不能超过 8 KiB",
@@ -117,6 +117,7 @@
       "helperExited": "句柄查询辅助进程提前退出，以下仅为已完成的结果",
       "serviceIncomplete": "特权服务未完成此次查询，以下为本地结果：{error}",
       "serviceIncompleteLocal": "特权服务未完成此次查询，以下为本地查询结果",
+      "bothIncomplete": "特权服务与本地查询均未完成：{error}",
       "unavailable": "查询暂不可用",
       "serviceOutdated": "特权服务未提供句柄查询，请更新服务；以下为本地查询结果",
       "serviceUnavailable": "特权服务不可用，以下为本地查询结果：{error}"

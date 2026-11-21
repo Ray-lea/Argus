@@ -168,6 +168,9 @@
   "copyWhat": {
     "path": "путь",
     "name": "имя",
+    "imageName": "имя образа",
+    "commandLine": "командная строка",
+    "details": "сведения",
     "version": "номер версии"
   }
 }

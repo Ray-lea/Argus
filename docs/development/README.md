@@ -19,6 +19,12 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 
 终端显示进程 ID、编译结果和退出状态，并持续监听源文件。默认显示主窗口，传入 `--hidden` 可隐藏启动。按 Ctrl+C 结束开发会话。
 
+一次改动涉及多个文件、中途的源码无法编译或只完成一半时，可先运行 `node scripts/dev-hold.mjs on [--minutes N] [原因]` 暂停自动重建，改完后运行 `node scripts/dev-hold.mjs off`：开发脚本把暂停期间的修改合并为一次重建，开发实例只重启一次。暂停默认 20 分钟后自动结束，最长 120 分钟；不带参数运行时显示当前的暂停。已经开始的编译不受影响。
+
+开发脚本的提示语言：设置了 `ARGUS_LOCALE` 时按它，否则按 Windows 显示语言（用户设置优先于系统默认）；中文显示为简体中文，其他语言显示为英文。例如在英文 Windows 上用中文提示，先运行 `set ARGUS_LOCALE=zh-CN`（PowerShell 为 `$env:ARGUS_LOCALE = "zh-CN"`）。应用界面的语言不随该变量变化：取自设置，未设置时取 Windows 显示语言。脚本生成的文件（第三方许可声明、README 卡片与演示等）不受影响。批处理文件运行结束后恢复控制台原来的代码页。
+
+数据格式与协议的版本号自上一个发布以来最多变更一次，同一周期内的后续不兼容改动沿用该版本号。此前的开发构建写下的文件因此无法读取，由开发脚本清除，应用本身不删除：`scripts/dev-data.json` 为每类数据记录一个修订号，开发脚本每次启动新构建前，比对开发配置目录中 `dev-data.json` 记下的修订号，删除有变化的类别在历史目录中的文件（`history` 为日文件及其旁文件，`watch` 为观察文件）。脚本只处理以发布标识为前缀的开发标识，历史目录与已安装的 Argus 相同时不删除。`node scripts/dev-data.mjs` 在不经开发脚本时执行同样的比对；`node scripts/dev-data.mjs clear <类别>` 立即清除指定类别，执行前需退出使用该标识的 Argus。
+
 安装程序使用 NSIS 3.13。可安装到默认目录，或通过 `ARGUS_NSIS` 指定 `makensis.exe`。构建产物和验证结果位于 `target/`，详见[构建与缓存](build.md)。
 
 README 预览在启用透明效果的 Windows 11 上生成。探针保持测试窗口位于底层，通过 `WM_NCACTIVATE` 让 Windows 绘制激活态 Mica，并与同一主题的失活截图对照。导出时，用 16 位浮点窗口采样补足云母底色的渐变，以有序抖动写入 sRGB PNG。底色以原生 SDR 读数为准，其余区域直接使用窗口原始像素。键盘焦点保留在当前应用。
@@ -28,6 +34,7 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 - [GPUI 与平台边界](gpui.md)
 - [构建与缓存](build.md)
 - [性能测量](performance.md)
+- [环境变量](environment.md)
 - [多语言](i18n.md)
 - [提交与发布](release.md)
 - [官网与发行镜像](website.md)
@@ -40,12 +47,13 @@ README 预览在启用透明效果的 Windows 11 上生成。探针保持测试�
 
 ```bash
 cargo run -p argus-core --example dump --release       # 进程（按 CPU 排序）
+cargo run -p argus-core --example cpu_idle --release -- 30 # CPU 占用与旧空闲计数、% Processor Time、Utility、进程合计、空闲周期逐秒对照
 cargo run -p argus-core --example process_columns --release # 新增进程计数与采样耗时
 cargo run -p argus-core --example sampling_cadence -- 120 --trace # 快照间隔、分项耗时与过期进程计数
 cargo build -p argus-core --example process_sources --release # 构建普通权限进程来源对照工具
 node scripts/process-sources.mjs comparison --samples 60 --interval 1000 # 三路交替采集及数值校验
 cargo run -p argus-core --example gpu_memory --release -- <PID> # 进程显存与原生预算用量对照
-cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
+cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、NPU、电池
 cargo run -p argus-core --example disk_details --release -- 0 # 磁盘 0 的单次详情与查询耗时
 cargo run -p argus-service --example network_cadence --release -- 500 # 既有服务的半秒网络速率对照
 cargo run -p argus-service --example sensor_cadence -- 60 # 既有开发服务的传感器状态、读数与采样延迟
@@ -57,6 +65,7 @@ cargo run -p argus-core --example gpu_compute --release     # NVIDIA Turing 及�
 cargo run -p argus-core --example app_windows --release     # 归入“应用”的进程（拥有任务栏窗口）与查找耗时
 cargo run -p argus-core --example sessions --release        # 有用户登录的会话、各会话的进程数与枚举耗时
 cargo run -p argus-core --example history --release -- 60  # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
+cargo run -p argus-core --example history_switch --release -- <历史目录的副本>  # 历史页各时间范围（5 分钟至 7 天）按图表宽度查询的耗时
 ```
 
 `disk_details` 使用普通权限，按指定物理磁盘编号读取一次后退出，输出 JSON、各查询状态及耗时。默认遮盖序列号；明确需要核对设备身份时可追加 `--include-serial`。`--extended` 在当前进程权限下执行服务使用的固定 ATA／SAT／SCSI 只读查询，权限不足时返回相应状态。此示例独立于应用与常驻采样，不修改设备配置。

@@ -2,6 +2,7 @@
 mod appearance;
 mod assets;
 mod backend;
+mod caption;
 mod charts;
 mod collation;
 mod columns;
@@ -13,6 +14,7 @@ mod hundred;
 mod icon_motion;
 mod inline;
 mod layout;
+mod leaks;
 mod lists;
 mod menus;
 mod model;
@@ -59,6 +61,8 @@ use std::{
     time::{Duration, Instant},
 };
 use theme::{Palette, icon, label};
+/// The preference for SMART raw values in hexadecimal (default decimal).
+const DISK_RAW_HEX: &str = "diskRawHex";
 /// Minutes hidden before the window gives its memory back; 0 for never.
 const RELEASE_HIDDEN_MINUTES: [u64; 4] = [0, 1, 10, 30];
 const DEFAULT_RELEASE_HIDDEN_MINUTES: u64 = 10;
@@ -117,6 +121,11 @@ enum Action {
     Preference(String, Value),
     /// Text to copy and the locale key naming it in the confirmation.
     Copy(String, &'static str),
+    /// Text to copy and its name in the confirmation.
+    CopyAs(String, String),
+    /// The details of the process row with this key, as text (`details_text`).
+    CopyDetails(String),
+    ExportTableCsv,
     /// A command of the history page.
     History(pages::history::Command),
     CloseOverlay,
@@ -389,6 +398,8 @@ struct Desktop {
     cpu_mode: String,
     cpu_page: String,
     disk_page: String,
+    /// Whether SMART raw values read in hexadecimal rather than decimal.
+    disk_raw_hex: bool,
     /// The disk details page that is open, if one is.
     disk_details_open: Option<DiskDetailsOpen>,
     interval: u64,
@@ -411,6 +422,9 @@ struct Desktop {
     /// memory was given back since (`memory.releaseHidden`).
     hidden_since: Option<(Instant, bool)>,
     last_select: Option<(String, Instant)>,
+    /// A click on the selected process row that will deselect it unless a
+    /// second click makes it a double-click (`Desktop::deselect_later`).
+    deselect_due: Option<Task<()>>,
     /// The lists' column filters in force, by preference (`tables::ColumnFilter`).
     filters: HashMap<&'static str, String>,
     forms: HashMap<String, Entity<InputState>>,
@@ -575,6 +589,7 @@ impl Desktop {
             cpu_mode: prefs.get("cpuMode", "overall".into()),
             cpu_page: prefs.get("cpuPage", "overview".into()),
             disk_page: prefs.get("diskPage", "overview".into()),
+            disk_raw_hex: prefs.get(DISK_RAW_HEX, false),
             disk_details_open: None,
             interval: prefs.get("interval", 1000),
             paused: false,
@@ -592,6 +607,7 @@ impl Desktop {
             last_privilege: Instant::now() - Duration::from_secs(60),
             hidden_since: None,
             last_select: None,
+            deselect_due: None,
             filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
             first_frame: false,
@@ -831,11 +847,16 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     cx,
                 );
                 scrollbar::style_library(crate::platform::is_dark(saved.theme), cx);
+                // Test instances stay at the bottom of the desktop (`keep_on_top`).
+                let on_top = prefs.get(caption::KEEP_ON_TOP, false) && !options.test;
                 let view =
                     cx.new(|cx| Desktop::new(host.clone(), options.clone(), prefs, window, cx));
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);
+                    if on_top {
+                        crate::platform::keep_on_top(&host, true);
+                    }
                 });
                 let placements = view.read(cx).chart_placements.clone();
                 let clock = view.read(cx).chart_clock.clone();

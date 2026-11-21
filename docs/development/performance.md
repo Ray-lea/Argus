@@ -22,6 +22,21 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--probe` 可指定探针路径。在相同窗口尺寸与曲线模式下交替测量前后构建；单独安排截图和构建，核对各轮的实际帧率。
 
+`node scripts/perf-ab.mjs <标签> <基准EXE> <新EXE> [--pairs N] -- <perf-native 的参数>` 按上述方法交替运行两个构建并汇总差异。每一对先后测量两侧，先测的一侧逐对轮换，默认 3 对。各阶段列出两侧的中位数、每对相对差（新／基准 − 1）的中位数与范围，以及各对的方向是否一致：结论以各对一致为准，单独一对的差值不足为据。比较的数值为每个呈现帧与每秒的进程 CPU 周期数、进程与界面线程的 CPU 时间、最忙 GPU 引擎占用、私有提交量、呈现帧率和帧间隔 P95。周期数取自探针标记中的进程周期计数；线程时间按调度节拍累计，分辨不出空闲界面的小开销。两侧帧率相差超过 10% 的一对不计入每帧数值，输出会注明。运行时设置 `ARGUS_GPUI_FRAME_TRACE=1`，另比较界面线程每次绘制耗时的中位数与 P90（取自 `frame-phases`）。
+
+机器上有其他负载时，每秒的 CPU 数值在各对之间可相差数十个百分点，绘制耗时的中位数受影响较小但同样会变宽。先看范围和各对方向是否一致，再看中位数；范围跨过零或远大于中位数时增加对数，或等负载降低后重测。
+
+测量默认限制在性能核上（同 `ARGUS_PROBE_PERFORMANCE_CORES`），`--default-scheduling` 改用默认调度。`--base-env`、`--new-env` 以 `名称=值` 为其中一侧设置环境变量；两侧可以是同一个程序，用于对照 `ARGUS_TABLE_ROWS=component` 这类开关。各次运行写入 `target/native-validation/<标签>-b<序号>` 与 `-n<序号>`，汇总在 `target/native-validation/<标签>/summary.json`。
+
+开发过程中的对照可以用 `quick` 构建（`node scripts/build.mjs --quick`，见[构建与缓存](build.md)）代替发行构建，每轮改动后的重编由约 7.5 分钟缩短到约 1 分 40 秒。两种构建在同一份源码上的对照如下（i5-13500HX 与 RTX 4060 Laptop，1240×800，固定快照，限性能核；两轮测量，系统另有 15%–40% 与 25%–100% 的负载，每组 3 对与 5 对）：
+
+- 同一处已知差异（表格的行由组件库绘制，相对 Argus 自行绘制）：绘制耗时的中位数在 `quick` 构建上增加 95%–105%，在发行构建上增加 87%–128%，两种构建上各对的方向全部一致。
+- 两种构建直接相比：进程页滚动时绘制耗时的中位数相差在一成以内，各对的方向不一；逐秒采样的进程页与性能页上，`quick` 构建高 5%–19%，每秒周期数相差 7% 以内。
+
+`quick` 构建因此可以判断一处改动的方向，以及明显差异的大致幅度。绝对数值、一成以内的差异和最终结论用发行构建测量，对照的两侧使用同一种配置的构建。
+
+`tools/window-probe/scenarios` 提供两个常用场景，均配合 `--fixture tools/window-probe/fixtures/desktop.json --stream-fixture` 使用：`process-scroll.json` 在进程页的应用视图与列表视图中用滚轮连续上下滚动，`sampling.json` 在进程页、CPU 概览和多核视图每秒推进一次采样。
+
 `--software-rendering` 在测试实例的设置中关闭“硬件加速”，窗口由 WARP 在 CPU 上绘制，结果的 `instrumentation.softwareRendering` 记录该条件。与默认模式对照时使用同一发行程序、窗口尺寸与曲线模式，并核对两者的实际呈现帧率。
 
 `--width`、`--height` 设置客户区物理尺寸，`--ui-scale` 设置应用缩放百分比（80–150，默认 100）；有效比例还包含 Windows DPI。物理尺寸换算允许小于 0.01 像素的浮点舍入误差。`--no-capture` 关闭持续窗口捕获，用于对照捕获引起的合成路径与 GPU 频率变化；该模式的帧率和帧间隔字段为 `null`，资源计数仍正常记录。捕获与无捕获结果分别报告。
@@ -94,7 +109,7 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `node scripts/resilience-native.mjs <标签> <EXE路径> --tray-delay 2000 --expect-responsive --capture` 在隔离实例中让托盘调用延迟两秒，记录窗口响应和采样推进。故障路径仅在独立标识的 `--test` 实例启用，调用由测试接收端处理。托盘线程、阻塞解析器队列的容量、字节预算和重试分别有源码回归测试。
 
-`cargo test -p argus --lib activation::pressure_tests -- --ignored --nocapture --test-threads=1` 在独立桌面创建停止响应的置顶窗口，验证激活、层级恢复及已有置顶状态。测试不调用 `SwitchDesktop`，持续检查实际桌面的前台；桌面与内部 GUI 辅助线程随测试进程退出回收。
+`cargo test -p argus --lib activation::pressure_tests -- --ignored --nocapture --test-threads=1` 在独立桌面创建停止响应的置顶窗口，验证激活、层级恢复、已有置顶状态及“置顶显示”的开关。测试不调用 `SwitchDesktop`，持续检查实际桌面的前台；桌面与内部 GUI 辅助线程随测试进程退出回收。
 
 `node scripts/build-leak-tools.mjs` 同时构建资源负载程序。`node scripts/pressure-native.mjs <标签> <EXE路径> --seconds 20 --headroom-mib 48 --rounds 3` 依次测量基线、CPU、GPU、三轮组合负载和恢复状态。CPU 负载使用固定亲和性并保留调度余量；内存负载保留系统可用内存，GPU 用有界 CUDA 批次并保留显存余量。结果同时记录实际系统 CPU 和 GPU 引擎占用、应用响应、呈现帧率、资源计数及采样序号，以观测到的负载标注覆盖范围。
 
@@ -148,7 +163,7 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `--scroll-copy` 在固定快照下以滚轮逐格滚动进程列表（指针停在列表上，悬停行随之变化），覆盖深浅主题、详情窗格以及 125%、150% 界面缩放：每次滑动结束后捕获画面，再强制完整重绘并捕获，两者须逐像素一致（软件渲染下字形边缘允许两个色阶），且每种情形都须有经复制绘制的帧。诊断事件 `gpu-scroll-copy` 记录每个复制帧的移动图元数、位移、复制与重绘的像素数和裁剪绘制次数。同一程序设置 `ARGUS_GPUI_DISABLE_SCROLL_COPY=1` 可关闭复制，对照滚动与页面切换的开销。
 
-表格的行默认由 Argus 绘制（`tables::body`）；同一程序设置 `ARGUS_TABLE_ROWS=component` 改由组件库绘制，用于逐像素对照两种绘制，以及对照滚动帧的开销。修改行或单元格的结构与样式后，用 `ui-shots` 以两种设置运行同一步骤文件，逐张比较截图。
+表格的行默认由 Argus 绘制（`tables::body`）；同一程序设置 `ARGUS_TABLE_ROWS=component` 改由组件库绘制，用于逐像素对照两种绘制，以及对照滚动帧的开销。修改行或单元格的结构与样式后运行 `node scripts/ui-steps.mjs table-rows`：步骤文件 `table-rows.json` 声明了这项对照，套件用同一程序以两种设置各运行一次并逐像素比较全部截图。
 
 追加 `--hover-retained` 可对照深浅主题下的顶部曲线和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
 

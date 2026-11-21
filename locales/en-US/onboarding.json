@@ -40,7 +40,7 @@
     "minimizedInterval": "Refresh rate while minimized",
     "minimizedIntervalHint": "Default 5 seconds; shorter intervals cost more in the background.",
     "trayInterval": "Refresh rate in the tray",
-    "trayIntervalHint": "Samples at this interval while hidden in the system tray. Intervals over 5 seconds make history records less frequent.",
+    "trayIntervalHint": "Intervals over 5 seconds make history records less frequent.",
     "hotkey": "Press {hotkey} anytime to show or hide Argus; it can be changed in Settings.",
     "hotkeyOff": "The shortcut for showing or hiding Argus is turned off. It can be turned back on in Settings.",
     "hotkeyTaken": "{shortcut} is in use by Windows or another app (possibly another running Argus). Choose a different combination in Settings.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automatic",
     "routeDirect": "GitHub only",
     "routeProxy": "GitHub proxy only",
-    "proxyNotice": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. The signature check keeps them from tampering with updates.",
+    "proxyNotice": "GitHub proxies are run by third parties and can see this PC's IP address and the files it downloads. Installers must pass signature and version checks.",
     "unavailable": "This version can't update itself."
   },
   "privilege": {
@@ -105,7 +105,7 @@
     "pages": "{keys} switches pages, {search} searches processes",
     "menu": "Right-click a process to end it, change its priority, turn on efficiency mode or add a rule",
     "drop": "Drop a file or folder onto the window to find the processes using it",
-    "history": "The History page keeps the last 7 days of resource usage and the busiest processes at each moment",
+    "history": "The History page records resource usage and the busiest processes at each moment",
     "reopen": "This guide can be reopened anytime from the About page."
   },
   "administrator": "Allow Argus to run automatically as administrator to manage other users’ processes and startup items. Off by default; Windows requests authorization when first enabled."

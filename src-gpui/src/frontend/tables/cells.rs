@@ -25,6 +25,8 @@ pub(super) struct NameFacts {
     /// Startup name dimming and the missing-target badge, respectively.
     pub startup_disabled: bool,
     pub startup_missing: bool,
+    /// The leak alert the row carries (`leaks::row_kind`).
+    pub leak: Option<&'static str>,
 }
 
 impl NameFacts {
@@ -48,6 +50,7 @@ impl NameFacts {
             entry_count: row.raw["entryCount"].to_string().into(),
             startup_disabled: !boolean(&row.raw, "enabled"),
             startup_missing: !boolean(&row.raw, "exists") && !row.raw["path"].is_null(),
+            leak: crate::frontend::leaks::row_kind(&row.members),
         }
     }
 }
@@ -180,6 +183,13 @@ impl CellSpec {
                     && row.members.iter().any(|member| boolean(member, "stale"));
                 if dim || delayed {
                     spec.color = Some(p.faint);
+                }
+                // The count a handle leak alert is about, in its amber.
+                if processes
+                    && field.key == "handles"
+                    && row.members.iter().any(|m| text(m, "leak") == "handles")
+                {
+                    spec.color = Some(p.io);
                 }
                 if processes
                     && matches!(
@@ -586,6 +596,16 @@ impl NativeTable {
             }
             // The busiest engine, which the figure is the share of.
             ("processes", "gpu") => row.gpu_usage().engine.clone().filter(|e| !e.is_empty()),
+            // Why the count is in amber.
+            ("processes", "handles")
+                if row.members.iter().any(|m| text(m, "leak") == "handles") =>
+            {
+                let owner = self.owner.upgrade()?;
+                let app = owner.read(cx);
+                app.row_leak(&row.members)
+                    .filter(|leak| text(leak, "kind") == "handles")
+                    .map(crate::frontend::leaks::describe)
+            }
             ("processes", "net") => {
                 let owner = self.owner.upgrade()?;
                 let bits = owner
@@ -931,6 +951,23 @@ impl NativeTable {
             if facts.all_suspended {
                 element =
                     element.child(tag(label("processes.suspended"), p.stroke_strong, p.muted));
+            }
+            // A leak alert: the kind in amber, what it rests on under the pointer.
+            if let Some(kind) = facts.leak {
+                let mark = tag(
+                    crate::frontend::leaks::tag_label(kind),
+                    p.io.opacity(0.55),
+                    p.io,
+                );
+                let why = near
+                    .then(|| {
+                        let owner = self.owner.upgrade()?;
+                        let app = owner.read(cx);
+                        app.row_leak(&row.members)
+                            .map(crate::frontend::leaks::describe)
+                    })
+                    .flatten();
+                element = element.child(hint(mark, "leak", why));
             }
         }
         if self.page == "startup" && facts.startup_missing {

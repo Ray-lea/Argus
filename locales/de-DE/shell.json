@@ -50,11 +50,23 @@
   },
   "pause": "Aktualisierung anhalten",
   "resume": "Aktualisierung fortsetzen",
+  "window": {
+    "onTop": "Immer im Vordergrund",
+    "onTopOff": "Nicht mehr im Vordergrund halten"
+  },
   "more": {
     "label": "Weitere Aktionen",
     "runTask": "Neue Aufgabe ausführen…",
     "fileLock": "Prozesse suchen, die eine Datei verwenden…",
-    "fileLockDetail": "Auch per Ablegen"
+    "fileLockDetail": "Auch per Ablegen",
+    "exportCsv": "Aktuelle Seite als CSV exportieren…",
+    "csvFile": "CSV-Dateien",
+    "csvSaved": "CSV-Datei exportiert.",
+    "csvFailed": "Die CSV-Datei konnte nicht gespeichert werden. Prüfen Sie die Schreibberechtigung für den Ordner und ob die Datei verwendet wird.",
+    "csvRows": {
+      "one": "{count} Zeile",
+      "other": "{count} Zeilen"
+    }
   },
   "details": {
     "label": "Detailbereich",

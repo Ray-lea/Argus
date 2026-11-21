@@ -3,12 +3,13 @@
     "peak": "Maximum {value}"
   },
   "copied": {
-    "name": "nom"
+    "name": "nom",
+    "namePid": "le nom et le PID"
   },
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
-  "note": "Les mesures et les processus les plus actifs sont enregistrés toutes les 5 secondes, avec des mesures par seconde pour les 10 dernières minutes ; réduit ou dans la zone de notification, à l’intervalle de cet état s’il est plus long. Conservés 7 jours.",
-  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
+  "note": "L’enregistrement se fait toutes les 5 secondes en général, ou moins souvent si les mesures en arrière-plan sont plus espacées. Chaque mesure des 10 dernières minutes est conservée.",
+  "off": "L’enregistrement de l’historique est désactivé. <link>Ouvrir les paramètres</link>",
   "watch": {
     "title": "Observation du processus",
     "empty": "Choisir «Observer cette instance» dans les détails d’un seul processus pour enregistrer la mémoire hors du classement.",
@@ -16,7 +17,7 @@
     "target": "Observation de {name} (PID {pid})",
     "stop": "Arrêter l’enregistrement",
     "delete": "Supprimer l’enregistrement",
-    "note": "Cette instance uniquement ; jusqu’à 1 heure, 720 points et 1 MiB. Mesures généralement toutes les 5 secondes ; un échantillonnage plus lent peut laisser des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer arrête et efface cet enregistrement.",
+    "note": "Seule cette instance est enregistrée, pendant 1 heure au maximum. L’arrêt conserve les données. La suppression met fin à l’observation et efface l’enregistrement.",
     "metric": {
       "memory": "Jeu de travail privé",
       "commit": "Mémoire privée engagée"
@@ -44,8 +45,8 @@
     "runSummary": "{shown}/{total} lancements affichés ; {points} points enregistrés pour ce lancement",
     "earlier": "Points antérieurs",
     "latest": "Derniers points",
-    "programNote": "Les lancements actuels et futurs de ce chemin sont enregistrés séparément. Jusqu’à 7 jours, 131072 points et 9 MiB ; la première limite atteinte supprime les données les plus anciennes. Jusqu’à 512 instances simultanées. La liste affiche les 256 derniers lancements ; chaque page jusqu’à 1000 points enregistrés et des repères de lacunes. Les points antérieurs restent consultables. En général toutes les 5 secondes ; un échantillonnage plus lent laisse des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer les efface. Redémarrer Argus ne reprend pas l’enregistrement.",
-    "damaged": "Certains enregistrements ont échoué au contrôle d’intégrité ; les intervalles manquants restent des lacunes.",
+    "programNote": "Chaque lancement depuis le même chemin est enregistré séparément. Les données sont conservées jusqu’à 7 jours. Les plus anciennes sont effacées plus tôt si le stockage est plein. L’arrêt conserve les données. La suppression met fin à l’observation et efface l’enregistrement. Après un redémarrage d’Argus, relancez l’observation.",
+    "damaged": "Certains enregistrements sont endommagés. Les périodes concernées restent vides.",
     "earlierRuns": "Lancements antérieurs",
     "latestRuns": "Derniers lancements",
     "waiting": "En attente d’un autre lancement",
@@ -55,29 +56,40 @@
   "range": {
     "5m": "5 minutes",
     "1h": "1 heure",
+    "3h": "3 heures",
     "6h": "6 heures",
     "1d": "1 jour",
+    "3d": "3 jours",
     "7d": "7 jours",
     "30d": "30 jours",
-    "all": "Tout"
+    "all": "Tout",
+    "custom": "Personnalisée",
+    "customMenu": "Personnalisée…"
   },
   "now": "Maintenant",
   "live": {
     "on": "En direct",
-    "onTitle": "Affiche les dernières mesures : chaque seconde jusqu’à 6 heures, chaque minute au-delà. Cliquer pour suspendre",
+    "onTitle": "Suspendre le suivi des dernières mesures",
     "off": "Revenir au plus récent",
-    "offTitle": "Revenir aux dernières mesures et continuer la mise à jour (aussi par clic droit sur le graphique ou avec Fin)"
+    "offTitle": "Reprendre le suivi des dernières mesures (clic droit sur le graphique ou touche Fin)"
   },
   "toast": {
     "latest": "Retour au plus récent",
     "paused": "Mise à jour suspendue"
   },
-  "more": "Plus",
   "menu": {
     "band": "Afficher la plage du minimum au maximum",
     "settings": "Paramètres de l’historique…",
     "needsService": "Nécessite le service privilégié",
-    "notRecorded": "Non enregistré"
+    "notRecorded": "Non enregistré",
+    "curve": "Afficher la courbe sur le graphique",
+    "curveOff": "Retirer la courbe du graphique",
+    "copy": "Copier le nom et le PID",
+    "none": "Aucune",
+    "showTitle": "Afficher dans la piste active",
+    "addTitle": "Ajouter une piste",
+    "overlayTitle": "Superposer une deuxième mesure (axe de droite)",
+    "byService": "Fourni par le service privilégié"
   },
   "group": {
     "cpu": "Processeur",
@@ -186,20 +198,27 @@
     "add": "Superposer",
     "addTitle": "Superposer une deuxième mesure sur l’axe de droite",
     "shared": "Partage l’axe de gauche",
-    "right": "Axe de droite"
+    "right": "Axe de droite",
+    "remove": "Retirer la superposition",
+    "change": "Changer la mesure superposée"
   },
   "unrecorded": {
     "title": "Aucun enregistrement de {name}",
-    "hint": "Cette mesure n’est pas enregistrée sur cet ordinateur ; le périphérique ou le compteur nécessaire est peut-être absent.",
+    "hint": "Le périphérique ou le compteur requis est peut-être indisponible.",
     "serviceTitle": "{name} nécessite le service privilégié",
-    "serviceHint": "Le service privilégié lit les capteurs du processeur par les modules fixes PawnIO. Une fois installé, l’enregistrement commence à la mesure suivante ; les périodes antérieures restent vides.",
+    "serviceHint": "L’enregistrement commence à la première mesure après l’activation du service. Les périodes antérieures restent vides.",
     "install": "Installer le service privilégié…"
   },
   "tip": {
     "second": "Mesure par seconde",
     "frame": "Enregistrement de 5 secondes",
     "average": "Moyenne",
-    "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer"
+    "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer",
+    "otherPrograms": {
+      "one": "{count} autre programme",
+      "many": "{count} autres programmes",
+      "other": "{count} autres programmes"
+    }
   },
   "tab": {
     "add": "Afficher dans une nouvelle piste",
@@ -214,7 +233,22 @@
     "loading": "Lecture…",
     "modeMoment": "Instant",
     "modeRange": "Plage",
-    "columns": "Colonnes"
+    "columns": "Colonnes",
+    "chooser": {
+      "moment": "Colonnes de « Instant »",
+      "range": "Colonnes de « Plage »"
+    },
+    "trend": "Mini-courbes de tendance",
+    "resetColumns": "Rétablir les colonnes par défaut",
+    "rest": {
+      "one": "{count} autre processus",
+      "many": "{count} autres processus",
+      "other": "{count} autres processus"
+    },
+    "search": "Rechercher des processus",
+    "emptyRange": "Aucun processus enregistré dans cette plage",
+    "netService": "Avec des droits standard, l’enregistrement du trafic réseau par processus nécessite le service privilégié.",
+    "live": "Processus les plus récents"
   },
   "column": {
     "moment": {
@@ -247,7 +281,8 @@
       "threads": "Threads",
       "handles": "Handles"
     },
-    "trend": "Tendance · {name}"
+    "trend": "Tendance · {name}",
+    "trendTitle": "Évolution sur la plage sélectionnée, selon la mesure de la piste du haut"
   },
   "trend": {
     "cpu": "CPU",
@@ -259,5 +294,101 @@
   "clearCursor": "Effacer le curseur (Échap)",
   "selection": {
     "zoom": "Zoomer sur la sélection"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Choisissez un dossier accessible en écriture indiqué par son chemin complet ; le nouvel emplacement et l’actuel ne peuvent pas se contenir l’un l’autre.",
+    "move": "Impossible de déplacer l’historique. Vérifiez si la destination contient des fichiers du même nom, ainsi que les droits d’accès des deux dossiers.",
+    "save": "Impossible d’enregistrer les paramètres de l’historique.",
+    "open": "Impossible d’ouvrir le dossier de l’historique dans l’Explorateur de fichiers.",
+    "clear": "Impossible d’effacer l’historique. Vérifiez les autorisations du dossier et si des fichiers sont en cours d’utilisation."
+  },
+  "picker": {
+    "title": "Plage personnalisée",
+    "last5m": "5 dernières minutes",
+    "last15m": "15 dernières minutes",
+    "last1h": "Dernière heure",
+    "last6h": "6 dernières heures",
+    "last24h": "24 dernières heures",
+    "today": "Aujourd’hui",
+    "yesterday": "Hier",
+    "last7d": "7 derniers jours",
+    "last30d": "30 derniers jours",
+    "all": "Tous les enregistrements",
+    "month": "{month} {year}",
+    "weekdays": "lu ma me je ve sa di",
+    "start": "Début",
+    "end": "Fin",
+    "apply": "Appliquer",
+    "follow": "Suivre les derniers enregistrements si la fin est maintenant",
+    "overview": "Afficher l’aperçu sur 30 jours et les événements",
+    "dayTip": {
+      "one": "{date} · {count} heure enregistrée · CPU en moyenne {cpu}",
+      "many": "{date} · {count} heures enregistrées · CPU en moyenne {cpu}",
+      "other": "{date} · {count} heures enregistrées · CPU en moyenne {cpu}"
+    },
+    "error": {
+      "format": "Saisissez les heures au format {example}",
+      "order": "La fin doit être postérieure au début",
+      "none": "Aucun enregistrement sur cette période (le premier date du {first})",
+      "empty": "Aucun enregistrement pour l’instant"
+    },
+    "heatTitle": "Aperçu sur 30 jours",
+    "heatHint": "Une case par heure",
+    "noRecord": "Aucun enregistrement",
+    "heat": {
+      "cpu": "Utilisation du CPU",
+      "gpu": "Utilisation du GPU",
+      "mem": "Utilisation de la mémoire",
+      "temp": "Température du CPU",
+      "net": "Réception réseau"
+    },
+    "eventsTitle": "Événements",
+    "eventsCount": {
+      "one": "{range} · {count} événement",
+      "many": "{range} · {count} événements",
+      "other": "{range} · {count} événements"
+    },
+    "noEvents": "Aucun événement les jours choisis",
+    "eventsLoading": "Recherche des événements…",
+    "filter": {
+      "all": "Tous",
+      "cpu": "CPU",
+      "temp": "Température",
+      "mem": "Mémoire",
+      "gpu": "GPU",
+      "net": "Réseau",
+      "disk": "Disque",
+      "gap": "Aucun enregistrement"
+    },
+    "event": {
+      "cpu": "Forte charge du CPU",
+      "temp": "CPU trop chaud",
+      "mem": "Mémoire saturée",
+      "gpu": "Forte charge prolongée du GPU",
+      "net": "Téléchargement important",
+      "disk": "Disque occupé"
+    },
+    "eventPeak": "{time} · pic {peak}"
+  },
+  "chooser": {
+    "search": "Rechercher une mesure",
+    "all": "Toutes",
+    "empty": "Aucune mesure correspondante"
+  },
+  "devicePart": {
+    "diskOf": "Lecture et écriture",
+    "diskActive": "Temps d’activité",
+    "diskResponse": "Temps de réponse moyen",
+    "deviceTemp": "Température",
+    "nicOf": "Envoi et réception",
+    "gpuUtil": "Utilisation",
+    "gpuDedicated": "Mémoire GPU dédiée",
+    "gpuShared": "Mémoire GPU partagée",
+    "gpuPower": "Puissance",
+    "gpuClock": "Vitesse",
+    "gpuFan": "Ventilateur"
   }
 }

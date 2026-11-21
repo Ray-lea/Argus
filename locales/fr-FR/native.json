@@ -73,7 +73,7 @@
       "ipv4Only": "Seules les connexions IPv4 TCP peuvent être fermées"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager n’a pas pu vérifier la cible ; les résultats ci-dessous proviennent de la recherche de handles"
+      "restartManagerFailed": "La vérification des fichiers n’a pas pu aboutir ; les résultats proviennent uniquement de la recherche de handles"
     },
     "handles": {
       "tooMany": "Vous pouvez rechercher jusqu’à 32 chemins à la fois, pour une longueur totale maximale de 8 KiB",
@@ -121,6 +121,7 @@
       "helperExited": "L’assistant de recherche de handles s’est arrêté prématurément ; seuls les résultats terminés sont affichés",
       "serviceIncomplete": "Le service privilégié n’a pas complété cette recherche, les résultats locaux sont donc affichés : {error}",
       "serviceIncompleteLocal": "Le service privilégié n’a pas complété cette recherche ; les résultats de la recherche locale sont affichés",
+      "bothIncomplete": "Ni le service privilégié ni la recherche locale n’ont abouti : {error}",
       "unavailable": "La recherche est temporairement indisponible",
       "serviceOutdated": "Le service privilégié ne prend pas en charge les recherches de handles, alors mettez à jour le service ; les résultats de la recherche locale sont affichés",
       "serviceUnavailable": "Le service privilégié n’est pas disponible, les résultats de la recherche locale sont donc affichés : {error}"

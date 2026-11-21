@@ -40,7 +40,7 @@
     "minimizedInterval": "最小化時的重新整理間隔",
     "minimizedIntervalHint": "預設 5 秒；更短的間隔會增加背景負擔。",
     "trayInterval": "背景常駐時的重新整理間隔",
-    "trayIntervalHint": "隱藏至系統匣後依此間隔取樣；長於 5 秒時，歷程記錄隨之變稀疏。",
+    "trayIntervalHint": "長於 5 秒時，歷程記錄隨之變稀疏。",
     "hotkey": "按 {hotkey} 可隨時顯示或隱藏 Argus，可在設定中變更。",
     "hotkeyOff": "顯示或隱藏 Argus 的全域快速鍵已停用，可在設定中重新開啟。",
     "hotkeyTaken": "{shortcut} 已被 Windows 或其他程式（包括另一個執行中的 Argus）佔用，可在設定中更換組合鍵。",
@@ -59,7 +59,7 @@
     "routeAuto": "自動",
     "routeDirect": "僅連線 GitHub",
     "routeProxy": "僅使用加速 Proxy",
-    "proxyNotice": "加速 Proxy 由第三方提供，可得知本機的 IP 位址及所下載的檔案；Argus 會透過簽章驗證拒絕遭竄改的更新。",
+    "proxyNotice": "加速 Proxy 由第三方提供，可得知本機的 IP 位址及所下載的檔案；安裝套件須通過簽章與版本號驗證。",
     "unavailable": "此版本不支援應用程式內更新。"
   },
   "privilege": {
@@ -105,7 +105,7 @@
     "pages": "{keys} 切換頁面，{search} 搜尋處理程序",
     "menu": "在處理程序上按一下滑鼠右鍵，可結束處理程序、調整優先順序、開啟效率模式或新增規則",
     "drop": "將檔案或資料夾拖放到視窗，查詢使用它的處理程序",
-    "history": "歷程記錄頁記錄最近 7 天的資源佔用以及當時最忙碌的處理程序",
+    "history": "歷程記錄頁記錄資源佔用以及當時最忙碌的處理程序",
     "reopen": "可隨時在「關於」頁重新開啟本導覽。"
   },
   "administrator": "可允許 Argus 自動以系統管理員身分執行，以管理其他帳戶的處理程序與啟動項目。預設關閉；首次開啟時由 Windows 請求授權。"

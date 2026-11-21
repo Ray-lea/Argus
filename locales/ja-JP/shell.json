@@ -50,11 +50,22 @@
   },
   "pause": "更新を一時停止",
   "resume": "更新を再開",
+  "window": {
+    "onTop": "常に手前に表示",
+    "onTopOff": "常に手前に表示を解除"
+  },
   "more": {
     "label": "その他の操作",
     "runTask": "新しいタスクの実行…",
     "fileLock": "ファイルを使用しているプロセスを検索…",
-    "fileLockDetail": "ドロップも可"
+    "fileLockDetail": "ドロップも可",
+    "exportCsv": "現在のページを CSV としてエクスポート…",
+    "csvFile": "CSV ファイル",
+    "csvSaved": "CSV ファイルをエクスポートしました。",
+    "csvFailed": "CSV ファイルを保存できませんでした。フォルダーへの書き込み権限と、ファイルが使用中かどうかを確認してください。",
+    "csvRows": {
+      "other": "{count}行"
+    }
   },
   "details": {
     "label": "詳細ペイン",

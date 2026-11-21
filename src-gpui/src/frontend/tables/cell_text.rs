@@ -148,6 +148,10 @@ impl Element for CellText {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        // The cell's text, for assistive technology: it names the cell. Rows
+        // that draw their own cells (`body`) are not drawn while assistive
+        // technology reads the window (`NativeTable::draws_rows`).
+        window.report_a11y_text(&self.text, bounds);
         // The box relative to the cell's layout, which `layout_bounds` snapped.
         let top = (f32::from(bounds.origin.y - window.element_offset().y) * window.scale_factor())
             .round();

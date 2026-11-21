@@ -16,7 +16,7 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
-    DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_GEOMETRY_EX, DISK_PERFORMANCE,
+    DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_EXTENT, DISK_GEOMETRY_EX, DISK_PERFORMANCE,
     IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, IOCTL_DISK_PERFORMANCE, IOCTL_STORAGE_QUERY_PROPERTY,
     PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
     STORAGE_TEMPERATURE_DATA_DESCRIPTOR, StorageDeviceProperty, StorageDeviceSeekPenaltyProperty,
@@ -759,6 +759,18 @@ fn volume_disks(handle: HANDLE) -> Result<Vec<u32>, u32> {
         return Err(13);
     }
     let extents = unsafe { std::slice::from_raw_parts(ext.Extents.as_ptr(), count) };
+    extent_disks(extents)
+}
+
+/// The disks holding a volume's extents. Virtual drives that look local
+/// answer the query too: Dokan (Google Drive's drive letter) reports one
+/// extent and fills in nothing else, which reads as an empty extent on disk
+/// 0. Space on a disk has a length, so a volume with an empty extent is on
+/// none of them.
+fn extent_disks(extents: &[DISK_EXTENT]) -> Result<Vec<u32>, u32> {
+    if extents.iter().any(|extent| extent.ExtentLength <= 0) {
+        return Err(13);
+    }
     let mut disks: Vec<_> = extents.iter().map(|extent| extent.DiskNumber).collect();
     disks.sort_unstable();
     disks.dedup();

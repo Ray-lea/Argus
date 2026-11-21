@@ -49,6 +49,9 @@ const STATS_GAP: f32 = 28.;
 const STACK_GAP: f32 = 20.;
 /// Widest a figure's explanation runs before it wraps.
 const HINT_WIDTH: f32 = 420.;
+/// How far a control in a details card's head reaches above and below the
+/// title's line (a segmented control is 32 px tall).
+const CARD_CONTROL_OVERHANG: f32 = 6.;
 /// Figures and specs go side by side once the figures' share holds this many
 /// columns: with fewer, the figures take more rows beside the specs than both
 /// take stacked.
@@ -250,18 +253,19 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
         ("disk", "disks", "disk", p.io),
         ("network", "nics", "nic", p.network),
         ("gpu", "gpus", "gpu", p.gpu),
+        ("npu", "npus", "npu", p.npu),
         ("battery", "batteries", "bat", p.battery),
     ] {
         for (index, item) in values(&hw[collection]).iter().enumerate() {
-            let info = &item["info"];
-            let identity = if kind == "disk" {
-                info["index"].to_string()
-            } else {
-                text(info, "id").into()
+            let info = if kind == "npu" { item } else { &item["info"] };
+            let identity = match kind {
+                "disk" => info["index"].to_string(),
+                _ => text(info, "id").into(),
             };
             let title = match kind {
                 "disk" => disk_title(info),
                 "gpu" => format!("{} {index}", label("common.resource.gpu")),
+                "npu" => format!("{} {index}", label("common.resource.npu")),
                 "battery" if batteries > 1 => {
                     tr!("performance.battery.titleNumbered", id = text(info, "id"))
                 }
@@ -363,6 +367,13 @@ fn device_row<E: Styled>(row: E, p: Palette, height: Pixels) -> E {
 
 fn missing() -> String {
     label("format.missing")
+}
+/// Whole-percent utilization of an NPU, or `None` when no reading is available.
+fn npu_percent(npu: &Value) -> Option<u64> {
+    npu["util"]
+        .as_f64()
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0., 100.).round() as u64)
 }
 fn ghz(mhz: f64) -> String {
     crate::regional::number!("{:.2} GHz", mhz / 1000.)
@@ -1040,6 +1051,9 @@ impl Desktop {
                 }
                 parts.join("  ")
             }
+            "npu" => npu_percent(&hw["npus"][device.index])
+                .map(|v| format!("{v}%"))
+                .unwrap_or_else(missing),
             "battery" => {
                 let battery = &hw["batteries"][device.index];
                 let percent = format!("{}%", number(battery, "percent").round());
@@ -1084,6 +1098,10 @@ impl Desktop {
             ),
             "gpu" => (
                 vec![Line::new(format!("hardware.gpus.{}.util", device.index), c)],
+                Scale::Fixed(100.),
+            ),
+            "npu" => (
+                vec![Line::new(format!("hardware.npus.{}.util", device.index), c)],
                 Scale::Fixed(100.),
             ),
             _ => (
@@ -1870,6 +1888,13 @@ impl Desktop {
             .gap_y(px(STAT_GAP_Y))
             .content_start()
             .children(stats);
+        if specs.is_empty() {
+            return div()
+                .mt(px(20.))
+                .flex_shrink_0()
+                .child(grid)
+                .into_any_element();
+        }
         let info = if spec_columns > 1 {
             // In reading order down each column, the columns as even as they go.
             let rows = specs.len().div_ceil(usize::from(spec_columns));
@@ -1951,10 +1976,51 @@ impl Desktop {
         body: impl IntoElement,
     ) -> AnyElement {
         let p = self.palette;
+        let summary = div()
+            .flex_1()
+            .min_w_0()
+            .truncate()
+            .text_right()
+            .text_size(theme::font(12.))
+            .text_color(if alert { p.danger } else { p.muted })
+            .child(summary.unwrap_or_default());
+        self.card_headed(title, note, summary.into_any_element(), alert, body)
+    }
+    /// A details card whose head ends in a control in place of the summary.
+    /// The control overhangs the title's line rather than heighten the head,
+    /// so the card's body stays where a card without one puts it. Where the
+    /// title leaves it too little room it takes a line of its own, at the
+    /// right: it keeps its width (no `min_w_0`), and the head wraps.
+    fn card_with_control(
+        &self,
+        title: String,
+        note: Option<String>,
+        control: AnyElement,
+        body: impl IntoElement,
+    ) -> AnyElement {
+        let control = div()
+            .flex_1()
+            .flex()
+            .justify_end()
+            .my(px(-CARD_CONTROL_OVERHANG))
+            .child(control);
+        self.card_headed(title, note, control.into_any_element(), false, body)
+    }
+    fn card_headed(
+        &self,
+        title: String,
+        note: Option<String>,
+        trailing: AnyElement,
+        alert: bool,
+        body: impl IntoElement,
+    ) -> AnyElement {
+        let p = self.palette;
         self.card_frame(alert)
             .child(
                 div()
                     .flex()
+                    // Only a control wraps: a summary shrinks and truncates.
+                    .flex_wrap()
                     .items_baseline()
                     .gap_4()
                     .mb(px(12.))
@@ -1977,16 +2043,7 @@ impl Desktop {
                                 )
                             }),
                     )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_right()
-                            .text_size(theme::font(12.))
-                            .text_color(if alert { p.danger } else { p.muted })
-                            .child(summary.unwrap_or_default()),
-                    ),
+                    .child(trailing),
             )
             .child(body)
             .into_any_element()
@@ -2033,6 +2090,7 @@ impl Desktop {
             "disk" => self.disk_view(device, window, cx),
             "network" => self.nic_view(device, window, cx),
             "gpu" => self.gpu_view(device, window, cx),
+            "npu" => self.npu_view(device, window, cx),
             "battery" => self.battery_view(device, window, cx),
             _ => Vec::new(),
         };
@@ -3754,6 +3812,41 @@ impl Desktop {
             self.perf_stats(stats, rows, false, window),
         ]
     }
+    fn npu_view(
+        &self,
+        device: &Device,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let p = self.palette;
+        let npu = &self.snapshot["hardware"]["npus"][device.index];
+        let util = npu_percent(npu);
+        let stats = vec![self.stat(
+            label("performance.npu.utilization"),
+            util.map(|v| v.to_string()).unwrap_or_else(missing),
+            util.map(|_| "%".into()),
+            None,
+            cx,
+        )];
+        vec![
+            self.perf_head(device.title.clone(), Some(device.model.clone()), None, cx),
+            self.chart_view(
+                "npu-utilization",
+                &[Line::new(
+                    format!("hardware.npus.{}.util", device.index),
+                    p.npu,
+                )],
+                Some(Scale::Fixed(100.)),
+                ChartHeight::Fill,
+                Look::boxed(label("performance.npu.utilizationChart"))
+                    .top("100%")
+                    .format(MetricFormat::RoundPercent)
+                    .min_height(px(MAIN_MIN)),
+                cx,
+            ),
+            self.perf_stats(stats, Vec::new(), false, window),
+        ]
+    }
     fn battery_view(
         &self,
         device: &Device,
@@ -3945,7 +4038,10 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{StatsLayout, cpu_power, stats_layout};
+    use super::{
+        Palette, StatsLayout, available_devices, cpu_power, npu_percent, selected_device,
+        stats_layout,
+    };
     use serde_json::json;
 
     #[test]
@@ -4057,5 +4153,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn npu_selection_survives_another_adapter_leaving() {
+        let adapter = |id: &str| json!({"id": id, "name": "Example NPU"});
+        let list = |npus: Vec<serde_json::Value>| {
+            available_devices(&json!({"hardware": {"npus": npus}}), Palette::default())
+        };
+        let listed = list(vec![adapter("a"), adapter("b")]);
+        let npus: Vec<_> = listed.iter().filter(|d| d.kind == "npu").collect();
+        assert_eq!(
+            [npus[0].id.as_str(), npus[1].id.as_str()],
+            ["npu:a", "npu:b"]
+        );
+        assert_ne!(npus[0].stable, npus[1].stable);
+        for (devices, expected) in [(vec![adapter("b")], "npu:b"), (vec![], "cpu")] {
+            let listed = list(devices);
+            let index = selected_device(&listed, &vec![true; listed.len()], "npu:b");
+            assert_eq!(listed[index].id, expected);
+        }
+        assert_eq!(npu_percent(&json!({"util": null})), None);
+        assert_eq!(npu_percent(&json!({"util": 0.0})), Some(0));
     }
 }

@@ -524,7 +524,10 @@ impl Desktop {
             cx.background_executor().timer(remaining).await;
             let _ = this.update(cx, |this, cx| {
                 this.entrance_queued = false;
-                if this.list_page_entering(cx) {
+                // The entrance restarts with its first frames (`hold_entrance`):
+                // the history page, which waits for it too, may still be sliding.
+                if this.list_page_entering(cx) || (this.page == "history" && this.page_entering(cx))
+                {
                     // Another page change: wait for its entrance instead.
                     this.after_entrance(cx);
                     return;

@@ -1,4 +1,5 @@
 {
+  "about": "用隔离窗口复核触摸操作：进程树、重新排序后的长按目标、菜单、图表、150% 界面缩放下的页面滚动，以及滚动条的拖动与取消。触点识别本身由 `cargo test -p argus --test touch_input` 覆盖。",
   "window": [1240, 860],
   "steps": [
     {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"pid","desc":false}},"sample":{"set":{"/system/processCount":3,"/processes":[
@@ -25,7 +26,7 @@
     {"control":{"touch":{"event":"up","id":14}},"wait":100},
     {"control":{"keys":["escape"]},"wait":100},
     {"control":{"page":"performance","device":"cpu"},"wait":600},
-    {"control":{"touch":{"at":"cpu-graphs","event":"down","id":6}},"wait":650,"inspect":"menu","label":"chart-long-press","expect":{"state.open":true,"state.items":["显示内核时间"]},"capture":"chart-long-press"},
+    {"control":{"touch":{"at":"cpu-graphs","event":"down","id":6}},"wait":650,"inspect":"menu","label":"chart-long-press","expect":{"state.open":true,"state.items":["整体视图","多核视图","","显示内核时间"]},"capture":"chart-long-press"},
     {"control":{"touch":{"event":"up","id":6}},"wait":100},
     {"control":{"keys":["escape"]},"wait":100},
     {"control":{"touch":{"at":"device-cpu","event":"down","id":12}},"wait":850,"inspect":"menu","label":"device-long-press","expect":{"state.open":true}},

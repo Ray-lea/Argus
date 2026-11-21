@@ -4,7 +4,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 import { compareChartPixels } from "./lib/capture-pixels.mjs";
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -36,6 +36,7 @@ assert(!(chartScroll && (live || retained || snapshots)), "chart scroll checks u
 assert(!(live && retained), "retained comparisons require a fixed fixture");
 assert(!(snapshots && (live || retained)), "snapshot comparisons require a fixed fixture");
 const output = resolve("target/native-validation", label);
+const logs = [];
 mkdirSync(output, { recursive: true });
 const metadata = JSON.parse(readFileSync("resources/app.json"));
 const identifier = `${metadata.identifier}.test.${label}`;
@@ -825,15 +826,17 @@ try {
     resolve(output, "events.json"),
     JSON.stringify({ identifier, events, stderr: error, exitCode }, null, 2),
   );
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
 if (exitCode !== 0 || error || events.some((e) => e.event === "focusViolation"))
-  throw Error(`Native validation failed: ${error}`);
+  throw Error(`Native validation failed: ${[error, ...panics(logs)].join("\n")}`);
 for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.endsWith("-dialog"))) {
   assert(event.dragPoints > 0, `${event.label}: empty title bar lost its native drag region`);
   assert(event.actionsAreClient, `${event.label}: search box or page bar controls were classified as draggable caption`);
   assert(event.stretchDrags, `${event.label}: the page bar's empty stretch does not drag the window`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
+  assert(event.keepOnTopIsClient, `${event.label}: the keep-on-top button was classified as a caption area`);
+  assert(event.underCaptionsDrags, `${event.label}: the title row under the caption buttons does not drag the window`);
 }
 if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions && !scrollCopy) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {

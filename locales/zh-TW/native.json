@@ -69,7 +69,7 @@
       "ipv4Only": "只能關閉 IPv4 TCP 連線"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager 無法檢查目標，以下為控制代碼查詢結果"
+      "restartManagerFailed": "未能完成檔案檢查，結果僅來自控制代碼查詢"
     },
     "handles": {
       "tooMany": "一次最多查詢 32 個路徑，路徑總長度不能超過 8 KiB",
@@ -117,6 +117,7 @@
       "helperExited": "控制代碼查詢輔助處理程序提前結束，以下僅為已完成的結果",
       "serviceIncomplete": "特殊權限服務未完成此次查詢，以下為本機結果：{error}",
       "serviceIncompleteLocal": "特殊權限服務未完成此次查詢，以下為本機查詢結果",
+      "bothIncomplete": "特殊權限服務與本機查詢均未完成：{error}",
       "unavailable": "查詢暫時不可用",
       "serviceOutdated": "特殊權限服務未提供控制代碼查詢，請更新服務；以下為本機查詢結果",
       "serviceUnavailable": "特殊權限服務無法使用，以下為本機查詢結果：{error}"

@@ -18,7 +18,7 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::System::WindowsProgramming::QueryProcessCycleTime;
 
-use crate::cpu::{CycleBudget, CycleClock, SystemCycles};
+use crate::cpu::{CycleBudget, CycleClock, CycleUsage, SystemCycles, cycle_usage};
 use crate::meta::{FileMeta, MetaStore};
 use crate::nt::{
     ProcessEntry, ProcessIter, THREAD_STATE_WAITING, WAIT_REASON_SUSPENDED,
@@ -230,6 +230,9 @@ pub(crate) struct ProcessTracker {
     native_disk: bool,
     previous_cycles: Option<SystemCycles>,
     cycle_clock: CycleClock,
+    /// Total and per-processor usage from idle cycles over the latest
+    /// interval, where the processor clock checked out.
+    cycle_usage: Option<CycleUsage>,
 }
 
 impl ProcessTracker {
@@ -252,7 +255,14 @@ impl ProcessTracker {
             native_disk: crate::disk_process::standard_supported(),
             previous_cycles: None,
             cycle_clock: CycleClock::new(),
+            cycle_usage: None,
         }
+    }
+
+    /// CPU usage from idle cycles over the latest process interval, when the
+    /// processor clock checked out for it (`cpu::cycle_usage`).
+    pub fn cycle_usage(&self) -> Option<&CycleUsage> {
+        self.cycle_usage.as_ref()
     }
 
     /// When the latest accepted native counter query started.
@@ -293,6 +303,7 @@ impl ProcessTracker {
         precise_idle_fraction: Option<f64>,
     ) -> Vec<ProcessRow> {
         let poll_started = Instant::now();
+        self.cycle_usage = None;
         if let Some(reader) = &self.facts {
             for (key, facts) in reader.answers() {
                 if let Some(entry) = self.tracked.get_mut(&key) {
@@ -341,6 +352,10 @@ impl ProcessTracker {
             .as_ref()
             .zip(self.previous_cycles.as_ref())
             .and_then(|(n, p)| n.delta(p));
+        let idle_deltas = cycles
+            .as_ref()
+            .zip(self.previous_cycles.as_ref())
+            .and_then(|(n, p)| n.idle_deltas(p));
         let mut budget = CycleBudget::new(system_delta.map(|d| d.total()));
         self.previous_cycles = cycles;
         let elapsed = self
@@ -646,6 +661,9 @@ impl ProcessTracker {
                     row.cpu = (delta as f64 / capacity * 100.).clamp(0., 100.) as f32;
                 }
             }
+            self.cycle_usage = idle_deltas
+                .as_deref()
+                .and_then(|idle| cycle_usage(capacity, idle));
         }
         self.last_rows.clone_from(&rows);
         rows

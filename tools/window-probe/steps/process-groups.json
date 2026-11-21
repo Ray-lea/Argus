@@ -1,4 +1,5 @@
 {
+  "about": "检查进程页分组：按名称排序的三个分类及其颜色，滚动后分类标题固定在顶部、被下一组的标题推出，单击固定的标题折叠该组，按用户分组时用户标题与分类标题两层叠放，以及滚动时的组名在停止滚动后消失；另截取浅色主题、150% 缩放和横向滚动后的画面。`inspect columns` 的 `state.groups` 输出各分组的标题键、颜色与行数（`groups`）、固定的标题及其位置（`held`）和组名（`name`，未显示时为 `null`）。",
   "window": [1400, 900],
   "steps": [
     {"control":{"page":"processes","view":"apps","details":false,"motion":"off","preference":{"processSort":{"key":"name","desc":false},"groupByUser":"off"}},"wait":600,"inspect":"columns","label":"top","expect":{"state.groups.groups.length":3,"state.groups.groups.0.tone":"apps","state.groups.groups.1.tone":"background","state.groups.groups.2.tone":"windows","state.groups.held.length":0},"capture":"top"},

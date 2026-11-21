@@ -295,6 +295,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match key {
+            caption::KEEP_ON_TOP => {
+                self.keep_on_top(value.as_bool().unwrap_or(false));
+                cx.notify();
+                return;
+            }
             "hideSystem.processes" | "hideSystem.network" => {
                 self.prefs.set(key, value.as_bool().unwrap_or(false));
                 self.rebuild_rows(false, cx);
@@ -308,6 +313,15 @@ impl Desktop {
                     self.rebuild_rows(self.holds_order(), cx);
                 }
                 cx.notify();
+                return;
+            }
+            // Leak alerts apply to the sample on screen at once.
+            leaks::ALERTS => {
+                self.set_leak_alerts(value.as_bool().unwrap_or(true), cx);
+                return;
+            }
+            leaks::IGNORED => {
+                self.set_ignored_leaks(serde_json::from_value(value).unwrap_or_default(), cx);
                 return;
             }
             model::USER_GROUPING => {
@@ -457,6 +471,7 @@ impl Desktop {
                 return;
             }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
+            DISK_RAW_HEX => self.disk_raw_hex = value.as_bool().unwrap_or(false),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {
                     self.read_disk_details(index, window, cx);

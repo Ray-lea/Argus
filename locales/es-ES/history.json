@@ -3,12 +3,13 @@
     "peak": "Máximo {value}"
   },
   "copied": {
-    "name": "nombre"
+    "name": "nombre",
+    "namePid": "nombre y PID"
   },
   "noRecordAt": "No hay registros en este momento",
   "earliest": "Registro más antiguo",
-  "note": "Las lecturas y los procesos más activos se registran cada 5 segundos, con lecturas por segundo de los últimos 10 minutos; minimizado o en la bandeja, al intervalo de actualización de allí si es más largo. Se conservan 7 días.",
-  "off": "El registro del historial está desactivado; no se registran datos nuevos. <link>Abrir Configuración</link>",
+  "note": "Normalmente se registra cada 5 segundos, o con menor frecuencia si el muestreo en segundo plano es más lento. Se conserva cada muestra de los últimos 10 minutos.",
+  "off": "El registro del historial está desactivado. <link>Abrir Configuración</link>",
   "watch": {
     "title": "Observación de proceso",
     "empty": "Elija «Observar esta instancia» en los detalles de un solo proceso para registrar memoria fuera de la lista principal.",
@@ -16,7 +17,7 @@
     "target": "Observando {name} (PID {pid})",
     "stop": "Detener registro",
     "delete": "Eliminar registro",
-    "note": "Solo esta instancia; hasta 1 hora, 720 puntos y 1 MiB. Muestras normalmente cada 5 segundos; un muestreo más lento puede dejar huecos. El crecimiento del conjunto de trabajo no prueba una fuga. Detener conserva datos; Eliminar detiene y borra este registro.",
+    "note": "Solo se registra esta instancia, durante un máximo de 1 hora. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro.",
     "metric": {
       "memory": "Conjunto de trabajo privado",
       "commit": "Memoria privada comprometida"
@@ -44,8 +45,8 @@
     "runSummary": "Se muestran {shown}/{total} inicios; {points} puntos guardados en este inicio",
     "earlier": "Puntos anteriores",
     "latest": "Últimos puntos",
-    "programNote": "Los inicios actuales y futuros de esta ruta de imagen se registran por separado. Hasta 7 días, 131072 puntos y 9 MiB; el primer límite alcanzado elimina los datos más antiguos. Hasta 512 instancias simultáneas. La lista muestra los últimos 256 inicios; cada página hasta 1000 puntos guardados y marcas de huecos. Los puntos anteriores siguen disponibles. Normalmente cada 5 segundos; un muestreo más lento deja huecos. El crecimiento del conjunto de trabajo no demuestra una fuga. Detener conserva los datos; Eliminar los borra. Reiniciar Argus no reanuda la grabación.",
-    "damaged": "Algunos registros no superaron la comprobación de integridad; los intervalos ausentes siguen siendo huecos.",
+    "programNote": "Cada ejecución desde la misma ruta se registra por separado. Los datos se conservan hasta 7 días. Si se alcanza el límite de almacenamiento, se borran antes los más antiguos. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro. Tras reiniciar Argus, se debe iniciar otra observación.",
+    "damaged": "Algunos registros están dañados. Los intervalos afectados quedan en blanco.",
     "earlierRuns": "Inicios anteriores",
     "latestRuns": "Últimos inicios",
     "waiting": "Esperando otro inicio",
@@ -55,29 +56,40 @@
   "range": {
     "5m": "5 minutos",
     "1h": "1 hora",
+    "3h": "3 horas",
     "6h": "6 horas",
     "1d": "1 día",
+    "3d": "3 días",
     "7d": "7 días",
     "30d": "30 días",
-    "all": "Todo"
+    "all": "Todo",
+    "custom": "Personalizado",
+    "customMenu": "Personalizado…"
   },
   "now": "Ahora",
   "live": {
     "on": "En directo",
-    "onTitle": "Muestra las lecturas más recientes: cada segundo hasta 6 horas y cada minuto en intervalos más largos. Haga clic para pausar",
+    "onTitle": "Pausar el seguimiento de las últimas lecturas",
     "off": "Volver a lo último",
-    "offTitle": "Volver a las lecturas más recientes y seguir actualizando (también con clic derecho en el gráfico o con Fin)"
+    "offTitle": "Seguir de nuevo las últimas lecturas (clic derecho en el gráfico o tecla End)"
   },
   "toast": {
     "latest": "De vuelta a lo último",
     "paused": "Actualización en pausa"
   },
-  "more": "Más",
   "menu": {
     "band": "Mostrar el intervalo del mínimo al máximo",
     "settings": "Configuración del historial…",
     "needsService": "Requiere el servicio privilegiado",
-    "notRecorded": "Sin registros"
+    "notRecorded": "Sin registros",
+    "curve": "Mostrar la curva en el gráfico",
+    "curveOff": "Quitar la curva del gráfico",
+    "copy": "Copiar nombre y PID",
+    "none": "Ninguna",
+    "showTitle": "Mostrar en la pista actual",
+    "addTitle": "Agregar una pista",
+    "overlayTitle": "Superponer una segunda lectura (eje derecho)",
+    "byService": "Lo proporciona el servicio privilegiado"
   },
   "group": {
     "cpu": "Procesador",
@@ -186,20 +198,27 @@
     "add": "Superponer",
     "addTitle": "Superponer una segunda lectura en el eje derecho",
     "shared": "Comparte el eje izquierdo",
-    "right": "Eje derecho"
+    "right": "Eje derecho",
+    "remove": "Quitar la superposición",
+    "change": "Cambiar la lectura superpuesta"
   },
   "unrecorded": {
     "title": "No hay registros de {name}",
-    "hint": "Esta lectura no se registra en este equipo; puede faltar el dispositivo o el contador que necesita.",
+    "hint": "Es posible que el dispositivo o contador no esté disponible.",
     "serviceTitle": "{name} requiere el servicio privilegiado",
-    "serviceHint": "El servicio privilegiado lee los sensores del procesador mediante los módulos fijos de PawnIO. Tras instalarlo, el registro empieza con la siguiente muestra; los periodos anteriores quedan en blanco.",
+    "serviceHint": "El registro comienza en la siguiente muestra tras activar el servicio. Los intervalos anteriores quedan en blanco.",
     "install": "Instalar el servicio privilegiado…"
   },
   "tip": {
     "second": "Lectura por segundo",
     "frame": "Registro de 5 segundos",
     "average": "Promedio",
-    "hint": "Clic para fijar · Clic derecho para lo último · Esc para borrar"
+    "hint": "Clic para fijar · Clic derecho para lo último · Esc para borrar",
+    "otherPrograms": {
+      "one": "{count} programa más",
+      "many": "{count} programas más",
+      "other": "{count} programas más"
+    }
   },
   "tab": {
     "add": "Mostrar en una nueva pista",
@@ -214,7 +233,22 @@
     "loading": "Leyendo…",
     "modeMoment": "Momento",
     "modeRange": "Intervalo",
-    "columns": "Columnas"
+    "columns": "Columnas",
+    "chooser": {
+      "moment": "Columnas de «Momento»",
+      "range": "Columnas de «Intervalo»"
+    },
+    "trend": "Minigráficos de tendencia",
+    "resetColumns": "Restaurar columnas predeterminadas",
+    "rest": {
+      "one": "{count} proceso más",
+      "many": "{count} procesos más",
+      "other": "{count} procesos más"
+    },
+    "search": "Buscar procesos",
+    "emptyRange": "No hay procesos registrados en este intervalo",
+    "netService": "Con permisos estándar, el registro del uso de red por proceso requiere el servicio privilegiado.",
+    "live": "Procesos más recientes"
   },
   "column": {
     "moment": {
@@ -247,7 +281,8 @@
       "threads": "Subprocesos",
       "handles": "Identificadores"
     },
-    "trend": "Tendencia · {name}"
+    "trend": "Tendencia · {name}",
+    "trendTitle": "Cambio en el intervalo seleccionado, con la lectura de la pista superior"
   },
   "trend": {
     "cpu": "CPU",
@@ -259,5 +294,101 @@
   "clearCursor": "Quitar el cursor (Esc)",
   "selection": {
     "zoom": "Ampliar la selección"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "Elija una carpeta con permiso de escritura indicada con su ruta completa; la ubicación nueva y la actual no pueden contenerse entre sí.",
+    "move": "No se pudo mover el historial. Compruebe si el destino tiene archivos con el mismo nombre y los permisos de acceso de ambas carpetas.",
+    "save": "No se pudo guardar la configuración del historial.",
+    "open": "No se pudo abrir la carpeta del historial en el Explorador de archivos.",
+    "clear": "No se pudo borrar el historial. Compruebe los permisos de la carpeta y si hay archivos en uso."
+  },
+  "picker": {
+    "title": "Intervalo personalizado",
+    "last5m": "Últimos 5 minutos",
+    "last15m": "Últimos 15 minutos",
+    "last1h": "Última hora",
+    "last6h": "Últimas 6 horas",
+    "last24h": "Últimas 24 horas",
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "last7d": "Últimos 7 días",
+    "last30d": "Últimos 30 días",
+    "all": "Todos los registros",
+    "month": "{month} {year}",
+    "weekdays": "lu ma mi ju vi sá do",
+    "start": "Inicio",
+    "end": "Fin",
+    "apply": "Aplicar",
+    "follow": "Seguir los registros más recientes si termina ahora",
+    "overview": "Mostrar el resumen de 30 días y los eventos",
+    "dayTip": {
+      "one": "{date} · {count} hora registrada · CPU media {cpu}",
+      "many": "{date} · {count} horas registradas · CPU media {cpu}",
+      "other": "{date} · {count} horas registradas · CPU media {cpu}"
+    },
+    "error": {
+      "format": "Escriba las horas como {example}",
+      "order": "El fin debe ser posterior al inicio",
+      "none": "No hay registros en ese periodo (el primero es del {first})",
+      "empty": "Aún no hay registros"
+    },
+    "heatTitle": "Resumen de 30 días",
+    "heatHint": "Una celda por hora",
+    "noRecord": "Sin registros",
+    "heat": {
+      "cpu": "Uso de CPU",
+      "gpu": "Uso de GPU",
+      "mem": "Uso de memoria",
+      "temp": "Temperatura de la CPU",
+      "net": "Recepción de red"
+    },
+    "eventsTitle": "Eventos",
+    "eventsCount": {
+      "one": "{range} · {count} evento",
+      "many": "{range} · {count} eventos",
+      "other": "{range} · {count} eventos"
+    },
+    "noEvents": "No hay eventos en los días elegidos",
+    "eventsLoading": "Buscando eventos…",
+    "filter": {
+      "all": "Todos",
+      "cpu": "CPU",
+      "temp": "Temperatura",
+      "mem": "Memoria",
+      "gpu": "GPU",
+      "net": "Red",
+      "disk": "Disco",
+      "gap": "Sin registros"
+    },
+    "event": {
+      "cpu": "Carga alta de CPU",
+      "temp": "CPU demasiado caliente",
+      "mem": "Memoria escasa",
+      "gpu": "Carga alta prolongada de GPU",
+      "net": "Descarga intensa",
+      "disk": "Disco ocupado"
+    },
+    "eventPeak": "{time} · máximo {peak}"
+  },
+  "chooser": {
+    "search": "Buscar lecturas",
+    "all": "Todas",
+    "empty": "No hay lecturas que coincidan"
+  },
+  "devicePart": {
+    "diskOf": "Lectura y escritura",
+    "diskActive": "Tiempo de actividad",
+    "diskResponse": "Tiempo medio de respuesta",
+    "deviceTemp": "Temperatura",
+    "nicOf": "Envío y recepción",
+    "gpuUtil": "Uso",
+    "gpuDedicated": "Memoria dedicada de GPU",
+    "gpuShared": "Memoria compartida de GPU",
+    "gpuPower": "Potencia",
+    "gpuClock": "Velocidad",
+    "gpuFan": "Ventilador"
   }
 }

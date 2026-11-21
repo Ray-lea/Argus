@@ -129,6 +129,9 @@
   "copyWhat": {
     "path": "パス",
     "name": "名前",
+    "imageName": "イメージ名",
+    "commandLine": "コマンド ライン",
+    "details": "詳細",
     "version": "バージョン番号"
   }
 }

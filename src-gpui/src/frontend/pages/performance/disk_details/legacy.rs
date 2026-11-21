@@ -1,7 +1,10 @@
 //! ATA/SCSI health cards and raw attributes, with model-specific SSD readings.
 use super::*;
 
-fn raw_hex(value: &Value) -> String {
+/// An ATA attribute's six raw bytes (least significant first) as one
+/// number: all twelve digits in hexadecimal, or decimal in the regional
+/// grouping, as CrystalDiskInfo reads them.
+fn raw_bytes(value: &Value, hex: bool) -> String {
     let Some(bytes) = value.as_array().filter(|bytes| bytes.len() == 6) else {
         return missing();
     };
@@ -12,14 +15,19 @@ fn raw_hex(value: &Value) -> String {
     else {
         return missing();
     };
-    format!(
-        "0x{}",
-        bytes
-            .iter()
-            .rev()
-            .map(|byte| format!("{byte:02X}"))
-            .collect::<String>()
-    )
+    if hex {
+        format!(
+            "0x{}",
+            bytes
+                .iter()
+                .rev()
+                .map(|byte| format!("{byte:02X}"))
+                .collect::<String>()
+        )
+    } else {
+        let number = bytes.iter().rev().fold(0u64, |sum, byte| (sum << 8) | byte);
+        crate::regional::digits(&number.to_string())
+    }
 }
 
 fn ata_name(id: u64, details: &Value) -> String {
@@ -73,6 +81,26 @@ fn ata_name(id: u64, details: &Value) -> String {
     label(&format!("performance.disk.ata.{key}"))
 }
 
+/// Whether the drive predicts its failure: its own verdict (SMART RETURN
+/// STATUS or Windows' prediction) where that came back. USB bridges often
+/// lose the registers that carry it; then, as smartmontools does, the
+/// attribute check stands in, since the drive fails SMART exactly when a
+/// pre-failure attribute reaches its threshold (`failing`). Without any
+/// threshold there is nothing to check against.
+fn predicted_failure(health: &Value) -> Option<bool> {
+    health["predictFailure"].as_bool().or_else(|| {
+        let attributes = values(&health["attributes"]);
+        attributes
+            .iter()
+            .any(|attribute| attribute["threshold"].is_u64())
+            .then(|| {
+                attributes
+                    .iter()
+                    .any(|attribute| boolean(attribute, "failing"))
+            })
+    })
+}
+
 fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static str>) {
     let mut reasons = Vec::new();
     let spare_low = summary["availableSparePercent"]
@@ -100,11 +128,12 @@ fn assess_legacy(health: &Value, summary: &Value) -> (&'static str, Vec<&'static
             reasons.push(reason);
         }
     }
-    let state = if health["predictFailure"].as_bool() == Some(true) || spare_low {
+    let predicted = predicted_failure(health);
+    let state = if predicted == Some(true) || spare_low {
         "bad"
     } else if !reasons.is_empty() {
         "caution"
-    } else if health["predictFailure"].as_bool() == Some(false) {
+    } else if predicted == Some(false) {
         "good"
     } else {
         "unknown"
@@ -313,7 +342,7 @@ impl Desktop {
         details: &Value,
         width: f32,
         window: &Window,
-        cx: &App,
+        cx: &Context<Self>,
     ) -> Vec<AnyElement> {
         let health = &details["smartHealth"];
         let p = self.palette;
@@ -334,7 +363,7 @@ impl Desktop {
                             grouped(&attribute["current"]),
                             grouped(&attribute["worst"]),
                             grouped(&attribute["threshold"]),
-                            raw_hex(&attribute["raw"]),
+                            raw_bytes(&attribute["raw"], self.disk_raw_hex),
                         ],
                         boolean(attribute, "failing"),
                     )
@@ -382,11 +411,10 @@ impl Desktop {
                 })
                 .collect();
             let body = self.table_lanes(tables).text_size(size);
-            cards.push(self.card(
+            cards.push(self.card_with_control(
                 label("performance.disk.smart"),
                 Some(source(health)),
-                None,
-                false,
+                self.disk_raw_switch(cx),
                 body,
             ));
         }
@@ -432,15 +460,33 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{assess_legacy, raw_hex};
+    use super::{assess_legacy, raw_bytes};
     use serde_json::json;
     #[test]
     fn raw_bytes_keep_all_six_bytes_and_leading_zeroes() {
-        assert_eq!(raw_hex(&json!([1, 2, 3, 4, 0, 0])), "0x000004030201");
         assert_eq!(
-            raw_hex(&json!([255, 255, 255, 255, 255, 255])),
+            raw_bytes(&json!([1, 2, 3, 4, 0, 0]), true),
+            "0x000004030201"
+        );
+        assert_eq!(
+            raw_bytes(&json!([255, 255, 255, 255, 255, 255]), true),
             "0xFFFFFFFFFFFF"
         );
+        // Decimal reads all six bytes as one number, least significant first
+        // (CrystalDiskInfo's 206158954529 for 0x003000080021).
+        let digits = |number: u64| crate::regional::digits(&number.to_string());
+        assert_eq!(
+            raw_bytes(&json!([0x21, 0, 8, 0, 0x30, 0]), false),
+            digits(206_158_954_529)
+        );
+        assert_eq!(
+            raw_bytes(&json!([255, 255, 255, 255, 255, 255]), false),
+            digits(0xFFFF_FFFF_FFFF)
+        );
+        assert_eq!(raw_bytes(&json!([0, 0, 0, 0, 0, 0]), false), "0");
+        for value in [json!([1, 2, 3]), json!([256, 0, 0, 0, 0, 0]), json!(null)] {
+            assert_eq!(raw_bytes(&value, false), super::missing(), "{value}");
+        }
     }
 
     #[test]
@@ -504,5 +550,33 @@ mod tests {
             assess_legacy(&json!({"predictFailure":true}), &sectors).0,
             "bad"
         );
+    }
+
+    #[test]
+    fn without_the_drives_verdict_the_thresholds_decide() {
+        // A USB bridge that returned the attributes and thresholds but not
+        // the registers of SMART RETURN STATUS.
+        let attributes = |failing: bool| {
+            json!({"predictFailure": null, "attributes": [
+                {"id": 5, "current": 100, "worst": 100, "threshold": 5, "failing": false},
+                {"id": 1, "current": 10, "worst": 10, "threshold": 16, "failing": failing},
+            ]})
+        };
+        assert_eq!(assess_legacy(&attributes(false), &json!({})).0, "good");
+        assert_eq!(assess_legacy(&attributes(true), &json!({})).0, "bad");
+        let sectors = json!({"reallocatedSectors": "1"});
+        assert_eq!(
+            assess_legacy(&attributes(false), &sectors),
+            ("caution", vec!["reallocated"])
+        );
+        // Without thresholds nothing says the drive passes.
+        let bare = json!({"attributes": [
+            {"id": 5, "current": 100, "worst": 100, "threshold": null, "failing": false},
+        ]});
+        assert_eq!(assess_legacy(&bare, &json!({})).0, "unknown");
+        // The drive's own verdict is not overruled.
+        let mut failed = attributes(false);
+        failed["predictFailure"] = json!(true);
+        assert_eq!(assess_legacy(&failed, &json!({})).0, "bad");
     }
 }

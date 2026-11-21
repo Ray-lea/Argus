@@ -392,6 +392,9 @@ impl Desktop {
                         rescale: Default::default(),
                         readout: Default::default(),
                         captions: None,
+                        redraw_alone: false,
+                        raster_span: None,
+                        corner: 0.,
                     }),
             );
         }

@@ -181,7 +181,7 @@ impl Element for InlineText {
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
@@ -189,41 +189,34 @@ impl Element for InlineText {
         let Some(body) = self.body.as_mut() else {
             return;
         };
-        body.prepaint(window, cx);
-        let layout = &self.layout;
-        let line_height = layout.line_height();
-        let last = layout.position_for_index(layout.len());
-        for (part, (range, size)) in self.parts.iter_mut().zip(&self.slots) {
-            if range.is_empty() {
-                continue;
+        // The sentence holds a placeholder word for each part, which
+        // assistive technology must not read: it gets the text instead.
+        window.with_a11y_text_hidden(true, |window| body.prepaint(window, cx));
+        if !window.is_a11y_active() {
+            for index in 0..self.parts.len() {
+                self.prepaint_part(index, window, cx);
             }
-            // The word's end lies on the line holding the word, even where
-            // a line starts after it.
-            let (Some(at), Some(line)) = (
-                layout.position_for_index(range.end),
-                layout.line_layout_for_index(range.start),
-            ) else {
-                continue;
-            };
-            let line = &line.unwrapped_layout;
-            let room = line.x_for_index(range.end) - line.x_for_index(range.start);
-            let top = match part.align {
-                Align::Middle => at.y + (line_height - size.height) / 2.,
-                Align::Baseline { baseline, drop } => {
-                    let text_baseline =
-                        at.y + (line_height - line.ascent - line.descent) / 2. + line.ascent;
-                    let top = text_baseline + drop - baseline;
-                    if last.is_some_and(|last| last.y > at.y) {
-                        top.min(at.y + line_height - size.height)
-                    } else {
-                        top
-                    }
-                }
-            };
-            let left = at.x - room / 2. - size.width / 2.;
-            part.element
-                .prepaint_at(window.pixel_snap_point(point(left, top)), window, cx);
+            return;
         }
+        // In the text's order: what comes before each part, then the part,
+        // which reports its own text. Markers go to parts as they do when
+        // the sentence is laid out.
+        let mut taken = vec![false; self.parts.len()];
+        let mut segment = String::new();
+        for c in self.text.clone().chars() {
+            match (0..self.parts.len())
+                .find(|&index| self.parts[index].marker == c && !taken[index])
+            {
+                Some(index) => {
+                    taken[index] = true;
+                    window.report_a11y_text(&segment, bounds);
+                    segment.clear();
+                    self.prepaint_part(index, window, cx);
+                }
+                None => segment.push(c),
+            }
+        }
+        window.report_a11y_text(&segment, bounds);
     }
 
     fn paint(
@@ -244,6 +237,46 @@ impl Element for InlineText {
                 part.element.paint(window, cx);
             }
         }
+    }
+}
+
+impl InlineText {
+    /// Prepaints part `index` over its word, if the text has its marker.
+    fn prepaint_part(&mut self, index: usize, window: &mut Window, cx: &mut App) {
+        let (range, size) = &self.slots[index];
+        if range.is_empty() {
+            return;
+        }
+        let layout = &self.layout;
+        let line_height = layout.line_height();
+        let last = layout.position_for_index(layout.len());
+        // The word's end lies on the line holding the word, even where a
+        // line starts after it.
+        let (Some(at), Some(line)) = (
+            layout.position_for_index(range.end),
+            layout.line_layout_for_index(range.start),
+        ) else {
+            return;
+        };
+        let part = &mut self.parts[index];
+        let line = &line.unwrapped_layout;
+        let room = line.x_for_index(range.end) - line.x_for_index(range.start);
+        let top = match part.align {
+            Align::Middle => at.y + (line_height - size.height) / 2.,
+            Align::Baseline { baseline, drop } => {
+                let text_baseline =
+                    at.y + (line_height - line.ascent - line.descent) / 2. + line.ascent;
+                let top = text_baseline + drop - baseline;
+                if last.is_some_and(|last| last.y > at.y) {
+                    top.min(at.y + line_height - size.height)
+                } else {
+                    top
+                }
+            }
+        };
+        let left = at.x - room / 2. - size.width / 2.;
+        part.element
+            .prepaint_at(window.pixel_snap_point(point(left, top)), window, cx);
     }
 }
 

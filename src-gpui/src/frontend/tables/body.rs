@@ -399,6 +399,44 @@ impl Frame {
         self.lane.set(Some(lane));
         lane
     }
+
+    /// The field at `x` across the rows as this frame laid them out: the
+    /// name column, or the scrolled column in view there; None past the
+    /// last column or before any row was laid out.
+    fn column_at(&self, x: Pixels) -> Option<usize> {
+        let lane = self.lane.get()?;
+        column_at(
+            &self.origins,
+            &self.widths,
+            self.name,
+            x - lane.left,
+            lane.offset.x,
+        )
+    }
+}
+
+/// The field at `x` from a row's left edge: 0 for the name column `name`
+/// wide, else one past the scrolled column (starting at `origins`,
+/// `widths` wide, scrolled by `offset`) that holds it.
+fn column_at(
+    origins: &[Pixels],
+    widths: &[Pixels],
+    name: Pixels,
+    x: Pixels,
+    offset: Pixels,
+) -> Option<usize> {
+    if x < px(0.) {
+        return None;
+    }
+    if x < name {
+        return Some(0);
+    }
+    let along = x - name - offset;
+    origins
+        .iter()
+        .zip(widths)
+        .position(|(origin, width)| along >= *origin && along < *origin + *width)
+        .map(|scrolled| scrolled + 1)
 }
 
 /// A row of the table: the row the component builds around the delegate's
@@ -457,13 +495,19 @@ fn row(
                     .border_color(outline),
             )
         })
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(move |state, _: &MouseDownEvent, _, cx| {
+        .on_mouse_down(MouseButton::Right, {
+            let frame = frame.clone();
+            cx.listener(move |state, event: &MouseDownEvent, _, cx| {
+                // The menu offers to copy the cell under the pointer.
+                let column = frame.column_at(event.position.x);
+                let delegate = state.delegate_mut();
+                delegate.context_column = column
+                    .and_then(|column| delegate.fields.get(column))
+                    .map(|field| field.key);
                 state.set_right_clicked_row(Some(index), cx);
                 cx.emit(TableEvent::RightClickedRow(Some(index)));
-            }),
-        )
+            })
+        })
         .on_click(cx.listener(move |state, event: &ClickEvent, _, cx| {
             cx.stop_propagation();
             state.set_selected_row(index, cx);
@@ -786,5 +830,33 @@ impl NativeTable {
                 state.set_selected_row((selected.unwrap_or(0) + page).min(rows - 1), cx);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::column_at;
+    use gpui_kit::gpui::{Pixels, px};
+
+    fn at(x: f32, offset: f32) -> Option<usize> {
+        let widths: Vec<Pixels> = vec![px(70.), px(100.), px(50.)];
+        let origins: Vec<Pixels> = vec![px(0.), px(70.), px(170.)];
+        column_at(&origins, &widths, px(200.), px(x), px(offset))
+    }
+
+    #[test]
+    fn the_pointer_finds_the_name_or_the_scrolled_column_under_it() {
+        assert_eq!(at(-1., 0.), None);
+        assert_eq!(at(0., 0.), Some(0));
+        assert_eq!(at(199., -40.), Some(0));
+        assert_eq!(at(200., 0.), Some(1));
+        assert_eq!(at(269., 0.), Some(1));
+        assert_eq!(at(270., 0.), Some(2));
+        assert_eq!(at(419., 0.), Some(3));
+        assert_eq!(at(420., 0.), None);
+        // Scrolled 80 px to the left: the second column shows first.
+        assert_eq!(at(200., -80.), Some(2));
+        assert_eq!(at(339., -80.), Some(3));
+        assert_eq!(at(340., -80.), None);
     }
 }

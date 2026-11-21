@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { t } from "./lib/console-language.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const icons = join(root, "resources", "icons");
@@ -26,7 +27,7 @@ const edge = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
 ].find(existsSync);
-if (!edge) throw new Error("找不到 Microsoft Edge");
+if (!edge) throw new Error(t("找不到 Microsoft Edge", "Microsoft Edge not found"));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const temp = mkdtempSync(join(tmpdir(), "argus-icons-"));
@@ -49,10 +50,10 @@ async function rasterize(sizes) {
     await sleep(200);
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      target = list.find((t) => t.type === "page");
+      target = list.find((entry) => entry.type === "page");
     } catch {}
   }
-  if (!target) throw new Error("Edge 没有启动调试端口");
+  if (!target) throw new Error(t("Edge 没有启动调试端口", "Edge did not open its debugging port"));
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener("open", r, { once: true }));
   let id = 0;

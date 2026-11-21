@@ -1,4 +1,5 @@
 {
+  "about": "检查指针悬停时进程表的排序暂停：指针停在列表上时用 `sample` 改变 CPU 读数，行序保持不变；随后双击展开、折叠，以及单击展开按钮，展开的行跟在所属条目之后，其余行不移动；指针移出列表后恢复排序；关闭 `holdOrderOnHover` 偏好后悬停不再保持行序。`inspectLayout.processTree` 的 `titles` 为各行标题，`heldOrder` 表示当前行序与排序结果不同。",
   "window": [1400, 900],
   "steps": [
     {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"cpu","desc":true}},"sample":{"set":{"/system/processCount":6,"/processes":[

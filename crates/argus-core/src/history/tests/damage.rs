@@ -3,17 +3,6 @@ use super::*;
 const DAY: i64 = 20_737;
 const TS: i64 = DAY * DAY_MS;
 
-fn legacy(magic: &[u8; 5], entry: usize) -> Vec<u8> {
-    let mut bytes = magic.to_vec();
-    bytes.extend([TAG_NAME, 0, 0, 1, b'p', TAG_FRAME]);
-    let mut head = [0; FRAME_HEAD];
-    head[..8].copy_from_slice(&TS.to_le_bytes());
-    head[60] = 1;
-    bytes.extend(head);
-    bytes.resize(bytes.len() + entry, 0);
-    bytes
-}
-
 fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     let path = day_path(dir, DAY);
     let mut main = MAGIC.to_vec();
@@ -37,6 +26,12 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     };
     packet(&mut main, INSTANCE, &serde_json::to_vec(&(0, id)).unwrap()).unwrap();
     packet(&mut main, PRESENCE, &[1]).unwrap();
+    packet(
+        &mut main,
+        PROGRAM,
+        &serde_json::to_vec(&(0, "p.exe")).unwrap(),
+    )
+    .unwrap();
     let rows = vec![0, 1, 0, 0, 128, 63, 1, 0, 0, 1, 2];
     let mut f = TS.to_le_bytes().to_vec();
     f.extend(1i64.to_le_bytes());
@@ -44,7 +39,10 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
     f.extend(0u64.to_le_bytes());
     f.extend((rows.len() as u32).to_le_bytes());
     f.extend(1f32.to_le_bytes());
-    packet(&mut main, V4_FRAME, &f).unwrap();
+    packet(&mut main, FRAME, &f).unwrap();
+    let mut programs = [0; PROGRAMS_LEN];
+    programs[..6].copy_from_slice(&[1, 0, 0, 0, 3, 0]);
+    packet(&mut main, PROGRAMS, &programs).unwrap();
     let mut sys = SystemRoll::default();
     sys.add(TS, &[1.], 1.);
     sys.finish(&mut main).unwrap();
@@ -73,6 +71,7 @@ fn v4_files(dir: &Path) -> [Vec<u8>; 4] {
 
 fn exercise(dir: &Path) {
     let keys = ["cpu".into(), "missing".into()];
+    std::hint::black_box(super::super::events(dir, TS, TS + ROLL_MS));
     std::hint::black_box(series(dir, TS, TS + ROLL_MS, ROLL_MS, TS, &keys));
     std::hint::black_box(channels(dir, TS, TS + ROLL_MS));
     std::hint::black_box(frame(dir, TS));
@@ -96,7 +95,7 @@ fn corrupt_run_address_reads_the_primary_and_matches_its_frames() {
     let (_, block) = next_packet(&idx).unwrap();
     let mut offset = None;
     packets(&block[8..], 0, |at, tag, _| {
-        if tag == FRAME_RUN {
+        if tag == FRAME_RUN || tag == FRAME_RUN_COUNTED {
             offset = Some(5 + 8 + at + 5 + 52);
         }
         true
@@ -306,25 +305,99 @@ impl Random {
 }
 
 #[test]
+fn a_corrupt_process_frame_never_replaces_the_source_day() {
+    let dir = temp_dir("merge-invalid");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    let [main, rows, ..] = v4_files(&dir);
+    let mut invalid_main = MAGIC.to_vec();
+    let duplicated = [rows.as_slice(), rows.as_slice()].concat();
+    packets(&main, 5, |_, tag, p| {
+        let mut payload = p.to_vec();
+        if tag == FRAME {
+            payload[28..32].copy_from_slice(&(duplicated.len() as u32).to_le_bytes());
+        }
+        packet(&mut invalid_main, tag, &payload).unwrap();
+        true
+    });
+    fs::write(&path, &invalid_main).unwrap();
+    fs::write(path.with_extension("proc"), &duplicated).unwrap();
+    assert!(minute::merge(&dir, DAY, 20).is_err());
+    assert_eq!(fs::read(&path).unwrap(), invalid_main);
+    assert_eq!(fs::read(path.with_extension("proc")).unwrap(), duplicated);
+    assert!(!path.with_extension("merge-tmp").exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn program_counts_survive_checkpoints_and_the_minute_merge() {
+    let dir = temp_dir("programs-fixture");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    for (ext, bytes) in ["hist", "proc", "idx", "roll"]
+        .into_iter()
+        .zip(v4_files(&dir))
+    {
+        fs::write(path.with_extension(ext), bytes).unwrap();
+    }
+    let expect = vec![ProgramCount {
+        name: "p.exe".into(),
+        count: 3,
+    }];
+    assert_eq!(frame(&dir, TS).unwrap().programs, expect);
+    minute::merge(&dir, DAY, 20).unwrap();
+    forget(&dir);
+    let merged = frame(&dir, TS).unwrap();
+    assert_eq!((merged.programs, merged.program_count), (expect, 1));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn days_of_other_versions_are_neither_read_nor_merged() {
+    let dir = temp_dir("other-version-merge");
+    fs::create_dir_all(&dir).unwrap();
+    let path = day_path(&dir, DAY);
+    fs::write(&path, b"ARGH\x02\x02\x00\x00\x00\x00").unwrap();
+    assert!(!minute::is_current(&path));
+    assert!(minute::merge(&dir, DAY, 0).is_err());
+    assert!(!path.with_extension("merge-tmp").exists());
+    maintenance::maintain_at(
+        &dir,
+        HistoryOptions {
+            detail: HistoryDetail::Minute7,
+            ..Default::default()
+        },
+        DAY + 8,
+        DAY + 8,
+        || false,
+    )
+    .unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"ARGH\x02\x02\x00\x00\x00\x00");
+    assert!(frame(&dir, TS).is_none());
+    assert!(table(&dir, TS, TS + 60_000, "cpu", 0).processes.is_empty());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn damaged_files_through_queries_and_reopen() {
     let disk_only = std::env::var("ARGUS_HISTORY_TEST_REAL_FILES").is_ok_and(|v| v == "1");
     std::thread::scope(|scope| {
-        for kind in 0usize..6 {
+        for kind in 2usize..7 {
             for lane in 0..2 {
                 scope.spawn(move || {
                     let dir = temp_dir(&format!("damage-{kind}-{lane}"));
                     fs::create_dir_all(&dir).unwrap();
                     let path = day_path(&dir, DAY);
                     let mut files = v4_files(&dir);
-                    let which = kind.saturating_sub(2);
-                    if kind < 2 {
-                        files[0] = if kind == 0 {
-                            legacy(LEGACY_MAGIC, ENTRY)
-                        } else {
-                            legacy(MAGIC_V3, ENTRY_V3)
-                        };
-                    }
+                    let which = if kind == 6 { 0 } else { kind.saturating_sub(2) };
                     let paths = ["hist", "proc", "idx", "roll"].map(|ext| path.with_extension(ext));
+                    if kind == 6 {
+                        for (p, b) in paths.iter().zip(&files) {
+                            fs::write(p, b).unwrap();
+                        }
+                        minute::merge(&dir, DAY, 20).unwrap();
+                        files = [fs::read(&path).unwrap(), Vec::new(), Vec::new(), Vec::new()];
+                    }
                     let mut rng = Random(0x4217_05bf + (kind * 2 + lane) as u64);
                     for case in (lane..2048).step_by(2) {
                         // The first ten cases per lane use real files. The full corpus
@@ -336,15 +409,11 @@ fn damaged_files_through_queries_and_reopen() {
                         for (i, p) in paths.iter().enumerate() {
                             let bytes = if i == which {
                                 rng.damage(&files[i], case)
-                            } else if kind >= 2 {
+                            } else if kind == 2 && i == 2 {
                                 // Exercise primary damage without an intact checkpoint masking it.
-                                if kind == 2 && i == 2 {
-                                    Vec::new()
-                                } else {
-                                    files[i].clone()
-                                }
+                                Vec::new()
                             } else {
-                                continue;
+                                files[i].clone()
                             };
                             let mut file = open_writable(p).unwrap();
                             file.set_len(0).unwrap();

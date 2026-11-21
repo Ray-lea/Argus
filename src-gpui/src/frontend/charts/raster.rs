@@ -84,6 +84,9 @@ struct Cache {
     requested_content: Option<u64>,
     pending: Option<Pending>,
     texture: Option<Texture>,
+    /// The view that draws the plot, when a landed texture draws it alone
+    /// (`TimePlot::redraw_alone`).
+    alone: Option<EntityId>,
 }
 /// The raster in flight.
 #[derive(Clone)]
@@ -280,13 +283,15 @@ struct Input {
     smooth: bool,
     phases: DashPhases,
     content: u64,
+    ticks: Option<(Arc<Vec<f64>>, Hsla)>,
+    corner: f32,
 }
 impl Input {
     fn new(plot: &TimePlot, size: Size<Pixels>, density: f32) -> Self {
         Self {
             series: plot.series.clone(),
             geometry_start: plot.geometry_start,
-            span: (plot.end - plot.start).max(1.),
+            span: plot.raster_span.unwrap_or(plot.end - plot.start).max(1.),
             min: plot.min,
             max: plot.max,
             fill: plot.fill,
@@ -296,6 +301,8 @@ impl Input {
             smooth: plot.smooth,
             phases: plot.dash_phases.clone(),
             content: plot.content(),
+            ticks: plot.ticks.clone(),
+            corner: plot.corner,
         }
     }
 }
@@ -316,7 +323,7 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     let mut key = std::collections::hash_map::DefaultHasher::new();
     for value in [
         plot.geometry_start,
-        plot.end - plot.start,
+        plot.raster_span.unwrap_or(plot.end - plot.start),
         plot.min,
         plot.max,
     ] {
@@ -332,7 +339,16 @@ fn key(plot: &TimePlot, size: Size<Pixels>, density: f32) -> u64 {
     }
     plot.fill.hash(&mut key);
     plot.smooth.hash(&mut key);
+    plot.corner.to_bits().hash(&mut key);
     plot.content().hash(&mut key);
+    if let Some((ticks, color)) = &plot.ticks {
+        for tick in ticks.iter() {
+            tick.to_bits().hash(&mut key);
+        }
+        for value in [color.h, color.s, color.l, color.a] {
+            value.to_bits().hash(&mut key);
+        }
+    }
     for series in plot.series.iter() {
         series.geometry_key.hash(&mut key);
         series.dashed.hash(&mut key);
@@ -396,6 +412,9 @@ pub(in crate::frontend) fn release_all(window: &mut Window, cx: &mut App) {
             *surface.borrow_mut() = Surface::default();
         }
     }
+    for (_, image) in SPARKS.with_borrow_mut(std::mem::take) {
+        let _ = window.drop_image(image);
+    }
     window.invalidate_render_cache();
 }
 
@@ -447,7 +466,9 @@ pub(super) fn prepare(
         density(window)
     };
     let revision = key(plot, bounds.size, density);
+    let alone = plot.redraw_alone.then(|| window.current_view());
     cache.update(cx, |cache, cx| {
+        cache.alone = alone;
         if reduced != cache.reduced {
             cache.pending = None;
             cache.key = None;
@@ -525,7 +546,10 @@ pub(super) fn prepare(
             task.await;
             let _ = cache.update_in(cx, |cache, window, cx| {
                 cache.settle(&slot, window);
-                cx.notify();
+                match cache.alone {
+                    Some(view) => window.request_isolated_view_redraw(view),
+                    None => cx.notify(),
+                }
             });
         })
         .detach();
@@ -709,6 +733,120 @@ fn dot_image(fill: Hsla, ring: Hsla, density: f32) -> Option<Arc<RenderImage>> {
     let buffer = image::RgbaImage::from_raw(side, side, pixels)?;
     let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
     DOTS.with_borrow_mut(|dots| dots.insert(key, image.clone()));
+    Some(image)
+}
+
+/// Trend images kept for reuse, the most recently painted last; the oldest
+/// leave the atlas as new ones come.
+const SPARKLINES: usize = 256;
+
+thread_local! {
+    static SPARKS: RefCell<std::collections::VecDeque<(u64, Arc<RenderImage>)>> =
+        const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// A table row's trend as an image `size` device pixels large: an area under
+/// a line through `trend` (unknown readings at zero), scaled to `top`. A
+/// trend drawn as vector paths kept the Windows renderer from caching the
+/// rest of the window and from moving curves on the compositor: every frame
+/// of a gliding chart on the same page was drawn whole.
+pub(in crate::frontend) fn sparkline_image(
+    trend: &[Option<f64>],
+    top: f64,
+    size: (u32, u32),
+    density: f32,
+    color: Hsla,
+    window: &mut Window,
+) -> Option<Arc<RenderImage>> {
+    let rgba: Rgba = color.into();
+    let key = super::hash_of((
+        trend
+            .iter()
+            .map(|v| v.map(f64::to_bits))
+            .collect::<Vec<_>>(),
+        top.to_bits(),
+        size,
+        [density, rgba.r, rgba.g, rgba.b, rgba.a].map(f32::to_bits),
+    ));
+    let cached = SPARKS.with_borrow_mut(|sparks| {
+        let index = sparks.iter().position(|(k, _)| *k == key)?;
+        let entry = sparks.remove(index)?;
+        let image = entry.1.clone();
+        sparks.push_back(entry);
+        Some(image)
+    });
+    if cached.is_some() {
+        return cached;
+    }
+    let (width, height) = size;
+    let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
+    let (w, h) = (width as f32, height as f32);
+    let last = (trend.len().max(2) - 1) as f32;
+    let at = |i: usize, v: f64| (w * i as f32 / last, h - h * (v / top).clamp(0., 1.) as f32);
+    let mut area = tiny_skia::PathBuilder::new();
+    let mut line = tiny_skia::PathBuilder::new();
+    for (i, value) in trend.iter().enumerate() {
+        let (x, y) = at(i, value.unwrap_or(0.));
+        if i == 0 {
+            area.move_to(x, h);
+            line.move_to(x, y);
+        } else {
+            line.line_to(x, y);
+        }
+        area.line_to(x, y);
+    }
+    area.line_to(w, h);
+    area.close();
+    let paint = |opacity: f32| -> Option<tiny_skia::Paint<'static>> {
+        Some(tiny_skia::Paint {
+            shader: tiny_skia::Shader::SolidColor(tiny_skia::Color::from_rgba(
+                rgba.r,
+                rgba.g,
+                rgba.b,
+                rgba.a * opacity,
+            )?),
+            anti_alias: true,
+            ..Default::default()
+        })
+    };
+    if let Some(path) = area.finish() {
+        pixmap.fill_path(
+            &path,
+            &paint(0.18)?,
+            tiny_skia::FillRule::Winding,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+    if let Some(path) = line.finish() {
+        let stroke = tiny_skia::Stroke {
+            width: 1.25 * density,
+            line_join: tiny_skia::LineJoin::Round,
+            ..Default::default()
+        };
+        pixmap.stroke_path(
+            &path,
+            &paint(0.9)?,
+            &stroke,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+    let mut pixels = pixmap.take();
+    straight_bgra(&mut pixels);
+    let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
+    let image = Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
+    let evicted = SPARKS.with_borrow_mut(|sparks| {
+        sparks.push_back((key, image.clone()));
+        let excess = sparks.len().saturating_sub(SPARKLINES);
+        sparks
+            .drain(..excess)
+            .map(|(_, image)| image)
+            .collect::<Vec<_>>()
+    });
+    for old in evicted {
+        let _ = window.drop_image(old);
+    }
     Some(image)
 }
 
@@ -1054,7 +1192,12 @@ fn clipped_run(plot: &Input, layout: Extent, run: &[(f64, f64)]) -> (Vec<Cubic>,
     (pieces, times)
 }
 
-fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_skia::Path> {
+fn curve(
+    cubics: &[Cubic],
+    baseline: Option<f32>,
+    smooth: bool,
+    corner: f32,
+) -> Option<tiny_skia::Path> {
     let mut path = tiny_skia::PathBuilder::new();
     let (x, y) = cubics.first()?.0[0];
     if let Some(base) = baseline {
@@ -1063,12 +1206,42 @@ fn curve(cubics: &[Cubic], baseline: Option<f32>, smooth: bool) -> Option<tiny_s
     } else {
         path.move_to(x as f32, y as f32);
     }
-    for cubic in cubics {
-        let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
-        if smooth {
+    if smooth {
+        for cubic in cubics {
+            let [_, c1, c2, end] = cubic.0.map(|(x, y)| (x as f32, y as f32));
             path.cubic_to(c1.0, c1.1, c2.0, c2.1, end.0, end.1);
-        } else {
-            path.line_to(end.0, end.1);
+        }
+    } else {
+        // Straight segments, each bend rounded by `corner` at most and by no
+        // more than half of either side: steps a few pixels wide keep their
+        // flats.
+        let ends = cubics
+            .iter()
+            .map(|cubic| (cubic.0[3].0 as f32, cubic.0[3].1 as f32))
+            .collect::<Vec<_>>();
+        let mut previous = (x as f32, y as f32);
+        for (index, &point) in ends.iter().enumerate() {
+            let next = ends.get(index + 1).filter(|_| corner > 0.);
+            let rounded = next.and_then(|&next| {
+                let (ax, ay) = (point.0 - previous.0, point.1 - previous.1);
+                let (bx, by) = (next.0 - point.0, next.1 - point.1);
+                let (a, b) = (ax.hypot(ay), bx.hypot(by));
+                let radius = corner.min(a / 2.).min(b / 2.);
+                (radius > 0.01 && (ax * by - ay * bx).abs() > 1e-4 * a * b).then(|| {
+                    (
+                        (point.0 - ax / a * radius, point.1 - ay / a * radius),
+                        (point.0 + bx / b * radius, point.1 + by / b * radius),
+                    )
+                })
+            });
+            match rounded {
+                Some((into, out)) => {
+                    path.line_to(into.0, into.1);
+                    path.quad_to(point.0, point.1, out.0, out.1);
+                }
+                None => path.line_to(point.0, point.1),
+            }
+            previous = point;
         }
     }
     if let Some(base) = baseline {
@@ -1155,6 +1328,16 @@ struct Extent {
     working_bytes: usize,
 }
 
+/// The clock lines (sorted) inside the raster's time window.
+fn tick_times(plot: &Input, (start, end): (f64, f64)) -> &[f64] {
+    let Some((ticks, _)) = &plot.ticks else {
+        return &[];
+    };
+    let first = ticks.partition_point(|t| *t < start);
+    let last = ticks.partition_point(|t| *t <= end).max(first);
+    &ticks[first..last]
+}
+
 /// Samples touching the interval, including both ends of a crossing segment.
 fn visible_samples(run: &[(f64, f64)], (start, end): (f64, f64)) -> std::ops::Range<usize> {
     let first = run.partition_point(|p| p.0 < start).saturating_sub(1);
@@ -1215,6 +1398,15 @@ fn extent(plot: &Input) -> Option<Extent> {
                 bottom = bottom.max(height);
             }
         }
+    }
+    // Clock lines run the plot's full height, and keep the texture on
+    // through the overscan they fall in, so that one moving in from an edge
+    // is there before it shows.
+    for &tick in tick_times(plot, time) {
+        first = first.min(x(tick));
+        last = last.max(x(tick) + 1.);
+        top = 0.;
+        bottom = height;
     }
     if top > bottom {
         return None;
@@ -1289,6 +1481,23 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
     let top = stroke / 2.;
     let fill = plot.fill && plot.series.iter().any(|series| series.fill > 0.);
     let mut shapes = Vec::new();
+    if let Some((_, color)) = &plot.ticks {
+        let color: Rgba = (*color).into();
+        let color = tiny_skia::Color::from_rgba(color.r, color.g, color.b, color.a)?;
+        let width = f64::from(f32::from(size.width));
+        for &tick in tick_times(plot, layout.time) {
+            // A pixel wide from the tick's time, as a rule the page lays out
+            // there; under every series.
+            let x = ((tick - plot.geometry_start) / span * width) as f32 - left;
+            if let Some(rect) = tiny_skia::Rect::from_xywh(x, 0., 1., height) {
+                shapes.push(Shape::Fill {
+                    path: tiny_skia::PathBuilder::from_rect(rect),
+                    color,
+                    faded: false,
+                });
+            }
+        }
+    }
     let mut drawn_phases = plot.phases.lock().unwrap_or_else(|e| e.into_inner());
     drawn_phases.resize_with(plot.series.len(), HashMap::new);
     for (index, series) in plot.series.iter().enumerate() {
@@ -1322,7 +1531,7 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
             }
             if fill
                 && series.fill > 0.
-                && let Some(path) = curve(&cubics, Some(height), plot.smooth)
+                && let Some(path) = curve(&cubics, Some(height), plot.smooth, plot.corner)
             {
                 shapes.push(Shape::Fill {
                     path,
@@ -1353,7 +1562,7 @@ fn draw_raster(plot: &Input, layout: Extent, threads: usize) -> Option<Texture> 
                 );
                 dashes(&segments, &phases)
             } else {
-                curve(&cubics, None, plot.smooth)
+                curve(&cubics, None, plot.smooth, plot.corner)
             };
             if let Some(path) = line {
                 let line = tiny_skia::Stroke {
@@ -1620,6 +1829,9 @@ mod tests {
             rescale: Default::default(),
             readout: Default::default(),
             captions: None,
+            redraw_alone: false,
+            raster_span: None,
+            corner: 0.,
         }
     }
     #[test]
@@ -1910,6 +2122,34 @@ mod tests {
         assert!(alpha(10.) > 128);
         assert_eq!(alpha(40.), 0);
         assert!(alpha(70.) > 128);
+    }
+
+    #[test]
+    fn clock_lines_run_the_full_height_through_the_overscan() {
+        // A low line keeps only its own rows; clock lines take every row and
+        // the texture reaches the one in the overscan, not the one beyond.
+        let mut p = plot(vec![(0., Some(9.)), (100., Some(9.))]);
+        let plain = super::extent(&Input::new(&p, size(px(100.), px(40.)), 2.)).unwrap();
+        assert!(plain.first_row > 60);
+        p.ticks = Some((Arc::new(vec![25., 75., 110., 200.]), rgb(0x808080).into()));
+        let input = Input::new(&p, size(px(100.), px(40.)), 2.);
+        let layout = super::extent(&input).unwrap();
+        assert_eq!((layout.first_row, layout.rows), (0, 80));
+        let texture = rasterize(&input).unwrap();
+        let width = texture.image.size(0).width.0 as usize;
+        let bytes = texture.image.as_bytes(0).unwrap();
+        let alpha = |x: f32, y: usize| {
+            let x = ((x - f32::from(texture.offset.x)) * 2.) as usize;
+            (x < width).then(|| bytes[(y * width + x) * 4 + 3])
+        };
+        assert!(alpha(25.5, 4).unwrap() > 200);
+        assert!(alpha(110.5, 4).unwrap() > 200);
+        assert_eq!(alpha(50.5, 4), Some(0));
+        assert!(f32::from(texture.offset.x + texture.size.width) < 112.6);
+        // Other clock lines are another texture.
+        let before = key(&p, size(px(100.), px(40.)), 2.);
+        p.ticks = Some((Arc::new(vec![30.]), rgb(0x808080).into()));
+        assert_ne!(before, key(&p, size(px(100.), px(40.)), 2.));
     }
 
     #[test]

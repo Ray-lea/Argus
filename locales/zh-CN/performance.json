@@ -242,7 +242,7 @@
     "limitHistory": "记录",
     "limitLogged": "曾触发",
     "limitNever": "无记录",
-    "limitHistoryHint": "硬件锁存记录，可能早于本次启动 Argus。",
+    "limitHistoryHint": "记录可能早于本次启动 Argus。",
     "columnCoreType": "类型",
     "pCore": "P 核",
     "eCore": "E 核",
@@ -280,7 +280,7 @@
     "inUseDescription": "由进程、驱动程序或操作系统使用的内存",
     "modifiedDescription": "内容必须先写入磁盘才能用于其他用途的内存",
     "standbyDescription": "包含未频繁使用的缓存数据和代码的内存",
-    "freeDescription": "当前未使用但会在进程、驱动程序或操作系统需要更多内存时首先重新使用的内存",
+    "freeDescription": "尚未使用，可立即分配的内存",
     "compressedDescription": "以压缩形式保存进程页面的内存，属于使用中的内存",
     "compressedSaving": "压缩内存估计存储了 {stored} 的数据，为系统节省了 {saved} 内存",
     "inUse": "使用中",
@@ -325,12 +325,11 @@
     "unavailable": "暂无磁盘详情。",
     "held": {
       "title": "已暂停自动读取",
-      "reason": "上次读取磁盘详情后，Argus 未正常退出，可能发生了系统崩溃、断电或进程被强制结束。为避免问题在每次启动时重现，打开此页时不再自动读取。",
-      "note": "读取会向存储驱动发送只读查询。读取后 Argus 继续正常运行一段时间，自动读取即恢复；再次异常退出时，下次启动仍显示本说明。",
+      "reason": "上次读取磁盘详情期间或随后不久，Argus 异常退出。若当时系统崩溃，重试可能使问题重现。读取完成后正常运行满 2 分钟，自动读取即恢复。",
       "read": "仍要读取"
     },
     "performanceUnavailable": "暂时无法读取磁盘性能计数。",
-    "volumeCounters": "当前使用卷 {volumes} 的性能统计，统计范围为该卷。",
+    "volumeCounters": "仅统计卷 {volumes}。",
     "volumeCountersMultiple": "当前汇总卷 {volumes} 的读写速率和响应时间；活动时间暂无可用读数。",
     "openFailed": "无法打开此磁盘。",
     "errorCode": "Windows 错误码 {code}",
@@ -374,8 +373,8 @@
       "unsupported": "设备或驱动未提供可读取的磁盘健康信息。",
       "unavailable": "磁盘健康信息暂不可用。",
       "invalidData": "设备返回的磁盘健康数据无效。",
-      "serviceUnavailable": "更多 SMART 信息需要特权服务，可在“设置 → 权限”中安装并启动。",
-      "serviceOutdated": "读取更多 SMART 信息需要更新特权服务，可在“设置 → 权限”中更新。",
+      "serviceUnavailable": "在“设置 → 权限”中安装并启动特权服务，可查看更多 SMART 信息。",
+      "serviceOutdated": "在“设置 → 权限”中更新特权服务，可查看更多 SMART 信息。",
       "smartDisabled": "设备的 SMART 功能已停用。"
     },
     "device": "设备信息",
@@ -405,6 +404,8 @@
     },
     "smart": "SMART 属性",
     "smartSource": "NVMe 健康日志",
+    "rawDecimal": "十进制",
+    "rawHex": "十六进制",
     "group": {
       "health": "健康",
       "usage": "使用情况",
@@ -511,7 +512,7 @@
     "mac": "物理地址"
   },
   "gpu": {
-    "utilizationHint": "整体占用取最忙引擎，并以进程引擎计数和 NVIDIA 核心利用率补充。原生引擎曲线与驱动读数的覆盖范围、采样窗口可能不同。",
+    "utilizationHint": "整体占用取最忙引擎，并参考进程和驱动读数。各来源的统计范围和时段可能不同。",
     "utilSource": {
       "windows": "Windows 引擎",
       "process": "进程引擎计数",
@@ -534,12 +535,12 @@
     "vidHint": "核显请求的目标供电电压（VID）。",
     "unsliceClock": "共享逻辑频率",
     "unsliceClockHint": "核显非切片部分（Unslice）的时钟，与图形计算切片可分别停钟。",
-    "clockHint": "内核读数由当前倍率按官方标称步进换算，不包含实测基准时钟偏差。频率直接显示数值，零值保留；最低工作频率是能力范围。",
+    "clockHint": "内核读数按倍率和标称步进换算。核心休眠或关闭时可显示 0 MHz。最低工作频率为硬件规格。",
     "sharedMemoryClock": "共享内存频率",
-    "sharedMemoryClockHint": "核显共享系统内存的时钟。内核读数由控制器配置按标称参考换算，DDR 传输率约为此数值的两倍，不包含实测基准时钟偏差。",
+    "sharedMemoryClockHint": "内核读数按内存控制器配置和标称基准时钟换算。DDR 传输率约为此频率的两倍。",
     "gtActivity": "GT 活动率",
     "mediaActivity": "媒体活动率",
-    "activityHint": "由硬件活动计数器按采样间隔计算，与 Windows 引擎忙碌时间的统计范围不同。",
+    "activityHint": "硬件活动率与 Windows 引擎利用率的统计范围不同。",
     "minCoreClock": "最低工作频率",
     "referenceClock": "基准时钟",
     "performanceLimits": "性能限制",
@@ -576,7 +577,7 @@
     "maxCoreClock": "最高核心频率",
     "powerState": "电源状态",
     "lowPower": "已休眠",
-    "lowPowerHint": "GPU 空闲，已进入低功耗状态。读取温度、风扇、频率、电压与功耗会将其唤醒，因此暂不读取；GPU 恢复工作后继续显示。",
+    "lowPowerHint": "GPU 休眠期间暂停读取温度、风扇转速、频率、电压和功耗，唤醒后恢复。",
     "powerSource": "功耗来源",
     "sources": {
       "nvml": "NVIDIA NVML · 板卡",
@@ -587,6 +588,10 @@
       "rapl": "Windows RAPL · 核显",
       "raplMsr": "Intel RAPL MSR · 核显"
     }
+  },
+  "npu": {
+    "utilizationChart": "利用率 %",
+    "utilization": "利用率"
   },
   "battery": {
     "title": "电池",
@@ -624,6 +629,6 @@
     "model": "型号",
     "serial": "序列号",
     "manufactured": "制造日期",
-    "wornNote": "完全充电容量已降到设计容量的 {percent}%，充满后的续航时间将短于新电池。"
+    "wornNote": "完全充电容量已降至设计容量的 {percent}%。"
   }
 }

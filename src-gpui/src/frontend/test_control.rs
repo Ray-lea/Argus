@@ -12,8 +12,14 @@ impl Desktop {
         if self.options.fixture.is_some()
             && let Some(fields) = control["formValues"].as_object()
         {
+            // A dialog's fields, or the page's own boxes (`historyReadingSearch`).
             for (key, value) in fields {
-                if let (Some(input), Some(value)) = (self.forms.get(key).cloned(), value.as_str()) {
+                let input = self
+                    .forms
+                    .get(key)
+                    .or_else(|| self.ui.inputs.get(key))
+                    .cloned();
+                if let (Some(input), Some(value)) = (input, value.as_str()) {
                     input.update(cx, |state, cx| state.set_value(value, window, cx));
                 }
             }
@@ -537,7 +543,13 @@ impl Desktop {
                         click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
                         ..Default::default()
                     })),
-                    Some("up") => pointer.push(press(at, false)),
+                    // `clicks` 2: the release that ends a double-click.
+                    Some("up") => pointer.push(PlatformInput::MouseUp(MouseUpEvent {
+                        position: at,
+                        button: MouseButton::Left,
+                        click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
+                        ..Default::default()
+                    })),
                     // A second click in place, as the platform reports one.
                     Some("double") => pointer.extend([
                         moved(at, None),
@@ -669,9 +681,22 @@ impl Desktop {
                 && window.window_control_area_at(bar[0].center()).is_none();
             let stretch_drags =
                 window.window_control_area_at(bar[2].center()) == Some(WindowControlArea::Drag);
+            // Keeping on top is the client's own button; the title row's
+            // height under the caption buttons drags the window.
+            let keep_on_top_is_client = self
+                .ui
+                .anchors
+                .borrow()
+                .get(caption::KEEP_ON_TOP_BUTTON)
+                .is_some_and(|bounds| window.window_control_area_at(bounds.center()).is_none());
+            let under_captions_drags = window.window_control_area_at(point(
+                window.viewport_size().width - px(8.),
+                theme::dimension("toolbarHeight") - px(4.),
+            )) == Some(WindowControlArea::Drag);
             println!(
                 "{}",
                 json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,"stretchDrags":stretch_drags,
+                "keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags,
                 "minimize":control_matches(WindowControlArea::Min),"maximize":control_matches(WindowControlArea::Max),"close":control_matches(WindowControlArea::Close)})
             );
             println!(
@@ -699,6 +724,7 @@ impl Desktop {
                 Some(json!({
                     "visible": unsafe { IsWindowVisible(hwnd).as_bool() },
                     "maximized": unsafe { IsZoomed(hwnd).as_bool() },
+                    "topmost": unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 != 0,
                     "width": client.right, "height": client.bottom,
                     "viewportMatchesClient": (f32::from(viewport.width) - client.right as f32).abs() < 1.
                         && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
@@ -727,7 +753,7 @@ impl Desktop {
                 "skippedRequest":self.data.get("skippedRequest"),
                 "performance":self.performance_test_state(),
                 "star":self.star_test_state(),
-                "history":self.history_inspect(),
+                "history":self.history_inspect(cx),
                 "sequence":self.sequence,"timestamp":self.snapshot["timestamp"],"processIcons":self.ui.icons.borrow().len(),
                 "allocationHeadroomBytes":crate::memory_pressure::available_memory(),
                 "nativeWindow":native_window,
@@ -740,6 +766,12 @@ impl Desktop {
                 "settingsScrollY":f32::from(self.settings_rail.scroll.max_offset().y),"settingsTop":self.settings_rail.scroll.top_item(),"sections":self.section_rail_state()});
             layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
             layout["watchAction"] = json!(self.data.get("watchLastAction"));
+            // What a copy put in place of the clipboard (`Desktop::copy_text`).
+            layout["lastCopy"] =
+                json!(self.options.fixture.as_ref().and(self.data.get("lastCopy")));
+            layout["tableCsv"] =
+                json!(self.options.fixture.as_ref().and(self.data.get("tableCsv")));
+            layout["caption"] = json!({"keepOnTop":self.keeps_on_top(),"keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags});
             println!("{layout}");
         }
         if self.options.fixture.is_some()
@@ -1079,6 +1111,9 @@ impl Desktop {
                 "gpu" => self.snapshot["hardware"]["gpus"][0]["info"]["id"]
                     .as_str()
                     .map(|id| format!("gpu:{id}")),
+                "npu" => self.snapshot["hardware"]["npus"][0]["id"]
+                    .as_str()
+                    .map(|id| format!("npu:{id}")),
                 "disk" => self.snapshot["hardware"]["disks"][0]["info"]["index"]
                     .as_u64()
                     .map(|id| format!("disk:{id}")),

@@ -1,4 +1,5 @@
 {
+  "about": "用 `data` 控制换上一组服务，检查服务页与启动页的列宽：宽窗口与窄窗口下最后一列取剩余宽度、不出现横向滚动，搜索不改变列宽；拖动启动页名称列的边界时命令列随之伸缩，松开后宽度存入 `tableWidths.startup`，把发布者列拖到最宽时命令列停在最小宽度，窗口变窄时拖动过的列让出宽度，双击列边界恢复；另截取 125% 与 150% 界面缩放。在服务页或启动页上，`inspect columns` 输出当前页的列（`page`、`listWidths`，各列的 `maxWidth` 为可拖到的最大宽度），其他页面仍输出进程列。",
   "window": [1600, 900],
   "steps": [
     { "note": "Services: the columns take what their contents need, the description the rest; no empty room on the right, no sideways scrolling." },
@@ -27,7 +28,7 @@
     { "note": "Startup: drag the name column narrower; the command column follows the edge and keeps the room once it is let go." },
     { "control": { "page": "startup", "pointerOutside": true }, "wait": 1200, "inspect": "columns", "label": "startup-wide", "capture": "startup-wide",
       "expect": { "state.page": "startup", "state.scroll.maxX": 0, "state.visible.4.key": "command", "state.visible.4.resizable": false } },
-    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover", "passive": true } }, "wait": 1100, "capture": "edge-hint" },
+    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover" } }, "wait": 1100, "capture": "edge-hint" },
     { "record": { "name": "drag", "ms": 1400 }, "wait": 200 },
     { "control": { "pointer": { "event": "down", "dx": 4 } }, "wait": 120 },
     { "control": { "pointer": { "event": "move", "dx": -30 } }, "wait": 120 },

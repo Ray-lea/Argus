@@ -7,14 +7,21 @@
 //! hours on screen and once a minute beyond.
 use super::*;
 
+mod axes;
 mod bar;
+mod chooser;
 mod lanes;
 mod navigator;
+mod picker;
 mod readings;
 mod series;
+mod settings;
 mod state;
 mod table;
+mod tip;
+mod transition;
 
+use crate::frontend::motion;
 use readings::Reading;
 use series::{FRAME, HOUR, MINUTE, Points, SECOND};
 pub(in crate::frontend) use state::HistoryState;
@@ -44,8 +51,16 @@ pub(in crate::frontend) enum Command {
     Mode(bool),
     /// Shows or hides a table column.
     Column(&'static str),
+    /// Shows or hides the table's trend column.
+    Trend,
+    /// The table's columns as they first were.
+    ResetColumns,
+    /// Lays a process's own curve over the lanes, or takes it off.
+    Curve(Option<String>),
     /// Opens the history settings.
     Settings,
+    /// Opens the range picker.
+    Picker,
 }
 
 /// Old frames have no creation time: a matching PID and name cannot establish
@@ -74,6 +89,14 @@ fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+/// The time it is, to a fraction of a millisecond.
+fn precise_now_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
+        * 1000.
 }
 fn local(ts: i64) -> Option<time::OffsetDateTime> {
     time::OffsetDateTime::from_unix_timestamp(ts.div_euclid(1000))
@@ -124,27 +147,19 @@ fn with_offset(text: String, ts: i64, needed: bool) -> String {
         _ => text,
     }
 }
-/// A moment, with its date unless it is today.
-fn moment_label(ts: i64, now: i64, seconds: bool) -> String {
-    if same_day(ts, now) {
-        clock(ts, seconds)
-    } else {
-        format!("{} {}", month_day(ts), clock(ts, seconds))
-    }
+/// A moment with its date: records span days, so even today's carry it.
+fn moment_label(ts: i64, seconds: bool) -> String {
+    format!("{} {}", month_day(ts), clock(ts, seconds))
 }
-/// A span of time between two moments, as short as their dates allow.
-fn range_label(from: i64, to: i64, now: i64, seconds: bool) -> String {
+/// A span of time between two moments, the date said once when they share it.
+fn range_label(from: i64, to: i64, seconds: bool) -> String {
     if same_day(from, to) {
-        format!(
-            "{}–{}",
-            moment_label(from, now, seconds),
-            clock(to, seconds)
-        )
+        format!("{}–{}", moment_label(from, seconds), clock(to, seconds))
     } else {
         format!(
             "{} – {}",
-            moment_label(from, now, seconds),
-            moment_label(to, now, seconds)
+            moment_label(from, seconds),
+            moment_label(to, seconds)
         )
     }
 }
@@ -189,13 +204,21 @@ fn duration_label(ms: i64) -> String {
     }
 }
 
-/// How often the newest readings are asked for while following: every second
-/// up to six hours on screen, every minute beyond.
+/// Points in a process's curve laid over the lanes.
+const CURVE_POINTS: usize = 160;
+/// The widest window that glides with the clock: wider ones move less than
+/// a pixel a second.
+const FLOW_SPAN: i64 = 15 * MINUTE;
+
+/// How often the newest readings are asked for while following: at every
+/// sample up to six hours on screen (at most four times a second), every
+/// minute beyond. A pace of exactly one sample skipped every sample that came
+/// a little early, and the curve then waited two seconds for its readings.
 fn refresh_every(span: i64) -> Duration {
     if span > 6 * HOUR {
         Duration::from_secs(60)
     } else {
-        Duration::from_secs(1)
+        Duration::from_millis(250)
     }
 }
 
@@ -210,13 +233,27 @@ impl Desktop {
     }
 
     /// What the window follows: the newest reading, while readings come in;
-    /// else the present, less a second.
+    /// else the present, less a second, in whole seconds. To the millisecond,
+    /// the curves ended somewhere else in every draw, and each texture that
+    /// landed was drawn again at once.
     fn history_clock(&self) -> i64 {
         let now = self.history_now();
         match self.history.points.as_ref().and_then(Points::newest) {
             Some(newest) if newest <= now + SECOND && now - newest < 10 * SECOND => newest,
-            _ => now - SECOND,
+            _ => (now - SECOND).div_euclid(SECOND) * SECOND,
         }
+    }
+
+    /// How far behind the present a gliding window ends: as far as the live
+    /// charts' (two sampling intervals and a quarter of a second). A reading
+    /// is on screen a sample, a query and a raster after it was taken; a
+    /// window a second behind reached the newest one before the next was in,
+    /// and the curve's end left the edge until it came.
+    fn history_lag(&self) -> i64 {
+        let config = motion::config();
+        (self.interval as f64 * config["chartLagIntervals"].as_f64().unwrap_or(2.)
+            + config["chartLagSlackMs"].as_f64().unwrap_or(250.))
+        .round() as i64
     }
 
     /// Whether the range on screen spans a change of the local offset: times
@@ -228,6 +265,209 @@ impl Desktop {
 
     fn history_motion(&self, cx: &App) -> bool {
         !cx.reduce_motion()
+    }
+
+    /// Whether the window glides with the clock: while it follows a short
+    /// window (the newest readings move across it a pixel at a time), with
+    /// motion on. Longer windows move a second or a minute at a time.
+    fn history_flowing(&self, cx: &App) -> bool {
+        self.history.follow
+            && self.history.span() <= FLOW_SPAN
+            && self.history_motion(cx)
+            && self.chart_clock.borrow().mode != crate::frontend::motion::Mode::Off
+            && self.options.fixture.is_none()
+    }
+
+    /// The chart card, drawn on its own: while the window glides, this region
+    /// is drawn alone, the page around it replaying, each time its labels and
+    /// marks move a step (a quarter of a device pixel, more when the window
+    /// moves fast), and in the fluid and balanced chart modes the curves'
+    /// textures move with the clock on every frame in between, nothing drawn
+    /// (`history_glide`); eased zooms and lanes draw the region every frame.
+    pub(in crate::frontend) fn history_chart_region(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let motion = self.history_motion(cx);
+        let now = Instant::now();
+        let flowing = self.history_flowing(cx);
+        // The window ends behind the present while it glides, so that the
+        // newest reading is in before the edge reaches it (`history_lag`); the
+        // curves keep the texture drawn for the readings' own window and move it.
+        // The state keeps whole milliseconds; the window drawn ends at the
+        // exact time, as the frames that only move the textures place them.
+        let data = self.history_clock();
+        let precise = flowing.then(|| precise_now_ms() - self.history_lag() as f64);
+        let clock = precise.map_or(data, |end| end.floor() as i64);
+        self.history.anchor(clock);
+        self.history.flow_origin = flowing.then(|| {
+            // The newest reading is usually ahead of the window on screen: the
+            // texture keeps the readings' own window, a little ahead of it.
+            let shift = clock - data;
+            (
+                (self.history.view.0 - shift) as f64,
+                (self.history.extent.0 - shift) as f64,
+            )
+        });
+        let (mut shown, easing) = self.history.shown(now, motion);
+        // The points an answer replaced are drawn with it only while the
+        // window eases from them.
+        if !easing && self.history.held_since().is_none() {
+            self.history.previous = None;
+        }
+        if let Some(end) = precise.filter(|_| !easing) {
+            shown = (end - (shown.1 - shown.0), end);
+        }
+        let lanes_moving = self.history.step_lanes(now, motion);
+        let toast = self
+            .history
+            .toast
+            .as_ref()
+            .is_some_and(|(_, until)| *until > now);
+        if !toast {
+            self.history.toast = None;
+        }
+        // A pointer resting over the lanes keeps its place while the window
+        // moves under it: the time under it is read again with every draw, so
+        // that the cursor, the readings and the tip follow the curves there.
+        // (Read before the lanes record their places anew.)
+        if self.history.drag.is_none()
+            && let Some(hover) = self.history.hover
+            && let Some(at) = self.history_time_at(hover.position.x, false)
+            && at != hover.at
+        {
+            self.history.hover = Some(state::Hover { at, ..hover });
+            self.history_ask_tip(window, cx);
+        }
+        self.history.glides.clear();
+        let chart = self.history_chart(shown, window, cx);
+        let glides = std::mem::take(&mut self.history.glides);
+        self.history.gliding = None;
+        if easing
+            || lanes_moving
+            || toast
+            || self.history.axes_moving
+            || self.history.reveal_moving
+            || self.history.lanes_order.moving(now)
+        {
+            window.request_isolated_animation_frame();
+        } else if flowing {
+            // Device pixels the window moves in a millisecond.
+            let width = self.history_plot_width(window) * window.scale_factor();
+            let speed = width.max(1.) / self.history.span() as f32;
+            let mode = self.chart_clock.borrow().mode;
+            if matches!(mode, motion::Mode::Fluid | motion::Mode::Balanced) {
+                // Labels and marks move a quarter of a device pixel at a time
+                // (glyphs are drawn at quarter pixels), in larger steps as the
+                // window moves faster: about thirty a second, a pixel at most.
+                let pixels = (speed * 1000. / 30.).clamp(0.25, 1.);
+                let step = Duration::from_secs_f32((pixels / speed / 1000.).clamp(0.001, 1.));
+                self.history.gliding = Some(state::Gliding {
+                    plots: glides,
+                    drawn: now,
+                    step,
+                });
+                self.schedule_history_glide(window, cx);
+            } else {
+                let pixel = Duration::from_secs_f32((1. / speed / 1000.).clamp(0.016, 1.));
+                self.history_flow_later(pixel, window, cx);
+            }
+        }
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(chart)
+            .into_any_element()
+    }
+
+    /// Moves the curves with the clock on the next frame while they glide,
+    /// and asks for the frame after: as the live charts' tick, while the
+    /// window is shown and no dialog covers the page.
+    pub(in crate::frontend) fn schedule_history_glide(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let shown = self.page == "history"
+            && self.modal.is_none()
+            && self.history.gliding.is_some()
+            && self.host.get_window("main").is_some_and(|w| {
+                w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+            });
+        if self.history.glide_queued || !shown {
+            return;
+        }
+        self.history.glide_queued = true;
+        let owner = cx.entity().downgrade();
+        window.on_next_frame(move |window, cx| {
+            let _ = owner.update(cx, |this, cx| {
+                this.history.glide_queued = false;
+                this.history_glide(window, cx);
+                this.schedule_history_glide(window, cx);
+            });
+        });
+    }
+
+    /// One frame of the glide (every frame in the fluid mode, about 60 a
+    /// second in the balanced one): the curves' textures move to the clock,
+    /// nothing drawn. The card is drawn again once the window has moved a
+    /// step since it was drawn (its labels, gaps and marks move then), or
+    /// when a texture cannot move (the window drew since, or one is still on
+    /// its way).
+    fn history_glide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != "history" || !self.history_flowing(cx) {
+            self.history.gliding = None;
+            return;
+        }
+        // While the page slides in, the curves move with it as drawn: every
+        // frame of the slide draws the window, and moving the textures would
+        // draw the card again in each.
+        if self.page_enter_pending || self.page_entering(cx) {
+            return;
+        }
+        let Some(gliding) = &self.history.gliding else {
+            return;
+        };
+        let mode = self.chart_clock.borrow().mode;
+        self.history.glide_frames = self.history.glide_frames.wrapping_add(1);
+        let refresh = motion::frame_period(motion::Mode::Fluid, window.refresh_interval(cx));
+        let every = (motion::frame_period(mode, Some(refresh)).as_secs_f64()
+            / refresh.as_secs_f64())
+        .round()
+        .max(1.) as u64;
+        if !self.history.glide_frames.is_multiple_of(every) {
+            return;
+        }
+        let elapsed = gliding.drawn.elapsed();
+        let moved = elapsed < gliding.step && {
+            let ms = elapsed.as_secs_f64() * 1000.;
+            gliding.plots.iter().all(|glide| {
+                glide
+                    .plot
+                    .glide(glide.bounds.get(), glide.plot.end + ms, window)
+            })
+        };
+        if !moved {
+            self.redraw_region_alone(regions::RegionKind::HistoryChart, window);
+        }
+    }
+
+    /// Draws the chart again once the window has moved a device pixel.
+    fn history_flow_later(&mut self, delay: Duration, window: &mut Window, cx: &mut Context<Self>) {
+        if self.history.flow.is_some() {
+            return;
+        }
+        self.history.flow = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let _ = this.update_in(cx, |this, window, _| {
+                this.history.flow = None;
+                if this.page == "history" {
+                    this.redraw_region_alone(regions::RegionKind::HistoryChart, window);
+                }
+            });
+        }));
     }
 
     /// Whether the window follows the newest readings (the live button says so).
@@ -249,6 +489,51 @@ impl Desktop {
         cx.notify();
     }
 
+    /// Whether the table lists the running processes: in moment mode, while
+    /// the window follows the newest readings and no moment is pinned.
+    fn history_table_live(&self) -> bool {
+        self.history.mode == TableMode::Moment && self.history.follow && self.history.pin.is_none()
+    }
+
+    /// The running processes in the recorded frames' terms: private working
+    /// set as memory, all I/O, sent and received together, dedicated GPU memory.
+    fn history_live_processes(&self) -> Vec<Value> {
+        let sum = |process: &Value, keys: &[&str]| -> Value {
+            let parts = keys
+                .iter()
+                .filter_map(|key| process[*key].as_f64())
+                .collect::<Vec<_>>();
+            if parts.is_empty() {
+                Value::Null
+            } else {
+                json!(parts.iter().sum::<f64>())
+            }
+        };
+        values(&self.snapshot["processes"])
+            .iter()
+            .map(|process| {
+                json!({
+                    "name": process["name"],
+                    "pid": process["pid"],
+                    "createTime": process["createTime"],
+                    "cpu": process["cpu"],
+                    "mem": process["privateWs"],
+                    "io": sum(process, &["ioRead", "ioWrite", "ioOther"]),
+                    "gpu": process["gpu"],
+                    "net": sum(process, &["netSent", "netReceived"]),
+                    "diskRead": process["diskRead"],
+                    "diskWrite": process["diskWrite"],
+                    "gpuMem": process["gpuDedicated"],
+                    "power": process["power"],
+                    "threads": process["threads"],
+                    "handles": process["handles"],
+                    "appWindow": process["appWindow"],
+                    "windowsProcess": process["windowsProcess"],
+                })
+            })
+            .collect()
+    }
+
     /// The network unit the readings use.
     fn history_bits(&self) -> bool {
         self.prefs.get::<String>("netUnit", "bytes".into()) == "bits"
@@ -263,6 +548,7 @@ impl Desktop {
         let saved = self.prefs.get::<String>("historyRange", "5m".into());
         let clock = self.history_clock();
         self.history.set_range(Range::parse(&saved), clock);
+        self.history.settle();
         self.history
             .restore_lanes(&self.prefs.get::<Value>("history.lanes", Value::Null));
         self.history.band = self.prefs.get::<bool>("history.band", true);
@@ -270,7 +556,70 @@ impl Desktop {
             .prefs
             .get::<f64>("history.split", 0.6)
             .clamp(0.34, 0.82) as f32;
+        self.history.folded = self
+            .prefs
+            .get::<Vec<String>>("history.foldedSections", Vec::new())
+            .into_iter()
+            .collect();
         self.history_catalogue();
+    }
+
+    /// Notes what the running programs are (`state::Kinds`) for the table's
+    /// categories, keeping the names when that changed: with every sample, as
+    /// a program may open its first window at any time.
+    pub(in crate::frontend) fn history_learn_kinds(&mut self) {
+        if !self.history.kinds.loaded {
+            self.history.kinds =
+                state::Kinds::from_saved(&self.prefs.get::<Value>("history.kinds", Value::Null));
+        }
+        // Per name: whether one instance owns a taskbar window, whether all
+        // are Windows' own.
+        let mut by_name: HashMap<&str, (bool, bool)> = HashMap::new();
+        for process in values(&self.snapshot["processes"]) {
+            let name = text(process, "name");
+            if name.is_empty() {
+                continue;
+            }
+            let entry = by_name.entry(name).or_insert((false, true));
+            entry.0 |= boolean(process, "appWindow");
+            entry.1 &= boolean(process, "windowsProcess");
+        }
+        let mut changed = false;
+        for (name, (app, windows)) in by_name {
+            changed |= self.history.kinds.note(name, app, windows);
+        }
+        if changed {
+            self.prefs.set("history.kinds", self.history.kinds.saved());
+        }
+    }
+
+    /// While a lane is dragged near the top or the bottom of lanes that
+    /// scroll, they scroll that way a little with each move.
+    fn history_scroll_lanes_toward(&self, at: Point<Pixels>) {
+        let handle = &self.history.lanes_scroll;
+        let max = handle.max_offset().y;
+        if max <= px(0.) {
+            return;
+        }
+        let bounds = handle.bounds();
+        let edge = px(28.);
+        let step = if at.y < bounds.top() + edge {
+            px(12.)
+        } else if at.y > bounds.bottom() - edge {
+            px(-12.)
+        } else {
+            return;
+        };
+        let offset = handle.offset();
+        handle.set_offset(point(offset.x, (offset.y + step).clamp(-max, px(0.))));
+    }
+
+    /// Forgets the names learned (history cleared); the running programs are
+    /// learned again from the next sample.
+    pub(in crate::frontend) fn history_forget_kinds(&mut self) {
+        self.history.kinds.clear();
+        self.history.kinds.loaded = true;
+        self.prefs.set("history.kinds", Value::Null);
     }
 
     /// The readings there are, from what was recorded.
@@ -339,6 +688,7 @@ impl Desktop {
         self.history_restore();
         if self.options.fixture.is_some() {
             self.history_fixture();
+            self.history.release_hold();
             return;
         }
         let clock = self.history_clock();
@@ -373,6 +723,58 @@ impl Desktop {
         self.history_ask_points(window, cx);
         self.history_ask_overview(window, cx);
         self.history_ask_table(window, cx);
+        self.history_wait_for_points(window, cx);
+    }
+
+    /// A window waiting for its points eases without them once `HOLD` has
+    /// passed (a slow read of long-unread days).
+    fn history_wait_for_points(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(since) = self.history.held_since() else {
+            return;
+        };
+        if self
+            .history
+            .hold_wait
+            .as_ref()
+            .is_some_and(|(waiting, _)| *waiting == since)
+        {
+            return;
+        }
+        let wait = transition::HOLD.saturating_sub(since.elapsed());
+        let task = cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(wait).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.history.held_since() == Some(since) && this.history.release_hold() {
+                    this.history_redraw(window, cx);
+                }
+            });
+        });
+        self.history.hold_wait = Some((since, task));
+    }
+
+    /// The pointer reached the page's tab: the page's readings are asked for
+    /// now, so that it enters with its curves rather than drawing them in
+    /// after its slide.
+    pub(in crate::frontend) fn history_prefetch(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.page != "history" && self.options.fixture.is_none() {
+            self.load_history(window, cx);
+        }
+    }
+
+    /// The page comes into view: a following window ends at the present at
+    /// once (`HistoryState::settle`), with no pointer or drag left over from
+    /// when the page was last shown.
+    pub(in crate::frontend) fn history_enter(&mut self) {
+        self.history_restore();
+        let clock = self.history_clock();
+        self.history.anchor(clock);
+        self.history.settle();
+        self.history.hover = None;
+        self.history.drag = None;
     }
 
     /// A sample arrived: while following, the newest readings are asked for.
@@ -395,9 +797,33 @@ impl Desktop {
         let origin = local_midnight(now);
         let keys = self.history_keys();
         let follow = self.history.follow;
-        let fresh = self.history.points.as_ref().is_some_and(|points| {
+        let covers = |points: &Points| {
             points.matches(bucket, origin, &keys) && points.from <= a && (follow || points.to >= b)
-        });
+        };
+        // Points kept for this window (a range switched away from, or read
+        // ahead by the range's drop-down) are taken up at once; what is newer
+        // than them is asked for below.
+        if !self.history.points.as_ref().is_some_and(covers)
+            && let Some(at) = self.history.stash.iter().position(covers)
+        {
+            let kept = self.history.stash.remove(at);
+            if let Some(old) = self.history.points.replace(kept) {
+                self.history.set_aside(old);
+            }
+            self.history.points_asked = None;
+            self.history.release_hold();
+        }
+        // One query at a time: asked again as soon as the one on its way
+        // lands (`history_complete`), not a sample later.
+        if self
+            .pending
+            .values()
+            .any(|p| p.cache.as_deref() == Some("historyPoints"))
+        {
+            self.history.points_again = true;
+            return;
+        }
+        let fresh = self.history.points.as_ref().is_some_and(covers);
         if fresh {
             if !follow
                 || self
@@ -419,6 +845,23 @@ impl Desktop {
                 window,
                 cx,
             );
+            return;
+        }
+        // The range's drop-down read this window ahead: taken up when it lands.
+        let ahead = self.pending.values().any(|pending| {
+            let args = &pending.args;
+            pending
+                .cache
+                .as_deref()
+                .is_some_and(|key| key.starts_with(navigator::AHEAD))
+                && args["bucket"].as_i64() == Some(bucket)
+                && args["origin"].as_i64() == Some(origin)
+                && args["from"].as_i64().is_some_and(|from| from <= a)
+                && args["keys"].as_array().is_some_and(|list| {
+                    list.len() == keys.len() && list.iter().zip(&keys).all(|(k, key)| k == key)
+                })
+        });
+        if follow && ahead {
             return;
         }
         let margin = span / 4 + bucket;
@@ -444,7 +887,14 @@ impl Desktop {
             .points
             .as_ref()
             .is_some_and(|points| points.from <= a && points.to >= b);
-        if covered {
+        // The window's points on their way cover the range too: they draw it,
+        // and the same days are not read twice at once.
+        let coming = self.pending.values().any(|pending| {
+            pending.cache.as_deref() == Some("historyPoints")
+                && pending.args["from"].as_i64().is_some_and(|from| from <= a)
+                && pending.args["to"].as_i64().is_some_and(|to| to >= b)
+        });
+        if covered || coming {
             return;
         }
         let width = f32::from(self.history.geometry.borrow().track.size.width).max(300.);
@@ -513,7 +963,12 @@ impl Desktop {
         self.history.selection.unwrap_or(self.history.view)
     }
 
-    /// The trend column follows the topmost lane's reading.
+    fn history_trend_of(&self, lane: &state::Lane) -> &'static str {
+        self.history_reading(&lane.reading)
+            .and_then(|reading| reading.process)
+            .unwrap_or("cpu")
+    }
+
     fn history_trend_key(&self) -> &'static str {
         self.history
             .live_lanes()
@@ -525,6 +980,8 @@ impl Desktop {
 
     fn history_ask_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match self.history.mode {
+            // The running processes need no query: the table reads the sample.
+            TableMode::Moment if self.history_table_live() => {}
             TableMode::Moment => {
                 let moment = self.history_moment();
                 if self.history.frame_at == Some(moment) {
@@ -540,31 +997,94 @@ impl Desktop {
                 );
             }
             TableMode::Range => {
-                let (from, to) = self.history_table_range();
+                let range = self.history_table_range();
                 let trend = self.history_trend_key();
-                let key = (from, to, trend);
                 let moving = self.history.follow && self.history.selection.is_none();
-                let due = self.history.table_asked.is_none_or(|at| {
-                    at.elapsed() >= refresh_every(to - from).max(Duration::from_secs(10))
-                });
-                let same = self
-                    .history
-                    .table_for
-                    .is_some_and(|(a, b, t)| t == trend && (moving || (a, b) == (from, to)));
-                if same && !(moving && due) {
-                    return;
-                }
-                self.history.table_for = Some(key);
-                self.history.table_asked = Some(Instant::now());
-                self.request(
-                    "history_table",
-                    json!({"from": from, "to": to, "trend": trend, "points": table::TREND_POINTS}),
-                    Some("historyTable"),
+                self.history_ask_range(
+                    "historyTable",
+                    range,
+                    trend,
+                    table::TREND_POINTS,
+                    moving,
                     window,
                     cx,
                 );
             }
         }
+        // In moment mode the trend column still shows the window.
+        if self.history.mode == TableMode::Moment && self.history_trend_shown() {
+            let trend = self.history_trend_key();
+            let follow = self.history.follow;
+            let view = self.history.view;
+            self.history_ask_range(
+                "historyTrends",
+                view,
+                trend,
+                table::TREND_POINTS,
+                follow,
+                window,
+                cx,
+            );
+        }
+        // The process laid over the lanes: its readings for each lane's key.
+        if self.history.curve.is_some() {
+            let mut keys = self
+                .history
+                .live_lanes()
+                .filter_map(|lane| self.history_reading(&lane.reading).and_then(|r| r.process))
+                .collect::<Vec<_>>();
+            keys.sort();
+            keys.dedup();
+            let follow = self.history.follow;
+            let view = self.history.view;
+            for key in keys {
+                let cache = format!("historyCurve.{key}");
+                self.history_ask_range(&cache, view, key, CURVE_POINTS, follow, window, cx);
+            }
+        }
+    }
+
+    /// Whether the table shows its trend column (`history.trend`, on unless turned off).
+    pub(super) fn history_trend_shown(&self) -> bool {
+        self.prefs.get::<bool>("history.trend", true)
+    }
+
+    /// Asks for each process's aggregates over `range` once per range and trend,
+    /// and again every ten seconds (a minute beyond six hours) while it moves.
+    #[allow(clippy::too_many_arguments)]
+    fn history_ask_range(
+        &mut self,
+        cache: &str,
+        (from, to): (i64, i64),
+        trend: &'static str,
+        points: usize,
+        moving: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.options.fixture.is_some() {
+            return;
+        }
+        let key = (from, to, trend, points);
+        if let Some((asked, at)) = self.history.ranges_asked.get(cache) {
+            let same = asked.2 == trend
+                && asked.3 == points
+                && (moving || (asked.0, asked.1) == (from, to));
+            let due = at.elapsed() >= refresh_every(to - from).max(Duration::from_secs(10));
+            if same && !(moving && due) {
+                return;
+            }
+        }
+        self.history
+            .ranges_asked
+            .insert(cache.to_owned(), (key, Instant::now()));
+        self.request(
+            "history_table",
+            json!({"from": from, "to": to, "trend": trend, "points": points}),
+            Some(cache),
+            window,
+            cx,
+        );
     }
 
     /// A fixture run reads the page's data from its fixture, and again after
@@ -609,10 +1129,56 @@ impl Desktop {
     ) -> bool {
         if !matches!(
             command,
-            "history_points" | "history_channels" | "history_frame" | "history_table"
+            "history_points"
+                | "history_channels"
+                | "history_frame"
+                | "history_table"
+                | "history_events"
         ) && !(command == "history_range" && cache == Some("historyRange"))
         {
             return false;
+        }
+        // The range picker's hours and events: kept for it as they come.
+        if let Some(key @ ("historyDays" | "historyEvents")) = cache {
+            if let Ok(answer) = result {
+                self.data.insert(key.into(), answer.clone());
+            }
+            self.history_redraw(window, cx);
+            return true;
+        }
+        if cache == Some("historyTip") {
+            let point = (
+                args["tip"][0].as_i64().unwrap_or(0),
+                args["tip"][1].as_i64().unwrap_or(0),
+            );
+            if self.history.tip_for == Some(point) {
+                if let Ok(answer) = result {
+                    self.history.tip = Some((point, answer.clone()));
+                }
+            } else {
+                // The pointer moved on while this was read.
+                self.history.tip_for = None;
+                self.history_ask_tip(window, cx);
+            }
+            self.history_redraw(window, cx);
+            return true;
+        }
+        // A range's points read ahead while the drop-down is open: kept for
+        // when it is chosen.
+        if cache.is_some_and(|key| key.starts_with(navigator::AHEAD)) {
+            if let Ok(answer) = result {
+                self.history.stash_points(Points::parse(answer, args));
+                // Chosen while on its way: taken up now (the window waiting
+                // for it eases).
+                if self.page == "history" {
+                    let before = self.history.points.as_ref().map(|p| (p.bucket, p.from));
+                    self.history_ask_points(window, cx);
+                    if self.history.points.as_ref().map(|p| (p.bucket, p.from)) != before {
+                        self.history_redraw(window, cx);
+                    }
+                }
+            }
+            return true;
         }
         let Ok(answer) = result else {
             // Kept as it was; asked again on the next poll.
@@ -622,12 +1188,19 @@ impl Desktop {
             "history_points" => {
                 let points = Points::parse(answer, args);
                 let overview = args["part"] == "overview";
+                let incremental = args["incremental"] == true;
+                if !overview
+                    && !incremental
+                    && let Some(old) = self.history.points.take()
+                {
+                    self.history.set_aside(old);
+                }
                 let slot = if overview {
                     &mut self.history.overview
                 } else {
                     &mut self.history.points
                 };
-                if args["incremental"] == true {
+                if incremental {
                     if let Some(existing) = slot
                         && existing.matches(points.bucket, points.origin, &points.keys)
                     {
@@ -642,10 +1215,16 @@ impl Desktop {
                     points.trim(keep);
                 }
                 if !overview {
+                    // A new range's window eases there now, with its points.
+                    self.history.release_hold();
                     let clock = self.history_clock();
                     self.history.anchor(clock);
                     // A newer frame may be what the table lists now.
                     self.history_ask_table(window, cx);
+                    if std::mem::take(&mut self.history.points_again) {
+                        self.history.points_asked = None;
+                        self.history_ask_points(window, cx);
+                    }
                 }
             }
             "history_channels" => {
@@ -668,9 +1247,23 @@ impl Desktop {
                     self.history.frame = Some(answer.clone());
                 }
             }
-            "history_table" => {
-                self.history.table = Some(answer.clone());
-            }
+            "history_table" => match cache {
+                Some("historyTrends") => self.history.trends = Some(answer.clone()),
+                Some(curve) if curve.starts_with("historyCurve.") => {
+                    let key = args["trend"].as_str().unwrap_or("cpu");
+                    if let Some(key) = ["cpu", "mem", "disk", "net", "gpu"]
+                        .into_iter()
+                        .find(|k| *k == key)
+                    {
+                        // The answer holds no window of its own: kept with the one asked.
+                        let mut answer = answer.clone();
+                        answer["from"] = args["from"].clone();
+                        answer["to"] = args["to"].clone();
+                        self.history.curves.insert(key, answer);
+                    }
+                }
+                _ => self.history.table = Some(answer.clone()),
+            },
             "history_range" => {
                 self.history.first = answer[0].as_i64();
             }
@@ -683,7 +1276,18 @@ impl Desktop {
     /// Draws the page again, not the window around it: what the page's data,
     /// the pointer and the page's own controls change shows only there. The
     /// live button in the page bar changes with commands, which draw everything.
-    fn history_redraw(&self, window: &Window, cx: &mut Context<Self>) {
+    /// Not for answers that come while another page is shown (a prefetch), and
+    /// not while the page enters: it draws once its slide is over, as the list
+    /// pages do. Drawing the whole page mid-entrance held the slide still for
+    /// as long as that took.
+    fn history_redraw(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if self.page != "history" {
+            return;
+        }
+        if self.page_enter_pending || self.page_entering(cx) {
+            self.after_entrance(cx);
+            return;
+        }
         if self.has_region(regions::RegionKind::Page) {
             self.refresh_region(regions::RegionKind::Page, cx);
             window.request_view_redraw(cx.entity_id());
@@ -778,6 +1382,27 @@ impl Desktop {
                 };
             }
             Command::Column(key) => self.history_toggle_column(key),
+            Command::Trend => {
+                let shown = self.history_trend_shown();
+                self.prefs.set("history.trend", !shown);
+            }
+            Command::ResetColumns => {
+                let mode = if self.history.mode == TableMode::Range {
+                    "range"
+                } else {
+                    "moment"
+                };
+                self.prefs
+                    .set(&format!("history.columns.{mode}"), Value::Null);
+                self.prefs.set("history.trend", true);
+            }
+            Command::Curve(name) => {
+                self.history.curve = name;
+                self.history.curves.clear();
+                self.history
+                    .ranges_asked
+                    .retain(|cache, _| !cache.starts_with("historyCurve."));
+            }
             Command::Settings => {
                 self.act(
                     Action::Preference("settingsSection".into(), json!("data")),
@@ -785,6 +1410,10 @@ impl Desktop {
                     cx,
                 );
                 self.act(Action::Page("settings".into()), window, cx);
+                return;
+            }
+            Command::Picker => {
+                self.history_open_picker(window, cx);
                 return;
             }
         }
@@ -803,6 +1432,26 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // The range's drop-down takes the arrows, Enter, Space and Esc while
+        // open, as a combo box holding the focus does.
+        if self.history_ranges_open() {
+            return self.select_key(key, window, cx);
+        }
+        // The reading chooser keeps typing in its search box: Up and Down
+        // move through the readings, Enter chooses, Esc closes it.
+        if self.history.chooser.is_some() {
+            match key {
+                "escape" => self.history_close_chooser(cx),
+                "up" | "down" => self.history_chooser_step(if key == "up" { -1 } else { 1 }, cx),
+                "enter" => self.history_chooser_enter(window, cx),
+                _ => return false,
+            }
+            return true;
+        }
+        // Typing in the table's search box keeps its keys.
+        if self.history_searching(window, cx) {
+            return false;
+        }
         let clock = self.history_clock();
         match key {
             "escape" => {
@@ -936,54 +1585,31 @@ impl Desktop {
         div().flex().items_center().child(live).into_any_element()
     }
 
-    /// The chart's options, at the end of the navigator's row.
-    pub(super) fn history_options(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = self.palette;
-        let band = self.history.band;
-        div()
-            .relative()
-            .flex_shrink_0()
-            .child(
-                div()
-                    .id("history-more")
-                    .size(px(30.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(15.))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(p.hover))
-                    .child(icon("MoreIcon", p.muted).size(px(16.)))
-                    .tooltip(|window, cx| widgets::tooltip(label("history.more"), window, cx))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let items = vec![
-                            MenuItem::new(
-                                label("history.menu.band"),
-                                Action::History(Command::Band),
-                            )
-                            .checked(band),
-                            MenuItem::separator(),
-                            MenuItem::new(
-                                label("history.menu.settings"),
-                                Action::History(Command::Settings),
-                            )
-                            .icon("SettingsIcon"),
-                        ];
-                        this.open_anchored(items, "history-more", layout::Side::Above, window, cx);
-                    })),
+    /// The history page's entries in the page bar's "More" menu: how the lanes
+    /// draw, and the history settings.
+    pub(in crate::frontend) fn history_more_items(&self) -> Vec<MenuItem> {
+        vec![
+            MenuItem::new(label("history.menu.band"), Action::History(Command::Band))
+                .checked(self.history.band),
+            MenuItem::new(
+                label("history.menu.settings"),
+                Action::History(Command::Settings),
             )
-            .child(layout::anchor_probe(
-                "history-more",
-                self.ui.anchors.clone(),
-            ))
-            .into_any_element()
+            .icon("HistoryIcon"),
+        ]
     }
 
     /// The page's state for the test controls (`inspectLayout.history`).
-    pub(in crate::frontend) fn history_inspect(&self) -> Value {
+    pub(in crate::frontend) fn history_inspect(&self, cx: &App) -> Value {
         let h = &self.history;
         json!({
             "follow": h.follow,
+            "picker": h.picker.is_some(),
+            "chooser": self.history_chooser_state(cx),
+            "ranges": self.history_ranges_active(),
+            "axesMoving": h.axes_moving,
+            "held": h.held_since().is_some(),
+            "range": format!("{:?}", h.range),
             "view": [h.view.0, h.view.1],
             "extent": [h.extent.0, h.extent.1],
             "pin": h.pin,
@@ -1006,34 +1632,31 @@ impl Desktop {
         if self.history.catalogue_key != (self.palette.dark, argus_core::i18n::locale() as u8) {
             self.history_catalogue();
         }
-        let motion = self.history_motion(cx);
-        let now = Instant::now();
+        // The chart region draws the window as it moves; the page reads it
+        // as the newest readings leave it.
         let clock = self.history_clock();
         self.history.anchor(clock);
-        let (shown, easing) = self.history.shown(now, motion);
-        let lanes_moving = self.history.step_lanes(now, motion);
-        if easing || lanes_moving {
-            window.request_animation_frame();
-        }
-        if self
-            .history
-            .toast
-            .as_ref()
-            .is_some_and(|(_, until)| *until > now)
-        {
-            window.request_animation_frame();
-        } else {
-            self.history.toast = None;
-        }
         let p = self.palette;
-        let bar = self.history_bar(window, cx);
-        let chart = self.history_chart(shown, window, cx);
-        let table = self.history_table(window, cx);
         let page = window
             .use_keyed_state("history-scroll", cx, |_, _| ScrollHandle::new())
             .read(cx)
             .clone();
-        let geometry = self.history.geometry.clone();
+        // The page's room, as laid out last: the chart takes its share of it.
+        // (A probe filling the scroller would count its padding as overflow.)
+        let room = page.bounds();
+        if room.size.height > px(0.) {
+            self.history.geometry.borrow_mut().content = room;
+        }
+        let bar = self.history_bar(window, cx);
+        let chart = self.region(
+            regions::RegionKind::HistoryChart,
+            StyleRefinement::default()
+                .w_full()
+                .h(px(self.history_chart_height(window)))
+                .flex_shrink_0(),
+            cx,
+        );
+        let table = self.history_table(window, cx);
         let dragging = self.history.drag.is_some();
         div()
             .id("history-content")
@@ -1048,14 +1671,6 @@ impl Desktop {
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
-            .child(
-                canvas(
-                    move |bounds, _, _| geometry.borrow_mut().content = bounds,
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .inset_0(),
-            )
             .when(
                 self.data.get("processWatch").is_some_and(Value::is_object)
                     || self.data.contains_key("watchError"),
@@ -1067,6 +1682,7 @@ impl Desktop {
             .child(table)
             .child(scrollbar::scrollbar("history-scrollbar", &page, p.dark))
             .when(dragging, |d| d.child(self.history_drag_capture(cx)))
+            .children(self.history_chooser(window, cx))
             .into_any_element()
     }
 
@@ -1187,17 +1803,31 @@ impl Desktop {
             state::Drag::Lane {
                 id, start, moved, ..
             } => {
-                let moved = moved || (at - start).magnitude() > 6.;
-                let target = moved
-                    .then(|| self.history_drop_target(at, true, ""))
-                    .flatten();
-                self.history.drag = Some(state::Drag::Lane {
-                    id,
-                    start,
-                    at,
-                    moved,
-                    target,
-                });
+                // The lane follows the pointer over the others, which make
+                // room and glide to their places (`reorder`).
+                let began = !moved && (at - start).magnitude() > 6.;
+                let order = &self.history.lanes_order;
+                if began {
+                    let lanes = self
+                        .history
+                        .live_lanes()
+                        .map(|lane| lane.id.to_string())
+                        .collect();
+                    order.take(
+                        state::LANES,
+                        "",
+                        &id.to_string(),
+                        crate::frontend::reorder::Flow::Stack { gap: lanes::GAP_Y },
+                        lanes,
+                        at,
+                    );
+                }
+                let moved = moved || began;
+                if moved {
+                    order.follow(at, self.history_motion(cx), Instant::now());
+                    self.history_scroll_lanes_toward(at);
+                }
+                self.history.drag = Some(state::Drag::Lane { id, start, moved });
             }
         }
         let _ = window;
@@ -1244,11 +1874,16 @@ impl Desktop {
                     }
                 }
             }
-            state::Drag::Lane {
-                id, moved, target, ..
-            } => {
-                if moved && let Some(state::Drop::Insert(index)) = target {
-                    self.history.move_lane(id, index);
+            state::Drag::Lane { .. } => {
+                // Let go, the lane glides from under the pointer into its place.
+                if let Some(lift) = self.history.lanes_order.release(motion, Instant::now())
+                    && let Some(order) = lift.moved()
+                {
+                    let order = order
+                        .iter()
+                        .filter_map(|key| key.parse::<u64>().ok())
+                        .collect::<Vec<_>>();
+                    self.history.arrange_lanes(&order);
                 }
             }
         }
@@ -1261,6 +1896,12 @@ impl Desktop {
     /// A click on the lanes at `at`: pins the point there, or selects its bucket
     /// when points stand for more than a frame.
     fn history_click(&mut self, at: i64, window: &Window) {
+        self.history.pin_lane = self.history.hover.map(|hover| hover.lane);
+        // The window holds still at what was clicked.
+        if self.history.follow {
+            self.history.pause();
+            self.history_toast("history.toast.paused");
+        }
         let Some(points) = self.history.points.as_ref() else {
             return;
         };
@@ -1327,12 +1968,9 @@ impl Desktop {
             }
             let in_plot = plot.contains(&at);
             let owner = self.history.lanes.iter().find(|l| l.id == *id);
-            let pair = |id: &str| self.history_reading(id).is_some_and(Reading::is_pair);
             if in_plot
                 && let Some(owner) = owner
                 && owner.reading != reading
-                && !pair(reading)
-                && !pair(&owner.reading)
             {
                 return Some(state::Drop::Overlay(*id));
             }

@@ -10,8 +10,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
-import { cleanupTestProfile, testDirectories } from "./lib/owned-test.mjs";
-import { INSPECTIONS, parseSteps, pickFrames, runSeconds, unmet } from "./lib/ui-shots.mjs";
+import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
+import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, unmet, unwanted } from "./lib/ui-shots.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -24,12 +24,15 @@ const option = (name, fallback) => {
 const [label, stepsFile] = argv;
 assert(label && /^[a-z0-9-]+$/.test(label), "usage: node scripts/ui-shots.mjs <label> <steps.json> [options]");
 assert(stepsFile && existsSync(stepsFile), "a steps file is required");
-// A list of steps, or { "window": [width, height], "steps": [...] } to fix the window size.
+// A list of steps, or { "window": [width, height], "run": {...}, "steps": [...] }
+// to fix the window size and state what the steps need (see runOptions).
 const plan = JSON.parse(readFileSync(stepsFile, "utf8"));
 const steps = parseSteps(Array.isArray(plan) ? plan : plan.steps);
+const needs = runOptions(plan);
+if (aboutOf(plan)) console.log(aboutOf(plan));
 const size = option("--width") ? [option("--width"), option("--height", option("--width"))] : (plan.window ?? null);
 
-const live = flag("--live");
+const live = flag("--live") || needs.live;
 const output = resolve("target/native-validation", label);
 mkdirSync(output, { recursive: true });
 const metadata = JSON.parse(readFileSync("resources/app.json"));
@@ -56,7 +59,7 @@ if (!live) {
 }
 if (size) args.push("--width", String(size[0]), "--height", String(size[1]));
 
-const child = spawn(probe, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+const child = spawn(probe, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...needs.env } });
 const events = [];
 const waiters = [];
 let shown;
@@ -101,6 +104,7 @@ const recorded = (name) => events.find((e) => e.event === "recorded" && String(e
 
 const results = [];
 const failures = [];
+const logs = [];
 try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
   if (!shown) throw Error(`window unavailable: ${error}`);
@@ -121,7 +125,7 @@ try {
       send({ [control]: step.label });
       const event = await pending;
       result.inspect = event;
-      const missed = step.expect ? unmet(event, step.expect) : [];
+      const missed = [...(step.expect ? unmet(event, step.expect) : []), ...(step.expectNot ? unwanted(event, step.expectNot) : [])];
       for (const message of missed) failures.push(`step ${index + 1} (${step.label}): ${message}`);
       console.log(`inspect ${step.label}: ${missed.length ? `${missed.length} unmet` : "ok"}`);
     }
@@ -167,9 +171,9 @@ try {
   for (let i = 0; i < 400 && !exited; i++) await sleep(50);
   if (!exited) child.kill();
   writeFileSync(join(output, "results.json"), JSON.stringify({ identifier, live, results, failures, events, stderr: error, exitCode }, null, 2));
-  if (exited) cleanupTestProfile(identifier);
+  if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
 }
-if (exitCode !== 0 && exitCode !== undefined) failures.push(`probe exited with ${exitCode}: ${error.slice(0, 500)}`);
+if (exitCode !== 0 && exitCode !== undefined) failures.push(`probe exited with ${exitCode}: ${error.slice(0, 500)}`, ...panics(logs));
 console.log(`output: ${output}`);
 if (failures.length) {
   console.error(failures.join("\n"));

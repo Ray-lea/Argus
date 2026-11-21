@@ -847,6 +847,7 @@ impl Desktop {
                         Some(label("onboarding.background.autostartHint")),
                         self.setting_toggle(
                             "onboarding-autostart",
+                            "onboarding.background.autostart",
                             boolean(&settings, "autostart"),
                             "set_autostart",
                             "enabled",
@@ -859,6 +860,7 @@ impl Desktop {
                         Some(label("onboarding.background.closeToTrayHint")),
                         self.setting_toggle(
                             "onboarding-tray",
+                            "onboarding.background.closeToTray",
                             boolean(&settings, "closeToTray"),
                             "set_close_to_tray",
                             "value",

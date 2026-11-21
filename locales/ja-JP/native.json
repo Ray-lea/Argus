@@ -71,7 +71,7 @@
       "ipv4Only": "IPv4 TCP 接続のみを閉じることができます"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager で対象を確認できませんでした。以下はハンドル検索の結果です。"
+      "restartManagerFailed": "ファイルの確認を完了できませんでした。結果はハンドル検索のみによるものです。"
     },
     "handles": {
       "tooMany": "一度に最大 32 のパスをチェックでき、合計の長さは最大 8 KiB",
@@ -119,6 +119,7 @@
       "helperExited": "ハンドル検索ヘルパーが早期に終了しました。完了した結果のみが表示されます",
       "serviceIncomplete": "特権サービスがこの検索を完了しなかったため、ローカルの結果が表示されます：{error}",
       "serviceIncompleteLocal": "特権サービスで検索が完了しませんでした。以下はローカルでの検索結果です。",
+      "bothIncomplete": "特権サービスとローカルのどちらの検索も完了しませんでした：{error}",
       "unavailable": "検索が一時的に利用できなくなりました",
       "serviceOutdated": "特権サービスがハンドル検索に対応していません。サービスを更新してください。以下はローカルでの検索結果です。",
       "serviceUnavailable": "特権サービスが利用できないため、ローカルの検索結果が表示されます：{error}"

@@ -1,5 +1,7 @@
 {
+  "about": "以 Windows 11 21H2 的背景能力判定（`ARGUS_TEST_BACKDROP_BUILD=22000`，仅开发构建）核对设置页与性能页在深浅主题下的实色回退：`inspectLayout` 的 `systemBackdrop` 为假，`backgroundAlpha` 为 1。",
   "window": [1240, 900],
+  "run": { "env": { "ARGUS_TEST_BACKDROP_BUILD": "22000" } },
   "steps": [
     {"control":{"theme":"light","page":"settings"},"wait":500,"inspect":"layout","label":"light-settings","expect":{"page":"settings","systemBackdrop":false,"backgroundAlpha":1},"capture":"light-settings"},
     {"control":{"theme":"dark"},"wait":500,"inspect":"layout","label":"dark-settings","expect":{"systemBackdrop":false,"backgroundAlpha":1},"capture":"dark-settings"},

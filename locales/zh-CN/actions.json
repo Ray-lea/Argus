@@ -103,6 +103,9 @@
   "copyWhat": {
     "path": "路径",
     "name": "名称",
+    "imageName": "映像名称",
+    "commandLine": "命令行",
+    "details": "详细信息",
     "version": "版本号"
   }
 }

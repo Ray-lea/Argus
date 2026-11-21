@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseSteps, pickFrames, runSeconds, unmet } from "../lib/ui-shots.mjs";
+import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
 
 test("steps are checked before the window starts", () => {
   assert.throws(() => parseSteps({}), /array/);
@@ -27,6 +27,22 @@ test("expectations read dotted paths and compare whole values", () => {
   ]);
 });
 
+test("a value that must have changed is compared with the one it must not be", () => {
+  const event = { state: { scroll: { y: -120 } }, settingsTop: 0 };
+  assert.deepEqual(unwanted(event, { "state.scroll.y": 0 }), []);
+  assert.deepEqual(unwanted(event, { settingsTop: 0, "state.scroll.y": 0 }), ["settingsTop: must not be 0"]);
+  assert.throws(() => parseSteps([{ expectNot: { a: 1 } }]), /expectNot needs inspect/);
+  assert.equal(parseSteps([{ inspect: "layout", expectNot: { settingsTop: 0 } }])[0].label, "step-1");
+});
+
+test("a steps file may say what it is for", () => {
+  assert.equal(aboutOf([{ wait: 1 }]), "");
+  assert.equal(aboutOf({ steps: [] }), "");
+  assert.equal(aboutOf({ about: "  Checks the header menu.  ", steps: [] }), "Checks the header menu.");
+  assert.throws(() => aboutOf({ about: "", steps: [] }), /non-empty text/);
+  assert.throws(() => aboutOf({ about: ["a"], steps: [] }), /non-empty text/);
+});
+
 test("a sheet keeps the last frame and spreads a long recording", () => {
   assert.deepEqual(pickFrames(10, 4, 40), [0, 4, 8, 9]);
   assert.deepEqual(pickFrames(0, 4, 40), []);
@@ -51,6 +67,26 @@ test("a drag spells out hover, press, even moves and release", () => {
   assert.equal(steps[1].record.name, "d");
   assert.equal(steps.at(-1).wait, 900);
   assert.throws(() => parseSteps([{ drag: { at: "x" }, capture: "c" }]), /combines only/);
+});
+
+test("a steps file states what its run needs", () => {
+  assert.deepEqual(runOptions([{ wait: 1 }]), { live: false, env: {}, parity: {} });
+  assert.deepEqual(runOptions({ steps: [] }), { live: false, env: {}, parity: {} });
+  assert.deepEqual(runOptions({ run: { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } }, steps: [] }), { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" }, parity: {} });
+  assert.deepEqual(runOptions({ run: { parity: { ARGUS_TABLE_ROWS: "component" } }, steps: [] }).parity, { ARGUS_TABLE_ROWS: "component" });
+  assert.throws(() => runOptions({ run: { parity: { TABLE_ROWS: "component" } } }), /run.parity: TABLE_ROWS must be an ARGUS_ switch/);
+  assert.throws(() => runOptions({ run: { parity: ["ARGUS_X"] } }), /run.parity maps names to values/);
+  assert.throws(() => runOptions({ run: { env: { PATH: "x" } } }), /ARGUS_ switch/);
+  assert.throws(() => runOptions({ run: { env: { ARGUS_X: 1 } } }), /string value/);
+  assert.throws(() => runOptions({ run: { release: true } }), /unknown "release"/);
+  assert.throws(() => runOptions({ run: { live: "yes" } }), /true or false/);
+});
+
+test("a listed failure is expected, and its passing is not", () => {
+  assert.deepEqual(verdict(true, undefined), { result: "passed", unexpected: false });
+  assert.deepEqual(verdict(false, undefined), { result: "failed", unexpected: true });
+  assert.deepEqual(verdict(false, "menu moved"), { result: "known failure", unexpected: false, known: "menu moved" });
+  assert.deepEqual(verdict(true, "menu moved"), { result: "fixed", unexpected: true });
 });
 
 test("the run lasts as long as its waits and recordings", () => {

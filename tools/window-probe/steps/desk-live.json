@@ -1,5 +1,7 @@
 {
+  "about": "以实时数据运行，查看桌面监控各样式中的曲线：模拟快照没有历史采样，画不出曲线。",
   "window": [1100, 900],
+  "run": { "live": true },
   "steps": [
     {"control":{"page":"components"},"wait":700},
     {"control":{"desktopMonitor":{"enabled":true,"layout":"panel","style":"curves","grouping":"cards","metrics":["cpu","cpuTemperature","memory","memoryUsed","gpu","gpuMemory","disk","network"]}},"wait":12000},

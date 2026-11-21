@@ -33,6 +33,7 @@
     "disk": "Disque",
     "network": "Réseau",
     "gpu": "GPU",
+    "npu": "NPU",
     "battery": "Batterie",
     "temperature": "Température"
   },

@@ -1,14 +1,19 @@
 //! The processes of the moment or the range the page describes, grouped by
-//! name (a group opens to its instances), with the columns chosen for each
-//! mode and a trend that follows the topmost lane's reading. A row's menu goes
-//! to the live process or copies its name; a double click goes there too.
-use super::state::TableMode;
+//! name (a group opens to its four busiest instances and the rest), with the
+//! columns chosen for each mode, a search, and a trend over the window that
+//! follows the topmost lane's reading. A row's menu lays its curve over the
+//! lanes, goes to the live process or copies its name and PIDs.
+use super::state::{Section, TableMode};
 use super::*;
 use widgets::Tone;
 
 /// Points in each process's trend.
 pub(super) const TREND_POINTS: usize = 32;
 const ROW: f32 = 28.;
+/// The trend column, beside the name.
+const TREND_WIDTH: f32 = 96.;
+/// The groups listed while the table follows the running processes.
+const LIVE_GROUPS: usize = 40;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -125,6 +130,40 @@ fn value_of(process: &Value, key: &str) -> Option<f64> {
     process[key].as_f64()
 }
 
+/// A process's reading for the trend or tooltip key: CPU and GPU in percent,
+/// memory in bytes, disk and network in bytes per second (a range's totals
+/// divided by `seconds`).
+pub(super) fn process_value(process: &Value, key: &str, seconds: Option<f64>) -> Option<f64> {
+    let value = match key {
+        "disk" => value_of(process, "disk"),
+        "net" => process["net"].as_f64(),
+        "mem" => process["mem"].as_f64(),
+        "gpu" => process["gpu"].as_f64(),
+        _ => process["cpu"].as_f64(),
+    }?;
+    Some(match (key, seconds) {
+        ("disk" | "net", Some(seconds)) => value / seconds.max(1.),
+        _ => value,
+    })
+}
+
+/// A value of the trend or tooltip key as the table shows it.
+pub(super) fn format_process(key: &str, value: f64, bits: bool) -> String {
+    match key {
+        "mem" => theme::memory(value),
+        "disk" => charts::byte_rate(value),
+        "net" => charts::net_rate(value, bits),
+        _ => format!("{}%", theme::cpu(value)),
+    }
+}
+
+/// A line of the table: a category's heading (its groups, whether it is
+/// open), or a group.
+enum Entry {
+    Heading(Section, Vec<usize>, bool),
+    Row(usize),
+}
+
 /// A group of instances with one name, and its values in the shown columns.
 struct Group<'a> {
     name: String,
@@ -136,8 +175,10 @@ struct Group<'a> {
 impl Desktop {
     /// The title over the table: whose processes these are.
     fn history_table_title(&self) -> String {
-        let now = self.history_now();
         match self.history.mode {
+            // Following the latest readings, the table lists the processes as
+            // they are now, every second: no moment to name.
+            TableMode::Moment if self.history_table_live() => label("history.table.live"),
             TableMode::Moment => {
                 let at = self
                     .history
@@ -149,11 +190,7 @@ impl Desktop {
                             .or_else(|| frame["system"]["ts"].as_i64())
                     })
                     .unwrap_or_else(|| self.history_moment());
-                let time = with_offset(
-                    moment_label(at, now, true),
-                    at,
-                    self.history_offsets_differ(),
-                );
+                let time = with_offset(moment_label(at, true), at, self.history_offsets_differ());
                 if self.history.pin.is_none() && self.history.follow {
                     tr!("history.table.latest", time = time)
                 } else {
@@ -164,7 +201,7 @@ impl Desktop {
                 let (from, to) = self.history_table_range();
                 tr!(
                     "history.table.range",
-                    range = range_label(from, to, now, to - from < series::HOUR)
+                    range = range_label(from, to, to - from < series::HOUR)
                 )
             }
         }
@@ -178,28 +215,40 @@ impl Desktop {
         let p = self.palette;
         let mode = self.history.mode;
         let bits = self.history_bits();
-        let pref = if mode == TableMode::Range {
-            "history.columns.range"
+        let mode_key = if mode == TableMode::Range {
+            "range"
         } else {
-            "history.columns.moment"
+            "moment"
         };
-        let shown_keys = shown_columns(&self.prefs.get::<Value>(pref, Value::Null), mode);
+        let pref = format!("history.columns.{mode_key}");
+        let shown_keys = shown_columns(&self.prefs.get::<Value>(&pref, Value::Null), mode);
         let shown = columns(mode)
             .iter()
             .filter(|c| shown_keys.contains(&c.key))
             .copied()
             .collect::<Vec<_>>();
+        let live = mode == TableMode::Moment && self.history_table_live();
         let answer = match mode {
+            TableMode::Moment if live => None,
             TableMode::Moment => self.history.frame.clone(),
             TableMode::Range => self.history.table.clone(),
         };
-        let processes = answer
-            .as_ref()
-            .map(|a| values(&a["processes"]).to_vec())
-            .unwrap_or_default();
-        let frame = answer
-            .as_ref()
-            .and_then(|a| a["ts"].as_i64().or_else(|| a["system"]["ts"].as_i64()));
+        let processes = if live {
+            self.history_live_processes()
+        } else {
+            answer
+                .as_ref()
+                .map(|a| values(&a["processes"]).to_vec())
+                .unwrap_or_default()
+        };
+        // Live processes are the running ones: any of them can be gone to.
+        let frame = if live {
+            self.snapshot["timestamp"].as_i64()
+        } else {
+            answer
+                .as_ref()
+                .and_then(|a| a["ts"].as_i64().or_else(|| a["system"]["ts"].as_i64()))
+        };
         let seconds = match mode {
             TableMode::Moment => 1.,
             TableMode::Range => {
@@ -220,11 +269,97 @@ impl Desktop {
             "gpu" => p.gpu,
             _ => p.cpu,
         };
-        let has_trend = mode == TableMode::Range;
+        let has_trend = self.history_trend_shown();
+        // Trends: a range's own; in moment mode, each process over the window.
+        let trend_source = match mode {
+            TableMode::Range => processes.clone(),
+            TableMode::Moment => self
+                .history
+                .trends
+                .as_ref()
+                .or(if self.options.fixture.is_some() {
+                    self.history.table.as_ref()
+                } else {
+                    None
+                })
+                .map(|t| values(&t["processes"]).to_vec())
+                .unwrap_or_default(),
+        };
+        let trend_of = |process: &Value| -> Option<Vec<Option<f64>>> {
+            process["trend"]
+                .as_array()
+                .map(|list| list.iter().map(Value::as_f64).collect())
+        };
+        let mut trend_by_name: HashMap<String, Vec<Option<f64>>> = HashMap::new();
+        let mut trend_by_instance: HashMap<(String, String, String), Vec<Option<f64>>> =
+            HashMap::new();
+        for process in &trend_source {
+            let Some(trend) = trend_of(process) else {
+                continue;
+            };
+            let name = text(process, "name").to_lowercase();
+            let sum = trend_by_name.entry(name.clone()).or_default();
+            if sum.len() < trend.len() {
+                sum.resize(trend.len(), None);
+            }
+            for (i, v) in trend.iter().enumerate() {
+                if let Some(v) = v {
+                    sum[i] = Some(sum[i].unwrap_or(0.) + v);
+                }
+            }
+            trend_by_instance.insert(
+                (
+                    name,
+                    process["pid"].to_string(),
+                    process["createTime"].to_string(),
+                ),
+                trend,
+            );
+        }
+        let instance_trend = |process: &Value| {
+            trend_by_instance
+                .get(&(
+                    text(process, "name").to_lowercase(),
+                    process["pid"].to_string(),
+                    process["createTime"].to_string(),
+                ))
+                .cloned()
+        };
+        // Per-process network needs the privileged service under a standard user.
+        let net_missing = self.snapshot["processNetwork"].as_bool() == Some(false)
+            && !processes.iter().any(|p| number(p, "net") > 0.);
+        let net_shown = shown.iter().any(|c| c.key == "net");
         // Groups by name, their values summed or their highest.
+        let search = self
+            .ui
+            .inputs
+            .get("historySearch")
+            .map(|input| input.read(cx).value().trim().to_lowercase())
+            .unwrap_or_default();
+        let aggregate = |instances: &[&Value]| -> Vec<Option<f64>> {
+            shown
+                .iter()
+                .map(|column| {
+                    let values = instances
+                        .iter()
+                        .filter_map(|p| value_of(p, column.key))
+                        .collect::<Vec<_>>();
+                    if values.is_empty() {
+                        None
+                    } else if column.additive {
+                        Some(values.iter().sum())
+                    } else {
+                        values.into_iter().reduce(f64::max)
+                    }
+                })
+                .collect()
+        };
         let mut groups: Vec<Group> = Vec::new();
         for process in &processes {
             let name = text(process, "name").to_owned();
+            if !search.is_empty() && !name.to_lowercase().contains(&search) {
+                continue;
+            }
             match groups
                 .iter_mut()
                 .find(|g| g.name.eq_ignore_ascii_case(&name))
@@ -239,37 +374,8 @@ impl Desktop {
             }
         }
         for group in &mut groups {
-            group.values = shown
-                .iter()
-                .map(|column| {
-                    let values = group
-                        .instances
-                        .iter()
-                        .filter_map(|p| value_of(p, column.key))
-                        .collect::<Vec<_>>();
-                    if values.is_empty() {
-                        None
-                    } else if column.additive {
-                        Some(values.iter().sum())
-                    } else {
-                        values.into_iter().reduce(f64::max)
-                    }
-                })
-                .collect();
-            if has_trend {
-                let mut sum: Vec<Option<f64>> = Vec::new();
-                for instance in &group.instances {
-                    for (i, v) in values(&instance["trend"]).iter().enumerate() {
-                        if sum.len() <= i {
-                            sum.resize(i + 1, None);
-                        }
-                        if let Some(v) = v.as_f64() {
-                            sum[i] = Some(sum[i].unwrap_or(0.) + v);
-                        }
-                    }
-                }
-                group.trend = (!sum.is_empty()).then_some(sum);
-            }
+            group.values = aggregate(&group.instances);
+            group.trend = trend_by_name.get(&group.name.to_lowercase()).cloned();
         }
         // The order survives restarts (`tableSort.history`).
         let (sort_key, descending) = {
@@ -281,6 +387,20 @@ impl Desktop {
             }
         };
         let sort_index = shown.iter().position(|c| c.key == sort_key);
+        // Every running process is at hand live: the busiest are listed, by
+        // the column sorted on (by CPU when sorted by name), in its order.
+        if live && groups.len() > LIVE_GROUPS {
+            let busy = |group: &Group| match sort_index {
+                Some(i) => group.values[i].unwrap_or(f64::NEG_INFINITY),
+                None => group
+                    .instances
+                    .iter()
+                    .filter_map(|process| value_of(process, "cpu"))
+                    .sum(),
+            };
+            groups.sort_by(|a, b| busy(b).total_cmp(&busy(a)));
+            groups.truncate(LIVE_GROUPS);
+        }
         groups.sort_by(|a, b| {
             let order = match sort_index {
                 Some(i) => a.values[i]
@@ -290,7 +410,49 @@ impl Desktop {
             };
             if descending { order.reverse() } else { order }
         });
+        // Sorted by name, as on the process page, the rows fall under its
+        // categories, each under a heading that folds it (a search shows every
+        // match). Running instances say what they are; records are sorted by
+        // what their names were seen to be (`state::Kinds`).
+        let section_of = |group: &Group| {
+            if live {
+                Section::of(
+                    group
+                        .instances
+                        .iter()
+                        .any(|process| boolean(process, "appWindow")),
+                    group
+                        .instances
+                        .iter()
+                        .all(|process| boolean(process, "windowsProcess")),
+                )
+            } else {
+                self.history.kinds.section(&group.name)
+            }
+        };
+        let searching = !search.is_empty();
+        let mut entries = Vec::new();
+        if sort_index.is_none() {
+            for section in Section::ALL {
+                let members = (0..groups.len())
+                    .filter(|i| section_of(&groups[*i]) == section)
+                    .collect::<Vec<_>>();
+                if members.is_empty() {
+                    continue;
+                }
+                let open = searching || !self.history.folded.contains(section.key());
+                entries.push(Entry::Heading(section, members.clone(), open));
+                if open {
+                    entries.extend(members.into_iter().map(Entry::Row));
+                }
+            }
+        } else {
+            entries.extend((0..groups.len()).map(Entry::Row));
+        }
         let format = |column: &Column, value: Option<f64>| -> String {
+            if column.key == "net" && net_missing {
+                return label("format.missing");
+            }
             let Some(v) = value else {
                 return label("format.missing");
             };
@@ -324,7 +486,7 @@ impl Desktop {
         };
         let heat = |column: &Column, value: Option<f64>| -> f32 {
             let Some(v) = value else { return 0. };
-            if column.heat.is_empty() {
+            if column.heat.is_empty() || (column.key == "net" && net_missing) {
                 return 0.;
             }
             let v = if column.kind == Kind::Total {
@@ -341,15 +503,23 @@ impl Desktop {
                 .entry(text(process, "name").to_lowercase())
                 .or_insert(process);
         }
-        let cell = |width: f32| {
+        // A value with its heat filling the whole cell, as on the process
+        // page: busy cells of neighbouring rows and columns meet without seams.
+        let cell = |width: f32, alpha: f32, quiet: bool, text: String| {
             div()
-                .px(px(8.))
+                .h_full()
                 .w(px(width))
                 .flex_shrink_0()
-                .text_right()
-                .truncate()
+                .px(px(8.))
+                .flex()
+                .items_center()
+                .justify_end()
+                .when(alpha > 0., |d| d.bg(p.heat.opacity(alpha)))
+                .when(quiet, |d| d.text_color(p.faint))
+                .child(div().min_w_0().truncate().child(text))
         };
-        // The head: name, the shown columns, the trend.
+        let column_name = |key: &str| label(&format!("history.column.{mode_key}.{key}"));
+        // The head: name, the trend, the shown columns.
         let mut head = div()
             .flex()
             .flex_shrink_0()
@@ -367,38 +537,36 @@ impl Desktop {
                 None,
                 &sort_key,
                 descending,
+                false,
                 cx,
             ));
-        for column in &shown {
-            head = head.child(self.history_head_cell(
-                column.key,
-                label(&format!(
-                    "history.column.{}.{}",
-                    if mode == TableMode::Range {
-                        "range"
-                    } else {
-                        "moment"
-                    },
-                    column.key
-                )),
-                Some(column.width),
-                &sort_key,
-                descending,
-                cx,
-            ));
-        }
         if has_trend {
             head = head.child(
                 div()
-                    .w(px(96.))
+                    .id("history-head-trend")
+                    .w(px(TREND_WIDTH))
                     .flex_shrink_0()
                     .px(px(8.))
                     .truncate()
                     .child(tr!(
                         "history.column.trend",
                         name = label(&format!("history.trend.{trend_key}"))
-                    )),
+                    ))
+                    .tooltip(|window, cx| {
+                        widgets::tooltip(label("history.column.trendTitle"), window, cx)
+                    }),
             );
+        }
+        for column in &shown {
+            head = head.child(self.history_head_cell(
+                column.key,
+                column_name(column.key),
+                Some(column.width),
+                &sort_key,
+                descending,
+                column.key == "net" && net_missing,
+                cx,
+            ));
         }
         let rows_scroll = window
             .use_keyed_state("history-processes-scroll", cx, |_, _| ScrollHandle::new())
@@ -420,18 +588,163 @@ impl Desktop {
                     .text_color(p.faint)
                     .child(label(if answer.is_none() {
                         "history.table.loading"
+                    } else if mode == TableMode::Range {
+                        "history.table.emptyRange"
                     } else {
                         "history.noRecordAt"
                     })),
             );
         }
-        for group in &groups {
+        let curve = self.history.curve.clone();
+        // The menu of a row: its curve on the lanes, the live process, a copy.
+        let row_menu = |name: &str, pids: &[String], target: Option<Value>| -> Vec<MenuItem> {
+            let drawn = curve
+                .as_deref()
+                .is_some_and(|c| c.eq_ignore_ascii_case(name));
+            let copied = if pids.is_empty() {
+                name.to_owned()
+            } else {
+                tr!(
+                    "history.copy.text",
+                    name = name.to_owned(),
+                    pids = pids.join(", ")
+                )
+            };
+            vec![
+                MenuItem::new(
+                    label(if drawn {
+                        "history.menu.curveOff"
+                    } else {
+                        "history.menu.curve"
+                    }),
+                    Action::History(Command::Curve((!drawn).then(|| name.to_owned()))),
+                )
+                .checked(drawn),
+                MenuItem::new(
+                    label("common.goToProcess"),
+                    Action::Preference(
+                        "revealProcess".into(),
+                        target.clone().unwrap_or(Value::Null),
+                    ),
+                )
+                .disabled(target.is_none()),
+                MenuItem::new(
+                    label("history.menu.copy"),
+                    Action::Copy(copied, "history.copied.namePid"),
+                ),
+            ]
+        };
+        for entry in entries {
+            let group = match entry {
+                Entry::Row(index) => &groups[index],
+                Entry::Heading(section, members, open) => {
+                    // The category's colour, name and count, and its totals.
+                    let key = section.key();
+                    let tone = match section {
+                        Section::Apps => p.group_apps,
+                        Section::Background => p.group_background,
+                        Section::Windows => p.group_windows,
+                    };
+                    let instances = members
+                        .iter()
+                        .flat_map(|i| groups[*i].instances.iter().copied())
+                        .collect::<Vec<_>>();
+                    let mut line = div()
+                        .id(SharedString::from(format!("history-section-{key}")))
+                        .flex()
+                        .flex_shrink_0()
+                        .h(px(ROW))
+                        .items_center()
+                        .px(px(6.))
+                        .bg(tone.opacity(tables::HEADING_TINT))
+                        .when(!searching, |d| d.cursor_pointer())
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(200.))
+                                .px(px(8.))
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .w(px(16.))
+                                        .h(px(16.))
+                                        .flex_shrink_0()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .when(searching, |d| d.opacity(0.4))
+                                        .child(
+                                            icon(
+                                                if open { "ChevronDown" } else { "ChevronRight" },
+                                                p.muted,
+                                            )
+                                            .size(px(13.)),
+                                        ),
+                                )
+                                .child(div().size(px(8.)).flex_shrink_0().rounded(px(2.)).bg(tone))
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .font_weight(theme::LABEL_WEIGHT)
+                                        .text_color(p.ink)
+                                        .child(label(&format!("processes.section.{key}"))),
+                                )
+                                .child(
+                                    div()
+                                        .flex_shrink_0()
+                                        .min_w(px(22.))
+                                        .px(px(7.))
+                                        .rounded_full()
+                                        .bg(tone.opacity(tables::COUNT_TINT))
+                                        .text_color(tone.blend(p.ink.opacity(0.22)))
+                                        .text_size(theme::font(11.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .line_height(px(18.))
+                                        .flex()
+                                        .justify_center()
+                                        .child(members.len().to_string()),
+                                ),
+                        );
+                    if has_trend {
+                        line = line.child(div().w(px(TREND_WIDTH)).flex_shrink_0());
+                    }
+                    for (column, value) in shown.iter().zip(aggregate(&instances)) {
+                        line = line.child(cell(
+                            column.width,
+                            0.,
+                            column.key == "net" && net_missing,
+                            format(column, value),
+                        ));
+                    }
+                    body = body.child(line.on_click(cx.listener(move |this, _, window, cx| {
+                        // A search shows every match: nothing folds meanwhile.
+                        if searching {
+                            return;
+                        }
+                        if !this.history.folded.remove(key) {
+                            this.history.folded.insert(key.to_owned());
+                        }
+                        let mut folded = this.history.folded.iter().cloned().collect::<Vec<_>>();
+                        folded.sort();
+                        this.prefs.set("history.foldedSections", folded);
+                        this.history_redraw(window, cx);
+                    })));
+                    continue;
+                }
+            };
             let expandable = group.instances.len() > 1;
             let expanded = expandable && self.history.expanded.contains(&group.name);
             let icon_process = by_name.get(&group.name.to_lowercase()).copied();
+            let publisher = icon_process
+                .map(|process| text(process, "company").to_owned())
+                .filter(|company| !company.is_empty());
             let key = group.name.clone();
             let selected = self.history.selected.as_deref() == Some(key.as_str());
             let single = (group.instances.len() == 1).then(|| group.instances[0]);
+            let toggle_key = key.clone();
             let mut line = div()
                 .id(SharedString::from(format!("history-row-{key}")))
                 .flex()
@@ -449,63 +762,97 @@ impl Desktop {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(div().w(px(12.)).flex_shrink_0().when(expandable, |d| {
-                            d.child(
-                                icon(
-                                    if expanded {
-                                        "ChevronDown"
-                                    } else {
-                                        "ChevronRight"
-                                    },
-                                    p.muted,
-                                )
-                                .size(px(12.)),
-                            )
-                        }))
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("history-expand-{key}")))
+                                .w(px(16.))
+                                .h(px(16.))
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(3.))
+                                .when(expandable, |d| {
+                                    d.hover(move |s| s.bg(p.hover_strong))
+                                        .child(
+                                            icon(
+                                                if expanded {
+                                                    "ChevronDown"
+                                                } else {
+                                                    "ChevronRight"
+                                                },
+                                                p.muted,
+                                            )
+                                            .size(px(13.)),
+                                        )
+                                        .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                            cx.stop_propagation()
+                                        })
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            if !this.history.expanded.remove(&toggle_key) {
+                                                this.history.expanded.insert(toggle_key.clone());
+                                            }
+                                            this.history_redraw(window, cx);
+                                        }))
+                                }),
+                        )
                         .child(self.process_icon(icon_process, 16., cx))
                         .child(div().min_w_0().truncate().child(group.name.clone()))
                         .when(expandable, |d| {
                             d.child(
                                 div()
-                                    .text_color(p.faint)
                                     .flex_shrink_0()
-                                    .child(format!("({})", group.instances.len())),
+                                    .text_size(theme::font(11.))
+                                    .text_color(p.faint)
+                                    .child(format!("×{}", group.instances.len())),
                             )
                         })
                         .when_some(single, |d, process| {
                             d.child(
                                 div()
+                                    .flex_shrink_0()
                                     .text_size(theme::font(11.))
                                     .text_color(p.faint)
-                                    .flex_shrink_0()
                                     .child(tr!(
                                         "history.table.pid",
                                         pid = process["pid"].to_string()
                                     )),
                             )
+                        })
+                        .when_some(publisher, |d, publisher| {
+                            d.child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(theme::font(11.))
+                                    .text_color(p.faint)
+                                    .child(publisher),
+                            )
                         }),
                 );
-            for (column, value) in shown.iter().zip(&group.values) {
-                let alpha = heat(column, *value);
-                line = line.child(
-                    cell(column.width)
-                        .when(alpha > 0., |d| d.bg(p.heat.opacity(alpha)))
-                        .child(format(column, *value)),
-                );
-            }
             if has_trend {
                 line = line.child(sparkline(group.trend.clone(), trend_color));
             }
+            for (column, value) in shown.iter().zip(&group.values) {
+                line = line.child(cell(
+                    column.width,
+                    heat(column, *value),
+                    column.key == "net" && net_missing,
+                    format(column, *value),
+                ));
+            }
             let target = single.and_then(|process| recorded_target(process, frame, live));
             let running = target.is_some();
-            let reveal = Action::Preference("revealProcess".into(), target.unwrap_or(Value::Null));
-            let menu = vec![
-                MenuItem::new(label("common.goToProcess"), reveal.clone()).disabled(!running),
-                MenuItem::new(
-                    label("common.copyName"),
-                    Action::Copy(group.name.clone(), "history.copied.name"),
-                ),
-            ];
+            let reveal = Action::Preference(
+                "revealProcess".into(),
+                target.clone().unwrap_or(Value::Null),
+            );
+            let pids = group
+                .instances
+                .iter()
+                .map(|process| process["pid"].to_string())
+                .collect::<Vec<_>>();
+            let menu = row_menu(&group.name, &pids, target);
             let exited = tr!(
                 "history.instanceUnavailable",
                 name = group.name.clone(),
@@ -516,17 +863,18 @@ impl Desktop {
             body = body.child(
                 line.on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                     this.history.selected = Some(select_key.clone());
-                    if expandable && !this.history.expanded.remove(&toggle_key) {
-                        this.history.expanded.insert(toggle_key.clone());
-                    }
-                    if event.click_count() >= 2 && !expandable {
-                        if running {
+                    if event.click_count() >= 2 {
+                        if expandable {
+                            if !this.history.expanded.remove(&toggle_key) {
+                                this.history.expanded.insert(toggle_key.clone());
+                            }
+                        } else if running {
                             this.act(reveal.clone(), window, cx);
                         } else {
                             this.notify_toast(widgets::ToastKind::Info, exited.clone());
                         }
                     }
-                    cx.notify();
+                    this.history_redraw(window, cx);
                 }))
                 .on_mouse_down(
                     MouseButton::Right,
@@ -545,7 +893,9 @@ impl Desktop {
                             .total_cmp(&value_of(a, key).unwrap_or(f64::NEG_INFINITY))
                     });
                 }
-                for process in instances {
+                // The four busiest instances, and the rest together.
+                let rest = instances.split_off(instances.len().min(4));
+                for process in &instances {
                     let mut line = div()
                         .flex()
                         .flex_shrink_0()
@@ -553,36 +903,30 @@ impl Desktop {
                         .items_center()
                         .px(px(6.))
                         .text_color(p.muted)
+                        .hover(move |s| s.bg(p.hover))
                         .child(
                             div()
                                 .flex_1()
                                 .min_w(px(200.))
-                                .pl(px(48.))
+                                .pl(px(56.))
                                 .pr(px(8.))
                                 .truncate()
                                 .child(tr!("history.table.pid", pid = process["pid"].to_string())),
                         );
+                    if has_trend {
+                        line = line.child(sparkline(instance_trend(process), trend_color));
+                    }
                     for column in &shown {
                         let value = value_of(process, column.key);
-                        line = line.child(cell(column.width).child(format(column, value)));
-                    }
-                    if has_trend {
-                        let trend = process["trend"]
-                            .as_array()
-                            .map(|list| list.iter().map(Value::as_f64).collect::<Vec<_>>());
-                        line = line.child(sparkline(trend, trend_color));
+                        line = line.child(cell(
+                            column.width,
+                            heat(column, value),
+                            column.key == "net" && net_missing,
+                            format(column, value),
+                        ));
                     }
                     let target = recorded_target(process, frame, live);
-                    let running = target.is_some();
-                    let reveal =
-                        Action::Preference("revealProcess".into(), target.unwrap_or(Value::Null));
-                    let menu = vec![
-                        MenuItem::new(label("common.goToProcess"), reveal).disabled(!running),
-                        MenuItem::new(
-                            label("common.copyName"),
-                            Action::Copy(text(process, "name").to_owned(), "history.copied.name"),
-                        ),
-                    ];
+                    let menu = row_menu(&group.name, &[process["pid"].to_string()], target);
                     body = body.child(line.on_mouse_down(
                         MouseButton::Right,
                         cx.listener(move |this, _, window, cx| {
@@ -590,9 +934,40 @@ impl Desktop {
                         }),
                     ));
                 }
+                if !rest.is_empty() {
+                    let values = aggregate(&rest);
+                    let mut line = div()
+                        .flex()
+                        .flex_shrink_0()
+                        .h(px(ROW))
+                        .items_center()
+                        .px(px(6.))
+                        .text_color(p.faint)
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(200.))
+                                .pl(px(56.))
+                                .pr(px(8.))
+                                .truncate()
+                                .child(tr!("history.table.rest", count = rest.len())),
+                        );
+                    if has_trend {
+                        line = line.child(div().w(px(TREND_WIDTH)).flex_shrink_0());
+                    }
+                    for (column, value) in shown.iter().zip(&values) {
+                        line = line.child(cell(
+                            column.width,
+                            heat(column, *value),
+                            column.key == "net" && net_missing,
+                            format(column, *value),
+                        ));
+                    }
+                    body = body.child(line);
+                }
             }
         }
-        // The card's head: whose processes, the mode, the columns.
+        // The card's head: whose processes, the mode, a search, the columns.
         let clearing = self.history.pin.is_some() || self.history.selection.is_some();
         let mode_choice = self.segments(
             "history-table-mode",
@@ -612,25 +987,39 @@ impl Desktop {
             ],
             cx,
         );
-        let chooser_items = columns(mode)
-            .iter()
-            .map(|column| {
-                MenuItem::new(
-                    label(&format!(
-                        "history.column.{}.{}",
-                        if mode == TableMode::Range {
-                            "range"
-                        } else {
-                            "moment"
-                        },
-                        column.key
-                    )),
-                    Action::History(Command::Column(column.key)),
-                )
-                .checked(shown_keys.contains(&column.key))
-                .stay()
-            })
-            .collect::<Vec<_>>();
+        let mut chooser_items = vec![
+            MenuItem::new(
+                label(&format!("history.table.chooser.{mode_key}")),
+                Action::CloseOverlay,
+            )
+            .disabled(true),
+        ];
+        chooser_items.extend(columns(mode).iter().map(|column| {
+            let mut item = MenuItem::new(
+                column_name(column.key),
+                Action::History(Command::Column(column.key)),
+            )
+            .checked(shown_keys.contains(&column.key))
+            .stay();
+            if column.key == "net" && net_missing {
+                item = item.detail(label("history.menu.needsService"));
+            }
+            item
+        }));
+        chooser_items.push(MenuItem::separator());
+        chooser_items.push(
+            MenuItem::new(
+                label("history.table.trend"),
+                Action::History(Command::Trend),
+            )
+            .checked(has_trend)
+            .stay(),
+        );
+        chooser_items.push(MenuItem::new(
+            label("history.table.resetColumns"),
+            Action::History(Command::ResetColumns),
+        ));
+        let search_input = self.history_search_input(window, cx);
         let heading = div()
             .flex()
             .flex_wrap()
@@ -668,6 +1057,15 @@ impl Desktop {
             })
             .child(mode_choice)
             .child(div().flex_1())
+            .child(div().w(px(200.)).child(self.text_field(
+                &search_input,
+                widgets::input(&search_input),
+                widgets::Field::Boxed,
+                label("history.table.search").into(),
+                true,
+                window,
+                cx,
+            )))
             .child(
                 div()
                     .relative()
@@ -695,6 +1093,39 @@ impl Desktop {
                         self.ui.anchors.clone(),
                     )),
             );
+        // Without the privileged service the network column has no records.
+        let notice = (net_shown && net_missing).then(|| {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .mx(px(14.))
+                .mb(px(6.))
+                .px(px(10.))
+                .py(px(6.))
+                .rounded(px(6.))
+                .bg(p.io.opacity(0.08))
+                .text_size(theme::font(12.))
+                .text_color(p.muted)
+                .child(icon("ShieldAlertIcon", p.io).size(px(14.)))
+                .child(label("history.table.netService"))
+                .child(
+                    div()
+                        .id("history-net-service")
+                        .text_color(p.accent)
+                        .cursor_pointer()
+                        .child(label("history.unrecorded.install"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.act(
+                                Action::Preference("settingsSection".into(), json!("permissions")),
+                                window,
+                                cx,
+                            );
+                            this.act(Action::Page("settings".into()), window, cx);
+                        })),
+                )
+        });
         let recording_off = self
             .data
             .get("settings")
@@ -718,7 +1149,7 @@ impl Desktop {
                         div()
                             .font_weight(theme::LABEL_WEIGHT)
                             .text_color(p.ink)
-                            .child(moment_label(ts, self.history_now(), false)),
+                            .child(moment_label(ts, false)),
                     ),
                 )
             })
@@ -745,10 +1176,38 @@ impl Desktop {
             } else {
                 div().child(label("history.note")).into_any_element()
             });
+        // Room for three rows under the head and over the foot, as tall as
+        // they wrapped last (a narrow window wraps both); the page scrolls
+        // beyond. Measured, as the card clips and would let the foot cover
+        // the rows.
+        let (head_height, foot_height) = {
+            let geometry = self.history.geometry.borrow();
+            (
+                f32::from(geometry.table_head).max(36.),
+                f32::from(geometry.table_foot).max(34.),
+            )
+        };
+        let probe = |foot: bool| {
+            let geometry = self.history.geometry.clone();
+            canvas(
+                move |bounds, _, _| {
+                    let mut geometry = geometry.borrow_mut();
+                    if foot {
+                        geometry.table_foot = bounds.size.height;
+                    } else {
+                        geometry.table_head = bounds.size.height;
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        let foot = foot.relative().child(probe(true));
         div()
             .id("history-table-card")
             .flex_1()
-            .min_h(px(36. + 30. + ROW * 3. + 34.))
+            .min_h(px(head_height + 30. + ROW * 3. + foot_height + 2.))
             .flex()
             .flex_col()
             .border_1()
@@ -756,7 +1215,13 @@ impl Desktop {
             .rounded(px(8.))
             .bg(p.layer)
             .overflow_hidden()
-            .child(heading)
+            .child(
+                div()
+                    .relative()
+                    .child(probe(false))
+                    .child(heading)
+                    .when_some(notice, |d, notice| d.child(notice)),
+            )
             .child(
                 div()
                     .flex_1()
@@ -774,6 +1239,36 @@ impl Desktop {
             .into_any_element()
     }
 
+    /// The search box over the table: it keeps its text while the page is away.
+    fn history_search_input(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<InputState> {
+        if let Some(input) = self.ui.inputs.get("historySearch").cloned() {
+            return input;
+        }
+        let input = cx.new(|cx| InputState::new(window, cx));
+        self.subscriptions.push(
+            cx.subscribe_in(&input, window, |this, _, event, window, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.history_redraw(window, cx);
+                }
+            }),
+        );
+        self.ui.inputs.insert("historySearch".into(), input.clone());
+        input
+    }
+
+    /// Whether the table's search box has the keyboard (the page's keys leave it alone).
+    pub(super) fn history_searching(&self, window: &Window, cx: &App) -> bool {
+        self.ui
+            .inputs
+            .get("historySearch")
+            .is_some_and(|input| input.read(cx).focus_handle(cx).is_focused(window))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn history_head_cell(
         &self,
         key: &'static str,
@@ -781,6 +1276,7 @@ impl Desktop {
         width: Option<f32>,
         sort_key: &str,
         descending: bool,
+        service: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
@@ -796,26 +1292,32 @@ impl Desktop {
         div()
             .id(SharedString::from(format!("history-head-{key}")))
             .px(px(8.))
-            .truncate()
+            .flex()
+            .items_center()
+            .gap(px(4.))
             .cursor_pointer()
-            .when_some(width, |d, w| d.w(px(w)).flex_shrink_0().text_right())
-            .when(width.is_none(), |d| d.flex_1().min_w(px(200.)).pl(px(28.)))
+            .when_some(width, |d, w| d.w(px(w)).flex_shrink_0().justify_end())
+            .when(width.is_none(), |d| d.flex_1().min_w(px(200.)).pl(px(32.)))
             .when(active, |d| d.text_color(p.ink))
-            .child(format!("{name}{arrow}"))
-            .on_click(cx.listener(move |this, _, _, cx| {
+            .when(service, |d| {
+                d.child(icon("ShieldAlertIcon", p.io).size(px(12.)))
+            })
+            .child(div().truncate().child(format!("{name}{arrow}")))
+            .on_click(cx.listener(move |this, _, window, cx| {
                 if let Some((key, value)) = tables::sort_preference("history", key, next) {
                     this.prefs.set(&key, value);
                 }
-                cx.notify();
+                this.history_redraw(window, cx);
             }))
             .into_any_element()
     }
 }
 
-/// A process's trend: a small area, scaled to its own highest value.
+/// A process's trend: a small area, scaled to its own highest value, drawn
+/// as an image at the window's density (`charts::sparkline_image`).
 fn sparkline(trend: Option<Vec<Option<f64>>>, color: Hsla) -> AnyElement {
     let cell = div()
-        .w(px(96.))
+        .w(px(TREND_WIDTH))
         .flex_shrink_0()
         .h(px(ROW))
         .px(px(8.))
@@ -828,34 +1330,18 @@ fn sparkline(trend: Option<Vec<Option<f64>>>, color: Hsla) -> AnyElement {
         canvas(
             |_, _, _| {},
             move |bounds, _, window, _| {
-                let n = trend.len().max(2) - 1;
-                let at = |i: usize, v: f64| {
-                    point(
-                        bounds.left() + bounds.size.width * (i as f32 / n as f32),
-                        bounds.bottom() - bounds.size.height * (v / top).clamp(0., 1.) as f32,
-                    )
-                };
-                let mut area = PathBuilder::fill();
-                let mut line = PathBuilder::stroke(px(1.25));
-                let mut started = false;
-                for (i, value) in trend.iter().enumerate() {
-                    let v = value.unwrap_or(0.);
-                    if !started {
-                        area.move_to(point(at(i, 0.).x, bounds.bottom()));
-                        line.move_to(at(i, v));
-                        started = true;
-                    } else {
-                        line.line_to(at(i, v));
-                    }
-                    area.line_to(at(i, v));
+                let scale = window.scale_factor();
+                let size = (
+                    (f32::from(bounds.size.width) * scale).round() as u32,
+                    (f32::from(bounds.size.height) * scale).round() as u32,
+                );
+                if size.0 == 0 || size.1 == 0 {
+                    return;
                 }
-                area.line_to(point(bounds.right(), bounds.bottom()));
-                area.close();
-                if let Ok(path) = area.build() {
-                    window.paint_path(path, color.opacity(0.18));
-                }
-                if let Ok(path) = line.build() {
-                    window.paint_path(path, color.opacity(0.9));
+                if let Some(image) =
+                    charts::sparkline_image(&trend, top, size, scale, color, window)
+                {
+                    let _ = window.paint_image(bounds, bounds, Corners::default(), image, 0, false);
                 }
             },
         )

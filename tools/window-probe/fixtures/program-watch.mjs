@@ -8,7 +8,7 @@ const runs=[
  {pid,createTime:created,firstTs:base,lastTs:base+15000,points:1008,state:'exited'},
  {pid:44102,createTime:base+16000,firstTs:base+20000,lastTs:base+50000,points:7,state:'recording'}
 ];
-const view={version:2,pid,createTime:created,name:'same.exe',mode:'program',state:'recording',liveRuns:1,
+const view={version:1,pid,createTime:created,name:'same.exe',mode:'program',state:'recording',liveRuns:1,
  program:{nativePath:'\\Device\\HarddiskVolume3\\Argus test\\one\\same.exe',displayPath:'C:\\Argus test\\one\\same.exe'},
  runs,totalRuns:2,totalPoints:1008,runOffset:0,damaged:false,unconfirmed:0,
  firstSequence:101,hasEarlier:true,hasLater:false,

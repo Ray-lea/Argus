@@ -366,7 +366,12 @@ fn sat_cdb(transport: Transport, task: [u8; 8], length: usize) -> Vec<u8> {
         }
     ];
     cdb[1] = if length == 0 { 3 << 1 } else { 4 << 1 };
-    cdb[2] = if length == 0 { 0x20 } else { 0x2e };
+    // CK_COND (0x20) only where the answer is in the ATA registers. With it a
+    // SATL ends even a successful data-in command in CHECK CONDITION, and USB
+    // bridges and storage drivers then lose the data or the sense data; both
+    // smartmontools and CrystalDiskInfo read IDENTIFY and SMART data without
+    // it. Data-in: T_DIR from device, BYTE_BLOCK, T_LENGTH in COUNT (0x0e).
+    cdb[2] = if length == 0 { 0x20 } else { 0x0e };
     if cdb.len() == 12 {
         cdb[0] = 0xa1;
         cdb[3..10].copy_from_slice(&task[..7]);
@@ -445,19 +450,34 @@ fn scsi_status(status: u8, sense: &[u8], sat: bool) -> Result<Option<[u8; 8]>> {
     if key == Some(5) {
         return Err(unsupported());
     }
-    if !sat || !matches!(key, Some(0 | 1)) || !matches!(response, 0x72 | 0x73) {
+    if !sat || !matches!(key, Some(0 | 1)) {
         return Err(unavailable());
     }
+    let registers = if matches!(response, 0x72 | 0x73) {
+        descriptor_registers(sense)?
+    } else {
+        fixed_registers(sense)?
+    };
+    // Status: device fault or error.
+    if registers[6] & 0x21 != 0 {
+        return Err(unavailable());
+    }
+    Ok(Some(registers))
+}
+
+/// Registers in task-file order (error, count, LBA low, mid, high, device,
+/// status) from the ATA Status Return sense data descriptor (09h).
+fn descriptor_registers(sense: &[u8]) -> Result<[u8; 8]> {
     let end = 8 + *sense.get(7).ok_or_else(Failure::invalid)? as usize;
     let mut descriptors = sense.get(8..end).ok_or_else(Failure::invalid)?;
     while !descriptors.is_empty() {
         let length = *descriptors.get(1).ok_or_else(Failure::invalid)? as usize + 2;
         let descriptor = descriptors.get(..length).ok_or_else(Failure::invalid)?;
         if descriptor[0] == 9 {
-            if length < 14 || descriptor[13] & 0x21 != 0 {
-                return Err(unavailable());
+            if length < 14 {
+                return Err(Failure::invalid());
             }
-            return Ok(Some([
+            return Ok([
                 descriptor[3],
                 descriptor[5],
                 descriptor[7],
@@ -466,11 +486,26 @@ fn scsi_status(status: u8, sense: &[u8], sat: bool) -> Result<Option<[u8; 8]>> {
                 descriptor[12],
                 descriptor[13],
                 0,
-            ]));
+            ]);
         }
         descriptors = &descriptors[length..];
     }
     Err(Failure::invalid())
+}
+
+/// SAT-3 returns the registers in fixed format sense data when the device
+/// reports fixed format (D_SENSE 0, the usual case): under ATA PASS-THROUGH
+/// INFORMATION AVAILABLE (00h/1Dh) the INFORMATION field holds ERROR, STATUS,
+/// DEVICE and COUNT(7:0), the COMMAND-SPECIFIC INFORMATION field the LBA bytes.
+/// A zero status means the SATL did not fill them (as smartmontools reads it).
+fn fixed_registers(sense: &[u8]) -> Result<[u8; 8]> {
+    let end = 8 + *sense.get(7).ok_or_else(Failure::invalid)? as usize;
+    match sense[..end.min(sense.len())].get(..14) {
+        Some(sense) if sense[12] == 0 && sense[13] == 0x1d && sense[4] != 0 => Ok([
+            sense[3], sense[6], sense[9], sense[10], sense[11], sense[5], sense[4], 0,
+        ]),
+        _ => Err(Failure::invalid()),
+    }
 }
 
 fn exchange(handle: HANDLE, code: u32, buffer: &mut [u8], input_length: usize) -> Result<usize> {
@@ -525,11 +560,46 @@ mod tests {
             assert!(task[6] == 0xec || (task[6] == 0xb0 && [0xd0, 0xd1, 0xda].contains(&task[0])));
             for transport in [Transport::Sat12, Transport::Sat16] {
                 let cdb = sat_cdb(transport, task, command.length());
-                assert_eq!(cdb[2] & 0x20, 0x20);
+                // Only the non-data SMART RETURN STATUS asks for the registers:
+                // data-in commands end in GOOD status, which USB bridges pass on.
+                assert_eq!(cdb[2], if command.length() == 0 { 0x20 } else { 0x0e });
                 assert_eq!(cdb[1], if command.length() == 0 { 6 } else { 8 });
                 assert_eq!(cdb[if cdb.len() == 12 { 9 } else { 14 }], task[6]);
             }
         }
+    }
+
+    #[test]
+    fn sat_registers_come_from_fixed_format_sense_data() {
+        // RECOVERED ERROR, ATA PASS-THROUGH INFORMATION AVAILABLE; ERROR 0,
+        // STATUS 50h, LBA 4Fh/C2h: SMART RETURN STATUS of a passing drive.
+        let mut sense = [
+            0xf0, 0, 1, 0, 0x50, 0, 0, 10, 0, 0, 0x4f, 0xc2, 0, 0x1d, 0, 0, 0, 0,
+        ];
+        let registers = scsi_status(2, &sense, true).unwrap().unwrap();
+        assert_eq!(
+            (registers[3], registers[4], registers[6]),
+            (0x4f, 0xc2, 0x50)
+        );
+        assert!(scsi_status(2, &sense, false).is_err());
+        for len in 0..14 {
+            assert!(scsi_status(2, &sense[..len], true).is_err());
+        }
+        // The additional sense length must cover the ASC and ASCQ.
+        sense[7] = 5;
+        assert!(scsi_status(2, &sense, true).is_err());
+        sense[7] = 10;
+        for (at, value) in [(13, 0), (4, 0), (4, 0x51), (2, 4)] {
+            let mut sense = sense;
+            sense[at] = value;
+            assert!(scsi_status(2, &sense, true).is_err(), "{at}");
+        }
+        // ILLEGAL REQUEST in either format: the bridge lacks the command.
+        sense[2] = 5;
+        assert_eq!(
+            scsi_status(2, &sense, true).unwrap_err().state,
+            DiskQueryState::Unsupported
+        );
     }
 
     #[test]

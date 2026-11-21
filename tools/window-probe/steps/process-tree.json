@@ -1,4 +1,5 @@
 {
+  "about": "进程树的折叠与展开：默认折叠、行菜单与表头菜单中的展开和折叠、全部展开与全部折叠、被隐藏的后代，以及搜索时显示祖先；核对可见行数与已展开的父项。",
   "window": [1400, 1000],
   "steps": [
     {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"pid","desc":false}},"sample":{"set":{"/system/processCount":7,"/processes":[

@@ -22,6 +22,9 @@ pub(super) enum RegionKind {
     Navigation,
     /// The page header beside the side navigation: the page's name and controls.
     Header,
+    /// The history page's chart card: it moves on its own while it follows
+    /// the clock, the page around it replaying.
+    HistoryChart,
 }
 
 /// One view type for each kind of region: the frame trace lists the views a
@@ -33,6 +36,7 @@ pub(super) mod named {
     pub struct Toolbar;
     pub struct Navigation;
     pub struct Header;
+    pub struct HistoryChart;
 }
 
 pub(super) struct Region<Name: 'static> {
@@ -93,6 +97,7 @@ impl Desktop {
                 RegionKind::Toolbar => view::<named::Toolbar>(desktop, kind, cx),
                 RegionKind::Navigation => view::<named::Navigation>(desktop, kind, cx),
                 RegionKind::Header => view::<named::Header>(desktop, kind, cx),
+                RegionKind::HistoryChart => view::<named::HistoryChart>(desktop, kind, cx),
             })
             .clone()
             .cached(style)
@@ -102,6 +107,14 @@ impl Desktop {
     /// Whether the region has been drawn, so that it can be drawn again alone.
     pub(super) fn has_region(&self, kind: RegionKind) -> bool {
         self.regions.views.contains_key(&kind)
+    }
+
+    /// Draws one region alone on the next frame: the views around it replay,
+    /// for a change that stays inside it.
+    pub(super) fn redraw_region_alone(&self, kind: RegionKind, window: &Window) {
+        if let Some(view) = self.regions.views.get(&kind) {
+            window.request_isolated_view_redraw(view.entity_id());
+        }
     }
 
     /// Draws one region again on the next frame; the desktop around it renders
@@ -188,6 +201,7 @@ impl Desktop {
                 .flex_col()
                 .child(self.page_header(window, cx))
                 .into_any_element(),
+            RegionKind::HistoryChart => self.history_chart_region(window, cx),
         };
         self.render_count = render_count;
         let added = self

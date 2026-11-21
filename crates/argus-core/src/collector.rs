@@ -10,6 +10,7 @@ use crate::app_windows;
 use crate::diagnostics::{sample_phase, startup_phase};
 use crate::gpu_process::{GpuEngineUsage, GpuProcessTracker};
 use crate::hardware::{Hardware, HardwareTracker};
+use crate::leaks::{Leak, LeakTracker};
 use crate::meta::MetaStore;
 use crate::net_process::NetworkTracker;
 use crate::process::{ProcessRow, ProcessTracker};
@@ -25,6 +26,9 @@ pub struct Snapshot {
     pub system: SystemStats,
     pub hardware: Hardware,
     pub processes: Vec<ProcessRow>,
+    /// Processes that appear to leak handles or processes (`leaks.rs`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub leaks: Vec<Leak>,
     /// The sessions a user is signed in to: a process belongs to the user of
     /// its session, and to the system where its session is not listed.
     pub sessions: Vec<LogonSession>,
@@ -35,6 +39,7 @@ pub struct Snapshot {
 pub struct Collector {
     system: SystemTracker,
     processes: ProcessTracker,
+    leaks: LeakTracker,
     sessions: SessionTracker,
     hardware: HardwareTracker,
     /// Per-process GPU usage, absent without an adapter the performance page lists.
@@ -72,6 +77,7 @@ impl Collector {
         Self {
             system,
             processes,
+            leaks: LeakTracker::new(),
             sessions,
             hardware,
             gpu_processes,
@@ -100,6 +106,12 @@ impl Collector {
                 self.system.precise_idle_fraction(),
             )
         });
+        // Where the processor clock checks out, total and per-processor usage
+        // come from idle cycles over the processes' own interval: the time
+        // counters' figures stay only where it does not.
+        if let Some(usage) = self.processes.cycle_usage() {
+            system.apply_cycle_usage(usage);
+        }
         let mut hardware = self.hardware.sample();
         sample_phase("gpu-processes", || {
             self.attach_gpu_usage(&mut processes, &mut hardware)
@@ -143,15 +155,18 @@ impl Collector {
         }
 
         self.seq += 1;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default();
+        self.leaks.observe(timestamp, &processes);
         Snapshot {
             seq: self.seq,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or_default(),
+            timestamp,
             system,
             hardware,
             processes,
+            leaks: self.leaks.findings().to_vec(),
             sessions,
             process_network: self.network.is_some(),
         }

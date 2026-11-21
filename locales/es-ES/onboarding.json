@@ -40,7 +40,7 @@
     "minimizedInterval": "Actualización al minimizar",
     "minimizedIntervalHint": "El valor predeterminado es 5 segundos; reducirlo aumenta el uso de recursos en segundo plano.",
     "trayInterval": "Actualización en la bandeja",
-    "trayIntervalHint": "Se toman muestras con este intervalo al permanecer en la bandeja. Si supera los 5 segundos, los registros del historial quedan más espaciados.",
+    "trayIntervalHint": "Si supera los 5 segundos, los registros del historial quedan más espaciados.",
     "hotkey": "Pulse {hotkey} para mostrar u ocultar Argus. Puede cambiar el atajo en Configuración.",
     "hotkeyOff": "El atajo para mostrar u ocultar Argus está desactivado. Puede volver a activarlo en Configuración.",
     "hotkeyTaken": "{shortcut} está en uso por Windows u otra aplicación, posiblemente otra instancia de Argus. Elija otro atajo en Configuración.",
@@ -59,7 +59,7 @@
     "routeAuto": "Automático",
     "routeDirect": "GitHub solamente",
     "routeProxy": "Solo mediante proxy de GitHub",
-    "proxyNotice": "Los proxies de GitHub son operados por terceros y pueden conocer la dirección IP de este equipo y los archivos que descarga. La verificación de firma impide instalar actualizaciones manipuladas.",
+    "proxyNotice": "Los proxies de GitHub son operados por terceros y pueden conocer la dirección IP de este equipo y los archivos que descarga. Los instaladores deben superar la comprobación de firma y de versión.",
     "unavailable": "Esta versión no se puede actualizar sola."
   },
   "privilege": {
@@ -105,7 +105,7 @@
     "pages": "{keys} cambia de página; {search} busca procesos",
     "menu": "Haga clic derecho en un proceso para finalizarlo, cambiar su prioridad, activar el modo de eficiencia o añadir una regla",
     "drop": "Arrastre un archivo o una carpeta a la ventana para encontrar los procesos que lo utilizan",
-    "history": "Historial conserva los últimos 7 días de uso de recursos y los procesos más activos en cada momento",
+    "history": "Historial conserva el uso de recursos y los procesos más activos en cada momento",
     "reopen": "Puede volver a abrir esta guía desde la página Acerca de."
   },
   "administrator": "Permitir que Argus se ejecute automáticamente como administrador para gestionar procesos y aplicaciones de inicio de otros usuarios. Está desactivado de forma predeterminada; Windows solicita autorización al activarlo por primera vez."
