@@ -1,4 +1,5 @@
 {
+  "about": "录制把 CPU 表头向右拖过两列时各列的换位，以及在“选择列”对话框中把第三项向下拖过另外两项，核对拖动后的列顺序并把录制拼成图。",
   "window": [1500, 1000],
   "steps": [
     { "note": "Drag the CPU header right past two columns: the columns trade places as it goes." },

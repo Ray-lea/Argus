@@ -1,4 +1,5 @@
 {
+  "about": "在设置页单击“硬件加速”开关，核对窗口在运行中换到软件渲染设备、再换回 GPU，并截取两种设备下的设置页、性能页、进程页与托盘快捷面板；两段录制覆盖切换前后的每一帧，用于确认切换期间没有空白画面。`inspectLayout.graphics` 的 `softwareRequested` 为设置所请求的渲染方式，`software` 为窗口实际使用的适配器是否带软件标记。模拟快照下该开关照常执行，只改变测试实例自身的渲染设备与设置文件。步骤需在装有 GPU 的机器上运行，没有 GPU 时两种设置都使用软件适配器。",
   "window": [1240, 900],
   "steps": [
     { "note": "Run on a machine with a graphics card: without one the first device is already the software one." },

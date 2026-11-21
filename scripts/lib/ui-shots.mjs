@@ -10,7 +10,7 @@ export const INSPECTIONS = {
   vitals: ["inspectVitals", "ui-vitals"],
 };
 
-const KINDS = ["note", "control", "probe", "record", "wait", "inspect", "expect", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
+const KINDS = ["note", "control", "probe", "record", "wait", "inspect", "expect", "expectNot", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
 const NAME = /^[\w.-]+$/;
 
 /**
@@ -70,6 +70,10 @@ export function parseSteps(value) {
       assert("inspect" in step, `${where}: expect needs inspect`);
       assert(step.expect && typeof step.expect === "object", `${where}: expect maps paths to values`);
     }
+    if ("expectNot" in step) {
+      assert("inspect" in step, `${where}: expectNot needs inspect`);
+      assert(step.expectNot && typeof step.expectNot === "object", `${where}: expectNot maps paths to values`);
+    }
     if ("capture" in step) {
       assert(NAME.test(step.capture), `${where}: capture names a file`);
       captures.add(step.capture);
@@ -120,6 +124,16 @@ export function parseSteps(value) {
 }
 
 /**
+ * What a steps file is for, from its `about` text: what it checks, which
+ * controls and inspection fields it relies on. An array of steps has none.
+ */
+export function aboutOf(plan) {
+  if (Array.isArray(plan) || plan.about === undefined) return "";
+  assert(typeof plan.about === "string" && plan.about.trim(), "about must be a non-empty text");
+  return plan.about.trim();
+}
+
+/**
  * What a steps file needs to run at all, from its optional `run` object:
  * `live` for real data instead of the fixture, `env` for switches of the test
  * instance (names starting with `ARGUS_`, so a steps file cannot redirect
@@ -156,6 +170,17 @@ export function unmet(event, expect) {
   return Object.entries(expect)
     .filter(([path, want]) => !isDeepStrictEqual(valueAt(event, path), want))
     .map(([path, want]) => `${path}: expected ${JSON.stringify(want)}, got ${JSON.stringify(valueAt(event, path))}`);
+}
+
+/**
+ * Which values an inspected event must not have turned out to hold, as
+ * messages: for a state that has to have changed from a known one (a list
+ * that must have scrolled away from 0) when the new value is not known.
+ */
+export function unwanted(event, expectNot) {
+  return Object.entries(expectNot)
+    .filter(([path, value]) => isDeepStrictEqual(valueAt(event, path), value))
+    .map(([path, value]) => `${path}: must not be ${JSON.stringify(value)}`);
 }
 
 /** Which of `count` frames a sheet shows: every `every`th, the last always, at most `limit`. */

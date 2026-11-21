@@ -1,4 +1,5 @@
 {
+  "about": "在组件页按住桌面监控的类别手柄（锚点 `<卡片>-grip-<类别>`，类别整块为 `<卡片>-block-<类别>`）和读数选项拖动，捕获拖动中的画面，核对类别与读数的新顺序及桌面监控显示的各行，并核对拖动后单击选项仍只勾选；随后在任务栏监控的面板中用 `taskbarPanelDrag` 拖动类别名称与读数，再用 `taskbarPanel` 的 `kinds:` 直接排列类别，捕获深浅主题下的组件页与面板。`inspectLayout.monitors` 的 `kinds.desktop`、`kinds.taskbar` 为两个监控的类别顺序，`taskbarMetrics` 为任务栏监控保存的读数。",
   "window": [1100, 900],
   "steps": [
     {"note":"the components page: the readings in blocks by kind, each card's icon beside its title"},

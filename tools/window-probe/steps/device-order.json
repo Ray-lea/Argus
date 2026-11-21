@@ -1,4 +1,5 @@
 {
+  "about": "检查设备列表的排序：用 `sample` 改写磁盘的盘符后在“按盘符”与“按磁盘编号”间切换，拖动网络适配器到顶部时磁盘顺序不变，拖动磁盘打乱顺序后改为“自定义”，并核对菜单的勾选与“恢复默认顺序”，录制行的让位与滑动。`inspectLayout.performance` 的 `diskOrder` 为磁盘排序方式，`arranged` 为拖动保存的顺序。",
   "window": [1240, 860],
   "steps": [
     { "note": "Performance page: the devices in the collector's order, disks by number." },

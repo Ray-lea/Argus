@@ -1,4 +1,5 @@
 {
+  "about": "捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。",
   "window": [1100, 760],
   "steps": [
     {"control":{"page":"components"},"wait":700,"capture":"components-dark"},

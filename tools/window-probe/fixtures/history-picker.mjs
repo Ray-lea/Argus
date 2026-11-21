@@ -63,6 +63,7 @@ const manyEvents = {
   })),
 };
 const steps = {
+  about: '历史页的时间范围：快捷范围的下拉列表与键盘选择、自定义范围对话框，以及带 30 天热力图和事件列表的概览。62 天的逐小时数据与事件按模拟快照的时间推算，由 fixtures/history-picker.mjs 生成，不要手改本文件。',
   window: [1280, 900],
   steps: [
     { control: { page: 'history', pointerOutside: true, preference: { 'history.overview': false } }, wait: 1500 },

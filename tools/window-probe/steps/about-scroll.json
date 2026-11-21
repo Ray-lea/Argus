@@ -1,4 +1,5 @@
 {
+  "about": "检查关于页在 150% 界面缩放、大字号及窗口尺寸变化后的滚动范围与底部可达性，`inspectLayout` 的 `aboutScroll` 字段记录滚动位置和边界。",
   "window": [1240, 800],
   "steps": [
     {"note":"A 150% interface scale reduces the content viewport without changing desktop settings."},

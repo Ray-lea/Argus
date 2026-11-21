@@ -1,4 +1,5 @@
 {
+  "about": "新版本提示与更新说明对话框：通知中的入口、更新说明的滚动与关闭、测量期间关闭对话框后页面仍可操作，以及随后打开的“运行新任务”表单。",
   "window": [1240, 900],
   "steps": [
     {"note":"The update notice uses the normal action handler, with fixture data."},

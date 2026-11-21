@@ -1,4 +1,5 @@
 {
+  "about": "用 `sample` 控制改写模拟快照的 `sessions` 与各进程的会话编号，核对单用户时不分组、第二个用户登录后自动分组、三种视图、分类与用户组的折叠、搜索、隐藏系统进程、同一程序在两个用户组内各占一行，以及“始终分组”“不分组”优先于登录用户数。`inspectLayout.userGroups` 输出所选模式、登录用户数、是否分组及各分组行的标题、进程数与展开状态。同一文件还用 `pointer` 的 `context` 事件在分组行上按下右键，核对弹出的菜单：当前用户可注销，其他用户在标准权限下不可选，“系统”分组只有折叠，分类标题不弹出菜单；用 `data` 把 `info.elevated` 设为真后注销其他用户，经确认对话框，再用 `resolve` 给出 `sign_out_user` 的成功与拒绝访问两种结果。模拟快照不发出任何命令，不会注销真实会话。`inspectLayout` 的 `dialog.title` 为对话框标题，`toasts` 为当前显示的通知文字。",
   "window": [1200, 900],
   "steps": [
     {"note":"one signed-in user: the list is what it was","control":{"page":"processes","view":"apps","details":"closed","motion":"off","pointerOutside":true},"wait":500,"inspect":"layout","label":"single-user-default","expect":{"userGroups.mode":"auto","userGroups.users":1,"userGroups.grouped":false,"userGroups.headings.length":0},"capture":"single-user"},

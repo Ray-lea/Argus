@@ -1,4 +1,5 @@
 {
+  "about": "检查关于页官网与 GitHub 卡片的悬停、深浅主题、最小窗口和大字号布局，并核对单击卡片底部的按钮只打开对应页面、不触发整张卡片。模拟快照不执行打开网页等命令，`inspectLayout.skippedRequest` 记录最近一次被跳过的命令及其参数；各页面的地址由 `commands.rs` 的单元测试覆盖。",
   "window": [1240, 900],
   "steps": [
     {"control": {"page": "about", "theme": "dark"}, "wait": 1200, "capture": "dark"},

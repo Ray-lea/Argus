@@ -1,4 +1,5 @@
 {
+  "about": "用 `sample` 去掉显卡，核对没有显卡的机器上进程页不列出 GPU 列、“选择列”对话框的 GPU 分类页，并截取浅色主题。",
   "window": [1500, 900],
   "steps": [
     {"control":{"page":"processes","view":"list","details":"closed","motion":"off","preference":{"processColumns":{"selected":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"order":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"autoWidth":true},"processSort":{"key":"gpu","desc":true}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"with-gpu","expect":{"state.visible.length":7,"state.visible.3.key":"gpu","state.visible.6.key":"gpuShared"},"capture":"with-gpu"},

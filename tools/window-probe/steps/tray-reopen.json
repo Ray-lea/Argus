@@ -1,4 +1,5 @@
 {
+  "about": "在隐藏的主窗口上检查卡片直接切换到快捷面板、再次单击关闭及重新打开、关闭后 150 ms 内再次右键单击仍能打开，指针停留时悬停卡片先等待再打开、停留不足即离开时不打开，并覆盖关闭窗口动画的情况。`inspectLayout.tray` 同时记录浮窗的原生可见状态与采样状态，确认面板打开时保持前台采样节拍，关闭后恢复后台节拍。",
   "window": [1100, 760],
   "steps": [
     {"control":{"page":"components","windowMotion":"off","pointerOutside":true},"wait":700,"inspect":"layout","label":"motion-off","expect":{"animations.window":false}},

@@ -1,4 +1,5 @@
 {
+  "about": "用 `resolve` 给出结束进程时无法判定是否为关键进程的三种结果（单个进程、应用组、进程树），截取各自的通知。",
   "window": [1200, 800],
   "steps": [
     {"control":{"page":"processes","pointerOutside":true},"wait":500},

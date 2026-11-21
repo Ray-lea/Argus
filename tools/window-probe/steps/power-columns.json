@@ -1,4 +1,5 @@
 {
+  "about": "用模拟快照中写定的估算值核对“电源使用情况”与“电源使用情况趋势”：五个等级的文字与底色、应用组的合计、按显示的等级排序（同级按名称、缺少趋势的进程排在最后），并捕获深浅主题与“选择列”对话框。模拟快照不经过采样线程，估算与趋势的计算由 `argus-core` 的 `power` 单元测试覆盖。",
   "window": [1500, 900],
   "steps": [
     { "note": "Power usage and its trend: levels, heat, the app's sum and sorting by the level shown." },

@@ -1,4 +1,5 @@
 {
+  "about": "用 `data` 控制把 `info.portable` 设为免安装版，核对引导第一步的说明卡片与右下角的一次性提示，覆盖图表之上、浅色主题和最小窗口加大字号。测试实例不会自行显示该提示，由 `portableNotice` 控制触发；模拟快照下单击下载入口不打开浏览器。更换 `--language` 可复核各语言的换行。",
   "window": [1240, 860],
   "steps": [
     { "note": "A portable copy: the onboarding's first step tells what it lacks and where the installer is." },

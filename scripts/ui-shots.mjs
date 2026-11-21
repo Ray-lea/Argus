@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
-import { INSPECTIONS, parseSteps, pickFrames, runOptions, runSeconds, unmet } from "./lib/ui-shots.mjs";
+import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, unmet, unwanted } from "./lib/ui-shots.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -29,6 +29,7 @@ assert(stepsFile && existsSync(stepsFile), "a steps file is required");
 const plan = JSON.parse(readFileSync(stepsFile, "utf8"));
 const steps = parseSteps(Array.isArray(plan) ? plan : plan.steps);
 const needs = runOptions(plan);
+if (aboutOf(plan)) console.log(aboutOf(plan));
 const size = option("--width") ? [option("--width"), option("--height", option("--width"))] : (plan.window ?? null);
 
 const live = flag("--live") || needs.live;
@@ -124,7 +125,7 @@ try {
       send({ [control]: step.label });
       const event = await pending;
       result.inspect = event;
-      const missed = step.expect ? unmet(event, step.expect) : [];
+      const missed = [...(step.expect ? unmet(event, step.expect) : []), ...(step.expectNot ? unwanted(event, step.expectNot) : [])];
       for (const message of missed) failures.push(`step ${index + 1} (${step.label}): ${message}`);
       console.log(`inspect ${step.label}: ${missed.length ? `${missed.length} unmet` : "ok"}`);
     }

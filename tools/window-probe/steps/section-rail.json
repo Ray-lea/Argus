@@ -1,4 +1,5 @@
 {
+  "about": "检查组件页与设置页左侧的分组列表：单击分组跳转、滚轮滚动后标记跟随、从托盘设置入口打开时回到托盘分组，核对宽窗口下卡片列不超过 960 px，并捕获深浅主题与窄窗口（不显示列表）的画面。`inspectLayout.sections` 记录两页列表当前标出的分组，`sections.cards` 为两页卡片列最近一次绘制的左边与宽度；分组的测试锚点为 `<页面>-nav-<分组>`，如 `components-nav-taskbar`。",
   "window": [1200, 760],
   "steps": [
     {"control":{"page":"components","pointerOutside":true},"wait":700,"inspect":"layout","label":"components-top","expect":{"sections.components":"tray"},"capture":"components-top-dark"},

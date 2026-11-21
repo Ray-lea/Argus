@@ -1,4 +1,5 @@
 {
+  "about": "在进程树中折叠、展开分支和搜索，检查各列宽度保持不变。",
   "window": [1600, 1000],
   "steps": [
     { "note": "A tree whose deepest branch has the longest names: the automatic widths measure it folded or not." },

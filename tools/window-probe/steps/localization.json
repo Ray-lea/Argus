@@ -1,4 +1,5 @@
 {
+  "about": "逐页截取进程、性能、服务、启动、连接、历史、设置、关于各页与引导对话框，另含最小窗口加大字号与分数缩放；用 `--language` 换语言复核各语言的排版。",
   "window": [1240, 860],
   "steps": [
     {"control":{"page":"processes","fontSize":13,"theme":"dark"},"wait":700,"capture":"processes"},

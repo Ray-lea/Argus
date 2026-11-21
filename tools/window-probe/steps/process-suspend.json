@@ -1,4 +1,5 @@
 {
+  "about": "核对混合暂停状态的应用组菜单、暂停确认、取消与直接恢复，以及深浅主题下的确认文案。模拟快照中的操作由测试入口截断；真实暂停与恢复由采集层的隔离子进程测试验证。",
   "window": [1200, 900],
   "steps": [
     {"control":{"page":"processes","view":"apps","details":"closed","motion":"off","preference":{"processSort":{"key":"cpu","desc":true}},"sample":{"set":{"/processes":[{"pid":10001,"createTime":100,"name":"Review.exe","path":"C:/Review.exe","cpu":1,"workingSet":10485760,"suspended":false},{"pid":10002,"createTime":200,"name":"Review.exe","path":"C:/Review.exe","cpu":0,"workingSet":10485760,"suspended":true}]}},"pointerOutside":true},"wait":500},

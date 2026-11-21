@@ -1,4 +1,5 @@
 {
+  "about": "历史页的主要交互：悬停与固定时刻、选取区间、回到最新、添加第二条轨道、滚轮与键盘的缩放和平移、拖动后保持暂停、行菜单，并截取浅色主题。",
   "window": [1280, 900],
   "steps": [
     { "control": { "page": "history", "pointerOutside": true }, "wait": 1500, "inspect": "layout", "label": "default", "capture": "default",

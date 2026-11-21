@@ -1,4 +1,5 @@
 {
+  "about": "设置页的历史记录卡片：记录内容、保留上限、保存位置与移动面板，并截取浅色主题。",
   "window": [1280, 900],
   "steps": [
     { "control": { "page": "settings", "settingsSection": "data", "pointerOutside": true,

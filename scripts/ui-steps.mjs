@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
-import { parseSteps, runSeconds, verdict } from "./lib/ui-shots.mjs";
+import { aboutOf, parseSteps, runSeconds, verdict } from "./lib/ui-shots.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -35,7 +35,10 @@ const known = JSON.parse(readFileSync("tools/window-probe/known-failures.json", 
 for (const name of Object.keys(known)) assert(all.includes(name), `known-failures.json: ${name} is not a step file`);
 
 if (argv.includes("--list")) {
-  for (const name of chosen) console.log(known[name] ? `${name}  (known failure: ${known[name]})` : name);
+  for (const name of chosen) {
+    const about = aboutOf(JSON.parse(readFileSync(`${directory}/${name}.json`, "utf8")));
+    console.log(`${name}${known[name] ? `  (known failure: ${known[name]})` : ""}\n    ${about || "(no description)"}`);
+  }
   process.exit(0);
 }
 

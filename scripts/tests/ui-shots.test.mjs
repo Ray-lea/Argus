@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseSteps, pickFrames, runOptions, runSeconds, unmet, verdict } from "../lib/ui-shots.mjs";
+import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
 
 test("steps are checked before the window starts", () => {
   assert.throws(() => parseSteps({}), /array/);
@@ -25,6 +25,22 @@ test("expectations read dotted paths and compare whole values", () => {
     'state.focus.in: expected "menu", got "submenu"',
     "state.missing: expected 1, got undefined",
   ]);
+});
+
+test("a value that must have changed is compared with the one it must not be", () => {
+  const event = { state: { scroll: { y: -120 } }, settingsTop: 0 };
+  assert.deepEqual(unwanted(event, { "state.scroll.y": 0 }), []);
+  assert.deepEqual(unwanted(event, { settingsTop: 0, "state.scroll.y": 0 }), ["settingsTop: must not be 0"]);
+  assert.throws(() => parseSteps([{ expectNot: { a: 1 } }]), /expectNot needs inspect/);
+  assert.equal(parseSteps([{ inspect: "layout", expectNot: { settingsTop: 0 } }])[0].label, "step-1");
+});
+
+test("a steps file may say what it is for", () => {
+  assert.equal(aboutOf([{ wait: 1 }]), "");
+  assert.equal(aboutOf({ steps: [] }), "");
+  assert.equal(aboutOf({ about: "  Checks the header menu.  ", steps: [] }), "Checks the header menu.");
+  assert.throws(() => aboutOf({ about: "", steps: [] }), /non-empty text/);
+  assert.throws(() => aboutOf({ about: ["a"], steps: [] }), /non-empty text/);
 });
 
 test("a sheet keeps the last frame and spreads a long recording", () => {

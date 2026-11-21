@@ -1,4 +1,5 @@
 {
+  "about": "用隔离窗口复核触摸操作：进程树、重新排序后的长按目标、菜单、图表、150% 界面缩放下的页面滚动，以及滚动条的拖动与取消。触点识别本身由 `cargo test -p argus --test touch_input` 覆盖。",
   "window": [1240, 860],
   "steps": [
     {"control":{"page":"processes","view":"tree","details":false,"motion":"off","preference":{"processSort":{"key":"pid","desc":false}},"sample":{"set":{"/system/processCount":3,"/processes":[

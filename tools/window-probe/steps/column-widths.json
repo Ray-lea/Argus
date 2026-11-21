@@ -1,4 +1,5 @@
 {
+  "about": "检查进程列的自动宽度：宽窗口不出现横向滚动，悬停列边界时显示竖线与提示，拖动列边界后该列保持手动宽度且其他列不变，双击列边界恢复自动宽度，以及“全宽”。`inspectMenu` 核对表头菜单的“自动调整此列宽度”在列未拖动时不可用；`inspect columns` 的 `autoWidth`、`fullWidth` 为文本列多数行与全部行所需的宽度。",
   "window": [1700, 1000],
   "steps": [
     { "note": "Automatic widths: the columns take what their contents need and no more; the long service name is cut short." },

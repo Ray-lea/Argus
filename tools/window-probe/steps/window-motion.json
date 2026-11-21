@@ -1,4 +1,5 @@
 {
+  "about": "设置页的“界面动画”与“窗口动画”开关：核对各种组合下 `inspectLayout.animations` 的状态，并截取关闭与开启窗口动画时窗口显示的画面。",
   "window": [1240, 900],
   "steps": [
     {"control":{"page":"settings","settingsSection":"motion","uiMotion":"on","windowMotion":"on","motion":"fluid"},"wait":500,"inspect":"layout","label":"all-on","expect":{"animations.ui":true,"animations.window":true,"animations.charts":"Fluid"}},

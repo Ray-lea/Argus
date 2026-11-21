@@ -1,4 +1,5 @@
 {
+  "about": "用 `taskbarDisplays` 换上三台虚构的显示器，测试实例为每台显示器各建一条替身任务栏（主显示器的在最下方并带托盘，其余依次叠在其上方，标题为“Argus taskbar stand-in 2”等），经面板控制把任务栏监控移到第二台显示器的任务栏，核对该显示器断开时暂时显示在主显示器上、重新连接后移回，并捕获组件页的“显示器”卡片与面板中的显示器选择。`inspectLayout.monitors` 的 `taskbarDisplay` 为保存的显示器，`taskbarOn` 为监控实际所在任务栏对应的显示器及是否暂时显示在主显示器上，`displays` 为当前列出的显示器。",
   "window": [1100, 900],
   "steps": [
     {"note":"three displays of the test's own: one stand-in taskbar each, the primary display's lowest"},
