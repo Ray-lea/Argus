@@ -417,6 +417,9 @@ struct Desktop {
     /// memory was given back since (`memory.releaseHidden`).
     hidden_since: Option<(Instant, bool)>,
     last_select: Option<(String, Instant)>,
+    /// A click on the selected process row that will deselect it unless a
+    /// second click makes it a double-click (`Desktop::deselect_later`).
+    deselect_due: Option<Task<()>>,
     /// The lists' column filters in force, by preference (`tables::ColumnFilter`).
     filters: HashMap<&'static str, String>,
     forms: HashMap<String, Entity<InputState>>,
@@ -599,6 +602,7 @@ impl Desktop {
             last_privilege: Instant::now() - Duration::from_secs(60),
             hidden_since: None,
             last_select: None,
+            deselect_due: None,
             filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
             first_frame: false,

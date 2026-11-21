@@ -543,7 +543,13 @@ impl Desktop {
                         click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
                         ..Default::default()
                     })),
-                    Some("up") => pointer.push(press(at, false)),
+                    // `clicks` 2: the release that ends a double-click.
+                    Some("up") => pointer.push(PlatformInput::MouseUp(MouseUpEvent {
+                        position: at,
+                        button: MouseButton::Left,
+                        click_count: step["clicks"].as_u64().map_or(1, |clicks| clicks as usize),
+                        ..Default::default()
+                    })),
                     // A second click in place, as the platform reports one.
                     Some("double") => pointer.extend([
                         moved(at, None),

@@ -831,16 +831,42 @@ impl Desktop {
                 self.rebuild_rows(false, cx);
             }
             Action::Select(key) => {
-                if key.is_empty()
-                    || (self.page == "processes"
-                        && self.selected.get(&self.page) == Some(&key)
-                        && self.last_select.as_ref().is_some_and(|(prev, at)| {
-                            prev == &key && at.elapsed() > Duration::from_millis(300)
-                        }))
-                {
+                // A click on the selected process row deselects it; the
+                // keyboard clears `last_select` first and never does.
+                let clicked_again = self.page == "processes"
+                    && !key.is_empty()
+                    && self.selected.get(&self.page) == Some(&key)
+                    && self
+                        .last_select
+                        .as_ref()
+                        .is_some_and(|(prev, _)| prev == &key);
+                if key.is_empty() {
                     self.selected.remove(&self.page);
                     self.last_select = None;
+                    self.deselect_due = None;
+                } else if clicked_again {
+                    let double = crate::platform::double_click_time();
+                    let recent = self
+                        .last_select
+                        .as_ref()
+                        .is_some_and(|(_, at)| at.elapsed() <= double);
+                    if self.deselect_due.take().is_some() {
+                        // The second click of a double-click: the row stays
+                        // selected, and the pane does not close and reopen.
+                        self.last_select = Some((key, Instant::now()));
+                    } else if recent {
+                        // The second click of the double-click that selected it.
+                    } else if self.rows.iter().any(|row| row.key == key && row.expandable) {
+                        // A double-click unfolds this row: deselect once it
+                        // turns out to be a single click.
+                        self.last_select = Some((key, Instant::now()));
+                        self.deselect_later(double, cx);
+                    } else {
+                        self.selected.remove(&self.page);
+                        self.last_select = None;
+                    }
                 } else {
+                    self.deselect_due = None;
                     self.selected.insert(self.page.clone(), key.clone());
                     self.last_select = Some((key.clone(), Instant::now()));
                     if self.page == "processes" {
@@ -972,6 +998,24 @@ impl Desktop {
             Action::Confirm => self.confirm_dialog(window, cx),
         }
         cx.notify();
+    }
+    /// Deselects the selected process row `after` the double-click time,
+    /// unless another click or selection cancels it (`deselect_due`).
+    fn deselect_later(&mut self, after: Duration, cx: &mut Context<Self>) {
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(after).await;
+            let _ = this.update(cx, |this, cx| {
+                // This task is the one running: let it finish rather than cancel it.
+                let Some(task) = this.deselect_due.take() else {
+                    return;
+                };
+                task.detach();
+                this.selected.remove("processes");
+                this.last_select = None;
+                cx.notify();
+            });
+        });
+        self.deselect_due = Some(task);
     }
     pub(in crate::frontend) fn key_down(
         &mut self,

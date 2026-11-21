@@ -108,6 +108,11 @@ pub(crate) fn is_dark(theme: crate::settings::Theme) -> bool {
 pub(crate) fn system_motion() -> bool {
     crate::shell::animations_enabled()
 }
+/// The longest time between the two clicks of a double-click.
+pub(crate) fn double_click_time() -> std::time::Duration {
+    let ms = unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
+    std::time::Duration::from_millis(u64::from(ms))
+}
 pub(crate) fn update_targets() -> [String; 2] {
     let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
     [platform.clone(), format!("{platform}-nsis")]

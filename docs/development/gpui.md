@@ -114,7 +114,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `hoverAnchor` | 指针移到已记录元素的中心 |
 | `clickAnchor`、`dragAnchor` | 单击元素；`dragAnchor` 为 `[起点, 终点, 比例]`，从一个元素拖到另一个元素高度的该比例处（默认 0.5）；仅模拟快照 |
 | `clickSelect` | 单击已记录的下拉选择框；仅模拟快照 |
-| `pointer` | `{ "at"?, "fraction"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>`、`row:<行序号>`（当前表格中从 0 起的行）、`about-scroll` 或窗口内坐标 `[x, y]`，`fraction` 为 `[fx, fy]`，指定元素内的相对位置，默认中心；省略 `at` 时相对于手势起点，元素在拖动中移动也不影响。`hover` 在实时数据下也生效，其余事件仅模拟快照 |
+| `pointer` | `{ "at"?, "fraction"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动，`up` 带 `"clicks": 2` 时为结束双击的松开；分开发送的两次单击可模拟间隔较长的双击。`at` 为已记录元素、`header:<列>`、`row:<行序号>`（当前表格中从 0 起的行）、`about-scroll` 或窗口内坐标 `[x, y]`，`fraction` 为 `[fx, fy]`，指定元素内的相对位置，默认中心；省略 `at` 时相对于手势起点，元素在拖动中移动也不影响。`hover` 在实时数据下也生效，其余事件仅模拟快照 |
 | `touch` | `{ "id", "at"?, "fraction"?, "event", "dx"?, "dy"? }`：原始触摸事件，仅模拟快照；`event` 为 `down`、`move`、`up`、`cancel` 或 `tap`。每次接触使用新的 `id`，同一次接触保持不变。`at` 与 `fraction` 同 `pointer`。事件经正式手势识别路径，长按需在 `down` 后等待至少 500 ms |
 | `mouse` | `{ "type", "x", "y", "button"? }`：窗口内坐标处的一次原始鼠标事件。`type` 为 `down`、`up` 或 `drag`（按住移动），其他值为移动；`button` 为 `right` 时用右键。它不受模拟快照的限制：实时数据下同样会按下，不要对会执行真实操作的控件使用 |
 | `wheel` | `{ "x", "y", "lines", "linesX"?, "shift"? }`：在窗口内坐标处滚动若干行 |
