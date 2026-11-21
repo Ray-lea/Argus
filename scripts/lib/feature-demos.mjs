@@ -67,11 +67,14 @@ export const KEYS = [
   "fileLock:handleCount",
   "fileLock:kind.explorer",
   "fileLock:end",
-  "history:range.hours",
-  "history:range.days",
-  "history:busiest",
-  "history:busiestAt",
-  "history:hint.pick",
+  ...["5m", "3h", "1d", "3d", "customMenu"].map((k) => `history:range.${k}`),
+  "history:now",
+  "history:reading.long.cpu",
+  "history:selection.zoom",
+  "history:table.live",
+  "history:table.range",
+  "history:table.modeMoment",
+  "history:table.modeRange",
   "format:monthDay",
   "format:monthNames",
   "connections:search",
@@ -463,10 +466,11 @@ function toast(c, y, label, cls) {
   return `<g class="${cls}" opacity="0">${rect(x, y, width, 26, { rx: 6, fill: t.flyout, stroke: t.strokeStrong })}${tick(x + 11, y + 8.5, t.accent)}${text(x + 28, y + 17.3, f.text, { size: f.size, fill: t.ink })}</g>`;
 }
 
-// Segmented buttons from x (or ending at `right`), sized to their labels.
-function segments(c, x, y, labels, { size = 11, right } = {}) {
+// Segmented buttons from x (or ending at `right`), sized to their labels;
+// `h` tall with the labels' baseline `base` below the top.
+function segments(c, x, y, labels, { size = 11, right, h = 26, base = 17, pad = 18 } = {}) {
   const { t, w } = c;
-  const widths = labels.map((l) => Math.max(34, w(l, size, 600) + 18));
+  const widths = labels.map((l) => Math.max(34, w(l, size, 600) + pad));
   const total = widths.reduce((a, b) => a + b, 0) + 4;
   let sx = right != null ? right - total : x;
   const start = sx;
@@ -476,15 +480,15 @@ function segments(c, x, y, labels, { size = 11, right } = {}) {
     items.push({ label: l, x: sx, w: widths[i], mid: sx + widths[i] / 2 });
     sx += widths[i];
   }
-  return { x: start, w: total, items, frame: rect(start, y, total, 26, { rx: 4, fill: t.control, stroke: t.stroke }), size };
+  return { x: start, w: total, items, frame: rect(start, y, total, h, { rx: 4, fill: t.control, stroke: t.stroke }), size, h, base };
 }
 const segChecked = (c, s, i, y, cls, rest = 1) =>
   group(
     cls,
-    rect(s.items[i].x, y + 2, s.items[i].w, 22, { rx: 3, fill: c.t.checked, stroke: c.t.stroke }) + text(s.items[i].mid, y + 17, s.items[i].label, { size: s.size, fill: c.t.ink, anchor: "middle", weight: 600 }),
+    rect(s.items[i].x, y + 2, s.items[i].w, s.h - 4, { rx: 3, fill: c.t.checked, stroke: c.t.stroke }) + text(s.items[i].mid, y + s.base, s.items[i].label, { size: s.size, fill: c.t.ink, anchor: "middle", weight: 600 }),
     { rest },
   );
-const segLabels = (c, s, y) => s.items.map((it) => text(it.mid, y + 17, it.label, { size: s.size, fill: c.t.ink2, anchor: "middle" })).join("");
+const segLabels = (c, s, y) => s.items.map((it) => text(it.mid, y + s.base, it.label, { size: s.size, fill: c.t.ink2, anchor: "middle" })).join("");
 
 // Text typed into a box, one more character per step, with a caret.
 function typing(c, m, x, y, word, start, step, until) {
@@ -662,119 +666,301 @@ function performance(c, m) {
   return p.join("");
 }
 
-// History: click two moments on the seven-day curves.
+// History: the range drop-down from five minutes to three days, then a click
+// on two busy half-hours; the table lists each one's processes.
 function history(c, m) {
-  const { t, tr, w, num, monthDay } = c;
+  const { t, tr, w, fit, num, monthDay } = c;
   const p = [chrome(c, 5)];
-  const ranges = segments(c, 12, 38, [tr("history:range.hours", { count: 1 }), tr("history:range.hours", { count: 6 }), tr("history:range.days", { count: 1 }), tr("history:range.days", { count: 7 })]);
-  p.push(ranges.frame, segLabels(c, ranges, 38), segChecked(c, ranges, 3, 38));
-  // Seven days, half-hour points.
-  const rand = seeded(11);
-  const N = 7 * 48;
-  const spikes = [
-    [58, 34, 3],
-    [173, 62, 2.5],
-    [234, 78, 3],
-    [272, 41, 3],
-    [308, 29, 2],
-    [120, 26, 2],
-  ];
-  const cpu = [];
-  const mem = [];
+  // The list opens, three days are picked, A and B are selected in turn, and
+  // the scene fades back to the five minutes.
+  const OPEN = 1.2;
+  const PICK = 2.12;
+  const AT_A = 3.7;
+  const AT_B = 6.2;
+  const LEAVE = 8.4;
+  const BACK = 9.85;
+  const f = 0.15;
+  // One class per state, shared by everything that shows it.
+  const classes = new Map();
+  const once = (key, make) => classes.get(key) ?? classes.set(key, make()).get(key);
+  // Shown from the start until `end`, and again after the fade back.
+  const first = (end) =>
+    once(`first ${end}`, () =>
+      m.cls([
+        [0, { o: 1 }],
+        [end, { o: 1 }, "out"],
+        [end + f, { o: 0 }],
+        [BACK, { o: 0 }, "out"],
+        [BACK + f, { o: 1 }],
+      ]),
+    );
+  // Fading in from `a`, out from `b`.
+  const from = (a, b) => once(`from ${a} ${b}`, () => m.shown([[a + f, b]], f));
+  const cross = (x, y, color, r = 3) => `<path d="M${n(x - r)} ${n(y - r)}l${2 * r} ${2 * r}M${n(x + r)} ${n(y - r)}l${-2 * r} ${2 * r}" stroke="${color}" stroke-width="1.2" stroke-linecap="round"/>`;
+  const pct = (v) => num(`${v.toFixed(1)}%`);
+
+  // Five minutes in 2-second steps and three days in half-hours: the steps
+  // the app merges readings into at this width. The three days run from
+  // 11-09 16:02:24 to 11-12 16:02:24; step i starts at 11-09 16:00 + 30i min.
+  const rand = seeded(7);
+  let level = 10;
+  const recent = Array.from({ length: 150 }, (_, i) => {
+    level += (10 - level) * 0.15 + (rand() - 0.5) * 2.2;
+    return Math.max(3, level + 15 * Math.exp(-((i - 58) ** 2) / 20) + 7 * Math.exp(-((i - 121) ** 2) / 8));
+  });
+  const rand2 = seeded(11);
   let drift = 0;
-  let level = 34;
-  const rand2 = seeded(5);
-  for (let i = 0; i < N; i++) {
-    const h = (i % 48) / 2;
+  const days = Array.from({ length: 144 }, (_, i) => {
+    const h = (16 + i / 2) % 24;
     const awake = h >= 9 && h <= 23.5 ? Math.sin(((h - 9) / 14.5) * Math.PI) : 0;
-    drift = drift * 0.7 + (rand() - 0.5) * 3;
-    let y = 4 + awake * 11 + drift + rand() * 3;
-    for (const [at, peak, sd] of spikes) y += peak * Math.exp(-((i - at) ** 2) / (2 * sd * sd));
-    cpu.push(Math.max(1.5, Math.min(96, y)));
-    level += ((h >= 9 && h <= 23.5 ? 46 : 33) - level) * 0.08 + (rand2() - 0.5) * 1.2;
-    mem.push(Math.max(25, Math.min(70, level + (i > 160 && i < 190 ? 6 : 0))));
-  }
-  const memLabel = tr("common:resource.memory");
-  const labelW = Math.min(92, Math.max(w("CPU", 11), w(memLabel, 11), w("78.4%", 14, 600), w(num("18.9 GB"), 12.5, 600)));
-  const X0 = 22 + labelW + 12;
-  const PW = 420 - X0;
-  const X = (i) => X0 + (i / (N - 1)) * PW;
-  p.push(rect(12, 70, 416, 108, { rx: 6, fill: t.layer, stroke: t.stroke }));
-  for (let d = 1; d < 7; d++) p.push(`<path d="M${n(X(d * 48))} 76V160" stroke="${t.stroke}"/>`);
-  for (const [top, base, vals, color, label] of [
-    [76, 120, cpu, t.cpu, "CPU"],
-    [124, 160, mem, t.mem, memLabel],
-  ]) {
-    // Every other point is enough at this width.
-    const line = vals
-      .filter((_, i) => i % 2 === 0 || i === N - 1)
-      .map((v, k, a) => `${k ? "L" : "M"}${n(X0 + (k / (a.length - 1)) * PW)} ${n(base - (v / 100) * (base - top))}`)
-      .join("");
-    p.push(`<path d="${line}L${X0 + PW} ${base}L${n(X0)} ${base}Z" fill="${color}" fill-opacity="0.16"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round"/>`);
-    p.push(c.ftext(22, top + 14, label, labelW, { size: 11, min: 9.5, fill: t.ink2 }));
-  }
-  for (const d of [1, 3, 5]) p.push(text(X(d * 48), 174, monthDay(11, 7 + d), { size: 10, fill: t.ink3, anchor: "middle" }));
-  // The two moments: indices into the even-point curve match the full one.
-  const iA = 172;
-  const iB = 234;
-  const yA = 120 - (cpu[iA] / 100) * 44;
-  const yB = 120 - (cpu[iB] / 100) * 44;
-  const [xA, xB] = [X(iA), X(iB)];
-  const now = m.cls([
-    [0, { o: 1 }],
-    [2.35, { o: 1 }, "out"],
-    [2.5, { o: 0 }],
-    [8.5, { o: 0 }, "out"],
-    [8.7, { o: 1 }],
-  ]);
-  const atA = m.shown([[2.5, 5.75]], 0.15);
-  const atB = m.shown([[5.9, 8.5]], 0.15);
-  const figures = (cls, a, b, rest) => group(cls, text(22, 108, num(a), { size: 14, fill: t.ink, weight: 600 }) + text(22, 152, num(b), { size: 12.5, fill: t.ink, weight: 600 }), { rest });
-  p.push(figures(now, "12.4%", "12.3 GB", 0), figures(atA, `${cpu[iA].toFixed(1)}%`, "18.9 GB", 1), figures(atB, `${cpu[iB].toFixed(1)}%`, "14.6 GB", 0));
+    drift = drift * 0.6 + (rand2() - 0.5) * 3;
+    return Math.max(1.5, 3.5 + awake * 10 + drift + rand2() * 2.5);
+  });
+  // A build at 14:30 on the 10th (A), a video encode around 21:00 on the
+  // 11th (B), and smaller busy spells.
+  const iA = 45;
+  const iB = 106;
+  Object.assign(days, { 12: 24.3, 37: 28.6, 44: 31.2, 45: 63.4, 46: 27.5, 84: 35.8, 85: 30.4, 104: 44.1, 105: 55.2, 106: 57.4, 107: 54.6, 108: 23.1, 128: 41.2, 136: 26.4 });
+
+  // The chart card: one lane over the navigator.
+  p.push(rect(12, 38, 416, 132, { rx: 6, fill: t.layer, stroke: t.stroke }));
+  const X0 = 22;
+  const PW = 396;
+  const TOP = 60;
+  const BASE = 126;
+  const PH = BASE - TOP;
+  const dayX = (i) => X0 + ((i * 30 - 2.4) / 4320) * PW;
+  // The lane's head: the reading and its value at the moment shown.
+  p.push(rect(22, 46.5, 7, 7, { rx: 1.5, fill: t.cpu }));
+  const nf = fit(tr("history:reading.long.cpu"), 180, 11, 10, 600);
+  p.push(text(34, 53.5, nf.text, { size: nf.size, fill: t.ink, weight: 600 }));
+  const chevX = 34 + w(nf.text, nf.size, 600) + 5;
+  p.push(chevron(chevX, 44.5, t.ink2, true));
+  const value = (v, cls, rest) => group(cls, text(chevX + 20, 53.5, pct(v), { size: 11, fill: t.ink, weight: 600 }), { rest });
+  p.push(
+    value(recent.at(-1), first(PICK), 0),
+    value(days.at(-1), m.shown([[PICK + 0.1, 3.45], [LEAVE + 0.1, BACK]], 0.1)),
+    value(days[iA], m.shown([[3.55, 5.95]], 0.1), 0),
+    value(days[iB], m.shown([[6.05, LEAVE]], 0.1), 0),
+  );
+  // Grid and time axis: minutes, then midnights.
+  const ticks = (xs, labels) => xs.map((x, i) => `<path d="M${n(x)} ${TOP}V${BASE}" stroke="${t.stroke}"/>${text(x, 138, labels[i], { size: 10, fill: t.ink3, anchor: "middle" })}`).join("");
+  p.push(
+    group(
+      first(PICK),
+      ticks(
+        [0, 1, 2, 3, 4].map((k) => X0 + ((36 + 60 * k) / 300) * PW),
+        ["15:58", "15:59", "16:00", "16:01", "16:02"],
+      ),
+      { rest: 0 },
+    ),
+    group(
+      from(PICK, BACK),
+      ticks(
+        [0, 1, 2].map((d) => X0 + ((477.6 + 1440 * d) / 4320) * PW),
+        [10, 11, 12].map((d) => monthDay(11, d)),
+      ),
+    ),
+  );
+  // The curves as steps, each value held over its step. Each series is drawn
+  // once, x 0–1000 across its range and y 0–1000 down from 100 %, and placed
+  // where it shows; the line keeps its width however it is scaled.
+  const u = (v) => Math.round(v * 10) / 10;
+  const series = (id, vals, at) => {
+    const x = (i) => u(at(i) * 1000);
+    const line = `M${x(0)} ${u(1000 - vals[0] * 10)}` + vals.map((v, i) => `${i ? `V${u(1000 - v * 10)}` : ""}H${x(i + 1)}`).join("");
+    return `<g id="${id}"><path d="${line}V1000H${x(0)}Z" fill="${t.cpu}" fill-opacity="0.16"/><path d="${line}" fill="none" stroke="${t.cpu}" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></g>`;
+  };
+  p.push(`<defs>${series("recent", recent, (i) => i / 150)}${series("days", days, (i) => (i * 30 - 2.4) / 4320)}</defs>`);
+  // A series' 0–1000 square stretched over x, y, width, height.
+  const place = (id, x, y, width, height, stroke) => `<use href="#${id}" transform="translate(${n(x)} ${n(y)}) scale(${+(width / 1000).toFixed(5)} ${+(height / 1000).toFixed(5)})" stroke-width="${stroke}"/>`;
+  // Switching the range, the five minutes shrink into the right edge as the
+  // three days fade in and widen to the full width.
+  const ZOOM = PICK + 0.08;
+  const shrink = m.cls(
+    [
+      [0, { o: 1, sx: 1 }],
+      [ZOOM, { o: 1, sx: 1 }, "out"],
+      [ZOOM + 0.4, { o: 0, sx: 0.06 }],
+      [BACK, { o: 0, sx: 1 }, "out"],
+      [BACK + f, { o: 1, sx: 1 }],
+    ],
+    "right",
+  );
+  const widen = m.cls(
+    [
+      [0, { o: 0, sx: 2.5 }],
+      [ZOOM, { o: 0, sx: 2.5 }, "out"],
+      [ZOOM + 0.45, { o: 1, sx: 1 }],
+      [BACK, { o: 1, sx: 1 }, "out"],
+      [BACK + f, { o: 0, sx: 1 }],
+    ],
+    "right",
+  );
+  p.push(
+    `<svg x="${X0}" y="${TOP}" width="${PW}" height="${PH}" overflow="hidden">${group(shrink, place("recent", 0, 2, PW, PH - 2, 1.3), { rest: 0 })}${group(widen, place("days", 0, 2, PW, PH - 2, 1.3))}</svg>`,
+  );
+  // A click selects the half-hour under it: a band, with "zoom to
+  // selection" over it.
+  const yA = BASE - (days[iA] / 100) * (PH - 2);
+  const yB = BASE - (days[iB] / 100) * (PH - 2);
+  const xA = (dayX(iA) + dayX(iA + 1)) / 2;
+  const xB = (dayX(iB) + dayX(iB + 1)) / 2;
+  const band = (i, cls, rest) => {
+    const [a, b] = [dayX(i), dayX(i + 1)];
+    return group(cls, rect(a, TOP, b - a, PH, { fill: t.accent, opacity: 0.12 }) + `<path d="M${n(a + 0.5)} ${TOP}V${BASE}M${n(b - 0.5)} ${TOP}V${BASE}" stroke="${t.accent}" stroke-opacity="0.7"/>`, { rest });
+  };
+  p.push(band(iA, from(AT_A, AT_B)), band(iB, from(AT_B, BACK), 0));
+  // The pointer's path; the cursor line follows it over the plot.
+  const pillW = 32 + Math.max(w(tr("history:range.5m"), 11), w(tr("history:range.3d"), 11));
+  const NY = 145;
+  const ranges = ["5m", "3h", "1d", "3d", "customMenu"].map((k) => tr(`history:range.${k}`));
+  const IH = 20;
+  const LW = Math.max(pillW, Math.max(...ranges.map((r) => w(r, 11.5))) + 30);
+  const LH = ranges.length * IH + 6;
+  const LX = 20;
+  const LY = NY - 3 - LH;
+  const itemY = (i) => LY + 3 + i * IH;
+  const pillMid = [20 + pillW / 2, NY + 10];
+  const pick = [LX + 34, itemY(3) + 10];
   const path = [
     [0.3, 330, 244],
-    [1.2, X0 + 60, 100],
-    [2.25, xA, yA + 2],
-    [4.6, xA, yA + 2],
-    [5.6, xB, yB + 2],
-    [7.0, xB, yB + 2],
-    [7.8, 390, 244],
+    [1.05, ...pillMid],
+    [1.3, ...pillMid],
+    [1.8, ...pick],
+    [2.6, ...pick],
+    [3.5, xA, yA + 2],
+    [5.3, xA, yA + 2],
+    [6.0, xB, yB + 2],
+    [8.1, xB, yB + 2],
+    [8.9, 390, 244],
   ];
   const hoverX = m.cls(path.map(([s, x]) => [s, { x }, "move"]));
-  p.push(group(m.shown([[1.2, 6.9]], 0.2), group(hoverX, `<path d="M0 76V160" stroke="${t.ink}" stroke-opacity="0.25"/>`, { x: xA }), { rest: 0 }));
-  const sel = m.cls([
-    [2.4, { x: xA, y: yA }],
-    [5.8, { x: xA, y: yA }, "out"],
-    [6.1, { x: xB, y: yB }],
+  p.push(group(m.shown([[PICK + 0.1, LEAVE]], 0.1), group(hoverX, `<path d="M0 ${TOP}V${BASE}" stroke="${t.ink}" stroke-opacity="0.4"/>`, { x: xA }), { rest: 0 }));
+  const zf = fit(tr("history:selection.zoom"), 170, 10, 9);
+  const chipW = w(zf.text, zf.size) + 44;
+  const chip = (mid, cls, rest) => {
+    const x = Math.max(X0 + 4, Math.min(X0 + PW - chipW - 4, mid - chipW / 2));
+    const y = TOP + 3;
+    const scale = `<path transform="translate(${n(x + 7)} ${y + 4.5})" d="M0 3V0h3M6 0h3v3M9 6v3H6M3 9H0V6" fill="none" stroke="${t.ink2}" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>`;
+    return group(cls, rect(x, y, chipW, 18, { rx: 4, fill: t.flyout, stroke: t.strokeStrong }) + scale + text(x + 21, y + 12.5, zf.text, { size: zf.size, fill: t.ink }) + cross(x + chipW - 11, y + 9, t.ink2, 2.8), { rest });
+  };
+  p.push(chip(xA, from(AT_A, AT_B)), chip(xB, from(AT_B, BACK), 0));
+
+  // The navigator: the range's pill, then the track with the lane's curve
+  // over the whole range, the shown window boxed. A click on the curve
+  // pauses following: the right end shows its date and a way back.
+  const small = { size: 9.5, fill: t.ink3 };
+  p.push(rect(20, NY, pillW, 20, { rx: 10, fill: t.control, stroke: t.strokeStrong }));
+  p.push(group(first(PICK), text(30, NY + 14, ranges[0], { size: 11, fill: t.ink }), { rest: 0 }), group(from(PICK, BACK), text(30, NY + 14, ranges[3], { size: 11, fill: t.ink })));
+  p.push(chevron(20 + pillW - 17, NY + 5.5, t.ink2, true));
+  const TX = 20 + pillW + 6;
+  const TR = 420;
+  p.push(rect(TX, NY, TR - TX, 20, { rx: 10, fill: t.control, stroke: t.stroke }));
+  const [left5, left3, now, end3] = ["15:57:24", monthDay(11, 9), tr("history:now"), monthDay(11, 12)];
+  p.push(group(first(PICK), text(TX + 8, NY + 13.5, left5, small), { rest: 0 }), group(from(PICK, BACK), text(TX + 8, NY + 13.5, left3, small)));
+  const arrow = `<path transform="translate(${TR - 12} ${NY + 10})" d="M-4 0h8M0.8-3.5 4.3 0 0.8 3.5" fill="none" stroke="${t.accent}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`;
+  p.push(group(first(AT_A), text(TR - 9, NY + 13.5, now, { ...small, anchor: "end" }), { rest: 0 }), group(from(AT_A, BACK), text(TR - 22, NY + 13.5, end3, { ...small, anchor: "end" }) + arrow));
+  // The track between the labels, shorter once the way back takes room.
+  const SX0 = TX + 8 + Math.max(w(left5, 9.5), w(left3, 9.5)) + 8;
+  const following = TR - 9 - w(now, 9.5) - 8;
+  const paused = TR - 22 - w(end3, 9.5) - 8;
+  // The curve 11 px tall at the axis top `top` %.
+  const track = (sx1, id, top, cls, rest) => {
+    const box = 1100 / top;
+    const brush = rect(SX0, NY + 2.5, sx1 - SX0, 15, { rx: 4, stroke: t.accent, sw: 1.5 }) + rect(SX0 - 1.5, NY + 6, 3, 8, { rx: 1.5, fill: t.accent }) + rect(sx1 - 1.5, NY + 6, 3, 8, { rx: 1.5, fill: t.accent });
+    return group(cls, place(id, SX0, NY + 16 - box, sx1 - SX0, box, 1) + brush, { rest });
+  };
+  p.push(track(following, "recent", Math.max(...recent) * 1.15, first(PICK), 0), track(following, "days", 75, m.shown([[PICK + f, AT_A]], f), 0), track(paused, "days", 75, from(AT_A, BACK)));
+
+  // The process table: the latest processes while following, then those of
+  // the selected half-hour, averaged.
+  p.push(rect(12, 176, 416, 78, { rx: 6, fill: t.layer, stroke: t.stroke }));
+  const modes = [tr("history:table.modeMoment"), tr("history:table.modeRange")];
+  const seg = { size: 10, h: 18, base: 12.5, pad: 14 };
+  const toggleW = segments(c, 0, 0, modes, seg).w;
+  const head = (title, mode, cls, rest) => {
+    const clear = mode === 1;
+    const tf = fit(title, 396 - toggleW - 10 - (clear ? 18 : 0), 11.5, 10, 600);
+    const out = [text(22, 194, tf.text, { size: tf.size, fill: t.ink, weight: 600 })];
+    let x = 22 + w(tf.text, tf.size, 600) + 10;
+    if (clear) {
+      out.push(cross(x + 4, 190, t.ink2));
+      x += 18;
+    }
+    const s = segments(c, x, 181, modes, seg);
+    out.push(s.frame, segLabels(c, s, 181), segChecked(c, s, mode, 181));
+    return group(cls, out.join(""), { rest });
+  };
+  // Heat as the app scales it: CPU from 1 % to 40 %, memory from 200 MB to 2 GB.
+  const heat = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+  const rows = (list, cls, rest) =>
+    group(
+      cls,
+      list
+        .map(([icon, exe, cpu, mem, mb], i) => {
+          const y = 204 + i * 16;
+          const out = [];
+          const kc = heat(cpu, 1, 40);
+          const km = heat(mb, 200, 2048);
+          if (kc > 0) out.push(rect(266, y + 1, 68, 14, { fill: t.heat(kc) }));
+          if (km > 0) out.push(rect(338, y + 1, 84, 14, { fill: t.heat(km) }));
+          out.push(`<g transform="translate(22 ${y + 2}) scale(.75) translate(-22 ${-(y + 2)})">${glyph(icon, 22, y + 2, t)}</g>`);
+          out.push(text(40, y + 11.5, exe, { size: 11, fill: t.ink }), text(330, y + 11.5, pct(cpu), { size: 11, fill: t.ink, anchor: "end" }), text(416, y + 11.5, num(mem), { size: 11, fill: t.ink, anchor: "end" }));
+          return out.join("");
+        })
+        .join(""),
+      { rest },
+    );
+  const span = (month, day, start, end) => tr("history:table.range", { range: `${monthDay(month, day)} ${start}–${end}` });
+  p.push(
+    head(tr("history:table.live"), 0, first(AT_A), 0),
+    head(span(11, 10, "14:30", "15:00"), 1, from(AT_A, AT_B)),
+    head(span(11, 11, "21:00", "21:30"), 1, from(AT_B, BACK), 0),
+    rows(
+      [
+        ["globe", "msedge.exe", 3.1, "2.67 GB", 2734],
+        ["code", "Code.exe", 1.4, "1.34 GB", 1372],
+        ["folder", "explorer.exe", 0.2, "167.5 MB", 167.5],
+      ],
+      first(AT_A),
+      0,
+    ),
+    rows(
+      [
+        ["cargo", "cargo.exe", 38.6, "1.21 GB", 1239],
+        ["cargo", "rustc.exe", 21.7, "864.2 MB", 864.2],
+        ["globe", "msedge.exe", 1.2, "2.41 GB", 2468],
+      ],
+      from(AT_A, AT_B),
+    ),
+    rows(
+      [
+        ["film", "HandBrake.exe", 52.4, "1.10 GB", 1126],
+        ["globe", "msedge.exe", 3.4, "2.52 GB", 2580],
+        ["folder", "explorer.exe", 0.6, "171.0 MB", 171],
+      ],
+      from(AT_B, BACK),
+      0,
+    ),
+  );
+
+  // The ranges' drop-down, over the lane where there is no room below the
+  // pill; the range in force is marked, the pointed one lit.
+  const list = [rect(LX, LY, LW, LH, { rx: 6, fill: t.flyout, stroke: t.strokeStrong })];
+  const lit = (i, a, b) => rect(LX + 3, itemY(i), LW - 6, IH, { rx: 3, fill: t.hoverStrong, cls: m.shown([[a, b]], 0.05), opacity: 0 });
+  list.push(lit(0, OPEN + 0.05, 1.55), lit(4, 1.6, 1.68), lit(3, 1.73, PICK));
+  list.push(rect(LX + 3, itemY(0) + 4.5, 2.5, 11, { rx: 1.25, fill: t.accent }));
+  ranges.forEach((r, i) => list.push(text(LX + 12, itemY(i) + 14, r, { size: 11.5, fill: t.ink })));
+  const listShown = m.cls([
+    [OPEN, { o: 0, y: 4 }, "out"],
+    [OPEN + 0.17, { o: 1, y: 0 }],
+    [PICK, { o: 1, y: 0 }, "out"],
+    [PICK + 0.1, { o: 0, y: 0 }],
   ]);
-  const selShown = m.cls([
-    [2.3, { o: 0 }, "out"],
-    [2.45, { o: 1 }],
-    [8.4, { o: 1 }, "out"],
-    [8.6, { o: 0 }],
-  ]);
-  p.push(group(selShown, group(sel, `<path d="M0 ${n(76 - yA)}V${n(160 - yA)}" stroke="${t.accent}" stroke-width="1.5"/><circle r="3.5" fill="${t.accent}" stroke="${t.win}" stroke-width="1.5"/>`, { x: xA, y: yA })));
-  p.push(ripple(m, 2.35, xA, yA + 2, t.accent), ripple(m, 5.75, xB, yB + 2, t.accent));
-  // The busiest processes then.
-  p.push(rect(12, 184, 416, 70, { rx: 6, fill: t.layer, stroke: t.stroke }));
-  const sets = [
-    [now, 0, tr("history:busiest"), tr("history:hint.pick"), [["globe", "msedge.exe", "3.1%", "2.67 GB"], ["code", "Code.exe", "1.4%", "1.34 GB"], ["folder", "explorer.exe", "0.2%", "167.5 MB"]]],
-    [atA, 1, tr("history:busiestAt", { time: `${monthDay(11, 10)} 14:30` }), "", [["cargo", "cargo.exe", "38.6%", "1.21 GB"], ["cargo", "rustc.exe", "21.7%", "864.2 MB"], ["globe", "msedge.exe", "1.2%", "2.41 GB"]]],
-    [atB, 0, tr("history:busiestAt", { time: `${monthDay(11, 11)} 21:00` }), "", [["film", "HandBrake.exe", "71.9%", "1.10 GB"], ["globe", "msedge.exe", "3.4%", "2.52 GB"], ["folder", "explorer.exe", "0.6%", "171.0 MB"]]],
-  ];
-  for (const [cls, rest, head, hint, list] of sets) {
-    const hf = c.fit(head, 396, 11.5, 10, 600);
-    const body = [text(22, 201, hf.text, { size: hf.size, fill: t.ink, weight: 600 })];
-    const hx = 22 + w(hf.text, hf.size, 600) + 10;
-    if (hint && 418 - hx > 90) body.push(c.ftext(hx, 201, hint, 418 - hx, { size: 10.5, min: 9.5, fill: t.ink3 }));
-    list.forEach(([icon, exe, cp, mm], i) => {
-      const y = 208 + i * 15;
-      body.push(`<g transform="translate(22 ${y}) scale(.75) translate(-22 ${-y})">${glyph(icon, 22, y, t)}</g>`);
-      body.push(text(38, y + 10.5, exe, { size: 11, fill: t.ink }), text(330, y + 10.5, num(cp), { size: 11, fill: t.ink, anchor: "end" }), text(416, y + 10.5, num(mm), { size: 11, fill: t.ink, anchor: "end" }));
-    });
-    p.push(group(cls, body.join(""), { rest }));
-  }
-  p.push(pointer(m, path, 7.8));
+  p.push(group(listShown, list.join(""), { rest: 0 }));
+  p.push(ripple(m, 1.15, ...pillMid, t.ink2), ripple(m, 2.05, ...pick, t.ink2), ripple(m, AT_A - 0.05, xA, yA + 2, t.accent), ripple(m, AT_B - 0.05, xB, yB + 2, t.accent));
+  p.push(pointer(m, path, 8.9));
   return p.join("");
 }
 
@@ -1117,7 +1303,7 @@ function ports(c, m) {
 const SCENES = {
   processes: { draw: processes, dur: 10, phase: 0 },
   performance: { draw: performance, dur: 8, phase: 0 },
-  history: { draw: history, dur: 10, phase: 3.2 },
+  history: { draw: history, dur: 11, phase: 3.2 },
   files: { draw: files, dur: 10, phase: 6.1 },
   rules: { draw: rules, dur: 9, phase: 4.6 },
   ports: { draw: ports, dur: 10, phase: 1.7 },

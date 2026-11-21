@@ -54,7 +54,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/performance-zh-CN-dark.svg"><img src="docs/images/features/performance-zh-CN-light.svg" width="390" alt="性能页显示 CPU 利用率、速度、温度与功耗，以及每个性能核与能效核的曲线"></picture><br><b>性能</b>：CPU 每核心、频率、温度与功耗，以及内存、磁盘、网络与 GPU</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-CN-dark.svg"><img src="docs/images/features/history-zh-CN-light.svg" width="390" alt="在历史页的 7 天曲线上先后单击两个时刻，下方列出各时刻最忙的进程"></picture><br><b>历史回溯</b>：单击 7 天曲线上的任意时刻，查看当时最忙的进程</td>
+<td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/history-zh-CN-dark.svg"><img src="docs/images/features/history-zh-CN-light.svg" width="390" alt="在历史页的时间范围列表中选择 3 天，再先后单击曲线上的两个时段，下方列出各时段最忙的进程"></picture><br><b>历史回溯</b>：选择时间范围后单击曲线上的任意时刻，查看当时最忙的进程</td>
 <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/features/files-zh-CN-dark.svg"><img src="docs/images/features/files-zh-CN-light.svg" width="390" alt="将表格文件拖入窗口后，对话框列出占用它的 Excel 与资源管理器，并结束其中一个进程"></picture><br><b>文件占用</b>：将文件或文件夹拖入窗口，列出占用它的进程</td>
 </tr>
 <tr>

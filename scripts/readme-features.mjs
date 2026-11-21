@@ -23,8 +23,23 @@ try {
   const module = "data:text/javascript;base64," + (await readFile(join(root, "scripts/lib/feature-demos.mjs"))).toString("base64");
   await page.eval(`import(${JSON.stringify(module)}).then((demos) => {
     window.demos = demos;
+    // The demos draw figures tabular, which a canvas cannot measure: text
+    // with figures is measured as SVG text in the demos' style.
     const context = document.createElement("canvas").getContext("2d");
-    window.measure = (text, font) => { context.font = font; return context.measureText(text).width; };
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const probe = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    svg.append(probe);
+    document.body.append(svg);
+    window.measure = (text, font) => {
+      if (!/[0-9]/.test(text)) {
+        context.font = font;
+        return context.measureText(text).width;
+      }
+      probe.style.font = font;
+      probe.style.fontVariantNumeric = "tabular-nums";
+      probe.textContent = text;
+      return probe.getComputedTextLength();
+    };
     return true;
   })`);
   for (const { lang, locale } of languages) {
