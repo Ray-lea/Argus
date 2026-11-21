@@ -62,7 +62,7 @@ impl Motion {
             "ResetIcon" => Self::Spin(360.),
             "HistoryIcon" | "DataIcon" => Self::Swing(-40.),
             "ThemeIcon" => Self::Swing(180.),
-            "PinIcon" | "UnpinIcon" => Self::Swing(-18.),
+            "PinIcon" | "PinFilledIcon" | "UnpinIcon" => Self::Swing(-18.),
             "TimerIcon" | "SparkleIcon" | "MotionIcon" => Self::Swing(18.),
             "ServicesIcon" => Self::Swing(12.),
             "TrashIcon" => Self::Swing(-10.),

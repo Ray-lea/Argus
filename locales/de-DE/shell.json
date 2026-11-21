@@ -50,6 +50,10 @@
   },
   "pause": "Aktualisierung anhalten",
   "resume": "Aktualisierung fortsetzen",
+  "window": {
+    "onTop": "Immer im Vordergrund",
+    "onTopOff": "Nicht mehr im Vordergrund halten"
+  },
   "more": {
     "label": "Weitere Aktionen",
     "runTask": "Neue Aufgabe ausführen…",

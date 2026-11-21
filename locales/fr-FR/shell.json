@@ -50,6 +50,10 @@
   },
   "pause": "Suspendre l’actualisation",
   "resume": "Reprendre l’actualisation",
+  "window": {
+    "onTop": "Toujours au premier plan",
+    "onTopOff": "Ne plus garder au premier plan"
+  },
   "more": {
     "label": "Autres actions",
     "runTask": "Exécuter une nouvelle tâche…",

@@ -560,35 +560,26 @@ impl Desktop {
                         .absolute()
                         .top_0()
                         .right_0()
-                        .w(dialogs::captions_width())
+                        .w(caption::width())
                         .h(height),
                 ),
             )
             .child(
-                TitleBar::new()
-                    .h(height)
-                    .flex_shrink_0()
-                    // The row below has the interface's own 12 px inset.
-                    .pl_0()
-                    // The row paints the background, under the dim behind
-                    // the caption buttons.
-                    .bg(gpui_kit::gpui::transparent_black())
-                    .border_0()
-                    .child(
-                        div()
-                            // Exactly the room before the caption buttons.
-                            .h_full()
-                            .w_0()
-                            .flex_grow(1.)
-                            .min_w_0()
-                            .overflow_hidden()
-                            .flex()
-                            .items_center()
-                            .pl(px(12.))
-                            .pr(px(4.))
-                            .child(start)
-                            .on_prepaint(track_title(2, self.toolbar_regions.clone(), owner)),
-                    ),
+                self.title_row(
+                    div()
+                        // Exactly the room before the caption buttons.
+                        .size_full()
+                        .overflow_hidden()
+                        .flex()
+                        .items_center()
+                        .pl(px(12.))
+                        .pr(px(4.))
+                        .child(start)
+                        .on_prepaint(track_title(2, self.toolbar_regions.clone(), owner)),
+                    height,
+                    window,
+                    cx,
+                ),
             );
         if self.has_search() {
             let regions = *self.toolbar_regions.borrow();

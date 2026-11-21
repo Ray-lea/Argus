@@ -295,6 +295,11 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         match key {
+            caption::KEEP_ON_TOP => {
+                self.keep_on_top(value.as_bool().unwrap_or(false));
+                cx.notify();
+                return;
+            }
             "hideSystem.processes" | "hideSystem.network" => {
                 self.prefs.set(key, value.as_bool().unwrap_or(false));
                 self.rebuild_rows(false, cx);

@@ -50,6 +50,10 @@
   },
   "pause": "暫停重新整理",
   "resume": "繼續重新整理",
+  "window": {
+    "onTop": "置頂顯示",
+    "onTopOff": "取消置頂顯示"
+  },
   "more": {
     "label": "更多動作",
     "runTask": "執行新工作…",

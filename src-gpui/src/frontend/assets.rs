@@ -86,7 +86,7 @@ product_icons! {
     "UsersIcon" => Users,
     "AccountsIcon" => UserCog,
     "SignOutIcon" => LogOut,
-    "PinIcon" => Pin,
+    "PinIcon" | "PinFilledIcon" => Pin,
     "UnpinIcon" => PinOff,
     "TrashIcon" => Trash,
     "GoToIcon" | "ArrowRightIcon" => ArrowRight,

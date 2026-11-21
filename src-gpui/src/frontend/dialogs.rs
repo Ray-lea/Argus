@@ -2403,14 +2403,9 @@ impl Render for Scrim {
             .absolute()
             .inset_0()
             .when(level > 0., |d| {
-                d.child(dim().top_0().left_0().right(captions_width()).h(toolbar))
+                d.child(dim().top_0().left_0().right(caption::width()).h(toolbar))
                     .child(dim().top(toolbar).left_0().right_0().bottom_0())
             })
             .into_any_element()
     }
-}
-
-/// The width of the three caption buttons at the end of the title row.
-pub(super) fn captions_width() -> Pixels {
-    gpui_kit::component::TITLE_BAR_HEIGHT * 3.
 }

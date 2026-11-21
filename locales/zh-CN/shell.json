@@ -50,6 +50,10 @@
   },
   "pause": "暂停刷新",
   "resume": "继续刷新",
+  "window": {
+    "onTop": "置顶显示",
+    "onTopOff": "取消置顶显示"
+  },
   "more": {
     "label": "更多操作",
     "runTask": "运行新任务…",

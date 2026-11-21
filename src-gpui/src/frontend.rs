@@ -2,6 +2,7 @@
 mod appearance;
 mod assets;
 mod backend;
+mod caption;
 mod charts;
 mod collation;
 mod columns;
@@ -831,11 +832,16 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                     cx,
                 );
                 scrollbar::style_library(crate::platform::is_dark(saved.theme), cx);
+                // Test instances stay at the bottom of the desktop (`keep_on_top`).
+                let on_top = prefs.get(caption::KEEP_ON_TOP, false) && !options.test;
                 let view =
                     cx.new(|cx| Desktop::new(host.clone(), options.clone(), prefs, window, cx));
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);
+                    if on_top {
+                        crate::platform::keep_on_top(&host, true);
+                    }
                 });
                 let placements = view.read(cx).chart_placements.clone();
                 let clock = view.read(cx).chart_clock.clone();

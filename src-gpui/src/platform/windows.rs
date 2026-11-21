@@ -85,6 +85,20 @@ pub(crate) fn attach_window(host: &Host, options: &Options, window: &mut Window,
         log::error!("instance receiver failed: code={}", error.code().0);
     }
 }
+/// Keeps the main window above other windows (`on`), or returns it to the
+/// normal level.
+pub(crate) fn keep_on_top(host: &Host, on: bool) {
+    if let Some(hwnd) = host
+        .get_window("main")
+        .and_then(|native| native.hwnd().ok())
+        && let Err(error) = crate::activation::keep_on_top(hwnd, on)
+    {
+        argus_core::diagnostics::warn(
+            "keep window on top",
+            format!("on={on} code={:#010x}", error.code().0),
+        );
+    }
+}
 pub(crate) fn supports_backdrop() -> bool {
     crate::shell::supports_mica()
 }

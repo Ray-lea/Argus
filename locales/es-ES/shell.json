@@ -50,6 +50,10 @@
   },
   "pause": "Pausar actualizaciones",
   "resume": "Reanudar actualizaciones",
+  "window": {
+    "onTop": "Siempre visible",
+    "onTopOff": "Desactivar siempre visible"
+  },
   "more": {
     "label": "Más acciones",
     "runTask": "Ejecutar nueva tarea…",

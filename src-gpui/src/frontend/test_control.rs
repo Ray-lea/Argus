@@ -675,9 +675,22 @@ impl Desktop {
                 && window.window_control_area_at(bar[0].center()).is_none();
             let stretch_drags =
                 window.window_control_area_at(bar[2].center()) == Some(WindowControlArea::Drag);
+            // Keeping on top is the client's own button; the title row's
+            // height under the caption buttons drags the window.
+            let keep_on_top_is_client = self
+                .ui
+                .anchors
+                .borrow()
+                .get(caption::KEEP_ON_TOP_BUTTON)
+                .is_some_and(|bounds| window.window_control_area_at(bounds.center()).is_none());
+            let under_captions_drags = window.window_control_area_at(point(
+                window.viewport_size().width - px(8.),
+                theme::dimension("toolbarHeight") - px(4.),
+            )) == Some(WindowControlArea::Drag);
             println!(
                 "{}",
                 json!({"event":"ui-caption","label":label,"registered":controls.len(),"dragPoints":drag_points,"actionsAreClient":actions_are_client,"stretchDrags":stretch_drags,
+                "keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags,
                 "minimize":control_matches(WindowControlArea::Min),"maximize":control_matches(WindowControlArea::Max),"close":control_matches(WindowControlArea::Close)})
             );
             println!(
@@ -705,6 +718,7 @@ impl Desktop {
                 Some(json!({
                     "visible": unsafe { IsWindowVisible(hwnd).as_bool() },
                     "maximized": unsafe { IsZoomed(hwnd).as_bool() },
+                    "topmost": unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 != 0,
                     "width": client.right, "height": client.bottom,
                     "viewportMatchesClient": (f32::from(viewport.width) - client.right as f32).abs() < 1.
                         && (f32::from(viewport.height) - client.bottom as f32).abs() < 1.
@@ -746,6 +760,7 @@ impl Desktop {
                 "settingsScrollY":f32::from(self.settings_rail.scroll.max_offset().y),"settingsTop":self.settings_rail.scroll.top_item(),"sections":self.section_rail_state()});
             layout["watch"] = json!(self.data.get("processWatch").map(|watch|json!({"pid":watch["pid"],"state":watch["state"],"mode":watch["mode"],"runs":values(&watch["runs"]).len(),"liveRuns":watch["liveRuns"],"points":values(&watch["points"]).len(),"missing":values(&watch["points"]).iter().filter(|point|point["memory"].is_null()).count()})));
             layout["watchAction"] = json!(self.data.get("watchLastAction"));
+            layout["caption"] = json!({"keepOnTop":self.keeps_on_top(),"keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags});
             println!("{layout}");
         }
         if self.options.fixture.is_some()

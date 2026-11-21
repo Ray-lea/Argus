@@ -1,5 +1,7 @@
 //! A user-requested activation can rise above an obstructing topmost window.
 //! The temporary elevation ends when this window loses activation or hides.
+//! Keeping the window on top (`keep_on_top`) is the user's own choice and
+//! stays until it is turned off.
 use std::cell::Cell;
 #[cfg(test)]
 mod pressure_tests;
@@ -178,6 +180,26 @@ fn raise_if_obstructed(hwnd: HWND) {
                 (*state).raised.set(false);
             }
         }
+    }
+}
+
+/// Keeps `hwnd` above other windows (`on`), or returns it to the normal
+/// level. The choice ends a temporary elevation: losing activation or
+/// hiding no longer lowers the window.
+pub(crate) fn keep_on_top(hwnd: HWND, on: bool) -> windows::core::Result<()> {
+    if let Some(state) = state(hwnd) {
+        unsafe { (*state).raised.set(false) };
+    }
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            Some(if on { HWND_TOPMOST } else { HWND_NOTOPMOST }),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
     }
 }
 

@@ -835,6 +835,8 @@ for (const event of events.filter((e) => e.event === "ui-caption" && !e.label.en
   assert(event.actionsAreClient, `${event.label}: search box or page bar controls were classified as draggable caption`);
   assert(event.stretchDrags, `${event.label}: the page bar's empty stretch does not drag the window`);
   assert(event.minimize && event.maximize && event.close, `${event.label}: native caption controls were lost`);
+  assert(event.keepOnTopIsClient, `${event.label}: the keep-on-top button was classified as a caption area`);
+  assert(event.underCaptionsDrags, `${event.label}: the title row under the caption buttons does not drag the window`);
 }
 if (!live && !retained && !snapshots && !chartScroll && !chartGap && !preview && !interactions && !scrollCopy) {
   for (const [label, sort, descending] of [["sorted-name", "name", false], ["sorted-name-reversed", "name", true], ["sorted-cpu", "cpu", true]]) {

@@ -50,6 +50,10 @@
   },
   "pause": "Pause updates",
   "resume": "Resume updates",
+  "window": {
+    "onTop": "Always on top",
+    "onTopOff": "Turn off always on top"
+  },
   "more": {
     "label": "More actions",
     "runTask": "Run new task…",
