@@ -790,6 +790,7 @@ impl Desktop {
                 .px(px(8.))
                 .rounded(px(4.))
                 .text_size(theme::font(13.))
+                .line_height(theme::line_height())
                 .text_color(p.ink)
                 .role(Role::CheckBox)
                 .aria_toggled(if on { Toggled::True } else { Toggled::False })
@@ -1247,18 +1248,6 @@ impl Desktop {
                 let key = String::from(style);
                 let name = label(&format!("components.desktop.style.{key}"));
                 let anchor = SharedString::from(format!("desktopStyle-{key}"));
-                let mark = div()
-                    .size(px(14.))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(if on { p.accent } else { p.stroke_strong })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .when(on, |mark| {
-                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
-                    });
                 Button::new(anchor.clone())
                     .relative()
                     .flex_1()
@@ -1286,18 +1275,7 @@ impl Desktop {
                             .p(px(8.))
                             .child(self.desk_preview(style, window, cx)),
                     )
-                    .child(
-                        div()
-                            .h(px(20.))
-                            .px(px(2.))
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .text_size(theme::font(13.))
-                            .text_color(p.ink)
-                            .child(mark)
-                            .child(div().min_w_0().truncate().child(name)),
-                    )
+                    .child(style_caption(name, on, p))
                     // Where tests take hold of it.
                     .when(test, |card| {
                         let anchors = anchors.clone();
@@ -1458,18 +1436,6 @@ impl Desktop {
                 let on = chosen == style || (chosen.is_empty() && index == 0);
                 let name = label(&format!("components.taskbar.style.{style}"));
                 let anchor = SharedString::from(format!("taskbarStyle-{style}"));
-                let mark = div()
-                    .size(px(14.))
-                    .flex_shrink_0()
-                    .rounded_full()
-                    .border_1()
-                    .border_color(if on { p.accent } else { p.stroke_strong })
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .when(on, |mark| {
-                        mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
-                    });
                 // Scaled down to fit the card, never up, and on whole pixels
                 // at its own size.
                 let preview = previews.get(index).cloned().flatten().map(|image| {
@@ -1520,18 +1486,7 @@ impl Desktop {
                             .overflow_hidden()
                             .children(preview),
                     )
-                    .child(
-                        div()
-                            .h(px(20.))
-                            .px(px(2.))
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .text_size(theme::font(13.))
-                            .text_color(p.ink)
-                            .child(mark)
-                            .child(div().min_w_0().truncate().child(name)),
-                    )
+                    .child(style_caption(name, on, p))
                     // Where tests take hold of it.
                     .when(test, |card| {
                         let anchors = anchors.clone();
@@ -1601,6 +1556,32 @@ impl Desktop {
             vec![open],
         )
     }
+}
+
+fn style_caption(name: String, on: bool, p: Palette) -> Div {
+    let mark = div()
+        .size(px(14.))
+        .flex_shrink_0()
+        .rounded_full()
+        .border_1()
+        .border_color(if on { p.accent } else { p.stroke_strong })
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(on, |mark| {
+            mark.child(div().size(px(6.)).rounded_full().bg(p.accent))
+        });
+    div()
+        .min_h(px(20.))
+        .px(px(2.))
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .text_size(theme::font(13.))
+        .line_height(theme::line_height())
+        .text_color(p.ink)
+        .child(mark)
+        .child(div().min_w_0().truncate().child(name))
 }
 
 /// The displays the taskbar monitor can sit on, as offered: the primary

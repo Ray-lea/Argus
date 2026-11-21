@@ -1253,6 +1253,7 @@ impl Desktop {
             .relative()
             .w_full()
             .h(px(TIP_HEADING_HEIGHT))
+            .line_height(relative(TIP_LINE_HEIGHT))
             .px(px(12.))
             .gap(px(8.))
             .justify_start()
