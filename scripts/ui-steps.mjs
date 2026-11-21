@@ -11,7 +11,7 @@
 // tools/window-probe/known-failures.json is run and reported, but only an
 // unlisted failure (or a listed file that passes) makes the exit code 1.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
 import { parseSteps, runSeconds, verdict } from "./lib/ui-shots.mjs";
@@ -54,6 +54,8 @@ for (const name of chosen) {
   const timer = setTimeout(() => child.kill(), limit);
   const code = await new Promise((done) => child.on("exit", (status) => done(status ?? -1)));
   clearTimeout(timer);
+  // Each run works on its own copy of the executable; fifty of them are gigabytes.
+  rmSync(resolve("target/native-validation", `steps-${name}`, "argus.exe"), { force: true, maxRetries: 5, retryDelay: 200 });
   const failures = code === 0 ? [] : stderr.trim().split(/\r?\n/).filter(Boolean).slice(-8);
   const outcome = { name, ...verdict(code === 0, known[name]), seconds: Math.round((Date.now() - started) / 1000), failures };
   outcomes.push(outcome);

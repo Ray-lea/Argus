@@ -55,7 +55,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
 
-`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（54 个文件约 15 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`，各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（54 个文件约 15 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
 
 不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
