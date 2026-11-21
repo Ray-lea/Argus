@@ -58,7 +58,16 @@
     "label": "Más acciones",
     "runTask": "Ejecutar nueva tarea…",
     "fileLock": "Buscar procesos usando un archivo…",
-    "fileLockDetail": "O soltar archivos"
+    "fileLockDetail": "O soltar archivos",
+    "exportCsv": "Exportar la página actual como CSV…",
+    "csvFile": "Archivos CSV",
+    "csvSaved": "Archivo CSV exportado.",
+    "csvFailed": "No se pudo guardar el archivo CSV. Compruebe los permisos de escritura de la carpeta y si el archivo está en uso.",
+    "csvRows": {
+      "one": "{count} fila",
+      "many": "{count} filas",
+      "other": "{count} filas"
+    }
   },
   "details": {
     "label": "Panel de detalles",

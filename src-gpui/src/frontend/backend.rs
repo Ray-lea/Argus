@@ -992,6 +992,7 @@ impl Desktop {
                     self.copy_text(details, label("actions.copyWhat.details"), cx);
                 }
             }
+            Action::ExportTableCsv => self.export_table_csv(window, cx),
             Action::History(command) => self.history_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),

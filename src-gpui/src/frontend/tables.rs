@@ -3,6 +3,7 @@ use super::*;
 mod body;
 mod cell_text;
 mod cells;
+mod export;
 mod groups;
 /// A category heading's tint and its count's, for lists drawn like the
 /// process list's groups (the history page's table).

@@ -769,6 +769,8 @@ impl Desktop {
             // What a copy put in place of the clipboard (`Desktop::copy_text`).
             layout["lastCopy"] =
                 json!(self.options.fixture.as_ref().and(self.data.get("lastCopy")));
+            layout["tableCsv"] =
+                json!(self.options.fixture.as_ref().and(self.data.get("tableCsv")));
             layout["caption"] = json!({"keepOnTop":self.keeps_on_top(),"keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags});
             println!("{layout}");
         }
