@@ -111,9 +111,15 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::{Duration, Instant};
 
 /// The fixed AccessKit node ID used for the root of every window's a11y tree.
 pub(crate) const ROOT_NODE_ID: NodeId = NodeId(0);
+
+/// Argus patch: the least time between two complete frames drawn for
+/// assistive technology after frames that replayed cached views
+/// (`Window::refresh_for_a11y`).
+pub(crate) const REPLAY_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
 
 /// A listener for an accessibility action on a specific node.
 pub(crate) type A11yActionListener =
@@ -149,6 +155,26 @@ pub(crate) struct A11y {
     pub(crate) focus_ids: FxHashMap<NodeId, FocusId>,
     pub(crate) node_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
     pub(crate) action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
+    /// Argus patch: what answers action requests between frames. The three
+    /// maps above are this frame's; [`Self::end_frame`] moves them here,
+    /// replacing what a complete frame left and adding to it after a frame
+    /// that replayed cached views.
+    pub(crate) committed: A11yTargets,
+    /// Argus patch: whether a cached view replayed its last frame in this
+    /// one. A replay adds no nodes, so the tree built in such a frame lacks
+    /// the replayed views and is not sent (see [`Self::end_frame`]).
+    replayed: bool,
+    /// Argus patch: when the last complete tree was built.
+    last_complete: Option<Instant>,
+    /// Argus patch: whether a refresh to build a complete tree is on its way.
+    pub(crate) refresh_pending: bool,
+    /// Argus patch: how many boxes hidden by their style
+    /// (`visibility: hidden`) lie around the element being prepainted; text
+    /// inside them is not reported.
+    pub(crate) hidden_text: usize,
+    /// Argus patch: how many text nodes each element-id path has been given
+    /// in this frame (see [`Self::report_text`]).
+    text_ordinals: FxHashMap<u64, u32>,
     /// The window's title, used to label the root node so assistive
     /// technology can tell windows apart.
     window_title: Option<SharedString>,
@@ -161,6 +187,14 @@ pub(crate) struct A11y {
     /// Maps a view's [`EntityId`] to its `Render` type name
     #[cfg(debug_assertions)]
     pub(crate) view_type_names: FxHashMap<EntityId, &'static str>,
+}
+
+/// Argus patch: the maps that answer action requests (see [`A11y::committed`]).
+#[derive(Default)]
+pub(crate) struct A11yTargets {
+    pub(crate) focus_ids: FxHashMap<NodeId, FocusId>,
+    pub(crate) node_bounds: FxHashMap<NodeId, Bounds<Pixels>>,
+    pub(crate) action_listeners: FxHashMap<NodeId, Vec<(Action, A11yActionListener)>>,
 }
 
 impl A11y {
@@ -177,6 +211,12 @@ impl A11y {
             focus_ids: FxHashMap::default(),
             node_bounds: FxHashMap::default(),
             action_listeners: FxHashMap::default(),
+            committed: A11yTargets::default(),
+            replayed: false,
+            last_complete: None,
+            refresh_pending: false,
+            hidden_text: 0,
+            text_ordinals: FxHashMap::default(),
             window_title,
             last_focus_without_node: None,
             debug: debug::A11yDebug::default(),
@@ -215,6 +255,12 @@ impl A11y {
 
     pub(crate) fn is_enabled(&self) -> bool {
         !self.force_disabled
+    }
+
+    /// Argus patch: as the platform adapter's activation callback does.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn activate_for_test(&self) {
+        self.active_flag.store(true, Ordering::SeqCst);
     }
 
     pub(crate) fn is_active(&self) -> bool {
@@ -276,11 +322,36 @@ impl A11y {
         self.focus_ids.clear();
         self.node_bounds.clear();
         self.action_listeners.clear();
+        self.replayed = false;
+        self.hidden_text = 0;
+        self.text_ordinals.clear();
         self.nodes.begin_frame(self.window_title.as_ref());
     }
 
     /// Finalize the tree and produce a [`TreeUpdate`] for the platform adapter.
-    pub(crate) fn end_frame(&mut self, frame: debug::FrameDebugInfo) -> TreeUpdate {
+    ///
+    /// Argus patch: `None` when a cached view replayed its last frame in this
+    /// one. The replay carries none of the view's nodes, and a tree without
+    /// them would tell assistive technology that they are gone: upstream sent
+    /// it, so after a frame drawn for a hover or an animation the window lost
+    /// almost all of its nodes. The adapter keeps the last complete tree
+    /// instead, this frame's targets are laid over the last ones (the views
+    /// that rendered registered theirs again, the replayed ones registered
+    /// none), and the caller asks for a complete frame
+    /// (`Window::refresh_for_a11y`).
+    pub(crate) fn end_frame(&mut self, frame: debug::FrameDebugInfo) -> Option<TreeUpdate> {
+        if self.replayed {
+            self.committed.focus_ids.extend(self.focus_ids.drain());
+            self.committed.node_bounds.extend(self.node_bounds.drain());
+            self.committed
+                .action_listeners
+                .extend(self.action_listeners.drain());
+            return None;
+        }
+        self.last_complete = Some(Instant::now());
+        self.committed.focus_ids = std::mem::take(&mut self.focus_ids);
+        self.committed.node_bounds = std::mem::take(&mut self.node_bounds);
+        self.committed.action_listeners = std::mem::take(&mut self.action_listeners);
         let update = self.nodes.finalize();
         self.debug.capture(
             &update,
@@ -291,7 +362,72 @@ impl A11y {
         );
         #[cfg(debug_assertions)]
         self.debug.capture_node_info(&self.nodes.node_info);
-        update
+        Some(update)
+    }
+
+    /// Argus patch: a cached view replays its last frame in the frame being
+    /// drawn (see [`Self::end_frame`]).
+    pub(crate) fn note_replay(&mut self) {
+        if self.active_this_frame {
+            self.replayed = true;
+        }
+    }
+
+    /// Argus patch: how long the complete frame that follows a replaying one
+    /// waits, so that complete frames come at most once per
+    /// [`REPLAY_REFRESH_INTERVAL`]: none after a pause, which a key press or
+    /// a click ends, and every interval while something animates.
+    pub(crate) fn refresh_delay(&self) -> Duration {
+        self.last_complete.map_or(Duration::ZERO, |last| {
+            (last + REPLAY_REFRESH_INTERVAL).saturating_duration_since(Instant::now())
+        })
+    }
+
+    /// Argus patch: reports `text`, drawn in `bounds` by an element without
+    /// an element id, inside the element-id path whose hash is `scope`.
+    ///
+    /// Upstream reports only elements with both an id and a role, and plain
+    /// strings, styled text and other text elements have no id: assistive
+    /// technology saw controls named by hand and none of the text around
+    /// them. The text goes where a browser puts the text of an HTML page,
+    /// relative to the nearest node around it:
+    ///
+    /// - a control or item that takes its name from its content (a button, a
+    ///   tab, a menu item, a cell...) and has no name of its own is named by
+    ///   its text; text that a control's own name does not contain describes
+    ///   the control;
+    /// - a combo box without a value of its own takes its text as its value;
+    /// - a label or a text input already holds its text;
+    /// - anywhere else the text is a `Label` node of its own, numbered within
+    ///   its element-id path, so that its node keeps its id when its text
+    ///   changes or anything outside that path does.
+    ///
+    /// Returns the node made for the text, if one was.
+    pub(crate) fn report_text(
+        &mut self,
+        scope: u64,
+        text: &str,
+        bounds: Bounds<Pixels>,
+        scale_factor: f32,
+    ) -> Option<NodeId> {
+        if !self.active_this_frame || self.hidden_text > 0 {
+            return None;
+        }
+        let text = text.trim();
+        if text.is_empty() || self.nodes.absorb_text(text) {
+            return None;
+        }
+        let ordinal = self.text_ordinals.entry(scope).or_insert(0);
+        let id = text_node_id(scope, *ordinal);
+        *ordinal += 1;
+        let mut node = accesskit::Node::new(accesskit::Role::Label);
+        node.set_value(text);
+        node.set_bounds(device_rect(bounds, scale_factor));
+        if !self.nodes.push_leaf(id, node) {
+            return None;
+        }
+        self.node_bounds.insert(id, bounds);
+        Some(id)
     }
 
     pub(crate) fn debug_tree_json(&self) -> Option<String> {
@@ -383,8 +519,79 @@ pub(crate) struct A11yNodeBuilder {
     /// pattern, which allows a focused container to act as if a descendant is
     /// focused.
     active_descendant: Option<NodeId>,
+    /// Argus patch: which properties of the nodes in this frame their text
+    /// gave them (see [`Self::absorb_text`]), as opposed to their elements.
+    from_text: FxHashMap<NodeId, FromText>,
     #[cfg(debug_assertions)]
     node_info: FxHashMap<NodeId, debug::NodeDebugInfo>,
+}
+
+/// Argus patch: properties of a node set from the text inside it.
+#[derive(Clone, Copy, Default, PartialEq)]
+struct FromText {
+    label: bool,
+    value: bool,
+    description: bool,
+}
+
+/// Argus patch: where text drawn inside a node goes (see `A11y::report_text`).
+enum TextPlace {
+    /// The node already holds its text: a label, or a text input.
+    Inside,
+    /// Into the node's name, which its role takes from its content (as
+    /// HTML's "name from content" roles do), unless it has one of its own.
+    Name,
+    /// Into the node's value: a combo box shows the option chosen.
+    Value,
+    /// Into a node of its own, under the node.
+    Content,
+}
+
+impl TextPlace {
+    fn of(role: accesskit::Role) -> Self {
+        use accesskit::Role::*;
+        match role {
+            Label | TextRun | TextInput | MultilineTextInput | SearchInput | DateInput
+            | DateTimeInput | WeekInput | MonthInput | TimeInput | EmailInput | NumberInput
+            | PasswordInput | PhoneNumberInput | UrlInput | EditableComboBox | SpinButton
+            | Terminal => Self::Inside,
+            ComboBox => Self::Value,
+            Button | DefaultButton | CheckBox | Switch | RadioButton | Tab | Link | MenuItem
+            | MenuItemCheckBox | MenuItemRadio | ListBoxOption | MenuListOption | ListItem
+            | TreeItem | Row | Cell | GridCell | ColumnHeader | RowHeader | Heading | Tooltip => {
+                Self::Name
+            }
+            _ => Self::Content,
+        }
+    }
+}
+
+/// Argus patch: `text` after what a property already holds.
+fn joined(existing: Option<&str>, text: &str) -> String {
+    match existing {
+        Some(existing) if !existing.is_empty() => format!("{existing} {text}"),
+        _ => text.to_owned(),
+    }
+}
+
+/// Argus patch: the id of the `ordinal`th text node in the element-id path
+/// whose hash is `scope`. It is hashed from other data than element ids are
+/// (`extend_path_hash` hashes an `ElementId`), so that it meets none of them.
+fn text_node_id(scope: u64, ordinal: u32) -> NodeId {
+    let mut hasher = collections::FxHasher::with_seed(scope as usize);
+    "gpui-a11y-text".hash(&mut hasher);
+    ordinal.hash(&mut hasher);
+    NodeId(hasher.finish())
+}
+
+/// `bounds` in device pixels, as AccessKit takes them.
+pub(crate) fn device_rect(bounds: Bounds<Pixels>, scale_factor: f32) -> accesskit::Rect {
+    accesskit::Rect {
+        x0: (bounds.origin.x.0 * scale_factor) as f64,
+        y0: (bounds.origin.y.0 * scale_factor) as f64,
+        x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale_factor) as f64,
+        y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale_factor) as f64,
+    }
 }
 
 impl A11yNodeBuilder {
@@ -396,9 +603,56 @@ impl A11yNodeBuilder {
             seen_ids: FxHashSet::default(),
             focus: None,
             active_descendant: None,
+            from_text: FxHashMap::default(),
             #[cfg(debug_assertions)]
             node_info: FxHashMap::default(),
         }
+    }
+
+    /// Argus patch: gives `text`, drawn without an element id inside the
+    /// node on top of the stack, to that node where its role makes the text
+    /// part of it (see `A11y::report_text`). Returns false if the text needs
+    /// a node of its own.
+    fn absorb_text(&mut self, text: &str) -> bool {
+        let (Some(&id), Some(node)) = (self.ids_stack.last(), self.nodes_stack.last_mut()) else {
+            return false;
+        };
+        let given = self.from_text.get(&id).copied().unwrap_or_default();
+        let mut taken = given;
+        // Text that the node's own name or value leaves out describes it.
+        let mut describe = |node: &mut accesskit::Node| {
+            if given.description || node.description().is_none() {
+                node.set_description(joined(node.description(), text));
+                taken.description = true;
+            }
+        };
+        match TextPlace::of(node.role()) {
+            TextPlace::Inside => return true,
+            TextPlace::Content => return false,
+            TextPlace::Name => {
+                let named = node.label().is_some() || !node.labelled_by().is_empty();
+                if given.label || !named {
+                    node.set_label(joined(node.label(), text));
+                    taken.label = true;
+                } else if node.label().is_some_and(|label| !label.contains(text)) {
+                    describe(node);
+                }
+            }
+            TextPlace::Value => {
+                if given.value || node.value().is_none() {
+                    node.set_value(joined(node.value(), text));
+                    taken.value = true;
+                } else if node.value().is_some_and(|value| !value.contains(text))
+                    && node.label().is_none_or(|label| !label.contains(text))
+                {
+                    describe(node);
+                }
+            }
+        }
+        if taken != given {
+            self.from_text.insert(id, taken);
+        }
+        true
     }
 
     /// Records provenance for a node already pushed this frame. Debug builds only.
@@ -476,6 +730,7 @@ impl A11yNodeBuilder {
         self.ids_stack.clear();
         self.nodes_stack.clear();
         self.seen_ids.clear();
+        self.from_text.clear();
         #[cfg(debug_assertions)]
         self.node_info.clear();
         let mut root_node = accesskit::Node::new(accesskit::Role::Window);

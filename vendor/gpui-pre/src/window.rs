@@ -4887,13 +4887,42 @@ impl Window {
             let tree_update = self.a11y.end_frame(frame_info);
 
             if should_send_a11y_update {
-                log::debug!(
-                    "Sending a11y tree update: {} nodes",
-                    tree_update.nodes.len()
-                );
-                self.platform_window.a11y_tree_update(tree_update);
+                match tree_update {
+                    Some(tree_update) => {
+                        log::debug!(
+                            "Sending a11y tree update: {} nodes",
+                            tree_update.nodes.len()
+                        );
+                        self.platform_window.a11y_tree_update(tree_update);
+                    }
+                    // Argus patch: cached views replayed, and the tree lacks
+                    // their nodes (`A11y::end_frame`).
+                    None => self.refresh_for_a11y(cx),
+                }
             }
         }
+    }
+
+    /// Argus patch: draws a complete frame, which sends assistive technology
+    /// the tree that a frame replaying cached views could not build: right
+    /// away after a pause, and at most once per `REPLAY_REFRESH_INTERVAL`
+    /// while something animates. A refresh renders every view instead of
+    /// replaying it (a focus change refreshes already).
+    fn refresh_for_a11y(&mut self, cx: &mut App) {
+        if self.a11y.refresh_pending {
+            return;
+        }
+        self.a11y.refresh_pending = true;
+        let delay = self.a11y.refresh_delay();
+        self.spawn(cx, async move |cx| {
+            cx.background_executor.timer(delay).await;
+            cx.update(|window, _| {
+                window.a11y.refresh_pending = false;
+                window.refresh();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     fn prepaint_tooltip(&mut self, cx: &mut App) -> Option<AnyElement> {
@@ -5106,6 +5135,8 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
+        // Argus patch: the replay adds no accessibility nodes.
+        self.a11y.note_replay();
         self.next_frame.hitboxes.extend(
             self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
                 .iter()
@@ -5165,6 +5196,9 @@ impl Window {
         range: Range<PrepaintStateIndex>,
         reuse: &mut StretchReuse,
     ) {
+        // Argus patch: the replay adds no accessibility nodes (splices are
+        // not used while assistive technology reads the window anyway).
+        self.a11y.note_replay();
         self.next_frame.hitboxes.extend(
             self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
                 .iter()
@@ -8752,6 +8786,58 @@ impl Window {
         self.a11y.debug_tree_json()
     }
 
+    /// Argus patch: reports text that an element without an element id
+    /// draws in `bounds` to assistive technology, while it prepaints. GPUI's
+    /// own text elements (strings, [`StyledText`]) call this; an element
+    /// that lays out and draws text itself should too. Depending on the
+    /// nearest accessibility node around it, the text names, describes or
+    /// gives the value of that node, or becomes a label of its own (see
+    /// `A11y::report_text`). Does nothing while no assistive technology
+    /// reads the window, or inside [`Self::with_a11y_text_hidden`].
+    pub fn report_a11y_text(&mut self, text: &str, bounds: Bounds<Pixels>) {
+        if !self.a11y.is_active() {
+            return;
+        }
+        let scope = self.element_id_stack.hash();
+        let scale_factor = self.scale_factor();
+        let _node = self.a11y.report_text(scope, text, bounds, scale_factor);
+        #[cfg(debug_assertions)]
+        if let Some(node_id) = _node {
+            let view = self.a11y.view_type_names.get(&self.current_view()).copied();
+            self.a11y.nodes.record_node_info(
+                node_id,
+                crate::window::a11y::debug::NodeDebugInfo {
+                    synthetic: true,
+                    view,
+                    element_id: None,
+                    source_location: None,
+                },
+            );
+        }
+    }
+
+    /// Argus patch: acts as if assistive technology had started reading the
+    /// window, which the test platform has no adapter for, and draws a
+    /// complete frame as the activation does.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn activate_a11y_for_test(&mut self) {
+        self.a11y.activate_for_test();
+        self.refresh();
+    }
+
+    /// Argus patch: text reported while `f` prepaints is not reported if
+    /// `hidden`: it lies in a box that is not painted, as one with
+    /// `visibility: hidden` (which `div` does here itself) is not.
+    pub fn with_a11y_text_hidden<R>(&mut self, hidden: bool, f: impl FnOnce(&mut Self) -> R) -> R {
+        if !hidden || !self.a11y.is_active() {
+            return f(self);
+        }
+        self.a11y.hidden_text += 1;
+        let result = f(self);
+        self.a11y.hidden_text -= 1;
+        result
+    }
+
     /// Register a listener for an accessibility action on a specific node.
     /// The listener will be called when a screen reader requests the given
     /// action on the node identified by `node_id`.
@@ -8774,7 +8860,16 @@ impl Window {
     pub(crate) fn handle_a11y_action(&mut self, request: accesskit::ActionRequest, cx: &mut App) {
         // Take listeners out temporarily so the closures can borrow Window
         // mutably, then restore them afterward.
-        if let Some(mut listeners) = self.a11y.action_listeners.remove(&request.target_node) {
+        //
+        // Argus patch: requests are answered from the targets committed at
+        // the end of the last frames (`A11y::end_frame`), which hold those
+        // of replayed views too.
+        if let Some(mut listeners) = self
+            .a11y
+            .committed
+            .action_listeners
+            .remove(&request.target_node)
+        {
             let extra_data = request.data.as_ref();
             let mut matched = false;
             for (action, listener) in &mut listeners {
@@ -8784,6 +8879,7 @@ impl Window {
                 }
             }
             self.a11y
+                .committed
                 .action_listeners
                 .insert(request.target_node, listeners);
             if matched {
@@ -8794,7 +8890,13 @@ impl Window {
         // Fall back to built-in action handling.
         match request.action {
             accesskit::Action::Click => {
-                if let Some(bounds) = self.a11y.node_bounds.get(&request.target_node).copied() {
+                if let Some(bounds) = self
+                    .a11y
+                    .committed
+                    .node_bounds
+                    .get(&request.target_node)
+                    .copied()
+                {
                     let center = bounds.center();
                     let mouse_down = PlatformInput::MouseDown(crate::MouseDownEvent {
                         button: MouseButton::Left,
@@ -8814,7 +8916,12 @@ impl Window {
                 }
             }
             accesskit::Action::Focus => {
-                if let Some(focus_id) = self.a11y.focus_ids.get(&request.target_node).copied()
+                if let Some(focus_id) = self
+                    .a11y
+                    .committed
+                    .focus_ids
+                    .get(&request.target_node)
+                    .copied()
                     && let Some(handle) = FocusHandle::for_id(focus_id, &cx.focus_handles)
                 {
                     self.focus(&handle, cx);

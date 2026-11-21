@@ -210,22 +210,17 @@ impl Element for Text {
 
     fn prepaint(
         &mut self,
-        id: Option<&GlobalElementId>,
-        inspector_id: Option<&InspectorElementId>,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        window: &mut Window,
-        cx: &mut App,
+        _window: &mut Window,
+        _cx: &mut App,
     ) -> Self::PrepaintState {
-        <SharedString as Element>::prepaint(
-            &mut self.text,
-            id,
-            inspector_id,
-            bounds,
-            request_layout,
-            window,
-            cx,
-        )
+        // Argus patch: not `SharedString`'s prepaint, which reports the text
+        // (`Window::report_a11y_text`): with an id, this element is the
+        // text's node, and without one it is inaccessible on purpose.
+        request_layout.prepaint(bounds, self.text.as_ref())
     }
 
     fn paint(
@@ -281,10 +276,12 @@ impl Element for &'static str {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         text_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window,
+        window: &mut Window,
         _cx: &mut App,
     ) {
-        text_layout.prepaint(bounds, self)
+        text_layout.prepaint(bounds, self);
+        // Argus patch: plain strings have no id to report themselves with.
+        window.report_a11y_text(self, bounds);
     }
 
     fn paint(
@@ -355,10 +352,12 @@ impl Element for SharedString {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         text_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window,
+        window: &mut Window,
         _cx: &mut App,
     ) {
-        text_layout.prepaint(bounds, self.as_ref())
+        text_layout.prepaint(bounds, self.as_ref());
+        // Argus patch: plain strings have no id to report themselves with.
+        window.report_a11y_text(self, bounds);
     }
 
     fn paint(
@@ -581,10 +580,12 @@ impl Element for StyledText {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
-        _window: &mut Window,
+        window: &mut Window,
         _cx: &mut App,
     ) {
-        self.layout.prepaint(bounds, &self.text)
+        self.layout.prepaint(bounds, &self.text);
+        // Argus patch: styled text has no id to report itself with.
+        window.report_a11y_text(&self.text, bounds);
     }
 
     fn paint(

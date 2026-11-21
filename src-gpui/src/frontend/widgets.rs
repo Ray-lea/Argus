@@ -493,7 +493,9 @@ pub(in crate::frontend) fn placeholder(
         .text_size(theme::font(13.))
         .line_height(rems(1.25))
         .text_color(p.faint)
-        .child(text)
+        // The input under it is named by the same text: assistive technology
+        // would read it twice.
+        .child(Text::new_inaccessible(text))
 }
 
 /// The input element of every text box, with its context menu in the

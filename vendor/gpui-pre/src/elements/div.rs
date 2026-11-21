@@ -2474,7 +2474,12 @@ impl Interactivity {
                             let scroll_offset =
                                 self.clamp_scroll_position(bounds, &style, window, cx);
                             let result = window.with_element_opacity(style.opacity, |window| {
-                                f(&style, scroll_offset, hitbox, window, cx)
+                                // Argus patch: text in a box that is not
+                                // painted is not reported either.
+                                window.with_a11y_text_hidden(
+                                    style.visibility == Visibility::Hidden,
+                                    |window| f(&style, scroll_offset, hitbox, window, cx),
+                                )
                             });
                             (result, element_state)
                         },
