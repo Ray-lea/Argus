@@ -108,6 +108,8 @@ Intel 的能效核与低功耗能效核（LP E-core）可属于同一效率类�
 
 卷层回退沿用零访问权限句柄。每次读取先以 `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` 核对唯一物理磁盘，再查询计数；`PARTMGR`／`PhysDisk` 的物理结果还须匹配磁盘编号，卷结果接受 Windows 的 `VOLMGR`／`FTDISK`／`DMIO`／`LogiDisk` 提供者。范围依据 [DISK_PERFORMANCE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntdddisk/ns-ntdddisk-_disk_performance) 的提供者和设备身份判断。临时卷句柄在父磁盘的查询保护期间打开并关闭，移除应答会等待其结束；不持有额外的长期卷句柄，不调用 diskperf 或改写计数器的注册表配置。
 
+盘符按 `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` 归入磁盘，只查询类型为本地固定或可移动的盘符。显示为本地磁盘的虚拟驱动器也应答这一查询：Dokan（Google Drive 的盘符）只报告一个区段，其余字段不填，读出来是磁盘 0 上长度为零的区段。含长度为零的区段的卷不归入任何磁盘。
+
 磁盘的型号、介质、容量、卷映射与性能计数由 Windows 的类驱动、分区管理器和 Storport 应答。温度查询（`StorageDeviceTemperatureProperty`）与 NVMe 协议查询交给存储控制器的微型端口驱动处理，请求没有超时，发出后用户态无法取消。厂商的存储驱动（Intel RST、VMD 及厂商 NVMe、RAID 驱动）通常同时管理系统盘，在这两类请求上出过两种故障：
 
 - **请求不返回**。[Intel RST 17.5 上已有该温度查询不返回、Windows 随之停止响应直至断电重启的报告](https://github.com/boykopovar/AnyPS5/pull/16061)，Intel 在 [RST 18.6.1.1016 的已解决问题](https://downloadmirror.intel.com/773229/Release_Notes_18_7_6_1010_3_enduser_PV.pdf)中列有“NVMe IOCTL 在 D3 状态下发送后不完成”。

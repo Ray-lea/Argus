@@ -522,6 +522,29 @@ fn empty_media_is_distinct_from_an_unavailable_internal_drive() {
     info.volumes.push("E:".into());
     assert!(!no_media(&info, Some(21)));
 }
+
+#[test]
+fn a_virtual_drive_with_an_empty_extent_is_on_no_disk() {
+    let extent = |disk, length| DISK_EXTENT {
+        DiskNumber: disk,
+        StartingOffset: 1 << 20,
+        ExtentLength: length,
+    };
+    assert_eq!(extent_disks(&[extent(1, 1 << 30)]), Ok(vec![1]));
+    // A volume spanning disks belongs to each, once.
+    assert_eq!(
+        extent_disks(&[extent(2, 10), extent(0, 10), extent(2, 5)]),
+        Ok(vec![0, 2])
+    );
+    // What Dokan answers for its drive letters: one extent, nothing filled in.
+    let dokan = DISK_EXTENT {
+        DiskNumber: 0,
+        StartingOffset: 0,
+        ExtentLength: 0,
+    };
+    assert!(extent_disks(&[dokan]).is_err());
+    assert!(extent_disks(&[extent(1, 10), extent(0, -1)]).is_err());
+}
 #[test]
 #[ignore = "read-only device inventory using current rights; never elevates or enables diskperf settings"]
 fn live_inventory() {
