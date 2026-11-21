@@ -90,6 +90,21 @@
     },
     "done": "La prioridad de memoria de {name} se estableció en «{priority}»."
   },
+  "cpuSets": {
+    "failed": "No se pudieron cambiar los núcleos de {name}. {error}",
+    "error": {
+      "accessDenied": "Acceso denegado. Active el servicio privilegiado en Configuración o ejecute Argus como administrador. Es posible que aun así no se pueda cambiar en los procesos protegidos.",
+      "refused": "Los núcleos de {name} no se pueden cambiar.",
+      "serviceOutdated": "Acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio y vuelve a intentarlo.",
+      "notFound": "{name} ya ha finalizado."
+    },
+    "partial": {
+      "one": "Se cambiaron los núcleos de {count} proceso; sin cambiar: {failed}. {error}",
+      "many": "Se cambiaron los núcleos de {count} procesos; sin cambiar: {failed}. {error}",
+      "other": "Se cambiaron los núcleos de {count} procesos; sin cambiar: {failed}. {error}"
+    },
+    "done": "{name} ahora usa: {priority}."
+  },
   "efficiency": {
     "on": {
       "failed": "No se pudo activar el modo de eficiencia para {name}",

@@ -58,6 +58,17 @@
     "partial": "已變更 {count} 個處理程序的記憶體優先順序，{failed} 個未能變更：{error}",
     "done": "{name} 的記憶體優先順序已設為「{priority}」。"
   },
+  "cpuSets": {
+    "failed": "無法變更 {name} 使用的核心。{error}",
+    "error": {
+      "accessDenied": "沒有權限。請在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus；受保護的處理程序仍可能無法變更。",
+      "refused": "無法變更 {name} 使用的核心。",
+      "serviceOutdated": "沒有權限。特權服務版本不相容，請更新服務後重試。",
+      "notFound": "{name} 已經結束。"
+    },
+    "partial": "已變更 {count} 個處理程序使用的核心，{failed} 個未能變更：{error}",
+    "done": "{name} 現在使用：{priority}。"
+  },
   "efficiency": {
     "on": {
       "failed": "無法為 {name} 開啟效率模式",

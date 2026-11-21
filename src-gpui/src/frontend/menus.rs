@@ -1291,6 +1291,42 @@ impl Desktop {
                     ),
             );
         }
+        // The cores a hybrid CPU's processes run on (CPU Sets); other CPUs
+        // report none and get no submenu. A set chosen elsewhere shows as
+        // "Custom", checked but not offered.
+        if row
+            .members
+            .iter()
+            .any(|member| member["cpuSets"].is_string())
+        {
+            let current = shared_text(&row.members, "cpuSets");
+            let mut levels: Vec<MenuItem> = CPU_SETS
+                .iter()
+                .map(|&level| {
+                    MenuItem::new(
+                        label(&format!("processes.cpuSets.{level}")),
+                        Action::Dialog(
+                            "cpuSets".into(),
+                            json!({"members":row.members,"name":row.title,"priority":level}),
+                        ),
+                    )
+                    .checked(current == Some(level))
+                })
+                .collect();
+            if current == Some("custom") {
+                levels.push(
+                    MenuItem::new(label("processes.cpuSets.custom"), Action::CloseOverlay)
+                        .checked(true)
+                        .disabled(true),
+                );
+            }
+            items.push(
+                MenuItem::new(label("processes.menu.cpuSets"), Action::CloseOverlay)
+                    .disabled(!identity_ready)
+                    .icon("CpuIcon")
+                    .submenu(levels),
+            );
+        }
         items.push(
             MenuItem::new(
                 label("common.efficiencyMode"),
@@ -1587,6 +1623,8 @@ impl Desktop {
 /// The I/O priorities a user can set; Windows keeps high and critical.
 const IO_PRIORITIES: [&str; 3] = ["veryLow", "low", "normal"];
 const MEMORY_PRIORITIES: [&str; 5] = ["veryLow", "low", "medium", "belowNormal", "normal"];
+/// The CPU Sets a user can choose on a hybrid CPU.
+const CPU_SETS: [&str; 3] = ["all", "performance", "efficient"];
 
 /// The text value of `key` every member shares; None when they differ or one lacks it.
 fn shared_text<'a>(members: &'a [Value], key: &str) -> Option<&'a str> {

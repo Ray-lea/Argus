@@ -415,7 +415,7 @@ impl Desktop {
                 self.process_batch("priority", &args, window, cx);
                 return;
             }
-            "efficiency" | "ioPriority" | "memoryPriority" => {
+            "efficiency" | "ioPriority" | "memoryPriority" | "cpuSets" => {
                 self.process_batch(kind, &args, window, cx);
                 return;
             }

@@ -798,6 +798,14 @@ pub(crate) mod tests {
                 },
                 "MemoryPriority",
             ),
+            (
+                Operation::CpuSets {
+                    pid: 5,
+                    create_time: 1,
+                    sets: argus_core::actions::CpuSets::Efficient,
+                },
+                "CpuSets",
+            ),
         ] {
             let name = name();
             let server = dropping_server(&name, crate::PROTOCOL - 1, 2);

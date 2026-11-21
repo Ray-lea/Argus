@@ -298,6 +298,12 @@
     "belowNormal": "通常以下",
     "normal": "通常"
   },
+  "cpuSets": {
+    "all": "すべてのコア",
+    "performance": "P-コアのみ",
+    "efficient": "E-コアのみ",
+    "custom": "カスタム"
+  },
   "power": {
     "veryLow": "非常に低い",
     "low": "低",
@@ -312,6 +318,7 @@
     "setPriority": "優先度の設定",
     "ioPriority": "I/O 優先度",
     "memoryPriority": "メモリ優先度",
+    "cpuSets": "CPU コア",
     "suspend": "プロセスの中断",
     "resume": "プロセスの再開",
     "addRule": "ルールを追加",

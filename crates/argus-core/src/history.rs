@@ -4325,6 +4325,7 @@ mod tests {
             efficiency: false,
             io_priority: None,
             memory_priority: None,
+            cpu_sets: None,
             app_window: false,
         }
     }
