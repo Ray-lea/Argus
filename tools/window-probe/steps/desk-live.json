@@ -1,5 +1,6 @@
 {
   "window": [1100, 900],
+  "run": { "live": true },
   "steps": [
     {"control":{"page":"components"},"wait":700},
     {"control":{"desktopMonitor":{"enabled":true,"layout":"panel","style":"curves","grouping":"cards","metrics":["cpu","cpuTemperature","memory","memoryUsed","gpu","gpuMemory","disk","network"]}},"wait":12000},

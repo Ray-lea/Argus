@@ -1,5 +1,6 @@
 {
   "window": [1240, 900],
+  "run": { "env": { "ARGUS_TEST_BACKDROP_BUILD": "22000" } },
   "steps": [
     {"control":{"theme":"light","page":"settings"},"wait":500,"inspect":"layout","label":"light-settings","expect":{"page":"settings","systemBackdrop":false,"backgroundAlpha":1},"capture":"light-settings"},
     {"control":{"theme":"dark"},"wait":500,"inspect":"layout","label":"dark-settings","expect":{"systemBackdrop":false,"backgroundAlpha":1},"capture":"dark-settings"},

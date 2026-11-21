@@ -10,8 +10,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
-import { INSPECTIONS, parseSteps, pickFrames, runSeconds, unmet } from "./lib/ui-shots.mjs";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
+import { INSPECTIONS, parseSteps, pickFrames, runOptions, runSeconds, unmet } from "./lib/ui-shots.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -24,12 +24,14 @@ const option = (name, fallback) => {
 const [label, stepsFile] = argv;
 assert(label && /^[a-z0-9-]+$/.test(label), "usage: node scripts/ui-shots.mjs <label> <steps.json> [options]");
 assert(stepsFile && existsSync(stepsFile), "a steps file is required");
-// A list of steps, or { "window": [width, height], "steps": [...] } to fix the window size.
+// A list of steps, or { "window": [width, height], "run": {...}, "steps": [...] }
+// to fix the window size and state what the steps need (see runOptions).
 const plan = JSON.parse(readFileSync(stepsFile, "utf8"));
 const steps = parseSteps(Array.isArray(plan) ? plan : plan.steps);
+const needs = runOptions(plan);
 const size = option("--width") ? [option("--width"), option("--height", option("--width"))] : (plan.window ?? null);
 
-const live = flag("--live");
+const live = flag("--live") || needs.live;
 const output = resolve("target/native-validation", label);
 mkdirSync(output, { recursive: true });
 const metadata = JSON.parse(readFileSync("resources/app.json"));
@@ -56,7 +58,7 @@ if (!live) {
 }
 if (size) args.push("--width", String(size[0]), "--height", String(size[1]));
 
-const child = spawn(probe, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+const child = spawn(probe, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...needs.env } });
 const events = [];
 const waiters = [];
 let shown;

@@ -119,6 +119,33 @@ export function parseSteps(value) {
   });
 }
 
+/**
+ * What a steps file needs to run at all, from its optional `run` object:
+ * `live` for real data instead of the fixture, `env` for switches of the test
+ * instance (names starting with `ARGUS_`, so a steps file cannot redirect
+ * anything else). Stated in the file, a run needs no remembered flags.
+ */
+export function runOptions(plan) {
+  const run = Array.isArray(plan) ? {} : (plan.run ?? {});
+  assert(run && typeof run === "object" && !Array.isArray(run), "run must be an object");
+  for (const key of Object.keys(run)) assert(["live", "env"].includes(key), `run: unknown "${key}"`);
+  assert(run.live === undefined || typeof run.live === "boolean", "run.live is true or false");
+  const env = run.env ?? {};
+  assert(env && typeof env === "object" && !Array.isArray(env), "run.env maps names to values");
+  for (const [name, value] of Object.entries(env)) assert(/^ARGUS_[A-Z0-9_]+$/.test(name) && typeof value === "string", `run.env: ${name} must be an ARGUS_ switch with a string value`);
+  return { live: run.live === true, env };
+}
+
+/**
+ * How a step file's run counts in the suite. `known` is the reason the file is
+ * listed as failing, if it is: such a failure is expected, and its passing is
+ * as much news as an unlisted failure, because the list is then out of date.
+ */
+export function verdict(passed, known) {
+  if (passed) return known ? { result: "fixed", unexpected: true } : { result: "passed", unexpected: false };
+  return known ? { result: "known failure", unexpected: false, known } : { result: "failed", unexpected: true };
+}
+
 /** The value at a dotted path; numeric segments index arrays. */
 export function valueAt(object, path) {
   return path.split(".").reduce((value, key) => value?.[key], object);

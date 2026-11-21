@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseSteps, pickFrames, runSeconds, unmet } from "../lib/ui-shots.mjs";
+import { parseSteps, pickFrames, runOptions, runSeconds, unmet, verdict } from "../lib/ui-shots.mjs";
 
 test("steps are checked before the window starts", () => {
   assert.throws(() => parseSteps({}), /array/);
@@ -51,6 +51,23 @@ test("a drag spells out hover, press, even moves and release", () => {
   assert.equal(steps[1].record.name, "d");
   assert.equal(steps.at(-1).wait, 900);
   assert.throws(() => parseSteps([{ drag: { at: "x" }, capture: "c" }]), /combines only/);
+});
+
+test("a steps file states what its run needs", () => {
+  assert.deepEqual(runOptions([{ wait: 1 }]), { live: false, env: {} });
+  assert.deepEqual(runOptions({ steps: [] }), { live: false, env: {} });
+  assert.deepEqual(runOptions({ run: { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } }, steps: [] }), { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } });
+  assert.throws(() => runOptions({ run: { env: { PATH: "x" } } }), /ARGUS_ switch/);
+  assert.throws(() => runOptions({ run: { env: { ARGUS_X: 1 } } }), /string value/);
+  assert.throws(() => runOptions({ run: { release: true } }), /unknown "release"/);
+  assert.throws(() => runOptions({ run: { live: "yes" } }), /true or false/);
+});
+
+test("a listed failure is expected, and its passing is not", () => {
+  assert.deepEqual(verdict(true, undefined), { result: "passed", unexpected: false });
+  assert.deepEqual(verdict(false, undefined), { result: "failed", unexpected: true });
+  assert.deepEqual(verdict(false, "menu moved"), { result: "known failure", unexpected: false, known: "menu moved" });
+  assert.deepEqual(verdict(true, "menu moved"), { result: "fixed", unexpected: true });
 });
 
 test("the run lasts as long as its waits and recordings", () => {

@@ -27,7 +27,7 @@
     { "note": "Startup: drag the name column narrower; the command column follows the edge and keeps the room once it is let go." },
     { "control": { "page": "startup", "pointerOutside": true }, "wait": 1200, "inspect": "columns", "label": "startup-wide", "capture": "startup-wide",
       "expect": { "state.page": "startup", "state.scroll.maxX": 0, "state.visible.4.key": "command", "state.visible.4.resizable": false } },
-    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover", "passive": true } }, "wait": 1100, "capture": "edge-hint" },
+    { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover" } }, "wait": 1100, "capture": "edge-hint" },
     { "record": { "name": "drag", "ms": 1400 }, "wait": 200 },
     { "control": { "pointer": { "event": "down", "dx": 4 } }, "wait": 120 },
     { "control": { "pointer": { "event": "move", "dx": -30 } }, "wait": 120 },
