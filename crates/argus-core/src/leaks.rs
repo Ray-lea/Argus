@@ -15,6 +15,10 @@ const RECORD_INTERVAL_MS: i64 = 30_000;
 const RETAIN_MS: i64 = 60 * 60_000;
 const MIN_SPAN_MS: i64 = 10 * 60_000;
 const MAX_MEMBERS: usize = 64;
+/// Live children a parent needs for a children finding.
+const MIN_CHILDREN: usize = 15;
+/// Leftover instances of one program for an orphans finding.
+const MIN_ORPHANS: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -147,6 +151,7 @@ impl LeakTracker {
                 self.instances.clear();
                 self.findings.clear();
             } else if now_ms.abs_diff(last) < RECORD_INTERVAL_MS as u64 {
+                self.follow(processes);
                 return;
             }
         }
@@ -211,7 +216,7 @@ impl LeakTracker {
                 self.findings.push(finding);
             }
         }
-        for group in orphans.into_values().filter(|g| g.len() >= 5) {
+        for group in orphans.into_values().filter(|g| g.len() >= MIN_ORPHANS) {
             let count = group.len() as u64;
             let span = group.iter().map(|(_, span)| *span).min().unwrap();
             let members = oldest_members(group.into_iter().map(|(row, _)| row));
@@ -231,6 +236,57 @@ impl LeakTracker {
 
     pub fn findings(&self) -> &[Leak] {
         &self.findings
+    }
+
+    /// Between records, keeps the findings in step with the process list: a
+    /// process that ended (by hand, say) takes its finding with it at the
+    /// next sample, not at the next record, and the counts follow the list.
+    /// Rules are applied again only when the next record is due.
+    fn follow(&mut self, processes: &[ProcessRow]) {
+        if self.findings.is_empty() {
+            return;
+        }
+        let live: HashMap<(u32, i64), &ProcessRow> = processes
+            .iter()
+            .map(|p| ((p.pid, p.create_time), p))
+            .collect();
+        let alive = |pid: u32, created: i64| live.contains_key(&(pid, created));
+        self.findings.retain_mut(|f| match f.kind {
+            LeakKind::Handles => match live.get(&(f.pid, f.create_time)) {
+                Some(row) => {
+                    if !row.stale && !row.counters_pending {
+                        f.count = u64::from(row.handles);
+                    }
+                    true
+                }
+                None => false,
+            },
+            LeakKind::Children => {
+                if !alive(f.pid, f.create_time) {
+                    return false;
+                }
+                let count = processes
+                    .iter()
+                    .filter(|p| p.ppid == f.pid && p.pid != f.pid && p.create_time >= f.create_time)
+                    .count();
+                f.members.retain(|m| alive(m.pid, m.create_time));
+                f.count = count as u64;
+                count >= MIN_CHILDREN
+            }
+            LeakKind::Orphans => {
+                let listed = f.members.len();
+                f.members.retain(|m| alive(m.pid, m.create_time));
+                let ended = (listed - f.members.len()) as u64;
+                f.count = f.count.saturating_sub(ended);
+                // The oldest instance left stands for the group.
+                if let Some(first) = f.members.first() {
+                    f.pid = first.pid;
+                    f.create_time = first.create_time;
+                }
+                f.count >= MIN_ORPHANS as u64 && !f.members.is_empty()
+            }
+        });
+        sort_findings(&mut self.findings);
     }
 }
 
@@ -268,7 +324,7 @@ fn observe_children(
 ) -> Option<Leak> {
     let count = family.len();
     series.record(now, count as u32);
-    if count < 15 {
+    if count < MIN_CHILDREN {
         return None;
     }
     let growth = series.growing(|_| 10)?;
@@ -420,7 +476,8 @@ mod tests {
         p.handles = 100_000;
         let rows = [p];
         tracker.observe(time(10), &rows);
-        tracker.observe(time(11) - 1, &[]);
+        // Between records the finding stays while its process does.
+        tracker.observe(time(11) - 1, &rows);
         assert_eq!(tracker.findings()[0].since, time(10));
         tracker.observe(time(11), &rows);
         assert_eq!(tracker.findings()[0].span_ms, RECORD_INTERVAL_MS);
@@ -623,6 +680,75 @@ mod tests {
         );
         group.retain(|p| p.pid != 50);
         tracker.observe(time(21), &group);
+        assert!(tracker.findings().is_empty());
+    }
+
+    #[test]
+    fn ended_processes_leave_their_findings_before_the_next_record() {
+        let mut tracker = LeakTracker::new();
+        let mut agent = row(42, 10);
+        agent.handles = 200_000;
+        let other = row(43, 10);
+        tracker.observe(START, &[agent.clone(), other.clone()]);
+        assert_eq!(tracker.findings().len(), 1);
+        // Between records the count follows the list...
+        agent.handles = 210_000;
+        tracker.observe(START + 1_000, &[agent.clone(), other.clone()]);
+        assert_eq!(tracker.findings()[0].count, 210_000);
+        // ...and an ended process takes its finding with it at once.
+        tracker.observe(START + 2_000, std::slice::from_ref(&other));
+        assert!(tracker.findings().is_empty());
+
+        // Leftovers: one ended leaves five, led by the next oldest; one more
+        // leaves too few for a finding.
+        let mut tracker = LeakTracker::new();
+        let mut group: Vec<_> = (0..6)
+            .map(|i| row(60 + i, START - 100 + i64::from(i)))
+            .collect();
+        tracker.observe(time(0), &group);
+        tracker.observe(time(20), &group);
+        assert_eq!(tracker.findings()[0].count, 6);
+        group.remove(0);
+        tracker.observe(time(20) + 1_000, &group);
+        let [f] = tracker.findings() else { panic!() };
+        assert_eq!((f.count, f.pid, f.members.len()), (5, 61, 5));
+        group.remove(0);
+        tracker.observe(time(20) + 2_000, &group);
+        assert!(tracker.findings().is_empty());
+
+        // Children: ending some of them updates the count, below the
+        // threshold the finding goes.
+        let mut tracker = LeakTracker::new();
+        let parent = row(70, 1);
+        let mut rows = vec![parent];
+        for i in 0..16 {
+            let mut child = row(100 + i, 2 + i64::from(i));
+            child.ppid = 70;
+            rows.push(child);
+        }
+        tracker.last_recorded = Some(START);
+        tracker.findings = vec![Leak {
+            members: rows[1..]
+                .iter()
+                .map(|p| LeakMember {
+                    pid: p.pid,
+                    create_time: p.create_time,
+                })
+                .collect(),
+            ..Leak::new(
+                &rows[0],
+                LeakKind::Children,
+                LeakEvidence::Growing,
+                16,
+                START,
+            )
+        }];
+        rows.truncate(16);
+        tracker.observe(START + 1_000, &rows);
+        let [f] = tracker.findings() else { panic!() };
+        assert_eq!((f.count, f.members.len()), (15, 15));
+        rows.truncate(15);
+        tracker.observe(START + 2_000, &rows);
         assert!(tracker.findings().is_empty());
     }
 
