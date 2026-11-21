@@ -140,7 +140,8 @@ const child = spawn(
   {
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
+    // A test instance records history only when told to; the setting alone is not enough.
+    env: recordHistory ? { ...process.env, ARGUS_TEST_HISTORY: "1" } : process.env,
   },
 );
 let shown,
