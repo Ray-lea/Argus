@@ -516,6 +516,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: vec![crate::ProcessRow {
                 pid: std::process::id(),
@@ -535,6 +536,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: Vec::new(),
         };
@@ -569,6 +571,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: keys
                 .iter()

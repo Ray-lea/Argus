@@ -37,6 +37,7 @@ fn main() {
                 hardware: Default::default(),
                 processes: vec![],
                 sessions: Vec::new(),
+                leaks: Vec::new(),
                 process_network: false,
             };
             if let Some(collector) = &mut collector {

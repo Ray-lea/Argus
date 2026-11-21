@@ -1460,6 +1460,7 @@ mod tests {
                 hardware: Default::default(),
                 processes: Vec::new(),
                 sessions: Vec::new(),
+                leaks: Vec::new(),
                 process_network: false,
             });
         }

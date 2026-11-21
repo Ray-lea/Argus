@@ -618,6 +618,7 @@ mod tests {
             system: Default::default(),
             hardware: Default::default(),
             sessions: Vec::new(),
+            leaks: Vec::new(),
             process_network: false,
             processes: vec![ProcessRow {
                 pid: view.pid,
