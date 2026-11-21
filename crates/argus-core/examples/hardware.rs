@@ -1,4 +1,4 @@
-//! Prints device telemetry (CPU, sensors, memory, disks, NICs, GPUs, batteries) to verify the collectors.
+//! Prints device telemetry (CPU, sensors, memory, disks, NICs, GPUs, NPUs, batteries) to verify the collectors.
 //! `cargo run -p argus-core --example hardware --release`
 
 use std::time::{Duration, Instant};
@@ -94,6 +94,9 @@ fn main() {
             println!("    {name:<20} {u:.1}%");
         }
         println!("    => util {:.1}%", g.util);
+    }
+    for npu in &hw.npus {
+        println!("NPU {}", serde_json::to_string(npu).expect("NPU telemetry"));
     }
     for b in &hw.batteries {
         println!("BAT {:?}", b.info);

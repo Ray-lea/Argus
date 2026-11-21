@@ -600,6 +600,10 @@
       "raplMsr": "Intel RAPL MSR・内蔵 GPU"
     }
   },
+  "npu": {
+    "utilizationChart": "使用率（%）",
+    "utilization": "使用率"
+  },
   "battery": {
     "title": "バッテリー",
     "titleNumbered": "バッテリー {id}",

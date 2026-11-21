@@ -1085,6 +1085,9 @@ impl Desktop {
                 "gpu" => self.snapshot["hardware"]["gpus"][0]["info"]["id"]
                     .as_str()
                     .map(|id| format!("gpu:{id}")),
+                "npu" => self.snapshot["hardware"]["npus"][0]["id"]
+                    .as_str()
+                    .map(|id| format!("npu:{id}")),
                 "disk" => self.snapshot["hardware"]["disks"][0]["info"]["index"]
                     .as_u64()
                     .map(|id| format!("disk:{id}")),

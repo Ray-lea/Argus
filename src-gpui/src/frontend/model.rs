@@ -1396,17 +1396,17 @@ pub fn series_key(snapshot: &Value, path: &str) -> String {
     let Some(collection) = parts.next() else {
         return path.into();
     };
-    if !matches!(collection, "disks" | "nics" | "gpus" | "batteries") {
+    if !matches!(collection, "disks" | "nics" | "gpus" | "npus" | "batteries") {
         return path.into();
     }
     let Some(index) = parts.next().and_then(|p| p.parse::<usize>().ok()) else {
         return path.into();
     };
     let item = &snapshot["hardware"][collection][index];
-    let identity = if collection == "disks" {
-        item["info"]["index"].to_string()
-    } else {
-        text(&item["info"], "id").into()
+    let identity = match collection {
+        "disks" => item["info"]["index"].to_string(),
+        "npus" => text(item, "id").into(),
+        _ => text(&item["info"], "id").into(),
     };
     let remainder = parts.collect::<Vec<_>>().join(".");
     format!("hardware.{collection}.{identity}.{remainder}")
@@ -3271,5 +3271,26 @@ mod tests {
             (Some((10, "aboveNormal")), Some((13, "high")))
         );
         assert_eq!(priority_neighbours(2), (None, Some((4, "idle"))));
+    }
+
+    #[test]
+    fn npu_history_follows_the_adapter_across_missing_samples_and_slot_changes() {
+        let mut timeline = Timeline::new();
+        let adapter = |id: &str, util: Option<u32>| json!({"id": id, "util": util});
+        for (at, devices) in [
+            (1, vec![adapter("a", Some(72)), adapter("b", Some(0))]),
+            (2, vec![adapter("b", None)]),
+            (3, vec![]),
+            (4, vec![adapter("b", Some(36))]),
+        ] {
+            timeline.push(
+                &json!({"timestamp": at, "hardware": {"npus": devices}}),
+                1000.,
+            );
+        }
+        assert_eq!(
+            timeline.points("hardware.npus.b.util").unwrap(),
+            [(1., Some(0.)), (2., None), (3., None), (4., Some(36.))]
+        );
     }
 }

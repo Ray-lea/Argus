@@ -250,18 +250,19 @@ pub(super) fn available_devices(snapshot: &Value, p: Palette) -> Vec<Device> {
         ("disk", "disks", "disk", p.io),
         ("network", "nics", "nic", p.network),
         ("gpu", "gpus", "gpu", p.gpu),
+        ("npu", "npus", "npu", p.npu),
         ("battery", "batteries", "bat", p.battery),
     ] {
         for (index, item) in values(&hw[collection]).iter().enumerate() {
-            let info = &item["info"];
-            let identity = if kind == "disk" {
-                info["index"].to_string()
-            } else {
-                text(info, "id").into()
+            let info = if kind == "npu" { item } else { &item["info"] };
+            let identity = match kind {
+                "disk" => info["index"].to_string(),
+                _ => text(info, "id").into(),
             };
             let title = match kind {
                 "disk" => disk_title(info),
                 "gpu" => format!("{} {index}", label("common.resource.gpu")),
+                "npu" => format!("{} {index}", label("common.resource.npu")),
                 "battery" if batteries > 1 => {
                     tr!("performance.battery.titleNumbered", id = text(info, "id"))
                 }
@@ -363,6 +364,13 @@ fn device_row<E: Styled>(row: E, p: Palette, height: Pixels) -> E {
 
 fn missing() -> String {
     label("format.missing")
+}
+/// Whole-percent utilization of an NPU, or `None` when no reading is available.
+fn npu_percent(npu: &Value) -> Option<u64> {
+    npu["util"]
+        .as_f64()
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0., 100.).round() as u64)
 }
 fn ghz(mhz: f64) -> String {
     crate::regional::number!("{:.2} GHz", mhz / 1000.)
@@ -1040,6 +1048,9 @@ impl Desktop {
                 }
                 parts.join("  ")
             }
+            "npu" => npu_percent(&hw["npus"][device.index])
+                .map(|v| format!("{v}%"))
+                .unwrap_or_else(missing),
             "battery" => {
                 let battery = &hw["batteries"][device.index];
                 let percent = format!("{}%", number(battery, "percent").round());
@@ -1084,6 +1095,10 @@ impl Desktop {
             ),
             "gpu" => (
                 vec![Line::new(format!("hardware.gpus.{}.util", device.index), c)],
+                Scale::Fixed(100.),
+            ),
+            "npu" => (
+                vec![Line::new(format!("hardware.npus.{}.util", device.index), c)],
                 Scale::Fixed(100.),
             ),
             _ => (
@@ -1870,6 +1885,13 @@ impl Desktop {
             .gap_y(px(STAT_GAP_Y))
             .content_start()
             .children(stats);
+        if specs.is_empty() {
+            return div()
+                .mt(px(20.))
+                .flex_shrink_0()
+                .child(grid)
+                .into_any_element();
+        }
         let info = if spec_columns > 1 {
             // In reading order down each column, the columns as even as they go.
             let rows = specs.len().div_ceil(usize::from(spec_columns));
@@ -2033,6 +2055,7 @@ impl Desktop {
             "disk" => self.disk_view(device, window, cx),
             "network" => self.nic_view(device, window, cx),
             "gpu" => self.gpu_view(device, window, cx),
+            "npu" => self.npu_view(device, window, cx),
             "battery" => self.battery_view(device, window, cx),
             _ => Vec::new(),
         };
@@ -3754,6 +3777,41 @@ impl Desktop {
             self.perf_stats(stats, rows, false, window),
         ]
     }
+    fn npu_view(
+        &self,
+        device: &Device,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
+        let p = self.palette;
+        let npu = &self.snapshot["hardware"]["npus"][device.index];
+        let util = npu_percent(npu);
+        let stats = vec![self.stat(
+            label("performance.npu.utilization"),
+            util.map(|v| v.to_string()).unwrap_or_else(missing),
+            util.map(|_| "%".into()),
+            None,
+            cx,
+        )];
+        vec![
+            self.perf_head(device.title.clone(), Some(device.model.clone()), None, cx),
+            self.chart_view(
+                "npu-utilization",
+                &[Line::new(
+                    format!("hardware.npus.{}.util", device.index),
+                    p.npu,
+                )],
+                Some(Scale::Fixed(100.)),
+                ChartHeight::Fill,
+                Look::boxed(label("performance.npu.utilizationChart"))
+                    .top("100%")
+                    .format(MetricFormat::RoundPercent)
+                    .min_height(px(MAIN_MIN)),
+                cx,
+            ),
+            self.perf_stats(stats, Vec::new(), false, window),
+        ]
+    }
     fn battery_view(
         &self,
         device: &Device,
@@ -3945,7 +4003,10 @@ impl Desktop {
 
 #[cfg(test)]
 mod tests {
-    use super::{StatsLayout, cpu_power, stats_layout};
+    use super::{
+        Palette, StatsLayout, available_devices, cpu_power, npu_percent, selected_device,
+        stats_layout,
+    };
     use serde_json::json;
 
     #[test]
@@ -4057,5 +4118,27 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn npu_selection_survives_another_adapter_leaving() {
+        let adapter = |id: &str| json!({"id": id, "name": "Example NPU"});
+        let list = |npus: Vec<serde_json::Value>| {
+            available_devices(&json!({"hardware": {"npus": npus}}), Palette::default())
+        };
+        let listed = list(vec![adapter("a"), adapter("b")]);
+        let npus: Vec<_> = listed.iter().filter(|d| d.kind == "npu").collect();
+        assert_eq!(
+            [npus[0].id.as_str(), npus[1].id.as_str()],
+            ["npu:a", "npu:b"]
+        );
+        assert_ne!(npus[0].stable, npus[1].stable);
+        for (devices, expected) in [(vec![adapter("b")], "npu:b"), (vec![], "cpu")] {
+            let listed = list(devices);
+            let index = selected_device(&listed, &vec![true; listed.len()], "npu:b");
+            assert_eq!(listed[index].id, expected);
+        }
+        assert_eq!(npu_percent(&json!({"util": null})), None);
+        assert_eq!(npu_percent(&json!({"util": 0.0})), Some(0));
     }
 }

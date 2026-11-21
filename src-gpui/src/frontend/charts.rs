@@ -2016,6 +2016,8 @@ fn series_name(snapshot: &Value, key: &str) -> String {
         "mem" | "memUsed" => "common.resource.memory",
         "disk" => "common.resource.disk",
         "net" | "network" => "common.resource.network",
+        "npu" => "common.resource.npu",
+        "util" if key.contains(".npus.") => "common.resource.npu",
         "gpu" | "util" => "common.resource.gpu",
         "rx" => "performance.network.receive",
         "tx" => "performance.network.send",

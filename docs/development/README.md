@@ -48,7 +48,7 @@ cargo run -p argus-core --example sampling_cadence -- 120 --trace # 快照间隔
 cargo build -p argus-core --example process_sources --release # 构建普通权限进程来源对照工具
 node scripts/process-sources.mjs comparison --samples 60 --interval 1000 # 三路交替采集及数值校验
 cargo run -p argus-core --example gpu_memory --release -- <PID> # 进程显存与原生预算用量对照
-cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、电池
+cargo run -p argus-core --example hardware --release   # CPU、传感器、内存、磁盘、网络、GPU、NPU、电池
 cargo run -p argus-core --example disk_details --release -- 0 # 磁盘 0 的单次详情与查询耗时
 cargo run -p argus-service --example network_cadence --release -- 500 # 既有服务的半秒网络速率对照
 cargo run -p argus-service --example sensor_cadence -- 60 # 既有开发服务的传感器状态、读数与采样延迟
