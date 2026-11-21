@@ -107,7 +107,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 ## 环境与工具
 
-- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。仓库目录之外的工作树没有这个 override，在那里用 `cargo +stable-x86_64-pc-windows-msvc`，或把工作树建在 `target/worktrees/` 下。
+- 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。仓库目录之外的工作树没有这个 override，在那里用 `cargo +stable-x86_64-pc-windows-msvc`。需要与主工作区隔开的构建或改动，用 `node scripts/worktree.mjs add <名称>` 在 `target/worktrees/` 下建工作树（沿用 override，`remove` 负责清理）。
 - `target/` 只放构建产物与测试输出：`start.bat clean all` 即 `cargo clean`，会清空它。无法重新生成的资料不放在那里：进行中的设计稿及其工具放 `design.local/<主题>/`，结束的调查、测量原始数据和交付物放 `archives.local/<日期>/`，并在该目录的 `README.txt` 里记一行。两处都已被 `*.local` 忽略，不进 Git。
 - Cargo 按文件时间判断是否需要重编：用保留原时间的复制来还原文件，会让按另一份内容编出的产物看起来仍是最新的。还原后更新文件时间，或用写入的方式还原。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。

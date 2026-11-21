@@ -16,4 +16,6 @@ GPUI 提供应用的 Windows manifest，声明普通权限、PerMonitorV2 DPI �
 
 `quick` 构建用于开发过程中的性能对照、探针的调用栈采样（发行构建已去除符号），以及交给其他机器试用的测试程序：开发构建在启动时从构建机器上的源码目录编译着色器，换一台机器无法运行。它与发行构建在数值上的差别见[性能测量](performance.md#构建与运行)；基线、一成以内的差异和写入提交信息的数值仍用发行构建测量。`target/quick` 是又一份完整的依赖缓存。
 
+`node scripts/worktree.mjs add <名称> [<引用>] [--branch <分支>] [--seed <配置>]` 在 `target/worktrees/<名称>` 创建工作树，用于需要与主工作区隔开的构建和改动：主工作区的开发脚本随每次保存重建，别人尚未提交的改动也可能让它暂时无法编译。工作树位于仓库目录之内，沿用该目录的 rustup override；不带 `--branch` 时停在指定的提交上（默认 `HEAD`）。`--seed quick`（或 `debug`、`release`）把主工作区该配置下已编译的依赖复制过去，新工作树的首次构建只需重新编译工作区自己的 crate、vendored GPUI 和依赖它的组件库：`quick` 配置下复制约 3.4 GB 用时十几秒，首次构建约 3 分 20 秒，不复制时约 8.5 分钟（测量条件同上）。`remove <名称>` 删除工作树，`list` 列出现有的工作树。
+
 修改依赖后运行 node scripts/notices.mjs。版本号仅由 pnpm release 修改。
