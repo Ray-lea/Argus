@@ -34,7 +34,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `node scripts/ui-shots.mjs <标签> <步骤文件>` 按步骤驱动一个隔离、不激活的测试窗口，用于核对新界面和做回归检查。默认使用开发构建 `target/debug/argus.exe` 和模拟快照 `tools/window-probe/fixtures/desktop.json`；`--release` 换成发布构建，`--live` 改用实时数据（此时按键、单击与拖动不生效），`--fixture` 指定其他快照，`--theme`、`--language` 设定外观与语言，`--width`、`--height` 指定客户区物理尺寸。探针需先以 `cargo build --release -p argus-window-probe --features capture` 构建。截图、录制帧、拼图和 `results.json` 写入 `target/native-validation/<标签>`，测试标识的数据目录在结束时删除，其中的诊断日志先复制到输出目录的 `logs/`；有断言未满足时以退出码 1 结束。测试实例因 panic 中止（退出码 `0xc0000409`）时，失败信息附带日志中的 `panic at` 一行。
 
-步骤文件是步骤数组，或 `{ "about": "…", "window": [宽, 高], "run": {...}, "steps": [...] }`。`about` 说明这组步骤检查什么，仓库里的步骤文件都要有；`run` 写明这组步骤运行所需的条件，运行时不必另加参数：`"live": true` 表示使用实时数据，`"env"` 为测试实例的环境变量（仅限 `ARGUS_` 开头的名称）。一个步骤可组合以下几项，按表中顺序执行：
+步骤文件是步骤数组，或 `{ "about": "…", "window": [宽, 高], "run": {...}, "steps": [...] }`。`about` 说明这组步骤检查什么，仓库里的步骤文件都要有；`run` 写明这组步骤运行所需的条件，运行时不必另加参数：`"live": true` 表示使用实时数据，`"env"` 为测试实例的环境变量（仅限 `ARGUS_` 开头的名称）；`"parity"` 列出一组环境变量，表示设了它们之后每张截图都应与不设时逐像素相同，由 `ui-steps.mjs` 负责对照。一个步骤可组合以下几项，按表中顺序执行：
 
 | 键 | 作用 |
 |---|---|
@@ -56,7 +56,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
 
-`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（56 个文件约 16 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（57 个文件约 19 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
 
 不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 

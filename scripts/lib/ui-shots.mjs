@@ -138,16 +138,22 @@ export function aboutOf(plan) {
  * `live` for real data instead of the fixture, `env` for switches of the test
  * instance (names starting with `ARGUS_`, so a steps file cannot redirect
  * anything else). Stated in the file, a run needs no remembered flags.
+ * `parity` names switches under which every capture must come out the same:
+ * scripts/ui-steps.mjs then runs the steps a second time with them set and
+ * compares the two runs pixel by pixel.
  */
 export function runOptions(plan) {
   const run = Array.isArray(plan) ? {} : (plan.run ?? {});
   assert(run && typeof run === "object" && !Array.isArray(run), "run must be an object");
-  for (const key of Object.keys(run)) assert(["live", "env"].includes(key), `run: unknown "${key}"`);
+  for (const key of Object.keys(run)) assert(["live", "env", "parity"].includes(key), `run: unknown "${key}"`);
   assert(run.live === undefined || typeof run.live === "boolean", "run.live is true or false");
-  const env = run.env ?? {};
-  assert(env && typeof env === "object" && !Array.isArray(env), "run.env maps names to values");
-  for (const [name, value] of Object.entries(env)) assert(/^ARGUS_[A-Z0-9_]+$/.test(name) && typeof value === "string", `run.env: ${name} must be an ARGUS_ switch with a string value`);
-  return { live: run.live === true, env };
+  const switches = (key) => {
+    const value = run[key] ?? {};
+    assert(value && typeof value === "object" && !Array.isArray(value), `run.${key} maps names to values`);
+    for (const [name, text] of Object.entries(value)) assert(/^ARGUS_[A-Z0-9_]+$/.test(name) && typeof text === "string", `run.${key}: ${name} must be an ARGUS_ switch with a string value`);
+    return value;
+  };
+  return { live: run.live === true, env: switches("env"), parity: switches("parity") };
 }
 
 /**

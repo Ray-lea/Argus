@@ -163,7 +163,7 @@ cargo test -p argus-service resource_soak_running_service_reads -- --ignored --n
 
 `--scroll-copy` 在固定快照下以滚轮逐格滚动进程列表（指针停在列表上，悬停行随之变化），覆盖深浅主题、详情窗格以及 125%、150% 界面缩放：每次滑动结束后捕获画面，再强制完整重绘并捕获，两者须逐像素一致（软件渲染下字形边缘允许两个色阶），且每种情形都须有经复制绘制的帧。诊断事件 `gpu-scroll-copy` 记录每个复制帧的移动图元数、位移、复制与重绘的像素数和裁剪绘制次数。同一程序设置 `ARGUS_GPUI_DISABLE_SCROLL_COPY=1` 可关闭复制，对照滚动与页面切换的开销。
 
-表格的行默认由 Argus 绘制（`tables::body`）；同一程序设置 `ARGUS_TABLE_ROWS=component` 改由组件库绘制，用于逐像素对照两种绘制，以及对照滚动帧的开销。修改行或单元格的结构与样式后，用 `ui-shots` 以两种设置运行同一步骤文件，逐张比较截图。
+表格的行默认由 Argus 绘制（`tables::body`）；同一程序设置 `ARGUS_TABLE_ROWS=component` 改由组件库绘制，用于逐像素对照两种绘制，以及对照滚动帧的开销。修改行或单元格的结构与样式后运行 `node scripts/ui-steps.mjs table-rows`：步骤文件 `table-rows.json` 声明了这项对照，套件用同一程序以两种设置各运行一次并逐像素比较全部截图。
 
 追加 `--hover-retained` 可对照深浅主题下的顶部曲线和列表列说明。`gpu-chart-layers.foregroundBytes` 记录前景缓存空间，`foregroundGrouped` 标识同组合成路径；`gpu-chart-foreground-plan` 与拒绝事件用于排查绘制顺序和图元类型。性能场景的 `hover` 字段在布局稳定后单次设置指针，再开始测量，便于观察静止悬停。例如 `hover: { hoverChart: "vital-cpu" }`；`hoverAt` 可指定图表内的归一化位置。
 

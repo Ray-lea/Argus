@@ -10,11 +10,17 @@
 // to target/native-validation/steps/summary.json. A step file listed in
 // tools/window-probe/known-failures.json is run and reported, but only an
 // unlisted failure (or a listed file that passes) makes the exit code 1.
+//
+// A step file with `run.parity` is run a second time with those switches set
+// (output in steps-<name>-parity), and every capture of the two runs must be
+// the same pixel for pixel. Captures that differ are taken once more on both
+// sides before the file fails: the real pointer may have rested on a window.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
-import { aboutOf, parseSteps, runSeconds, verdict } from "./lib/ui-shots.mjs";
+import { parityDifferences } from "./lib/capture-pixels.mjs";
+import { aboutOf, parseSteps, runOptions, runSeconds, verdict } from "./lib/ui-shots.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -42,6 +48,61 @@ if (argv.includes("--list")) {
   process.exit(0);
 }
 
+const folder = (label) => resolve("target/native-validation", label);
+const copy = (label) => resolve(folder(label), "argus.exe");
+
+/** One run of a step file under a label; resolves to the lines of its failure, none when it passed. */
+async function run(label, file, limit, { executable, env = {} } = {}) {
+  // An executable given here stands before the caller's own, so that it is the one taken.
+  const args = ["scripts/ui-shots.mjs", label, file, ...(executable ? ["--executable", executable] : []), ...passed];
+  const child = spawn(process.execPath, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
+  let stderr = "";
+  child.stdout.resume();
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const timer = setTimeout(() => child.kill(), limit);
+  const code = await new Promise((done) => child.on("exit", (status) => done(status ?? -1)));
+  clearTimeout(timer);
+  return code === 0 ? [] : stderr.trim().split(/\r?\n/).filter(Boolean).slice(-8);
+}
+
+/** The second run under the file's parity switches, and the comparison of the two; resolves to failure lines. */
+async function parity(name, file, limit, switches) {
+  const spelled = Object.entries(switches).map(([key, value]) => `${key}=${value}`).join(" ");
+  // Both sides run the copy the first run took: the development script may rebuild the program meanwhile.
+  const executable = copy(`steps-${name}`);
+  const labels = { ours: [`steps-${name}`], theirs: [] };
+  const used = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const suffix = attempt === 1 ? "" : `-${attempt}`;
+    if (attempt > 1) {
+      const again = `steps-${name}${suffix}`;
+      used.push(again);
+      const failed = await run(again, file, limit, { executable });
+      if (failed.length) return failed;
+      labels.ours.push(again);
+    }
+    const other = `steps-${name}-parity${suffix}`;
+    used.push(other);
+    const failed = await run(other, file, limit, { executable, env: switches });
+    if (failed.length) return [`with ${spelled}:`, ...failed];
+    labels.theirs.push(other);
+    const { compared, differ, missing } = parityDifferences(labels.ours.map(folder), labels.theirs.map(folder));
+    if (!differ.length && !missing.length) {
+      for (const label of used) rmSync(copy(label), { force: true, maxRetries: 5, retryDelay: 200 });
+      console.log(`    ${compared} captures identical with ${spelled}${attempt > 1 ? " (some only on the second attempt)" : ""}`);
+      return [];
+    }
+    if (attempt === 2) {
+      for (const label of used) rmSync(copy(label), { force: true, maxRetries: 5, retryDelay: 200 });
+      return [
+        ...differ.map((entry) => `${entry.name} differs with ${spelled}: ${entry.error ?? `${entry.changedPixels} pixels, largest difference ${entry.maxChannelDelta}, box ${JSON.stringify(entry.box)}`}`),
+        ...missing.map((entry) => `${entry} was not captured with ${spelled}`),
+      ];
+    }
+  }
+  return [];
+}
+
 // One at a time: test windows share the screen, the pointer position and the
 // machine's load, and a recording under load drops frames.
 const outcomes = [];
@@ -49,18 +110,13 @@ for (const name of chosen) {
   const file = `${directory}/${name}.json`;
   const plan = JSON.parse(readFileSync(file, "utf8"));
   const limit = (runSeconds(parseSteps(Array.isArray(plan) ? plan : plan.steps)) + 120) * 1000;
+  const switches = runOptions(plan).parity;
   const started = Date.now();
-  const child = spawn(process.execPath, ["scripts/ui-shots.mjs", `steps-${name}`, file, ...passed], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-  let stderr = "";
-  child.stdout.resume();
-  child.stderr.on("data", (chunk) => (stderr += chunk));
-  const timer = setTimeout(() => child.kill(), limit);
-  const code = await new Promise((done) => child.on("exit", (status) => done(status ?? -1)));
-  clearTimeout(timer);
+  let failures = await run(`steps-${name}`, file, limit);
+  if (!failures.length && Object.keys(switches).length) failures = await parity(name, file, limit, switches);
   // Each run works on its own copy of the executable; fifty of them are gigabytes.
-  rmSync(resolve("target/native-validation", `steps-${name}`, "argus.exe"), { force: true, maxRetries: 5, retryDelay: 200 });
-  const failures = code === 0 ? [] : stderr.trim().split(/\r?\n/).filter(Boolean).slice(-8);
-  const outcome = { name, ...verdict(code === 0, known[name]), seconds: Math.round((Date.now() - started) / 1000), failures };
+  rmSync(copy(`steps-${name}`), { force: true, maxRetries: 5, retryDelay: 200 });
+  const outcome = { name, ...verdict(failures.length === 0, known[name]), seconds: Math.round((Date.now() - started) / 1000), failures };
   outcomes.push(outcome);
   console.log(`${outcome.result.padEnd(14)} ${name} (${outcome.seconds} s)${failures.length ? `\n    ${failures.join("\n    ")}` : ""}`);
 }

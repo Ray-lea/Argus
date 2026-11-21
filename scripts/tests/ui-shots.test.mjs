@@ -70,9 +70,12 @@ test("a drag spells out hover, press, even moves and release", () => {
 });
 
 test("a steps file states what its run needs", () => {
-  assert.deepEqual(runOptions([{ wait: 1 }]), { live: false, env: {} });
-  assert.deepEqual(runOptions({ steps: [] }), { live: false, env: {} });
-  assert.deepEqual(runOptions({ run: { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } }, steps: [] }), { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } });
+  assert.deepEqual(runOptions([{ wait: 1 }]), { live: false, env: {}, parity: {} });
+  assert.deepEqual(runOptions({ steps: [] }), { live: false, env: {}, parity: {} });
+  assert.deepEqual(runOptions({ run: { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" } }, steps: [] }), { live: true, env: { ARGUS_TEST_BACKDROP_BUILD: "22000" }, parity: {} });
+  assert.deepEqual(runOptions({ run: { parity: { ARGUS_TABLE_ROWS: "component" } }, steps: [] }).parity, { ARGUS_TABLE_ROWS: "component" });
+  assert.throws(() => runOptions({ run: { parity: { TABLE_ROWS: "component" } } }), /run.parity: TABLE_ROWS must be an ARGUS_ switch/);
+  assert.throws(() => runOptions({ run: { parity: ["ARGUS_X"] } }), /run.parity maps names to values/);
   assert.throws(() => runOptions({ run: { env: { PATH: "x" } } }), /ARGUS_ switch/);
   assert.throws(() => runOptions({ run: { env: { ARGUS_X: 1 } } }), /string value/);
   assert.throws(() => runOptions({ run: { release: true } }), /unknown "release"/);

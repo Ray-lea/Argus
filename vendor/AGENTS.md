@@ -8,7 +8,7 @@
 - `gpui-pre` 自带的测试无法从 crates.io 的包编译（缺少上游仓库的资源）。检查 vendored 行为的测试写在应用一侧（`src-gpui/tests` 或 `src-gpui` 的单元测试）；`cargo test -p gpui-pre-windows --lib` 可以运行。
 - 改动视图缓存、重放、悬停或提示的绘制后，运行 `cargo test -p argus --test view_replay`、`node scripts/ui-smoke.mjs <标识>` 的 `--interactions`、`--snapshots` 与 `--retained --require-chart-layers`，并运行相关的步骤文件。除像素外还要核对行为：图标动效是否仍播放、单元格提示何时出现、提示消失后是否还在逐帧绘制。帧数下降先确认是哪些内容不再绘制，再认定为节省。
 - 视图重放的时间变长之后，上游靠频繁重绘掩盖的问题会暴露出来（提示隐藏后留下的请求、指针离开后残留的悬停底色）。对这类改动，合入前请一次独立的只读审阅。
-- `src-gpui/src/frontend/plain.rs`、`tables/cell_text.rs` 与 `tables/body.rs` 逐段复现了这里的 `Div`、`Interactivity`、`TextLayout` 和组件库表格的布局与取整：修改或升级这几处时同步核对它们，再做截图对照（见 `src-gpui/AGENTS.md`）。
+- `src-gpui/src/frontend/plain.rs`、`tables/cell_text.rs` 与 `tables/body.rs` 逐段复现了这里的 `Div`、`Interactivity`、`TextLayout` 和组件库表格的布局与取整：修改或升级这几处时同步核对它们，并运行 `node scripts/ui-steps.mjs table-rows`，它逐像素对照 Argus 自绘的行与组件库绘制的行（见 `src-gpui/AGENTS.md`）。
 
 ## 升级上游
 

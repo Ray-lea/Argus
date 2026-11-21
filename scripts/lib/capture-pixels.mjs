@@ -1,5 +1,6 @@
 // Decode owned RGB/RGBA window captures to distinguish chart rounding from static ink.
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import assert from "node:assert/strict";
 
@@ -66,6 +67,43 @@ export function differences(a, b, tolerance = 0) {
     if (rows.length && rows.at(-1)[1] === y - 1) rows.at(-1)[1] = y; else rows.push([y, y]);
   }
   return { changedPixels, maxChannelDelta, box: changedPixels ? [left, top, right - left + 1, bottom - top + 1] : null, rows };
+}
+
+const captures = (dir) => readdirSync(dir).filter((name) => name.endsWith(".png")).sort();
+
+/**
+ * Compares the captures of two sets of runs that should look the same, each
+ * set a list of folders with the same capture names. A capture passes when
+ * any run of one set equals any run of the other: something outside the
+ * comparison (a hover fill under the real pointer) may mark one run of
+ * either. Returns the captures that never matched, each with its closest
+ * pair, and those the other set does not have at all.
+ */
+export function parityDifferences(ours, theirs, tolerance = 0) {
+  const differ = [];
+  const missing = [];
+  for (const name of captures(ours[0])) {
+    let closest;
+    for (const mine of ours) {
+      if (closest?.changedPixels === 0) break;
+      if (!existsSync(join(mine, name))) continue;
+      const image = pixels(join(mine, name));
+      for (const other of theirs) {
+        if (!existsSync(join(other, name))) continue;
+        let result;
+        try {
+          result = differences(image, pixels(join(other, name)), tolerance);
+        } catch (cause) {
+          result = { error: cause.message, changedPixels: Infinity };
+        }
+        if (!closest || result.changedPixels < closest.changedPixels) closest = { name, ...result, rows: result.rows?.slice(0, 12) };
+        if (result.changedPixels === 0) break;
+      }
+    }
+    if (!closest) missing.push(name);
+    else if (closest.changedPixels !== 0) differ.push(closest);
+  }
+  return { compared: captures(ours[0]).length, differ, missing };
 }
 
 export function compareChartPixels(left, right, charts, scale) {

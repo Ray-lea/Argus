@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { spawnSync } from "node:child_process";
-import { differences, pixels } from "../lib/capture-pixels.mjs";
+import { differences, parityDifferences, pixels } from "../lib/capture-pixels.mjs";
 
 // An RGBA PNG from rows of [r, g, b, a] pixels; `filters` gives each row's PNG filter (0 or 1).
 function png(rows, filters = rows.map(() => 0)) {
@@ -60,6 +60,38 @@ test("captures decode and their differences are located", () => {
     // Alpha alone is no difference; rows 1 and 2 hold the two changed pixels.
     assert.deepEqual(differences(left, pixels(b)), { changedPixels: 2, maxChannelDelta: 12, box: [2, 1, 2, 2], rows: [[1, 2]] });
     assert.deepEqual(differences(left, pixels(b), 3), { changedPixels: 1, maxChannelDelta: 12, box: [3, 2, 1, 1], rows: [[2, 2]] });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("two sets of runs agree when any pair of them shows the same picture", () => {
+  const dir = mkdtempSync(join(tmpdir(), "argus-parity-"));
+  try {
+    const at = (run) => join(dir, run);
+    const write = (run, name, rows) => {
+      mkdirSync(at(run), { recursive: true });
+      writeFileSync(join(at(run), `${name}.png`), png(rows));
+    };
+    const hovered = image((rows) => (rows[3] = rows[3].map(() => grey(50))));
+    const shifted = image((rows) => (rows[1][1] = grey(90)));
+    for (const run of ["ours-1", "ours-2", "theirs-1", "theirs-2"]) write(run, "page", image());
+    write("ours-1", "menu", image());
+    write("theirs-1", "menu", hovered);
+    assert.deepEqual(parityDifferences([at("ours-1")], [at("theirs-1")]), { compared: 2, differ: [{ name: "menu.png", changedPixels: 5, maxChannelDelta: 10, box: [0, 3, 5, 1], rows: [[3, 3]] }], missing: [] });
+    // A second attempt on both sides: one clean run of theirs is enough.
+    write("ours-2", "menu", hovered);
+    write("theirs-2", "menu", image());
+    assert.deepEqual(parityDifferences([at("ours-1"), at("ours-2")], [at("theirs-1"), at("theirs-2")]), { compared: 2, differ: [], missing: [] });
+    // A real difference stays one however often it is taken, and a capture the other side lacks is named.
+    write("ours-1", "list", image());
+    write("ours-2", "list", image());
+    write("theirs-1", "list", shifted);
+    write("theirs-2", "list", shifted);
+    write("ours-1", "only", image());
+    const result = parityDifferences([at("ours-1"), at("ours-2")], [at("theirs-1"), at("theirs-2")]);
+    assert.deepEqual(result.differ.map((entry) => [entry.name, entry.changedPixels, entry.maxChannelDelta]), [["list.png", 1, 50]]);
+    assert.deepEqual(result.missing, ["only.png"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
