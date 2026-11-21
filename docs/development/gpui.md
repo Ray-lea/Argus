@@ -20,21 +20,21 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 ## 界面验证
 
-`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
+`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录，其中历史页的数据和 `history-picker.json` 的步骤分别由同目录的 `history.mjs`、`history-picker.mjs` 生成：需要改动时修改生成脚本并重新运行，`pnpm test` 核对生成结果与已提交的内容一致。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
 
 `--fixture` 直接使用模拟快照，不启动真实采集器或采集侧的服务客户端，可用于独立检查图形初始化。`--test` 本身保留真实采集。
 
 启动冻结诊断可追加 `--startup-trace`：在现有诊断日志中记录固定阶段名、适配器／查询编号和原生返回码，并逐条同步到磁盘。重复查询只记录首次调用；诊断写入失败时以退出码 74 停止。该模式会增加启动与首次采样耗时，不用于性能测量。主窗口仍按 `--hidden`、测试标识等参数启动；采集与图形初始化的记录可交错出现，应按阶段、实例和操作编号配对。
 
-`--test` 实例可通过测试控制切换页面、主题和对话框。模拟快照下，`hold` 可挂起命令，`resolve` 提供返回值，经正常的成功或失败流程更新界面。开发实例的控制接口仅接受退出请求。
+`--test` 实例可通过测试控制切换页面、主题和对话框。模拟快照下，`hold` 可挂起命令，`resolve` 提供返回值，经正常的成功或失败流程更新界面；全部控制见[测试控制](#测试控制)。开发实例的控制接口仅接受退出请求。
 
 `node scripts/ui-smoke.mjs <标识>` 用固定样本检查各页面、主题、语言和窄窗口，覆盖表头排序与窗口命中区域，并核对性能页各设备的概览在默认尺寸下完整显示（多核视图在 1240×800 的窗口内核对）、在最小尺寸下纵向滚动。`--dev` 使用开发构建，`--live --fluid --move` 检查实际呈现节拍与连续移动、隐藏和恢复。结果在 `target/native-validation`。
 
 ### 截图与录制
 
-`node scripts/ui-shots.mjs <标签> <步骤文件>` 按步骤驱动一个隔离、不激活的测试窗口，用于核对新界面和做回归检查。默认使用开发构建 `target/debug/argus.exe` 和模拟快照 `tools/window-probe/fixtures/desktop.json`；`--release` 换成发布构建，`--live` 改用实时数据（此时按键、单击与拖动不生效），`--fixture` 指定其他快照，`--theme`、`--language` 设定外观与语言，`--width`、`--height` 指定客户区物理尺寸。探针需先以 `cargo build --release -p argus-window-probe --features capture` 构建。截图、录制帧、拼图和 `results.json` 写入 `target/native-validation/<标签>`，测试标识的数据目录在结束时删除；有断言未满足时以退出码 1 结束。
+`node scripts/ui-shots.mjs <标签> <步骤文件>` 按步骤驱动一个隔离、不激活的测试窗口，用于核对新界面和做回归检查。默认使用开发构建 `target/debug/argus.exe` 和模拟快照 `tools/window-probe/fixtures/desktop.json`；`--release` 换成发布构建，`--live` 改用实时数据（此时按键、单击与拖动不生效），`--fixture` 指定其他快照，`--theme`、`--language` 设定外观与语言，`--width`、`--height` 指定客户区物理尺寸。探针需先以 `cargo build --release -p argus-window-probe --features capture` 构建。截图、录制帧、拼图和 `results.json` 写入 `target/native-validation/<标签>`，测试标识的数据目录在结束时删除，其中的诊断日志先复制到输出目录的 `logs/`；有断言未满足时以退出码 1 结束。测试实例因 panic 中止（退出码 `0xc0000409`）时，失败信息附带日志中的 `panic at` 一行。
 
-步骤文件是步骤数组，或 `{ "window": [宽, 高], "steps": [...] }`。一个步骤可组合以下几项，按表中顺序执行：
+步骤文件是步骤数组，或 `{ "window": [宽, 高], "run": {...}, "steps": [...] }`。`run` 写明这组步骤运行所需的条件，运行时不必另加参数：`"live": true` 表示使用实时数据，`"env"` 为测试实例的环境变量（仅限 `ARGUS_` 开头的名称）。一个步骤可组合以下几项，按表中顺序执行：
 
 | 键 | 作用 |
 |---|---|
@@ -54,6 +54,10 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 录制的捕获表面与桌面一样大，窗口在录制中变大时每帧仍是完整画面，帧时间写在录制目录的 `index.json`。探针命令 `size` 在窗口处理完尺寸变化后输出 `resized` 事件，其中的 `qpc100ns` 与帧时间同一时钟，可用来计算缩放后多久才呈现新尺寸的画面。
 
 `drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
+
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（54 个文件约 15 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`，各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。
+
+不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
 [`process-suspend.json`](../../tools/window-probe/steps/process-suspend.json) 核对混合暂停状态的应用组菜单、暂停确认、取消与直接恢复，以及深浅主题下的确认文案。模拟快照中的操作由测试入口截断；真实暂停与恢复由采集层的隔离子进程测试验证。
 
@@ -81,7 +85,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`tray-flyouts.json`](../../tools/window-probe/steps/tray-flyouts.json) 捕获组件页、悬停卡片与快捷面板（含新版本入口）的深浅主题画面，以及设置页指向组件页的卡片。改用 `--live` 可核对面板中的实时曲线。真实托盘的悬停与右键单击由 Shell 发起，测试实例不创建托盘图标。
 
-[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线、胶囊与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，在替身任务栏上打开任务栏监控的面板（测试控制 `taskbarPanel`，不取得前台）并捕获深浅主题下的画面，经面板的选项切换样式与读数并核对勾选状态，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。最后单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。[`desk-looks.json`](../../tools/window-probe/steps/desk-looks.json) 以全部读数逐一捕获桌面监控的列表（卡片、色条、分隔线）、曲线、仪表与横条，经右键菜单的测试控制切换样式，单击组件页的样式卡片（锚点 `desktopStyle-<样式>`）并核对保存的样式，捕获深浅主题下的组件页与各样式，最后把保存的位置设在屏幕右下角之外，核对窗口仍在工作区内；`inspectLayout.monitors.desktop` 另输出显示方式、样式、分组、组数、各读数的曲线条数、窗口尺寸与 `onScreen`。模拟快照没有历史采样，曲线用 [`desk-live.json`](../../tools/window-probe/steps/desk-live.json) 以 `--live` 运行查看。
+[`monitors.json`](../../tools/window-probe/steps/monitors.json) 经测试控制开启桌面监控与任务栏监控，捕获桌面监控窗口与替身任务栏在深浅主题、全部读数、任务栏左侧、曲线、胶囊与大数字样式和 70% 不透明度下的画面，以及组件页的对应分组，在替身任务栏上打开任务栏监控的面板（测试控制 `taskbarPanel`，不取得前台）并捕获深浅主题下的画面，经面板的选项切换样式与读数并核对勾选状态，最后经菜单关闭桌面监控并关闭任务栏监控。测试实例的桌面监控置于层叠底部；任务栏监控附着到测试实例自己的替身任务栏，不接触资源管理器的任务栏。`inspectLayout.monitors` 输出桌面监控是否显示、位置与各行读数，以及任务栏监控在屏幕上的矩形。[`monitor-metrics.json`](../../tools/window-probe/steps/monitor-metrics.json) 在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。最后单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。[`desk-looks.json`](../../tools/window-probe/steps/desk-looks.json) 以全部读数逐一捕获桌面监控的列表（卡片、色条、分隔线）、曲线、仪表与横条，经右键菜单的测试控制切换样式，单击组件页的样式卡片（锚点 `desktopStyle-<样式>`）并核对保存的样式，捕获深浅主题下的组件页与各样式，最后把保存的位置设在屏幕右下角之外，核对窗口仍在工作区内；`inspectLayout.monitors.desktop` 另输出显示方式、样式、分组、组数、各读数的曲线条数、窗口尺寸与 `onScreen`。模拟快照没有历史采样，曲线用 [`desk-live.json`](../../tools/window-probe/steps/desk-live.json) 查看，它以实时数据运行。
 
 [`monitor-order.json`](../../tools/window-probe/steps/monitor-order.json) 在组件页按住桌面监控的类别手柄（锚点 `<卡片>-grip-<类别>`，类别整块为 `<卡片>-block-<类别>`）和读数选项拖动，捕获拖动中的画面，核对类别与读数的新顺序及桌面监控显示的各行，并核对拖动后单击选项仍只勾选；随后在任务栏监控的面板中用 `taskbarPanelDrag` 拖动类别名称与读数，再用 `taskbarPanel` 的 `kinds:` 直接排列类别，捕获深浅主题下的组件页与面板。`inspectLayout.monitors` 的 `kinds.desktop`、`kinds.taskbar` 为两个监控的类别顺序，`taskbarMetrics` 为任务栏监控保存的读数。
 
@@ -127,31 +131,135 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 [`gpu-low-power.json`](../../tools/window-probe/steps/gpu-low-power.json) 用 `sample` 把模拟快照的显卡改为已断电（`lowPower` 为真，驱动读数为空），核对性能页不显示温度、频率与功耗，规格中出现“电源状态”一行及其悬停说明，并覆盖浅色主题与最小窗口加 20 px 字号；再改回使用中，核对该行消失、读数恢复。
 
-测试控制除页面、主题、对话框等既有项外，还包括：
+### 测试控制
+
+一个控制是一个 JSON 对象，可同时带多个键。处理顺序由程序固定，与书写顺序无关：检查类的键（`inspectLayout` 等）先于同一控制中的 `data`、`sample`、`page` 和 `theme` 处理，核对结果时把检查放在改动之后的步骤里。未知的键被忽略，不报错。
+
+标注“仅模拟快照”的控制在实时数据（`--live`）下不生效。模拟快照下只执行读取设置与应用信息、刷新间隔与暂停、更新状态、主题、语言、硬件加速和两个监控的设置这几类命令；其余命令不执行，最近一次被跳过的命令及其参数记在 `inspectLayout.skippedRequest`。使用同一缓存键的命令在前一条完成前会被丢弃：主题、语言与两个监控的设置共用一个缓存键，每个步骤只发其中一项。
+
+每个控制处理完都会重绘整个窗口，带 `passive` 的除外。合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。
+
+#### 页面与外观
 
 | 控制 | 作用 |
 |---|---|
+| `page` | 切换页面：`processes`、`performance`、`services`、`startup`、`network`、`history`、`components`、`settings`、`about` |
+| `theme`、`language` | 经设置命令切换主题、界面语言；模拟快照下同样执行，只改变测试实例自身的设置 |
+| `view` | 进程页的视图：`apps`、`tree`、`list` |
+| `device`、`deviceKind` | 选中性能页的设备并切到性能页。`device` 为设备标识（`cpu`、`memory`、`gpu:<标识>`、`disk:<编号>`、`nic:<标识>`、`npu:<标识>`）；`deviceKind` 为 `cpu`、`memory`、`gpu`、`npu`、`disk` 或 `network`，取快照中该类的第一个设备 |
+| `cpuMode` | `overall`、`logical`：CPU 概览的整体与多核视图；`details`：CPU 详情页 |
+| `details`、`detailsWidth` | 详情窗格：`"auto"` 为自动，`"closed"` 或 `false` 为关闭，其他值为打开；`detailsWidth` 设置其宽度，如同拖动边缘 |
+| `dialog`（配 `args`） | 打开该种类的对话框，或直接执行不需确认的动作，`args` 为其参数。种类如 `end`、`priority`、`columns`、`visibility`、`shortcuts`、`historyRange`、`onboarding`、`whatsnew`，完整列表见 `frontend/dialogs.rs` 的 `open_dialog` |
+| `dismiss` | `true`：关闭最上层的菜单或对话框 |
+| `settingsSection` | 切到设置页并定位到该分组 |
+| `locate` | `{ "section", "item" }`：如通知中的按钮那样打开设置页（`section` 为 `components` 时是组件页）并标出该卡片 |
 | `preference` | `{ "键": 值 }`，经正常的偏好路径设置任意偏好 |
-| `keys` | 按键序列，经正常派发路径；仅模拟快照 |
-| `hoverAnchor` | 指针移到已记录元素的中心 |
-| `clickAnchor`、`dragAnchor` | 单击元素；从一个元素拖到另一个元素高度的某一比例处；仅模拟快照 |
-| `pointer` | `{ "at"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>` 或 `row:<行序号>`（当前表格中从 0 起的行）；省略时相对于手势起点，元素在拖动中移动也不影响 |
-| `touch` | `{ "id", "at"?, "fraction"?, "event", "dx"?, "dy"? }`：原始触摸事件，仅模拟快照；`event` 为 `down`、`move`、`up`、`cancel` 或 `tap`。每次接触使用新的 `id`，同一次接触保持不变。`at` 沿用指针锚点，也接受窗口内坐标 `[x,y]` 与 `about-scroll`；`fraction` 指定锚点内的相对位置，默认中心。事件经正式手势识别路径，长按需在 `down` 后等待至少 500 ms |
-| `headerMenu` | 打开某一列的表头菜单 |
-| `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项、展开的子菜单，以及各项的文字（`items`，分隔线为空字符串）、是否不可用（`disabled`）与是否勾选（`checked`） |
-| `passive` | 与 `mouse`、`wheel` 等输入一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围 |
+| `navPosition`、`navExpanded`、`coreFilter`、`diskPage`、`uiMotion`、`windowMotion`、`historyRange`、`netUnit`、`fontSize`、`uiScale` | `preference` 的简写，键名即偏好名 |
+| `motion` | 曲线模式：`balanced`、`pixel`、`off`，其他值为流畅 |
+| `contentZoom` | 0.5–3：窗口内容的缩放比例，用于复现分数缩放下的布局与滚动；仅模拟快照 |
+| `toast` | 显示一条内容为该文字的通知 |
 | `starPrompt` | 显示 Star 提醒卡片，不受每日一次的限制 |
 | `portableNotice` | 显示免安装版的右下角提示，不受仅一次的限制 |
+| `updateNotice` | `true`：按模拟数据中 `updates` 的状态显示新版本提示；仅模拟快照 |
+| `recordHotkey` | `true`：开始录制快捷键 |
+
+#### 列表与表单
+
+| 控制 | 作用 |
+|---|---|
+| `query` | 设置搜索框的文字并重建列表 |
+| `sort` | 按该列排序；对同一列再发一次则反向 |
+| `selectRow`、`foldRow`、`rowMenu` | 以行序号（当前列表中从 0 起）选中该行、折叠或展开该行、打开该行的右键菜单 |
+| `headerMenu` | 打开某一列的表头菜单 |
+| `clickHeader` | 单击该列的表头；仅模拟快照 |
+| `columnSearch` | “选择列”对话框的搜索文字；仅模拟快照 |
+| `formValues` | `{ "输入名": "文字" }`：设置已打开表单中的输入，随后可通过实际键盘路径保存或取消；仅模拟快照 |
+
+#### 指针、键盘与触摸
+
+| 控制 | 作用 |
+|---|---|
+| `keys` | 按键序列，经正常派发路径；仅模拟快照 |
+| `hoverAnchor` | 指针移到已记录元素的中心 |
+| `clickAnchor`、`dragAnchor` | 单击元素；`dragAnchor` 为 `[起点, 终点, 比例]`，从一个元素拖到另一个元素高度的该比例处（默认 0.5）；仅模拟快照 |
+| `clickSelect` | 单击已记录的下拉选择框；仅模拟快照 |
+| `pointer` | `{ "at"?, "fraction"?, "event", "dx"?, "dy"?, "clicks"? }`：悬停、按下、按住移动或松开，`context` 为右键单击，`double` 为左键双击；`down` 带 `"clicks": 2` 时为双击的第二次按下，可接着按住移动。`at` 为已记录元素、`header:<列>`、`row:<行序号>`（当前表格中从 0 起的行）、`about-scroll` 或窗口内坐标 `[x, y]`，`fraction` 为 `[fx, fy]`，指定元素内的相对位置，默认中心；省略 `at` 时相对于手势起点，元素在拖动中移动也不影响。`hover` 在实时数据下也生效，其余事件仅模拟快照 |
+| `touch` | `{ "id", "at"?, "fraction"?, "event", "dx"?, "dy"? }`：原始触摸事件，仅模拟快照；`event` 为 `down`、`move`、`up`、`cancel` 或 `tap`。每次接触使用新的 `id`，同一次接触保持不变。`at` 与 `fraction` 同 `pointer`。事件经正式手势识别路径，长按需在 `down` 后等待至少 500 ms |
+| `mouse` | `{ "type", "x", "y", "button"? }`：窗口内坐标处的一次原始鼠标事件。`type` 为 `down`、`up` 或 `drag`（按住移动），其他值为移动；`button` 为 `right` 时用右键。它不受模拟快照的限制：实时数据下同样会按下，不要对会执行真实操作的控件使用 |
+| `wheel` | `{ "x", "y", "lines", "linesX"?, "shift"? }`：在窗口内坐标处滚动若干行 |
+| `hoverChart`、`hoverHeader`（配 `hoverAt`） | 指针移到该图表或该列表头内的相对位置 `hoverAt`（`[fx, fy]`，默认中心） |
+| `pointerOutside` | `true`：指针移出窗口 |
+| `passive` | `true`：与 `mouse`、`wheel`、`hoverChart`、`hoverHeader` 或 `pointerOutside` 一同发送时只派发该输入，不另行重绘整个窗口；帧跟踪由此反映真实输入触发的重绘范围。`hoverAnchor`、`pointer` 和 `touch` 总会请求重绘，不适用 |
+
+#### 数据与命令
+
+除 `freezeChartGroups` 外均仅模拟快照。
+
+| 控制 | 作用 |
+|---|---|
+| `data` | `{ "键": 值 }`：替换模拟数据中的顶层键，如 `services`、`info`、`updates` |
+| `sample` | `{ "at"?, "set"? }`：以当前快照为底生成一次新的采样并按正常路径接收。`at` 为相对当前时刻的毫秒数，`set` 以 JSON Pointer 为键改写字段，指不到的路径被忽略；首次发送后曲线开始随时间滚动。控制只含 `sample` 时，只重绘随采样变化的区域，与真实采样相同 |
+| `hold` | `{ "command", "cache"?, "args"? }`：挂起一条命令，界面停在等待它的状态 |
+| `resolve` | `{ "command", "ok", "value" }`：以成功或失败完成被挂起（或就地构造）的该命令，经正常的完成路径更新界面 |
+| `restored` | `{ "from", "firstShow", "awayMs" }`：向窗口恢复事件的入口注入一次首次显示或恢复，核对页面策略 |
+| `chartTime` | 数值：把图表时钟停在该时刻并推进一帧，输出 `ui-chart-step`；同一控制中的其余键不再处理 |
+| `fullPaint` | `true`：下一帧不用渲染缓存、完整重绘；同一控制中的其余键不再处理 |
+| `freezeChartGroups` | 冻结这些组的图表：`vitals`、`details`、`other`；空数组解除 |
+
+#### 托盘、监控与窗口
+
+| 控制 | 作用 |
+|---|---|
 | `desktopMonitor`、`taskbarMonitor` | 经组件页使用的 `set_desktop_monitor`、`set_taskbar_monitor` 修改监控设置，如 `{ "enabled": true }`、`{ "metrics": ["cpu", "network"] }`、`{ "opacity": 70 }`；模拟快照下同样执行，只改变测试实例自身的设置与窗口 |
 | `desktopMonitorMenu` | `topmost`、`locked`、`hide` 或 `look:list` / `look:curves` / `look:gauges` / `look:strip`：如同在桌面监控的右键菜单中选择该项 |
-| `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`made` 为创建窗口的耗时，`visible`、`shown` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
+| `trayFlyout` | `card` 或 `panel`：在主显示器任务栏右侧的假定托盘位置打开悬停卡片或快捷面板，不取得前台；`warm` 提前创建并预排弹出窗口，与托盘图标收到指针移动时相同；其他值关闭两者。测试实例输出 `tray-flyout` 事件：`phase` 为 `made` 时 `ms` 是创建窗口的耗时，`primed` 表示预排完成，`visible`、`shown` 的 `ms` 为从请求到开始淡入、淡入结束的毫秒数，`frames` 为淡入期间绘制的帧数 |
 | `trayHover` | `rest` 或 `leave`：如同 Shell 报告指针停留在托盘图标上或离开，经宿主的同一计时打开或取消悬停卡片（假定托盘位置） |
 | `trayPress` | `true`：记下右键在托盘图标上按下的时刻，与同一步中随后的 `trayFlyout: "panel"` 组成一次右键单击：面板在按下时打开（或因按下而关闭）则关闭，否则打开 |
-| `taskbarPanel` | `open`：在替身任务栏的任务栏监控上方打开其面板，不取得前台；`close` 关闭；`style:<样式>`、`reading:<读数>`、`settings` 或 `hide`：如同在面板中单击对应的控件；`kinds:<类别>,…`、`metrics:<读数>,…`：如同在面板中把类别或一个类别的读数拖成该顺序；`display:<显示器>`：如同在面板中选择该显示器（为空时为主显示器） |
+| `taskbarPanel` | `open`：在替身任务栏的任务栏监控上方打开其面板，不取得前台；`close` 关闭；`style:<样式>`、`reading:<读数>`、`settings` 或 `hide`：如同在面板中单击对应的控件；`kinds:<类别>,…`、`metrics:<读数>,…`：如同在面板中把类别或一个类别的读数拖成该顺序；`display:<显示器>`：如同在面板中选择该显示器（为空时为主显示器）。任务栏监控未显示时发送 `open`，或发送面板中不存在的控件，测试实例会中止 |
 | `taskbarDisplays` | `[{ "key", "name", "primary", "rect" }, …]`：以测试自己的显示器代替系统的显示器，组件页与面板列出它们，任务栏监控为每台显示器建一条替身任务栏；空数组恢复系统的显示器 |
-| `taskbarPanelDrag` | `[[列表, 部分, 项], [列表, 部分, 项], 比例]`：在任务栏监控的面板中从第一项的中心按下，分八步移到第二项高度的该比例处后松开；类别名称为 `["kinds", "name", <类别>]`，类别整行为 `["kinds", "", <类别>]`，读数为 `["chips/<类别>", <设备标签序号>, <读数>]`；仅模拟快照 |
+| `taskbarPanelDrag` | `[[列表, 部分, 项], [列表, 部分, 项], 比例]`：在任务栏监控的面板中从第一项的中心按下，分八步移到第二项高度的该比例处后松开；类别名称为 `["kinds", "name", <类别>]`，类别整行为 `["kinds", "", <类别>]`，读数为 `["chips/<类别>", <设备标签序号>, <读数>]`；仅模拟快照，面板须已打开 |
+| `nativeResize` | `[宽, 高]`（各 64–8192）：同步调整主窗口的原生客户区；仅模拟快照 |
+| `restoreWindow` | `{ "rect": [左, 上, 右, 下], "maximized" }`：写入窗口位置并经正式的恢复路径应用；仅模拟快照，且主窗口须仍处于隐藏 |
+| `testTrayUpdate` | `true`：触发一次托盘更新；仅在设置了 `ARGUS_TEST_TRAY_DELAY_MS` 的测试实例中生效 |
 
-合成输入经 `window.defer` 派发，控制同时请求一帧，空闲窗口不会把输入留到下一次采样。探针 `crop`、`sheet` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
+#### 检查与诊断
+
+检查类控制的值是一个标签，回答的事件带同一标签。步骤的 `inspect` 为 `layout`、`columns`、`menu`、`vitals` 时，分别发送前四项并等待其事件。
+
+| 控制 | 作用 |
+|---|---|
+| `inspectLayout` | 输出 `ui-layout`，并附带 `ui-conditions`、`ui-work`、`ui-chart-work`、`ui-caption`、`ui-frame-duration` 和 `ui-render-counts`，有图表层时另有 `ui-chart-states` |
+| `inspectColumns` | 输出 `ui-process-columns`：当前页的列（宽度、可否拖动与移动、所需宽度、边界）、滚动位置、排序与分组 |
+| `inspectMenu` | 输出菜单是否打开、是否持有键盘、当前项、展开的子菜单，以及各项的文字（`items`，分隔线为空字符串）、是否不可用（`disabled`）与是否勾选（`checked`） |
+| `inspectVitals` | 输出 `ui-vitals`：概况带中各读数（名称以 `vital-` 开头的已记录元素）的边界 |
+| `inspectProcessSampling`（配 `pids`） | 输出 `process-sampling`：采样序号、名单与计数的补齐状态，`pids` 中各进程的明细 |
+| `dumpRows` | 输出 `rows`：当前页各行的键、标题、层级、成员数与读数，用于核对标题与排序 |
+| `scrollTrace` | 毫秒数：这段时间内每个滚动条在每一帧输出 `scroll` 事件（偏移、范围与滑块位置），同时记录 `wheel` 的派发时刻 |
+| `delayProcessQuery` | 毫秒数（最长 30 秒）：延迟下一次进程计数的回复；仅开发构建 |
+| `exit` | `true`：退出实例 |
+
+`ui-layout` 的顶层字段按界面的部分分组：`page`、`device`、`vitals`、`visibility`、`processTree`、`selectedRow`、`userGroups`、`performance`、`history`、`sections`、`dialog`、`toasts`、`tray`、`monitors`、`star`、`animations`、`graphics`、`nativeWindow`、`aboutScroll`、`skippedRequest`、`diagnosticCopy`、`systemBackdrop`、`backgroundAlpha`，以及视口的 `width`、`height`、`scaleFactor` 与 `remSize`。各组的字段见上文对应步骤文件的说明。
+
+### 探针命令
+
+步骤的 `probe` 向探针发送一行命令；除 `mark`、`observe` 和 `commit-limit` 外，命令在主窗口出现后才生效。
+
+| 命令 | 作用 |
+|---|---|
+| `size <宽> <高>` | 调整客户区的物理尺寸，输出带 `qpc100ns` 的 `resized` |
+| `move <dx> <dy>` | 移动窗口，每个方向不超过 32 像素 |
+| `hide`、`show`、`close`、`minimize` | 隐藏窗口；不激活地显示在最底层并输出 `restoring`；发送关闭按钮的 `WM_CLOSE`；不激活其他窗口地最小化 |
+| `begin-move`、`end-move` | 发送 `WM_ENTERSIZEMOVE`、`WM_EXITSIZEMOVE`，模拟拖动窗口的开始与结束 |
+| `mark <标记>` | 立即记录一次资源样本（进程、GPU、线程与捕获统计），输出 `mark` |
+| `watch`、`unwatch` | 开始、停止观察窗口的呈现帧，其统计随 `sample` 与 `mark` 输出 |
+| `stall-ui <毫秒>` | 把界面线程挂起这段时间（最长 10 秒），输出 `ui-stall` |
+| `observe <进程 ID,…>` | 替换额外观测的进程 |
+| `commit-limit <MiB>` | 设置测试作业的提交上限（128 MiB 至 2 GiB） |
+| `clock` | 安装时钟钩子，见[环境变量](environment.md#窗口探针) |
+
+`record` 与 `stop` 由脚本自己发送，步骤的 `probe` 不接受。探针的 `crop`、`sheet`、`compare` 子命令也可单独使用；开始新的录制时，上一段录制在后台写出帧，不阻塞后续命令。
+
+### 相关测试与工具
 
 本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
 
@@ -163,6 +271,6 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 
 `pnpm test:startup` 在独立 Windows 桌面运行开发脚本，检查默认启动和 `--hidden` 的窗口可见性。
 
-开发构建的隔离测试可设置 `ARGUS_TEST_BACKDROP_BUILD=22000`，模拟 Windows 11 21H2 的背景能力判定，并用 `tools/window-probe/steps/backdrop-fallback.json` 核对深浅主题的实色回退。该变量仅对同时带有 `--test` 和独立测试标识的开发实例生效，保留原有合成渲染路径；`inspectLayout` 输出 `systemBackdrop` 与 `backgroundAlpha`。
+开发构建的隔离测试可设置 `ARGUS_TEST_BACKDROP_BUILD=22000`，模拟 Windows 11 21H2 的背景能力判定；`tools/window-probe/steps/backdrop-fallback.json` 自带该设置，核对深浅主题的实色回退。该变量仅对同时带有 `--test` 和独立测试标识的开发实例生效，保留原有合成渲染路径；`inspectLayout` 输出 `systemBackdrop` 与 `backgroundAlpha`。
 
 `cargo test -p argus --test display_reentry` 检查显示器回调在窗口更新期间重入、连续通知合并、原生嵌套消息循环及窗口关闭后的延迟处理。`cargo run -p argus --example display_reentry` 在自身隐藏窗口的初始化回调内发送 `WM_DISPLAYCHANGE`，检查真实 Windows 消息路径；它保持窗口隐藏，不更改显示器设置。

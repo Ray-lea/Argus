@@ -24,7 +24,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录）。
 - 测试实例用 `--test --identifier dev.argus.taskmanager.test.<标签>` 指定独立标识，测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的实例与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
-- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。
+- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。改动界面后用 `node scripts/ui-steps.mjs [名称…]` 运行受影响的步骤文件；不应改变画面的改动，用 `node scripts/compare-shots.mjs <新> <旧>…` 逐像素对照改动前后的截图。
 - 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，只按进程 ID 可能拿到单实例转交用的隐藏辅助窗口（类名 `<标识>-sic`）。
 - 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
@@ -64,7 +64,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - 完成与改动范围相符的验证后可直接提交到当前分支，不必先征得用户同意；推送、打标签和发布仍要等用户明确要求。
 
 - 提交信息用 Conventional Commits，格式与 type 见 `docs/development/release.md`；scope 按模块用 core、service、host、ui，跨模块时省略。提交前用 `pnpm commitlint --message "<首行>"` 自查，它检查格式与 type，不检查 scope。
-- 环境不支持交互式 `git add -p`。同一文件里的改动要拆进不同提交时，用 `git diff -- <文件> > x.patch` 导出、删去不属于本提交的块后 `git apply --cached x.patch` 暂存；或先保存文件副本、暂时还原部分改动、提交后再恢复。
+- 环境不支持交互式 `git add -p`。同一文件里的改动要拆进不同提交、或文件里有别人未提交的改动时，用 `node scripts/stage-part.mjs <文件>` 列出各块，再以 `node scripts/stage-part.mjs <文件> <块号,…> [--leave <文字>]` 只暂存其中几块（`--leave` 把含该文字的改动行留在暂存区之外）；它不改动工作区。提交前用 `git diff --cached` 核对暂存的内容。
 - 按改动的实际性质选 type，不要一律写 feat 或 chore：type 决定下一个版本号和发布说明。修复卡顿或视觉瑕疵是 fix，纯性能改进是 perf，只改文档是 docs。一次改动跨几类时按类拆成几个提交。
 - 首行写用户能看懂的变化，它会原样进入 `changelog/zh-CN.md` 和 GitHub Release；正文补充原因、影响与必要的实现细节。常规检查、测试或构建通过等结果不写入提交信息；性能验证只保留简短结论或关键对照数据，不罗列测试过程、原始资料存放位置或代理工作说明。
 - 不兼容的改动（设置或历史数据格式、特权服务 IPC 协议、删除功能或快捷键、命令行参数）在冒号前加 `!`，并写 `BREAKING CHANGE:` 页脚。
@@ -102,6 +102,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 项目用 MSVC 工具链构建；开发机的默认工具链是 GNU，仓库目录上设了 `rustup override`（`stable-x86_64-pc-windows-msvc`）。不要改用户的全局默认工具链，也不要删掉这个 override。
 - 辅助脚本用 node 写；仓库不依赖 Python 或 .NET。
+- `target/` 只放构建产物与测试输出：`start.bat clean all` 即 `cargo clean`，会清空它。无法重新生成的资料不放在那里：进行中的设计稿及其工具放 `design.local/<主题>/`，结束的调查、测量原始数据和交付物放 `archives.local/<日期>/`，并在该目录的 `README.txt` 里记一行。两处都已被 `*.local` 忽略，不进 Git。反复用到的检查或生成脚本收进 `scripts/` 或 `tools/`，不留在临时目录里。
 - 开发脚本的控制台提示同时写中文与英文：Node 脚本用 `scripts/lib/console-language.mjs` 的 `t(中文, 英文)`，批处理用 `scripts\lib\console-language.cmd` 设置的 `ZH` 与 `call :say "中文" "英文"`（文字里不放括号与重定向符号）。批处理在 `chcp 65001` 之前与恢复代码页之后的行只写 ASCII。脚本生成的文件（发布说明、许可声明、README 素材等）按其自身的语言规则，不随提示语言变化。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
 - 在 Git Bash 里用 `node -e "…"`、`sed` 写入含反引号或 `$` 的文本时，它们会被 shell 当成命令替换或变量，悄悄改坏写入的 Rust 注释和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。

@@ -16,7 +16,8 @@
 - [环境与命令](development/README.md)：环境要求、`start.bat`、开发版隔离、验证采集数据
 - [构建与缓存](development/build.md)：缓存优化、链接器与工具链
 - [性能测量](development/performance.md)
-- [GPUI 原生界面](development/gpui.md)：开发入口、原生组件、共享定义与平台边界
+- [GPUI 原生界面](development/gpui.md)：开发入口、原生组件、共享定义与平台边界、界面验证脚本、测试控制与探针命令
+- [环境变量](development/environment.md)：渲染诊断、窗口探针、测试实例与构建所用的 `ARGUS_*` 变量
 - [提交与发布](development/release.md)：持续集成、提交信息规范、版本号、发布步骤、更新签名与通道、发布后发现严重问题时的处理
 - [官网与发行镜像](development/website.md)：静态站构建、版本文件、更新清单与域名邮箱
 - [Windows 代码签名](development/signing.md)：SignPath 测试配置、签名顺序与产物验证
