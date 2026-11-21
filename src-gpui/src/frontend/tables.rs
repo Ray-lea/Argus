@@ -1827,7 +1827,22 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let content = self.td_content(row_index, column, window, cx);
-        self.gliding_cell(column, false, content)
+        let key = self.fields.get(column).map(|field| field.key);
+        // The row menu offers to copy the cell under the pointer. Rows Argus
+        // draws note it themselves (`body`); here the cell does, before the
+        // row's own right press opens the menu.
+        div()
+            .size_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |state, _: &MouseDownEvent, _, _| {
+                    state.delegate_mut().context_column = key;
+                }),
+            )
+            .child(self.gliding_cell(column, false, content))
     }
     fn render_tr(
         &mut self,
