@@ -28,6 +28,13 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 测量默认限制在性能核上（同 `ARGUS_PROBE_PERFORMANCE_CORES`），`--default-scheduling` 改用默认调度。`--base-env`、`--new-env` 以 `名称=值` 为其中一侧设置环境变量；两侧可以是同一个程序，用于对照 `ARGUS_TABLE_ROWS=component` 这类开关。各次运行写入 `target/native-validation/<标签>-b<序号>` 与 `-n<序号>`，汇总在 `target/native-validation/<标签>/summary.json`。
 
+开发过程中的对照可以用 `quick` 构建（`node scripts/build.mjs --quick`，见[构建与缓存](build.md)）代替发行构建，每轮改动后的重编由约 7.5 分钟缩短到约 1 分 40 秒。两种构建在同一份源码上的对照如下（i5-13500HX 与 RTX 4060 Laptop，1240×800，固定快照，限性能核，系统另有 15%–40% 的负载，每组 3 对）：
+
+- 同一处已知差异（表格的行由组件库绘制，相对 Argus 自行绘制）：绘制耗时的中位数在 `quick` 构建上增加 95%–102%，在发行构建上增加 102%–113%；每秒周期数分别增加 55%–57% 与 57%–67%。
+- 两种构建直接相比：进程页滚动时绘制耗时的中位数相差 3% 以内；逐秒采样的进程页与性能页上，`quick` 构建高 5%–19%，每秒周期数相差 7% 以内。
+
+`quick` 构建因此可以判断一处改动的方向，以及明显差异的大致幅度。绝对数值、一成以内的差异和最终结论用发行构建测量，对照的两侧使用同一种配置的构建。
+
 `tools/window-probe/scenarios` 提供两个常用场景，均配合 `--fixture tools/window-probe/fixtures/desktop.json --stream-fixture` 使用：`process-scroll.json` 在进程页的应用视图与列表视图中用滚轮连续上下滚动，`sampling.json` 在进程页、CPU 概览和多核视图每秒推进一次采样。
 
 `--software-rendering` 在测试实例的设置中关闭“硬件加速”，窗口由 WARP 在 CPU 上绘制，结果的 `instrumentation.softwareRendering` 记录该条件。与默认模式对照时使用同一发行程序、窗口尺寸与曲线模式，并核对两者的实际呈现帧率。

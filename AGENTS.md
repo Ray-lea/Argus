@@ -24,7 +24,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 不要把窗口调到前台、抢焦点，也不要截取整个桌面或用桌面复制录屏，那会拍到与项目无关的内容。要看 Argus，只抓它自己的窗口（Windows.Graphics.Capture 的窗口捕获，被挡住也能录）。
 - 测试实例用 `--test --identifier dev.argus.taskmanager.test.<标签>` 指定独立标识，测完删除该标识在 `%APPDATA%` 和 `%LOCALAPPDATA%` 下的目录。不换标识的实例与已安装的 Argus 共用单实例锁和设置：安装版正在运行时会转交给它，没在运行时会读写真实的设置。
-- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。改动界面后用 `node scripts/ui-steps.mjs [名称…]` 运行受影响的步骤文件；不应改变画面的改动，用 `node scripts/compare-shots.mjs <新> <旧>…` 逐像素对照改动前后的截图。
+- 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）；发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认。需要发布构建的行为、又不需要最终数值时用快速构建（`node scripts/build.mjs --quick`，输出 `target/quick/argus.exe`，重编约 2 分钟）：开发过程中的性能对照、带符号的调用栈采样，以及交给用户在其他机器上试用的测试程序（开发构建换一台机器无法运行）。截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，它负责隔离标识、启动、清理和断言，用法见 `docs/development/gpui.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。改动界面后用 `node scripts/ui-steps.mjs [名称…]` 运行受影响的步骤文件；不应改变画面的改动，用 `node scripts/compare-shots.mjs <新> <旧>…` 逐像素对照改动前后的截图。
 - 测试实例一律带 `--hidden` 启动，主窗口创建后用 `SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)` 不激活地显示在最底层，并全程监视前台（每 50 ms 查一次 `GetForegroundWindow`，前台不应落到测试进程或其子进程）。不要正常启动后再放到最底层：setup 显示窗口时已经激活了它，事后放到最底层也还不回前台，后台进程没有权限把前台交还原来的窗口。主窗口按进程 ID、窗口类 `Zed::Window` 和标题（发布版为 `Argus`）枚举顶层窗口查找，隐藏时也能找到；只按标题可能拿到同一进程弹出的消息框，只按进程 ID 可能拿到单实例转交用的隐藏辅助窗口（类名 `<标识>-sic`）。
 - 再次启动、快捷键、托盘和任务管理器替换都会请求激活窗口，不要在正在使用的桌面上自动触发这些路径。需要验证系统焦点时，用 CreateDesktop 创建独立桌面，不调用 SwitchDesktop，测试进程的 lpDesktop 指向独立桌面；通过 GetGUIThreadInfo 和窗口消息验证。
 - 不要改机器上真实的系统设置（启动项、服务等）。需要测试这些功能时用临时条目，测完清理。
@@ -86,7 +86,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 方法与测量条件（启动参数、等待时间、交替测量）见 `docs/development/performance.md`，要点：
 
 - 修改帧调度、动画、绘制路径、缓存或采样频率等影响持续开销的逻辑时，使用窗口探针测量实际呈现帧率、CPU、GPU 与内存；其他桌面负载会干扰读数。静态布局、字体、数值格式与文案变更默认只核对相关画面，出现性能回归迹象时再测量。
-- 前后对照用 `node scripts/perf-ab.mjs <标签> <基准EXE> <新EXE> -- <perf-native 的参数>`：它交替运行两侧、限定性能核、按呈现帧折算进程周期数，并给出各对结果是否一致。结论以各对一致为准；只有一对、各对方向不一或帧率不匹配时，不要下结论。常用场景在 `tools/window-probe/scenarios`。
+- 前后对照用 `node scripts/perf-ab.mjs <标签> <基准EXE> <新EXE> -- <perf-native 的参数>`：它交替运行两侧、限定性能核、按呈现帧折算进程周期数，并给出各对结果是否一致。结论以各对一致为准；只有一对、各对方向不一或帧率不匹配时，不要下结论。常用场景在 `tools/window-probe/scenarios`。迭代时两侧可以都用快速构建；它只说明方向和明显差异的大致幅度，一成以内的差异、基线和写进提交信息的数值用发布构建重测，两侧不混用不同配置的构建。
 - 详细的测量结果按需在回复中说明，不追加到 `docs/`：文档只保留基线、方法和有依据的设计结论。
 
 ## 约定

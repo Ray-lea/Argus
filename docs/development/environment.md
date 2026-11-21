@@ -61,7 +61,7 @@
 | 变量 | 取值 | 作用 |
 |---|---|---|
 | `ARGUS_BUILD_METADATA` | 以点分隔的标识，可为空 | 替换版本号的构建元数据，见[提交与发布](release.md) |
-| `ARGUS_BUILD_ASSETS` | 含 `argus-taskmgr-launcher.exe` 与 `argus-taskmgr-recover.exe` 的目录 | 构建脚本从该目录把任务管理器辅助程序嵌入 `argus.exe`。未设置时，发布构建取 Cargo 的发布目录（须先构建 `argus-service` 的程序），其他构建不嵌入 |
+| `ARGUS_BUILD_ASSETS` | 含 `argus-taskmgr-launcher.exe` 与 `argus-taskmgr-recover.exe` 的目录 | 构建脚本从该目录把任务管理器辅助程序嵌入 `argus.exe`。未设置时，发布构建与快速构建取各自的 Cargo 输出目录（须先以同一配置构建 `argus-service` 的程序），开发构建不嵌入 |
 | `ARGUS_NSIS` | `makensis.exe` 的路径 | 优先使用该 NSIS 编译器 |
 | `ARGUS_SIGNING_PRIVATE_KEY`、`ARGUS_SIGNING_PRIVATE_KEY_PASSWORD` | 更新签名私钥及其密码 | 仅发布工作流设置，见[提交与发布](release.md) |
 | `ARGUS_LAB_CONFIG` | `config.json` 的路径 | 虚拟机实验环境的配置位置，见[虚拟机交互对照](performance.md#虚拟机交互对照) |

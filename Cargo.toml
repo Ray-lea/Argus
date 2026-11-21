@@ -101,6 +101,19 @@ opt-level = 3
 panic = "abort"
 strip = true
 
+# Quick builds: the release configuration without link-time optimization
+# across crates, which is where nearly all the time of a release rebuild goes
+# (the whole dependency graph is optimized again after any change). Line
+# tables are kept for the window probe's stack sampler. What such a build is
+# good for, and what only the release build can tell, is in
+# docs/development/build.md (`node scripts/build.mjs --quick`).
+[profile.quick]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
+debug = "line-tables-only"
+
 # Debug builds: keep backtraces readable but skip full debuginfo, which made
 # the dev exe ~250 MB and dominated target/ size and link time. For stepping
 # through code in a debugger, build with CARGO_PROFILE_DEV_DEBUG=full.
