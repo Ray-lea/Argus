@@ -6,6 +6,7 @@ mod caption;
 mod charts;
 mod collation;
 mod columns;
+mod copy;
 mod diagnostic_summary;
 mod dialogs;
 mod flip;

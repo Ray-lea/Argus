@@ -1160,11 +1160,11 @@ impl Desktop {
                     .icon("CopyIcon")
                     .disabled(text(raw, "command").is_empty()),
                     MenuItem::new(
-                label("common.copyDetails"),
-                Action::CopyDetails(Box::new(row.clone())),
-            )
-                        .icon("CopyIcon")
-                        .hint("Ctrl+Shift+C"),
+                        label("common.copyDetails"),
+                        Action::CopyDetails(Box::new(row.clone())),
+                    )
+                    .icon("CopyIcon")
+                    .hint("Ctrl+Shift+C"),
                     MenuItem::separator(),
                     delete,
                     MenuItem::separator(),
@@ -1391,8 +1391,8 @@ impl Desktop {
                 label("common.copyDetails"),
                 Action::CopyDetails(Box::new(row.clone())),
             )
-                .icon("CopyIcon")
-                .hint("Ctrl+Shift+C"),
+            .icon("CopyIcon")
+            .hint("Ctrl+Shift+C"),
         );
         items.push(MenuItem::separator());
         items.push(
@@ -1481,8 +1481,8 @@ impl Desktop {
                 label("common.copyDetails"),
                 Action::CopyDetails(Box::new(row.clone())),
             )
-                .icon("CopyIcon")
-                .hint("Ctrl+Shift+C"),
+            .icon("CopyIcon")
+            .hint("Ctrl+Shift+C"),
             MenuItem::separator(),
             // Asks first. Argus's own service goes with its uninstall.
             MenuItem::new(
@@ -1567,8 +1567,8 @@ impl Desktop {
                 label("common.copyDetails"),
                 Action::CopyDetails(Box::new(row.clone())),
             )
-                .icon("CopyIcon")
-                .hint("Ctrl+Shift+C"),
+            .icon("CopyIcon")
+            .hint("Ctrl+Shift+C"),
             MenuItem::separator(),
         ]
     }

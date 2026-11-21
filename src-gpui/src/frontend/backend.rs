@@ -975,83 +975,6 @@ impl Desktop {
         }
         cx.notify();
     }
-    /// Copies the selected row of the shown list (`copy_row_of`).
-    pub(in crate::frontend) fn copy_row(
-        &mut self,
-        full: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(row) = self
-            .selected
-            .get(&self.page)
-            .and_then(|key| self.rows.iter().find(|row| &row.key == key))
-            .cloned()
-        else {
-            return;
-        };
-        self.copy_row_of(&row, full, window, cx);
-    }
-    /// Copies `row` of the shown list: its name (a process's executable
-    /// name), or with `full` every column shown as "Column: value" lines, a
-    /// process's path and command line added when known. Headings copy nothing.
-    pub(in crate::frontend) fn copy_row_of(
-        &mut self,
-        row: &Row,
-        full: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if !matches!(
-            self.page.as_str(),
-            "processes" | "services" | "startup" | "network"
-        ) || row.section.is_some()
-            || row.user.is_some()
-        {
-            return;
-        }
-        let processes = self.page == "processes";
-        if !full {
-            // As the menus copy it: a process's executable, a service's own name.
-            let name = if matches!(self.page.as_str(), "processes" | "services")
-                && !text(&row.raw, "name").is_empty()
-            {
-                text(&row.raw, "name").to_owned()
-            } else {
-                row.title.clone()
-            };
-            if !name.is_empty() {
-                self.act(Action::Copy(name, "actions.copyWhat.name"), window, cx);
-            }
-            return;
-        }
-        let mut lines = self
-            .table
-            .as_ref()
-            .map(|table| table.read(cx).delegate().row_cells(&row))
-            .unwrap_or_default();
-        if processes {
-            for (key, value) in [
-                ("path", row.raw["path"].as_str().map(str::to_owned)),
-                (
-                    "commandLine",
-                    row.column_text("commandLine").map(str::to_owned),
-                ),
-            ] {
-                let heading = label(&format!("processes.column.{key}.label"));
-                if let Some(value) = value.filter(|value| !value.trim().is_empty())
-                    && !lines.iter().any(|(shown, _)| *shown == heading)
-                {
-                    lines.push((heading, value));
-                }
-            }
-        }
-        if lines.is_empty() {
-            return;
-        }
-        let text = details_text(&lines);
-        self.act(Action::Copy(text, "actions.copyWhat.details"), window, cx);
-    }
     pub(in crate::frontend) fn key_down(
         &mut self,
         event: &KeyDownEvent,
@@ -1350,29 +1273,5 @@ impl Desktop {
                 cx,
             );
         }
-    }
-}
-
-/// Cells as "Column: value" lines, as Windows text editors expect them.
-pub(in crate::frontend) fn details_text(lines: &[(String, String)]) -> String {
-    lines
-        .iter()
-        .map(|(heading, value)| format!("{heading}: {value}"))
-        .collect::<Vec<_>>()
-        .join("\r\n")
-}
-
-#[cfg(test)]
-mod copy_tests {
-    use super::details_text;
-
-    #[test]
-    fn details_are_column_lines_for_windows_editors() {
-        let lines = [
-            ("Name".to_owned(), "Firefox".to_owned()),
-            ("PID".to_owned(), "4242".to_owned()),
-        ];
-        assert_eq!(details_text(&lines), "Name: Firefox\r\nPID: 4242");
-        assert_eq!(details_text(&[]), "");
     }
 }
