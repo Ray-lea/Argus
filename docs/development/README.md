@@ -19,6 +19,8 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 
 终端显示进程 ID、编译结果和退出状态，并持续监听源文件。默认显示主窗口，传入 `--hidden` 可隐藏启动。按 Ctrl+C 结束开发会话。
 
+一次改动涉及多个文件、中途的源码无法编译或只完成一半时，可先运行 `node scripts/dev-hold.mjs on [--minutes N] [原因]` 暂停自动重建，改完后运行 `node scripts/dev-hold.mjs off`：开发脚本把暂停期间的修改合并为一次重建，开发实例只重启一次。暂停默认 20 分钟后自动结束，最长 120 分钟；不带参数运行时显示当前的暂停。已经开始的编译不受影响。
+
 开发脚本的提示语言：设置了 `ARGUS_LOCALE` 时按它，否则按 Windows 显示语言（用户设置优先于系统默认）；中文显示为简体中文，其他语言显示为英文。例如在英文 Windows 上用中文提示，先运行 `set ARGUS_LOCALE=zh-CN`（PowerShell 为 `$env:ARGUS_LOCALE = "zh-CN"`）。应用界面的语言不随该变量变化：取自设置，未设置时取 Windows 显示语言。脚本生成的文件（第三方许可声明、README 卡片与演示等）不受影响。批处理文件运行结束后恢复控制台原来的代码页。
 
 数据格式与协议的版本号自上一个发布以来最多变更一次，同一周期内的后续不兼容改动沿用该版本号。此前的开发构建写下的文件因此无法读取，由开发脚本清除，应用本身不删除：`scripts/dev-data.json` 为每类数据记录一个修订号，开发脚本每次启动新构建前，比对开发配置目录中 `dev-data.json` 记下的修订号，删除有变化的类别在历史目录中的文件（`history` 为日文件及其旁文件，`watch` 为观察文件）。脚本只处理以发布标识为前缀的开发标识，历史目录与已安装的 Argus 相同时不删除。`node scripts/dev-data.mjs` 在不经开发脚本时执行同样的比对；`node scripts/dev-data.mjs clear <类别>` 立即清除指定类别，执行前需退出使用该标识的 Argus。

@@ -5,6 +5,7 @@ import { createReadStream, mkdirSync, copyFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { developmentProfile, launchIdentifier, prepare } from "./dev-data.mjs";
+import { HOLD, holdGate, readHold } from "./lib/dev-hold.mjs";
 import { t } from "./lib/console-language.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -129,9 +130,25 @@ if (mode === "dev") {
       }
     }
   }
+  // A hold (scripts/dev-hold.mjs) postpones rebuilds while an edit spans
+  // several files; what changed meanwhile is built once when it ends.
+  const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const gate = holdGate({
+    active: () => readHold(resolve(HOLD)),
+    build: () => void build(),
+    report: (hold) =>
+      console.log(
+        hold
+          ? t(
+              `自动重建已暂停，至 ${clock(hold.until)} 或解除暂停为止${hold.reason ? `（${hold.reason}）` : ""}；期间的修改在恢复后重建一次。`,
+              `Rebuilds are on hold until ${clock(hold.until)} or the release of the hold${hold.reason ? ` (${hold.reason})` : ""}; changes made meanwhile are built once afterwards.`,
+            )
+          : t("暂停已结束，开始重建。", "The hold has ended; rebuilding."),
+      ),
+  });
   const schedule = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => void build(), 250);
+    timer = setTimeout(() => gate.changed(), 250);
   };
   if (!once)
     for (const path of ["src-gpui", "crates", "resources", "locales", "build-support", "vendor"]) {
@@ -145,6 +162,7 @@ if (mode === "dev") {
   process.on("SIGINT", async () => {
     closed = true;
     clearTimeout(timer);
+    gate.stop();
     for (const watcher of watchers) watcher.close();
     if (!(await stop()))
       console.error(t("开发实例仍在退出，请从其托盘菜单退出。", "The development instance is still exiting; quit it from its tray menu."));
