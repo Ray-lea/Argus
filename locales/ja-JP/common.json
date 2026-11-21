@@ -19,6 +19,7 @@
   "filterColumn": "「{column}」で絞り込む",
   "command": "コマンド",
   "copyName": "名前をコピー",
+  "copyDetails": "詳細をコピー",
   "copyPath": "パスをコピー",
   "openFileLocation": "ファイルの場所を開く",
   "goToProcess": "プロセスに移動",

@@ -15,6 +15,7 @@ mod icon_motion;
 mod inline;
 mod layout;
 mod leaks;
+mod list_copy;
 mod lists;
 mod menus;
 mod model;

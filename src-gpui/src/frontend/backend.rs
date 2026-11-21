@@ -1198,9 +1198,11 @@ impl Desktop {
             cx.stop_propagation();
             return;
         }
-        // Ctrl+C copies the selected process's name and Ctrl+Shift+C its
+        // Ctrl+C copies the selected row's name and Ctrl+Shift+C its
         // details, unless text is selected: the window copies that instead.
-        if self.page == "processes"
+        // A process's details are the details pane's, another list's the
+        // columns it shows (`list_copy`).
+        if list_copy::LISTS.contains(&self.page.as_str())
             && key == "c"
             && m.control
             && !m.alt
@@ -1211,8 +1213,13 @@ impl Desktop {
                 .and_then(|index| self.rows.get(index))
                 .filter(|row| row.section.is_none())
             {
-                let action = if m.shift {
+                let action = if m.shift && self.page == "processes" {
                     Action::CopyDetails(row.key.clone())
+                } else if m.shift {
+                    let Some(details) = self.cells_text(row, cx) else {
+                        return;
+                    };
+                    Action::CopyAs(details, label("actions.copyWhat.details"))
                 } else {
                     Action::Copy(row.title.clone(), "actions.copyWhat.name")
                 };
