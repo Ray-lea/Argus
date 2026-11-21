@@ -110,6 +110,10 @@ product_icons! {
     "NavSideIcon" => PanelLeft,
     "NavTopIcon" => PanelTop,
     "WarningIcon" => TriangleAlert,
+    // Leak alerts (`leaks.rs`): rising handles, children piling up, leftovers.
+    "HandleLeakIcon" => TrendingUp,
+    "ChildLeakIcon" => GitFork,
+    "OrphanIcon" => Ghost,
     "CheckIcon" => Check,
     "PointerIcon" => MousePointer2,
     "ColumnsIcon" => Columns3,

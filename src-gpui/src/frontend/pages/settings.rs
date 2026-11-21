@@ -996,6 +996,7 @@ impl Desktop {
                     "settings.holdOrder.desc",
                     vec![hold],
                 ));
+                cards.push(self.leak_setting(window, cx));
             }
             "startup" => {
                 let autostart = self.setting_toggle(

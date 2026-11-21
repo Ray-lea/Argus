@@ -374,5 +374,41 @@
     "virtualAliases": "仮想メモリ 仮想バイト アドレス予約"
   },
   "basePriorityBetween": "優先度クラスではありません。Windows が一部のシステム プロセスに直接設定する基本優先度で、{below} と {above} の間です。",
-  "basePriorityCustom": "優先度クラスではありません。Windows が一部のシステム プロセスに直接設定する基本優先度です。"
+  "basePriorityCustom": "優先度クラスではありません。Windows が一部のシステム プロセスに直接設定する基本優先度です。",
+  "leak": {
+    "kind": {
+      "handles": "ハンドル リーク",
+      "children": "子プロセスの蓄積",
+      "orphans": "残留プロセス"
+    },
+    "mark": "リソース リークの可能性: {count} 件。クリックして表示",
+    "handlesExtreme": "ハンドルを {handles} 個保持しており、一般的なプロセスを大きく上回ります",
+    "handlesExtremeGrowing": "ハンドルを {handles} 個保持しており、一般的なプロセスを大きく上回ります。{span}でさらに {growth} 個増えました",
+    "handlesGrowing": "{span}にわたりハンドル数が増え続け、{growth} 個増えて現在 {handles} 個です",
+    "childrenGrowing": "{span}で子プロセスを {growth} 個起動し、いずれも終了していません。現在 {children} 個が実行中です",
+    "orphansIdle": "{name} のプロセス {instances} 個は親プロセスが終了しており、少なくとも {span}プロセッサを使用していません",
+    "brief": {
+      "handles": "ハンドル {handles} 個",
+      "children": "子プロセス {children} 個",
+      "orphans": "残留インスタンス {instances} 個"
+    },
+    "title": {
+      "handles": "ハンドル リークの可能性",
+      "children": "子プロセスが増え続けています",
+      "orphans": "残留プロセス"
+    },
+    "advice": {
+      "handles": "プロセスを終了または再起動すると、これらのハンドルは解放されます。繰り返し発生する場合は、そのソフトウェアを更新またはアンインストールしてください。",
+      "children": "プロセスを展開すると子プロセスを確認できます。不要なものは終了してください。繰り返し発生する場合は、そのソフトウェアを更新またはアンインストールしてください。",
+      "orphans": "通常は、閉じたターミナルやツールが残したプロセスです。不要であることを確認したうえで終了できます。"
+    },
+    "trend": {
+      "handles": "ハンドル数 · 直近 {span}",
+      "children": "子プロセス数 · 直近 {span}"
+    },
+    "ignore": "このプログラムを無視",
+    "ignored": "{name} のリソース リークは表示されなくなります。設定で元に戻せます",
+    "undo": "元に戻す",
+    "settings": "リークの通知設定"
+  }
 }

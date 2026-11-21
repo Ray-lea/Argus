@@ -319,9 +319,13 @@ impl Desktop {
                     self.user_grouping(),
                     self.user_folds.clone(),
                 );
+                let leaks = self.leak_filter();
                 let task = cx.background_executor().spawn(async move {
                     let start = Instant::now();
-                    let model = serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
+                    let mut model =
+                        serde_json::to_value(snapshot.as_ref()).expect("snapshot model");
+                    // Rows carry their leak marks, so the cached cells see them.
+                    super::leaks::annotate(&mut model, &leaks);
                     let serialize_us = start.elapsed().as_micros() as u64;
                     let start = Instant::now();
                     let users = processes
@@ -405,10 +409,11 @@ impl Desktop {
     }
     pub(in crate::frontend) fn accept_snapshot(
         &mut self,
-        snapshot: Value,
+        mut snapshot: Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        super::leaks::annotate(&mut snapshot, &self.leak_filter());
         self.accept_snapshot_prepared(snapshot, None, None, window, cx);
         // Fixture samples feed the monitors as live ones do.
         self.refresh_monitors(cx);

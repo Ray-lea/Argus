@@ -639,5 +639,13 @@
     "fontDesc": "Base font size: 11–20 px (default: 13 px). Headings and secondary text scale proportionally. Combines with interface scaling.",
     "reset": "Reset",
     "saveFailed": "Could not save interface preferences. Check that the configuration folder is writable."
+  },
+  "leaks": {
+    "title": "Resource leak alerts",
+    "desc": "Watches each process's handle and child process counts, and marks programs on the Processes page that appear to leak handles or processes.",
+    "restore": {
+      "one": "Restore {count} ignored program",
+      "other": "Restore {count} ignored programs"
+    }
   }
 }

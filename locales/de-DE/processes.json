@@ -378,5 +378,44 @@
     "virtualAliases": "Virtueller Speicher virtuelle Bytes Adressreservierung"
   },
   "basePriorityBetween": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt; sie liegt zwischen {below} und {above}.",
-  "basePriorityCustom": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt."
+  "basePriorityCustom": "Keine Prioritätsklasse. Windows gibt manchen Systemprozessen diese Basispriorität direkt.",
+  "leak": {
+    "kind": {
+      "handles": "Handle-Leck",
+      "children": "Unterprozesse häufen sich",
+      "orphans": "Zurückgebliebener Prozess"
+    },
+    "mark": {
+      "one": "{count} mögliches Ressourcenleck. Zum Anzeigen klicken.",
+      "other": "{count} mögliche Ressourcenlecks. Zum Anzeigen klicken."
+    },
+    "handlesExtreme": "Hält {handles} Handles, weit mehr als Prozesse üblicherweise",
+    "handlesExtremeGrowing": "Hält {handles} Handles, weit mehr als Prozesse üblicherweise, und kam in {span} auf {growth} weitere",
+    "handlesGrowing": "Die Handle-Anzahl stieg {span} lang stetig, um {growth} auf {handles}",
+    "childrenGrowing": "Startete in {span} {growth} Unterprozesse, die nie beendet wurden; jetzt laufen {children}",
+    "orphansIdle": "{instances} {name}-Prozesse bestehen nach Ende ihres übergeordneten Prozesses weiter und nutzten mindestens {span} keine Prozessorzeit",
+    "brief": {
+      "handles": "{handles} Handles",
+      "children": "{children} Unterprozesse",
+      "orphans": "{instances} zurückgebliebene Instanzen"
+    },
+    "title": {
+      "handles": "Mögliches Handle-Leck",
+      "children": "Unterprozesse häufen sich an",
+      "orphans": "Zurückgebliebene Prozesse"
+    },
+    "advice": {
+      "handles": "Durch Beenden oder Neustarten des Prozesses werden diese Handles freigegeben. Tritt das wiederholt auf, aktualisieren oder deinstallieren Sie die zugehörige Software.",
+      "children": "Klappen Sie den Prozess auf, um seine Unterprozesse zu sehen, und beenden Sie die nicht mehr benötigten. Tritt das wiederholt auf, aktualisieren oder deinstallieren Sie die zugehörige Software.",
+      "orphans": "Solche Prozesse bleiben meist nach geschlossenen Terminals oder Tools zurück. Beenden Sie sie, wenn sie sicher nicht mehr benötigt werden."
+    },
+    "trend": {
+      "handles": "Handles · letzte {span}",
+      "children": "Unterprozesse · letzte {span}"
+    },
+    "ignore": "Dieses Programm ignorieren",
+    "ignored": "Ressourcenlecks in {name} werden nicht mehr angezeigt. In den Einstellungen wiederherstellbar.",
+    "undo": "Rückgängig",
+    "settings": "Einstellungen für Leckhinweise"
+  }
 }

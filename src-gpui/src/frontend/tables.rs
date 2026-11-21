@@ -1637,6 +1637,50 @@ impl TableDelegate for NativeTable {
         {
             let app = owner.read(cx);
             let total = self.totals.get(field.key).cloned().unwrap_or_default();
+            // Leak alerts: a mark after the count, which lists them.
+            let alerts = if field.key == "name" {
+                app.leak_alerts().len()
+            } else {
+                0
+            };
+            let leak_mark = (alerts > 0).then(|| {
+                let tip = theme::counted("processes.leak.mark", alerts as u64, &[]);
+                let owner = self.owner.clone();
+                let tint = p.io;
+                div()
+                    .id(leaks::MARK)
+                    .relative()
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap(px(3.))
+                    .h(px(18.))
+                    .px(px(6.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(tint.opacity(0.45))
+                    .bg(tint.opacity(0.1))
+                    .text_color(tint)
+                    .text_size(theme::font(11.))
+                    .line_height(px(16.))
+                    .font_family(cx.theme().font_family.clone())
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(tint.opacity(0.18)))
+                    .child(icon("WarningIcon", tint).size(px(11.)))
+                    .child(theme::count(alerts as f64))
+                    .child(layout::anchor_probe(leaks::MARK, app.ui.anchors.clone()))
+                    // Its press never reaches the header, which would sort.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        let owner = owner.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = owner.update(cx, |this, cx| this.open_leak_menu(window, cx));
+                        });
+                    })
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+            });
             cell = cell.child(
                 div()
                     .flex()
@@ -1662,7 +1706,8 @@ impl TableDelegate for NativeTable {
                                 }),
                         )
                     })
-                    .child(raised_brackets(total, theme::font(15.))),
+                    .child(raised_brackets(total, theme::font(15.)))
+                    .children(leak_mark),
             );
         }
         let owner = self.owner.clone();

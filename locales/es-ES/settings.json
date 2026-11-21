@@ -645,5 +645,14 @@
     "fontDesc": "Tamaño de fuente base: 11–20 px (predeterminado: 13 px). Los títulos y el texto secundario escalan proporcionalmente. Se combina con el escalado de la interfaz.",
     "reset": "Restablecer",
     "saveFailed": "No se pudieron guardar las preferencias de la interfaz. Compruebe que se pueda escribir en la carpeta de configuración."
+  },
+  "leaks": {
+    "title": "Avisos de fugas de recursos",
+    "desc": "Supervisa el número de identificadores y de procesos secundarios de cada proceso y marca en la página Procesos los programas que parecen tener fugas de identificadores o de procesos.",
+    "restore": {
+      "one": "Restablecer {count} programa omitido",
+      "many": "Restablecer {count} programas omitidos",
+      "other": "Restablecer {count} programas omitidos"
+    }
   }
 }

@@ -14,6 +14,7 @@ mod hundred;
 mod icon_motion;
 mod inline;
 mod layout;
+mod leaks;
 mod lists;
 mod menus;
 mod model;

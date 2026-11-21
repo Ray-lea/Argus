@@ -645,5 +645,14 @@
     "fontDesc": "Taille de police de base : 11 à 20 px (par défaut : 13 px). Les titres et le texte secondaire sont mis à l’échelle proportionnellement. Se combine avec la mise à l’échelle de l’interface.",
     "reset": "Réinitialiser",
     "saveFailed": "Impossible d’enregistrer les préférences d’interface. Vérifiez que le dossier de configuration est accessible en écriture."
+  },
+  "leaks": {
+    "title": "Alertes de fuites de ressources",
+    "desc": "Surveille le nombre de handles et de processus enfants de chaque processus, et signale sur la page Processus les programmes qui semblent perdre des handles ou des processus.",
+    "restore": {
+      "one": "Rétablir {count} programme ignoré",
+      "many": "Rétablir {count} programmes ignorés",
+      "other": "Rétablir {count} programmes ignorés"
+    }
   }
 }

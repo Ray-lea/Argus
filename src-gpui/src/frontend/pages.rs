@@ -315,6 +315,15 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            // Leak alerts apply to the sample on screen at once.
+            leaks::ALERTS => {
+                self.set_leak_alerts(value.as_bool().unwrap_or(true), cx);
+                return;
+            }
+            leaks::IGNORED => {
+                self.set_ignored_leaks(serde_json::from_value(value).unwrap_or_default(), cx);
+                return;
+            }
             model::USER_GROUPING => {
                 self.prefs
                     .set(key, model::UserGrouping::parse(&value).key());

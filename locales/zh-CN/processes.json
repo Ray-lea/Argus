@@ -366,5 +366,41 @@
     "virtualAliases": "虚拟内存 虚拟字节 地址预留"
   },
   "basePriorityBetween": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级，介于{below}与{above}之间。",
-  "basePriorityCustom": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级。"
+  "basePriorityCustom": "不是优先级类别。Windows 直接为部分系统进程设置此基本优先级。",
+  "leak": {
+    "kind": {
+      "handles": "句柄泄漏",
+      "children": "子进程累积",
+      "orphans": "残留进程"
+    },
+    "mark": "{count} 项可能的资源泄漏，单击查看",
+    "handlesExtreme": "持有 {handles} 个句柄，远超一般进程",
+    "handlesExtremeGrowing": "持有 {handles} 个句柄，远超一般进程；{span}内仍增加了 {growth} 个",
+    "handlesGrowing": "{span}内句柄数持续上升，增加了 {growth} 个，当前 {handles} 个",
+    "childrenGrowing": "{span}内新增 {growth} 个子进程且均未退出，当前共有 {children} 个子进程",
+    "orphansIdle": "{instances} 个 {name} 进程的父进程已退出，且至少 {span}未使用处理器",
+    "brief": {
+      "handles": "{handles} 个句柄",
+      "children": "{children} 个子进程",
+      "orphans": "{instances} 个残留实例"
+    },
+    "title": {
+      "handles": "可能存在句柄泄漏",
+      "children": "子进程不断累积",
+      "orphans": "残留进程"
+    },
+    "advice": {
+      "handles": "结束或重新启动该进程即可释放这些句柄；若反复出现，可更新或卸载其所属软件。",
+      "children": "可展开该进程查看其子进程，确认不再需要后结束它们；若反复出现，可更新或卸载其所属软件。",
+      "orphans": "通常是已关闭的终端或工具遗留的进程，确认不再需要后可结束它们。"
+    },
+    "trend": {
+      "handles": "句柄数 · 近 {span}",
+      "children": "子进程数 · 近 {span}"
+    },
+    "ignore": "忽略此程序",
+    "ignored": "不再提示 {name} 的资源泄漏，可在设置中恢复",
+    "undo": "撤销",
+    "settings": "泄漏提示设置"
+  }
 }

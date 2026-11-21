@@ -382,5 +382,45 @@
     "virtualAliases": "mémoire virtuelle octets virtuels réservation d’adresses"
   },
   "basePriorityBetween": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système ; elle se situe entre {below} et {above}.",
-  "basePriorityCustom": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système."
+  "basePriorityCustom": "Ce n’est pas une classe de priorité. Windows attribue directement cette priorité de base à certains processus système.",
+  "leak": {
+    "kind": {
+      "handles": "Fuite de handles",
+      "children": "Processus enfants accumulés",
+      "orphans": "Processus résiduel"
+    },
+    "mark": {
+      "one": "{count} fuite de ressources possible. Cliquez pour l’afficher.",
+      "many": "{count} fuites de ressources possibles. Cliquez pour les afficher.",
+      "other": "{count} fuites de ressources possibles. Cliquez pour les afficher."
+    },
+    "handlesExtreme": "Détient {handles} handles, bien plus qu’un processus habituel",
+    "handlesExtremeGrowing": "Détient {handles} handles, bien plus qu’un processus habituel, et en a ajouté {growth} en {span}",
+    "handlesGrowing": "Le nombre de handles n’a cessé d’augmenter pendant {span} : {growth} de plus, {handles} au total",
+    "childrenGrowing": "A lancé {growth} processus enfants en {span} sans qu’aucun ne se termine ; {children} sont en cours d’exécution",
+    "orphansIdle": "{instances} processus {name} ont survécu à leur parent et n’ont pas utilisé le processeur depuis au moins {span}",
+    "brief": {
+      "handles": "{handles} handles",
+      "children": "{children} processus enfants",
+      "orphans": "{instances} instances résiduelles"
+    },
+    "title": {
+      "handles": "Fuite de handles possible",
+      "children": "Les processus enfants s’accumulent",
+      "orphans": "Processus résiduels"
+    },
+    "advice": {
+      "handles": "Arrêter ou redémarrer le processus libère ces handles. Si cela se reproduit, mettez à jour ou désinstallez le logiciel auquel il appartient.",
+      "children": "Développez le processus pour voir ses processus enfants et arrêtez ceux qui ne sont plus utiles. Si cela se reproduit, mettez à jour ou désinstallez le logiciel auquel il appartient.",
+      "orphans": "Ils restent généralement après la fermeture de terminaux ou d’outils. Arrêtez-les une fois certain qu’ils ne sont plus utiles."
+    },
+    "trend": {
+      "handles": "Handles · dernières {span}",
+      "children": "Processus enfants · dernières {span}"
+    },
+    "ignore": "Ignorer ce programme",
+    "ignored": "Les fuites de ressources de {name} ne seront plus signalées. Vous pouvez rétablir cela dans les paramètres.",
+    "undo": "Annuler",
+    "settings": "Paramètres des alertes de fuite"
+  }
 }

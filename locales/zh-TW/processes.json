@@ -366,5 +366,41 @@
     "clear": "顯示全部並清除篩選"
   },
   "basePriorityBetween": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序，介於{below}與{above}之間。",
-  "basePriorityCustom": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序。"
+  "basePriorityCustom": "不是優先順序類別。Windows 直接為部分系統處理程序設定此基本優先順序。",
+  "leak": {
+    "kind": {
+      "handles": "控制代碼洩漏",
+      "children": "子處理程序累積",
+      "orphans": "殘留處理程序"
+    },
+    "mark": "{count} 項可能的資源洩漏，按一下以檢視",
+    "handlesExtreme": "持有 {handles} 個控制代碼，遠超一般處理程序",
+    "handlesExtremeGrowing": "持有 {handles} 個控制代碼，遠超一般處理程序；{span}內仍增加了 {growth} 個",
+    "handlesGrowing": "{span}內控制代碼數持續上升，增加了 {growth} 個，目前 {handles} 個",
+    "childrenGrowing": "{span}內新增 {growth} 個子處理程序且均未結束，目前共有 {children} 個子處理程序",
+    "orphansIdle": "{instances} 個 {name} 處理程序的父處理程序已結束，且至少 {span}未使用處理器",
+    "brief": {
+      "handles": "{handles} 個控制代碼",
+      "children": "{children} 個子處理程序",
+      "orphans": "{instances} 個殘留執行個體"
+    },
+    "title": {
+      "handles": "可能有控制代碼洩漏",
+      "children": "子處理程序不斷累積",
+      "orphans": "殘留處理程序"
+    },
+    "advice": {
+      "handles": "結束或重新啟動該處理程序即可釋放這些控制代碼；若反覆出現，可更新或解除安裝其所屬軟體。",
+      "children": "可展開該處理程序查看其子處理程序，確認不再需要後結束它們；若反覆出現，可更新或解除安裝其所屬軟體。",
+      "orphans": "通常是已關閉的終端機或工具遺留的處理程序，確認不再需要後可結束它們。"
+    },
+    "trend": {
+      "handles": "控制代碼數 · 近 {span}",
+      "children": "子處理程序數 · 近 {span}"
+    },
+    "ignore": "忽略此程式",
+    "ignored": "不再提示 {name} 的資源洩漏，可在設定中還原",
+    "undo": "復原",
+    "settings": "洩漏提示設定"
+  }
 }

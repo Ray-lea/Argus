@@ -378,5 +378,44 @@
     "virtualAliases": "virtual memory virtual bytes address reservation"
   },
   "basePriorityBetween": "Not a priority class. Windows gives this base priority to some system processes directly; it lies between {below} and {above}.",
-  "basePriorityCustom": "Not a priority class. Windows gives this base priority to some system processes directly."
+  "basePriorityCustom": "Not a priority class. Windows gives this base priority to some system processes directly.",
+  "leak": {
+    "kind": {
+      "handles": "Handle leak",
+      "children": "Piling children",
+      "orphans": "Leftover process"
+    },
+    "mark": {
+      "one": "{count} possible resource leak. Click to view.",
+      "other": "{count} possible resource leaks. Click to view."
+    },
+    "handlesExtreme": "Holds {handles} handles, far more than processes usually do",
+    "handlesExtremeGrowing": "Holds {handles} handles, far more than processes usually do, and gained {growth} more in {span}",
+    "handlesGrowing": "Handle count kept rising for {span}, up {growth} to {handles}",
+    "childrenGrowing": "Started {growth} child processes in {span} that never exited; {children} are running now",
+    "orphansIdle": "{instances} {name} processes outlived their parent and used no processor time for at least {span}",
+    "brief": {
+      "handles": "{handles} handles",
+      "children": "{children} child processes",
+      "orphans": "{instances} leftover instances"
+    },
+    "title": {
+      "handles": "Possible handle leak",
+      "children": "Child processes keep piling up",
+      "orphans": "Leftover processes"
+    },
+    "advice": {
+      "handles": "Ending or restarting the process releases these handles. If it keeps happening, update or uninstall the software it belongs to.",
+      "children": "Expand the process to see its child processes and end the ones no longer needed. If it keeps happening, update or uninstall the software it belongs to.",
+      "orphans": "These are usually left behind by closed terminals or tools. End them once you're sure they're no longer needed."
+    },
+    "trend": {
+      "handles": "Handles · last {span}",
+      "children": "Child processes · last {span}"
+    },
+    "ignore": "Ignore this program",
+    "ignored": "Resource leaks in {name} won't be pointed out. You can restore this in Settings.",
+    "undo": "Undo",
+    "settings": "Leak alert settings"
+  }
 }

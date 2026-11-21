@@ -639,5 +639,13 @@
     "fontDesc": "Basisschriftgröße: 11–20 px, standardmäßig 13 px. Überschriften und ergänzende Texte werden proportional angepasst. Die Einstellung kann mit der Oberflächenskalierung kombiniert werden.",
     "reset": "Zurücksetzen",
     "saveFailed": "Schnittstelleneinstellungen konnten nicht gespeichert werden. Überprüfen Sie, ob der Konfigurationsordner beschreibbar ist."
+  },
+  "leaks": {
+    "title": "Hinweise auf Ressourcenlecks",
+    "desc": "Beobachtet die Handle- und Unterprozessanzahl jedes Prozesses und markiert auf der Seite „Prozesse“ Programme, die anscheinend Handles oder Prozesse verlieren.",
+    "restore": {
+      "one": "{count} ignoriertes Programm wiederherstellen",
+      "other": "{count} ignorierte Programme wiederherstellen"
+    }
   }
 }

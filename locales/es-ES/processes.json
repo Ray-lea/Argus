@@ -382,5 +382,45 @@
     "virtualAliases": "memoria virtual bytes virtuales reserva de direcciones"
   },
   "basePriorityBetween": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema; está entre {below} y {above}.",
-  "basePriorityCustom": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema."
+  "basePriorityCustom": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema.",
+  "leak": {
+    "kind": {
+      "handles": "Fuga de identificadores",
+      "children": "Procesos secundarios acumulados",
+      "orphans": "Proceso residual"
+    },
+    "mark": {
+      "one": "{count} posible fuga de recursos. Haga clic para verla.",
+      "many": "{count} posibles fugas de recursos. Haga clic para verlas.",
+      "other": "{count} posibles fugas de recursos. Haga clic para verlas."
+    },
+    "handlesExtreme": "Tiene {handles} identificadores, muchos más que un proceso habitual",
+    "handlesExtremeGrowing": "Tiene {handles} identificadores, muchos más que un proceso habitual, y sumó {growth} más en {span}",
+    "handlesGrowing": "El número de identificadores no dejó de subir durante {span}: {growth} más, hasta {handles}",
+    "childrenGrowing": "Inició {growth} procesos secundarios en {span} que no terminaron; ahora hay {children} en ejecución",
+    "orphansIdle": "{instances} procesos {name} sobrevivieron a su proceso primario y no usaron el procesador durante al menos {span}",
+    "brief": {
+      "handles": "{handles} identificadores",
+      "children": "{children} procesos secundarios",
+      "orphans": "{instances} instancias residuales"
+    },
+    "title": {
+      "handles": "Posible fuga de identificadores",
+      "children": "Los procesos secundarios se acumulan",
+      "orphans": "Procesos residuales"
+    },
+    "advice": {
+      "handles": "Finalizar o reiniciar el proceso libera estos identificadores. Si vuelve a ocurrir, actualice o desinstale el software al que pertenece.",
+      "children": "Expanda el proceso para ver sus procesos secundarios y finalice los que ya no necesite. Si vuelve a ocurrir, actualice o desinstale el software al que pertenece.",
+      "orphans": "Suelen quedar tras cerrar terminales o herramientas. Finalícelos cuando confirme que ya no los necesita."
+    },
+    "trend": {
+      "handles": "Identificadores · últimos {span}",
+      "children": "Procesos secundarios · últimos {span}"
+    },
+    "ignore": "Omitir este programa",
+    "ignored": "Ya no se señalarán las fugas de recursos de {name}. Puede restablecerlo en Configuración.",
+    "undo": "Deshacer",
+    "settings": "Configuración de avisos de fugas"
+  }
 }

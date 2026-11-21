@@ -512,7 +512,14 @@ impl Desktop {
                     cx,
                 ),
             );
-        let mut body = div().flex().flex_col().child(head).child(charts);
+        // A leak alert comes first after the heading: it is why to look here.
+        let leak = self.leak_card(&picked.members, cx);
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .child(head)
+            .children(leak)
+            .child(charts);
 
         let pids: HashSet<u64> = picked
             .members
