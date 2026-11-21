@@ -708,8 +708,42 @@ impl Flyout {
             .into_any_element()
     }
 
-    fn card(&self, p: Palette) -> Div {
+    fn card(&self, p: Palette, window: &Window, cx: &App) -> Div {
         let r = &self.readings;
+        // The names share one column as wide as the longest in this language
+        // ("Memory", "Arbeitsspeicher"), never narrower than it was: in a
+        // fixed width they broke between letters.
+        let names = [
+            label("common.resource.cpu"),
+            label("common.resource.memory"),
+            label("common.resource.gpu"),
+            label("common.resource.network"),
+        ];
+        let size = theme::font(12.);
+        let name_width = names
+            .iter()
+            .map(|name| {
+                window
+                    .text_system()
+                    .layout_line(
+                        name,
+                        size,
+                        &[theme::text_run(name, FontWeight::NORMAL, cx)],
+                        None,
+                    )
+                    .width
+            })
+            .fold(px(40.), Pixels::max)
+            .ceil();
+        let name = move |text: String| {
+            div()
+                .w(name_width)
+                .flex_shrink_0()
+                .whitespace_nowrap()
+                .text_color(p.muted)
+                .child(text)
+        };
+        let [cpu, memory, gpu_name, network] = names;
         let bar = |value: f64, color: Hsla| {
             div().h(px(4.)).rounded(px(2.)).bg(p.stroke_strong).child(
                 div()
@@ -719,12 +753,12 @@ impl Flyout {
                     .bg(color),
             )
         };
-        let row = |name: String, value: f64, color: Hsla| {
+        let row = |text: String, value: f64, color: Hsla| {
             div()
                 .flex()
                 .items_center()
                 .gap(px(10.))
-                .child(div().w(px(40.)).text_color(p.muted).child(name))
+                .child(name(text))
                 .child(div().flex_1().child(bar(value, color)))
                 .child(
                     div()
@@ -734,12 +768,9 @@ impl Flyout {
                         .child(format!("{}%", value.round())),
                 )
         };
-        let mut rows = vec![
-            row(label("common.resource.cpu"), r.cpu, p.cpu),
-            row(label("common.resource.memory"), r.memory, p.memory),
-        ];
+        let mut rows = vec![row(cpu, r.cpu, p.cpu), row(memory, r.memory, p.memory)];
         if let Some(gpu) = r.gpu {
-            rows.push(row(label("common.resource.gpu"), gpu, p.gpu));
+            rows.push(row(gpu_name, gpu, p.gpu));
         }
         div()
             .p(px(12.))
@@ -774,12 +805,7 @@ impl Flyout {
                     .flex()
                     .items_center()
                     .gap(px(10.))
-                    .child(
-                        div()
-                            .w(px(40.))
-                            .text_color(p.muted)
-                            .child(label("common.resource.network")),
-                    )
+                    .child(name(network))
                     .child(
                         div()
                             .flex_1()
@@ -1128,7 +1154,7 @@ impl Render for Flyout {
         let owner = cx.entity().downgrade();
         let placing = self.phase == Phase::Placing;
         let content = match self.kind {
-            Kind::Card => self.card(p),
+            Kind::Card => self.card(p, window, cx),
             Kind::Panel => self.panel(p, cx),
             Kind::Monitor => self.monitor_panel(p, window, cx),
         };
