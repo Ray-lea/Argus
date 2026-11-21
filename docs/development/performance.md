@@ -22,6 +22,12 @@ tools/window-probe 通过 Job 跟踪测试进程，采样累计 CPU 时间、内
 
 `--probe` 可指定探针路径。在相同窗口尺寸与曲线模式下交替测量前后构建；单独安排截图和构建，核对各轮的实际帧率。
 
+`node scripts/perf-ab.mjs <标签> <基准EXE> <新EXE> [--pairs N] -- <perf-native 的参数>` 按上述方法交替运行两个构建并汇总差异。每一对先后测量两侧，先测的一侧逐对轮换，默认 3 对。各阶段列出两侧的中位数、每对相对差（新／基准 − 1）的中位数与范围，以及各对的方向是否一致：结论以各对一致为准，单独一对的差值不足为据。比较的数值为每个呈现帧与每秒的进程 CPU 周期数、进程与界面线程的 CPU 时间、最忙 GPU 引擎占用、私有提交量、呈现帧率和帧间隔 P95。周期数取自探针标记中的进程周期计数；线程时间按调度节拍累计，分辨不出空闲界面的小开销。两侧帧率相差超过 10% 的一对不计入每帧数值，输出会注明。
+
+测量默认限制在性能核上（同 `ARGUS_PROBE_PERFORMANCE_CORES`），`--default-scheduling` 改用默认调度。`--base-env`、`--new-env` 以 `名称=值` 为其中一侧设置环境变量；两侧可以是同一个程序，用于对照 `ARGUS_TABLE_ROWS=component` 这类开关。各次运行写入 `target/native-validation/<标签>-b<序号>` 与 `-n<序号>`，汇总在 `target/native-validation/<标签>/summary.json`。
+
+`tools/window-probe/scenarios` 提供两个常用场景，均配合 `--fixture tools/window-probe/fixtures/desktop.json --stream-fixture` 使用：`process-scroll.json` 在进程页的应用视图与列表视图中用滚轮连续上下滚动，`sampling.json` 在进程页、CPU 概览和多核视图每秒推进一次采样。
+
 `--software-rendering` 在测试实例的设置中关闭“硬件加速”，窗口由 WARP 在 CPU 上绘制，结果的 `instrumentation.softwareRendering` 记录该条件。与默认模式对照时使用同一发行程序、窗口尺寸与曲线模式，并核对两者的实际呈现帧率。
 
 `--width`、`--height` 设置客户区物理尺寸，`--ui-scale` 设置应用缩放百分比（80–150，默认 100）；有效比例还包含 Windows DPI。物理尺寸换算允许小于 0.01 像素的浮点舍入误差。`--no-capture` 关闭持续窗口捕获，用于对照捕获引起的合成路径与 GPU 频率变化；该模式的帧率和帧间隔字段为 `null`，资源计数仍正常记录。捕获与无捕获结果分别报告。
