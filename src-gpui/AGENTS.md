@@ -22,3 +22,10 @@
 - 磁盘详情的读取只经 `commands::disk_details` 发出，它把读取放在标记文件之间（`disk_reads`，机制在 `argus_app::read_marker`）：读取前由工作线程把标记写入并刷新到磁盘，上次会话留下标记时详情页不自动读取（`Desktop::disk_reads_held`）。不要在别处直接调用 `argus_service::disk_details`；标记的读写不放到界面线程，界面只读 `disk_reads::held`。新增打开页面即发往存储或显卡驱动的按需查询时沿用同一做法。模拟快照不读取磁盘，等待请求的画面用 `data` 控制的 `diskReadsHeld` 核对（`disk-details-held.json`）。
 - 更新公钥和版本签名约束不可改变，安装前二次验签。耗时命令不运行在 UI 线程。
 - 平台能力与前端分离；macOS 不可用的采集或操作不能返回模拟成功。
+- GPUI 中几处会让画面或实例出错、报错又不指向原因的用法：
+  - 一个元素只能设置一次悬停样式。重复调用 `.hover()` 在开发构建中触发 GPUI 的断言（“hover style already set”），实例直接中止；共用的辅助函数已设置悬停样式时，把颜色作为参数传进去。
+  - `WindowKind::PopUp` 的窗口四周各有 7 px 不可见的边框：按客户区（`GetClientRect`、`ClientToScreen`）而不是窗口矩形计算尺寸和位置，否则可见内容窄 14 px，底部被裁。
+  - `img()` 用百分比宽度（`w_full`、`size_full`）时按图片自身的比例取高度，会溢出固定高度的方框：给图片绝对的宽和高。
+  - 在 `overflow_y_scroll` 的容器里放 `absolute().inset_0()` 的探针，GPUI 会把末尾的内边距算作溢出，出现并不存在的滚动范围：需要滚动区的边界时读 `ScrollHandle::bounds()`。
+  - GPUI 的定时器（`background_executor().timer`）在界面线程繁忙时会晚数百毫秒触发：对延迟敏感的计时（如悬停卡片的等待）用原生的 `SetTimer`。
+  - 被通知的未缓存视图不会刷新它内部的缓存视图，只有被通知的缓存视图自己会重绘：内容跟随父视图变化的缓存视图用 `ViewElement::following`。
