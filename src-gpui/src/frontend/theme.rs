@@ -7,6 +7,7 @@ use gpui_kit::*;
 pub const LABEL_WEIGHT: FontWeight = FontWeight::MEDIUM;
 
 #[derive(Clone, Copy)]
+#[cfg_attr(test, derive(Default))]
 pub struct Palette {
     pub ink: Hsla,
     pub muted: Hsla,
@@ -30,6 +31,7 @@ pub struct Palette {
     pub io: Hsla,
     pub network: Hsla,
     pub gpu: Hsla,
+    pub npu: Hsla,
     pub battery: Hsla,
     /// Temperatures on the history page.
     pub temperature: Hsla,
@@ -174,6 +176,7 @@ impl Palette {
             io: colors.chart_3,
             network: colors.chart_4,
             gpu: colors.chart_5,
+            npu: token("npu", dark),
             battery: colors.chart_bullish,
             temperature: token("temp", dark),
             danger: role(cx, "danger"),

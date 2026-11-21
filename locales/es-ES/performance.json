@@ -612,6 +612,10 @@
       "raplMsr": "Intel RAPL MSR · GPU integrada"
     }
   },
+  "npu": {
+    "utilizationChart": "% de utilización",
+    "utilization": "Uso"
+  },
   "battery": {
     "title": "Batería",
     "titleNumbered": "Batería {id}",
