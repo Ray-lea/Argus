@@ -31,9 +31,7 @@
   },
   "menu": {
     "end": "{name} beenden",
-    "close": "Diese Verbindung schließen",
-    "copyLocal": "Lokale Adresse kopieren",
-    "copyRemote": "Remote-Adresse kopieren"
+    "close": "Diese Verbindung schließen"
   },
   "copied": {
     "local": "lokale Adresse",

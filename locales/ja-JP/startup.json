@@ -7,9 +7,7 @@
     "commonFolder": "スタートアップフォルダー（全ユーザー）",
     "package": "アプリパッケージ（現在のユーザー）"
   },
-  "menu": {
-    "copyCommand": "コマンドをコピー"
-  },
+  "menu": {},
   "delete": {
     "title": "スタートアップ アプリ {name} を削除しますか？",
     "registry": "{location} から「{entry}」を削除します。この操作は元に戻せません。プログラム自体は残ります。",

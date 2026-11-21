@@ -7,9 +7,7 @@
     "commonFolder": "Dossier de démarrage (tous les utilisateurs)",
     "package": "Package d’application (utilisateur actuel)"
   },
-  "menu": {
-    "copyCommand": "Copier la commande"
-  },
+  "menu": {},
   "delete": {
     "title": "Supprimer l’application de démarrage {name} ?",
     "registry": "« {entry} » sera supprimé de {location}. Cette action est irréversible ; le programme lui-même est conservé.",

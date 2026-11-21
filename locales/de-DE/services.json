@@ -29,8 +29,7 @@
     "openConsoleTitle": "Windows-Diensteverwaltung öffnen"
   },
   "menu": {
-    "startType": "Starttyp: {type}",
-    "copyName": "Dienstnamen kopieren"
+    "startType": "Starttyp: {type}"
   },
   "delete": {
     "title": "Dienst {name} löschen?",

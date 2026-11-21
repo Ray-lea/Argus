@@ -31,9 +31,7 @@
   },
   "menu": {
     "end": "{name} を終了",
-    "close": "この接続を閉じる",
-    "copyLocal": "ローカルアドレスをコピー",
-    "copyRemote": "リモートアドレスをコピー"
+    "close": "この接続を閉じる"
   },
   "copied": {
     "local": "ローカルアドレス",

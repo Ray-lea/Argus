@@ -31,9 +31,7 @@
   },
   "menu": {
     "end": "结束 {name}",
-    "close": "断开此连接",
-    "copyLocal": "复制本地地址",
-    "copyRemote": "复制远程地址"
+    "close": "断开此连接"
   },
   "copied": {
     "local": "本地地址",

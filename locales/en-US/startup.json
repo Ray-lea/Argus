@@ -7,9 +7,7 @@
     "commonFolder": "Startup folder (all users)",
     "package": "App package (current user)"
   },
-  "menu": {
-    "copyCommand": "Copy command"
-  },
+  "menu": {},
   "delete": {
     "title": "Delete startup app {name}?",
     "registry": "“{entry}” will be removed from {location}. This cannot be undone; the program itself is kept.",

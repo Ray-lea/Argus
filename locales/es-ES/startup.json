@@ -7,9 +7,7 @@
     "commonFolder": "Carpeta de inicio (todos los usuarios)",
     "package": "Paquete de aplicación (usuario actual)"
   },
-  "menu": {
-    "copyCommand": "Copiar comando"
-  },
+  "menu": {},
   "delete": {
     "title": "¿Eliminar la aplicación de inicio {name}?",
     "registry": "Se quitará «{entry}» de {location}. Esta acción no se puede deshacer; el programa se conserva.",

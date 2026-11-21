@@ -29,8 +29,7 @@
     "openConsoleTitle": "Abrir la consola de Servicios de Windows"
   },
   "menu": {
-    "startType": "Tipo de inicio: {type}",
-    "copyName": "Copiar nombre del servicio"
+    "startType": "Tipo de inicio: {type}"
   },
   "delete": {
     "title": "¿Eliminar el servicio {name}?",

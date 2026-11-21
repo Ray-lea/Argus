@@ -29,8 +29,7 @@
     "openConsoleTitle": "打开 Windows 服务管理器"
   },
   "menu": {
-    "startType": "启动类型：{type}",
-    "copyName": "复制服务名称"
+    "startType": "启动类型：{type}"
   },
   "delete": {
     "title": "删除服务 {name}？",

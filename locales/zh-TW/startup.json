@@ -7,9 +7,7 @@
     "commonFolder": "啟動資料夾（所有使用者）",
     "package": "應用程式套件（目前使用者）"
   },
-  "menu": {
-    "copyCommand": "複製命令"
-  },
+  "menu": {},
   "delete": {
     "title": "刪除啟動項目 {name}？",
     "registry": "將從{location}中刪除「{entry}」，此操作無法復原；程式本身會保留。",

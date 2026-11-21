@@ -7,9 +7,7 @@
     "commonFolder": "启动文件夹（所有用户）",
     "package": "应用包（当前用户）"
   },
-  "menu": {
-    "copyCommand": "复制命令"
-  },
+  "menu": {},
   "delete": {
     "title": "删除启动项 {name}？",
     "registry": "将从{location}中删除“{entry}”，此操作无法撤销；程序本身保留。",

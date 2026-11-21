@@ -29,8 +29,7 @@
     "openConsoleTitle": "Открыть консоль служб Windows"
   },
   "menu": {
-    "startType": "Тип запуска: {type}",
-    "copyName": "Копировать название службы"
+    "startType": "Тип запуска: {type}"
   },
   "delete": {
     "title": "Удалить службу {name}?",

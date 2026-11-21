@@ -1212,7 +1212,7 @@ impl Desktop {
                     .icon("FolderIcon")
                     .disabled(!boolean(raw, "exists") || path.is_none()),
                     MenuItem::new(
-                        label("startup.menu.copyCommand"),
+                        label("common.command"),
                         Action::Copy(text(raw, "command").into(), "startup.copied.command"),
                     )
                     .icon("CopyIcon")
@@ -1552,7 +1552,7 @@ impl Desktop {
             .icon("FolderIcon")
             .disabled(binary.is_none()),
             MenuItem::new(
-                label("services.menu.copyName"),
+                label("common.name"),
                 Action::Copy(name.into(), "services.copied.name"),
             )
             .icon("CopyIcon"),
@@ -1619,7 +1619,7 @@ impl Desktop {
             .disabled(!closable),
             MenuItem::separator(),
             MenuItem::new(
-                label("connections.menu.copyLocal"),
+                label("connections.column.localAddress"),
                 Action::Copy(
                     endpoint(text(raw, "localAddress"), &raw["localPort"]),
                     "connections.copied.local",
@@ -1627,7 +1627,7 @@ impl Desktop {
             )
             .icon("CopyIcon"),
             MenuItem::new(
-                label("connections.menu.copyRemote"),
+                label("connections.column.remoteAddress"),
                 Action::Copy(
                     remote
                         .map(|r| endpoint(r, &raw["remotePort"]))

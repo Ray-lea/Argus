@@ -31,9 +31,7 @@
   },
   "menu": {
     "end": "結束 {name}",
-    "close": "中斷此連線",
-    "copyLocal": "複製本機位址",
-    "copyRemote": "複製遠端位址"
+    "close": "中斷此連線"
   },
   "copied": {
     "local": "本機位址",

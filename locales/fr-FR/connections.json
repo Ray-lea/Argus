@@ -31,9 +31,7 @@
   },
   "menu": {
     "end": "Terminer {name}",
-    "close": "Fermer cette connexion",
-    "copyLocal": "Copier l’adresse locale",
-    "copyRemote": "Copier l’adresse distante"
+    "close": "Fermer cette connexion"
   },
   "copied": {
     "local": "adresse locale",

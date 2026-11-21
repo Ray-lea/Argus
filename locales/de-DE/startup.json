@@ -7,9 +7,7 @@
     "commonFolder": "Startordner (alle Benutzer)",
     "package": "App-Paket (aktueller Benutzer)"
   },
-  "menu": {
-    "copyCommand": "Befehl kopieren"
-  },
+  "menu": {},
   "delete": {
     "title": "Autostart-App {name} löschen?",
     "registry": "„{entry}“ wird aus {location} entfernt. Dies kann nicht rückgängig gemacht werden; das Programm selbst bleibt erhalten.",

@@ -29,8 +29,7 @@
     "openConsoleTitle": "Open the Windows Services console"
   },
   "menu": {
-    "startType": "Startup type: {type}",
-    "copyName": "Copy service name"
+    "startType": "Startup type: {type}"
   },
   "delete": {
     "title": "Delete service {name}?",
