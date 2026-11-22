@@ -11,7 +11,7 @@
   "ArgusLocation": "Ubicación de instalación: {installDir}",
   "ArgusChange": "Cambiar",
   "ArgusChooseFolder": "Seleccione la carpeta de instalación de Argus",
-  "ArgusProgramFilesNote": "Si se activan, los archivos del servicio privilegiado, la ejecución como administrador y los sensores del kernel van a {programFiles}, solo editable por administradores.",
+  "ArgusProgramFilesNote": "Por seguridad, los archivos del servicio privilegiado, la ejecución como administrador y los sensores del kernel se siguen guardando en {programFiles}. Solo se crean al activar estas funciones.",
   "ArgusInstalling": "Instalando Argus…",
   "ArgusUpdating": "Actualizando Argus…",
   "ArgusInstalled": "Argus está instalado",

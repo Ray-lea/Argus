@@ -619,8 +619,9 @@ FunctionEnd
 Var ArgusOldVersion
 Var ArgusCompare ; 2: not installed; 1: upgrade; 0: same version; -1: newer installed
 Var ArgusLocationText
-Var ArgusChangeLink
-Var ArgusNoteText
+Var ArgusInfoIcon ; after the location outside Program Files (ArgusPlaceNote)
+Var ArgusInfoFont
+Var ArgusTip
 
 Function ArgusDetect
   StrCpy $ArgusCompare 2
@@ -680,18 +681,23 @@ Function ArgusPageMain
   IntOp $3 $ArgusWidth - 120
   !insertmacro ArgusControl $ArgusLocationText dialog STATIC ${ARGUS_PATH} 0 24 $2 $3 20 "$(ArgusLocation)" $ArgusFontSmall
   !insertmacro ArgusPaint $ArgusLocationText ink3
-  StrCpy $ArgusChangeLink 0
   ${If} $ArgusCompare = 2
     IntOp $3 $ArgusWidth - 88
-    !insertmacro ArgusControl $ArgusChangeLink dialog LINK ${__NSD_Link_STYLE} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
-    !insertmacro ArgusPaint $ArgusChangeLink link
-    ${NSD_OnClick} $ArgusChangeLink ArgusChangeLocation
+    !insertmacro ArgusControl $1 dialog LINK ${__NSD_Link_STYLE} 0 $3 $2 64 20 "$(ArgusChange)" $ArgusFontSmall
+    !insertmacro ArgusPaint $1 link
+    ${NSD_OnClick} $1 ArgusChangeLocation
   ${EndIf}
-  ; Under it, for a folder outside Program Files: what goes to Program Files
-  ; anyway (ArgusPlaceNote).
-  IntOp $2 $ArgusHeight - 38
-  !insertmacro ArgusControl $ArgusNoteText dialog STATIC ${ARGUS_TEXT} 0 24 $2 $ArgusInner 32 "$(ArgusProgramFilesNote)" $ArgusFontSmall
-  !insertmacro ArgusPaint $ArgusNoteText ink3
+  ; After the location, for a folder outside Program Files: an info glyph
+  ; (Segoe MDL2 Assets, in Windows 10 and 11) whose tooltip says what stays
+  ; in Program Files. ArgusPlaceNote shows or hides it.
+  ${ArgusScale} $R0 12
+  IntOp $R0 0 - $R0
+  System::Call 'gdi32::CreateFontW(i R0, i 0, i 0, i 0, i 400, i 0, i 0, i 0, i 1, i 0, i 0, i 5, i 0, w "Segoe MDL2 Assets") p .s'
+  Pop $ArgusInfoFont
+  IntOp $3 $2 + 3
+  !insertmacro ArgusControl $ArgusInfoIcon dialog STATIC ${ARGUS_LABEL} 0 24 $3 16 16 "${U+E946}" $ArgusInfoFont
+  !insertmacro ArgusPaint $ArgusInfoIcon ink3
+  Call ArgusCreateTip
   Call ArgusPlaceNote
 
   Call ArgusHideButtons
@@ -699,30 +705,64 @@ Function ArgusPageMain
   Call ArgusReleaseButton
 FunctionEnd
 
+; A tooltip over the info glyph and the location line, wrapped to most of the
+; page's width, dark with the dark theme. TTF_IDISHWND | TTF_SUBCLASS: the
+; controls (SS_NOTIFY) are the tools and pass the tooltip their mouse input.
+Function ArgusCreateTip
+  ; WS_EX_TOPMOST; WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP; CW_USEDEFAULT.
+  System::Call 'user32::CreateWindowExW(i 0x8, w "tooltips_class32", p 0, i 0x80000003, i 0x80000000, i 0x80000000, i 0x80000000, i 0x80000000, p $HWNDPARENT, p 0, p 0, p 0) p .s'
+  Pop $ArgusTip
+  ${If} $ArgusDark = 1
+    System::Call 'uxtheme::SetWindowTheme(p $ArgusTip, w "DarkMode_Explorer", p 0)'
+  ${EndIf}
+  ${ArgusScale} $R0 360
+  SendMessage $ArgusTip 0x418 0 $R0 ; TTM_SETMAXTIPWIDTH
+  SendMessage $ArgusTip 0x403 2 30000 ; TTM_SETDELAYTIME, TTDT_AUTOPOP
+  StrCpy $R1 "$(ArgusProgramFilesNote)"
+  System::Call 'user32::GetParent(p $ArgusInfoIcon) p .R2'
+  ${ForEach} $R3 0 1 + 1
+    ${If} $R3 = 0
+      StrCpy $R4 $ArgusInfoIcon
+    ${Else}
+      StrCpy $R4 $ArgusLocationText
+    ${EndIf}
+    ; TOOLINFOW: cbSize, uFlags, hwnd, uId, rect, hinst, lpszText, lParam, lpReserved.
+    System::Call '*(&l4, i 0x11, p R2, p R4, i 0, i 0, i 0, i 0, p 0, w R1, p 0, p 0) p .R5'
+    SendMessage $ArgusTip 0x432 0 $R5 ; TTM_ADDTOOLW
+    System::Free $R5
+  ${Next}
+FunctionEnd
+
 ; The components that run as administrator or SYSTEM (the privileged service,
 ; administrator startup and the sensor driver) are copied to Program Files
 ; whatever the install folder: elsewhere a standard user could replace them.
-; For a folder outside it, the note says so and the location line moves up
-; above it; otherwise the page shows the location line alone.
+; For a folder outside it, the info glyph follows the location's text, which
+; is shortened (with an ellipsis) to leave it room, and the tooltip is on.
 Function ArgusPlaceNote
   StrCpy $0 "$PROGRAMFILES64\"
   StrLen $1 $0
   StrCpy $1 "$INSTDIR\" $1
-  IntOp $2 $ArgusHeight - 40
+  IntOp $3 $ArgusWidth - 120 ; the location line's width
   ${If} $1 == $0 ; StrCmp ignores case, as paths do
-    ShowWindow $ArgusNoteText ${SW_HIDE}
+    ShowWindow $ArgusInfoIcon ${SW_HIDE}
+    SendMessage $ArgusTip 0x401 0 0 ; TTM_ACTIVATE
   ${Else}
-    IntOp $2 $ArgusHeight - 62
-    ShowWindow $ArgusNoteText ${SW_SHOW}
+    IntOp $3 $3 - 22
+    StrCpy $R5 "$(ArgusLocation)"
+    !insertmacro ArgusTextWidth $4 "$R5" $ArgusFontSmall
+    IntOp $4 $4 + 2
+    ${IfThen} $4 > $3 ${|} StrCpy $4 $3 ${|}
+    IntOp $4 $4 + 28 ; the left margin and a gap
+    IntOp $5 $ArgusHeight - 37
+    ${ArgusScale} $4 $4
+    ${ArgusScale} $5 $5
+    System::Call 'user32::SetWindowPos(p $ArgusInfoIcon, p 0, i r4, i r5, i 0, i 0, i 0x15)'
+    ShowWindow $ArgusInfoIcon ${SW_SHOW}
+    SendMessage $ArgusTip 0x401 1 0
   ${EndIf}
-  ${ArgusScale} $1 24
-  ${ArgusScale} $2 $2
-  System::Call 'user32::SetWindowPos(p $ArgusLocationText, p 0, i r1, i r2, i 0, i 0, i 0x15)'
-  ${If} $ArgusChangeLink <> 0
-    IntOp $1 $ArgusWidth - 88
-    ${ArgusScale} $1 $1
-    System::Call 'user32::SetWindowPos(p $ArgusChangeLink, p 0, i r1, i r2, i 0, i 0, i 0x15)'
-  ${EndIf}
+  ${ArgusScale} $3 $3
+  ${ArgusScale} $4 20
+  System::Call 'user32::SetWindowPos(p $ArgusLocationText, p 0, i 0, i 0, i r3, i r4, i 0x16)'
 FunctionEnd
 
 Function ArgusPageMainLeave

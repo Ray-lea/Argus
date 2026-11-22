@@ -11,7 +11,7 @@
   "ArgusLocation": "Install location: {installDir}",
   "ArgusChange": "Change",
   "ArgusChooseFolder": "Choose the folder to install Argus in",
-  "ArgusProgramFilesNote": "When enabled, files for the privileged service, “Run as administrator” and kernel sensors are kept in {programFiles}, which only administrators can change.",
+  "ArgusProgramFilesNote": "For security, files for the privileged service, “Run as administrator” and kernel sensors are still kept in {programFiles}. They are created only when these features are turned on.",
   "ArgusInstalling": "Installing Argus…",
   "ArgusUpdating": "Updating Argus…",
   "ArgusInstalled": "Argus is installed",
