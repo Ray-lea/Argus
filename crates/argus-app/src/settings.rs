@@ -2,6 +2,12 @@
 //! theme, hotkey, close behavior, autostart, process rules, history recording,
 //! updates and what a new version shows first, onboarding), persisted as JSON
 //! in the app config dir.
+//!
+//! A save writes only what differs from the defaults (`saved`): a setting
+//! never changed follows the default of whichever version reads it, so a
+//! changed default needs no migration. Files earlier versions wrote in full
+//! shrink to that with their next save, and every version saves on its first
+//! start (`seen_version`).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -605,6 +611,9 @@ pub enum UpdateRoute {
     Proxy,
 }
 
+/// Groups of settings in it (the monitors, what history records) are saved
+/// without their defaults too: their structs read a missing field as its
+/// default (`#[serde(default)]`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -809,7 +818,8 @@ impl Settings {
     }
 
     /// Brings settings saved by an older version up to date, in memory; they
-    /// are written back with the next change.
+    /// are written back with the next change. It runs with every load, so it
+    /// only puts right what no version saves on purpose.
     fn migrate(&mut self) {
         if !matches!(self.history_processes, 0 | 20 | 40) {
             self.history_processes = 20;
@@ -886,10 +896,33 @@ impl SettingsStore {
         let mut s = self.current.lock().unwrap();
         let mut next = s.clone();
         f(&mut next);
-        write(&self.path, &serde_json::to_vec_pretty(&next)?)?;
+        write(&self.path, &saved(&next)?)?;
         *s = next;
         Ok(s.clone())
     }
+}
+
+/// The file's contents for `settings`: what differs from the defaults,
+/// within groups of settings as well.
+fn saved(settings: &Settings) -> serde_json::Result<Vec<u8>> {
+    let mut value = serde_json::to_value(settings)?;
+    without_defaults(&mut value, &serde_json::to_value(Settings::default())?);
+    serde_json::to_vec_pretty(&value)
+}
+
+fn without_defaults(value: &mut serde_json::Value, default: &serde_json::Value) {
+    let (serde_json::Value::Object(fields), serde_json::Value::Object(defaults)) = (value, default)
+    else {
+        return;
+    };
+    fields.retain(|name, field| match defaults.get(name) {
+        Some(default) if field == default => false,
+        Some(default) => {
+            without_defaults(field, default);
+            true
+        }
+        None => true,
+    });
 }
 
 /// The saved settings; None means defaults. Whatever stands in the way is
@@ -1342,6 +1375,76 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("argus-settings-{id:?}"));
         std::fs::create_dir(&directory).unwrap();
         directory
+    }
+
+    #[test]
+    fn saves_keep_only_what_differs_from_the_defaults() {
+        let dir = scratch();
+        let path = dir.join("settings.json");
+        // A file an earlier version wrote in full, defaults and all.
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "language": "system", "theme": "dark", "onboarding": 1,
+                "seenVersion": "0.5.0", "closeToTray": true, "minimizedInterval": 5000,
+                "trayInterval": 30000, "hotkey": "Ctrl+Alt+Escape", "hotkeyEnabled": true,
+                "rules": [], "history": true, "kernelSensors": false, "updateCheck": true,
+                "updateChannel": "stable", "updateRoute": "auto",
+                "updateProxy": crate::config::PROXY_PRESETS[0], "whatsNew": true,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = SettingsStore::load(path.clone());
+        store
+            .update(|s| {
+                s.seen_version = "0.6.0".into();
+                s.history_keep_days = None;
+                s.desktop_monitor.locked = true;
+                s.taskbar_monitor.style = TaskbarStyle::Figures;
+                s.history_record.sensors = false;
+            })
+            .unwrap();
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            file,
+            serde_json::json!({
+                "theme": "dark", "onboarding": 1, "seenVersion": "0.6.0", "trayInterval": 30000,
+                "historyKeepDays": null,
+                "desktopMonitor": {"locked": true},
+                "taskbarMonitor": {"style": "figures"},
+                "historyRecord": {"sensors": false},
+            })
+        );
+        // What was left out reads back as the defaults, inside groups too.
+        let again = SettingsStore::load(path).get();
+        assert_eq!(
+            serde_json::to_value(&again).unwrap(),
+            serde_json::to_value(store.get()).unwrap()
+        );
+        assert_eq!(again.history_keep_days, None);
+        assert_eq!(again.history_keep_bytes, HistoryLimit::default().bytes);
+        assert!(again.desktop_monitor.locked && again.desktop_monitor.topmost);
+        assert_eq!(
+            again.taskbar_monitor.metrics,
+            TaskbarMonitor::default().metrics
+        );
+        assert!(!again.history_record.sensors && again.history_record.disks);
+        // Every group reads a missing field as its default.
+        assert_eq!(
+            serde_json::from_str::<DesktopMonitor>("{}").unwrap(),
+            DesktopMonitor::default()
+        );
+        assert_eq!(
+            serde_json::from_str::<TaskbarMonitor>("{}").unwrap(),
+            TaskbarMonitor::default()
+        );
+        assert_eq!(
+            serde_json::from_str::<RecordGroups>("{}").unwrap(),
+            RecordGroups::default()
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
