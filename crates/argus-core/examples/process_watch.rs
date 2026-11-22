@@ -211,7 +211,8 @@ fn main() {
     std::thread::sleep(Duration::from_millis(100));
     recorder.record(&collector.sample()).unwrap();
     let view = recorder.view().unwrap();
-    assert_eq!(view.state, WatchState::Exited);
+    assert_eq!(view.live_runs, 0);
+    assert_eq!(view.points.last().unwrap().state, WatchState::Exited);
     if let Some(path) = std::env::args().nth(1) {
         fs::write(path, serde_json::to_vec_pretty(&view).unwrap()).unwrap();
     }
@@ -228,7 +229,7 @@ fn main() {
     recorder.action(WatchAction::Stop).unwrap();
     recorder.action(WatchAction::Delete).unwrap();
     assert!(recorder.view().is_none());
-    assert!(!dir.join("process-watch.jsonl").exists());
+    assert!(!dir.join(argus_core::watch::FILE_NAME).exists());
     competitor.exit();
     drop(history);
     drop(recorder);

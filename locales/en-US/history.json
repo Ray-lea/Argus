@@ -12,12 +12,12 @@
   "off": "History recording is off. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
-    "empty": "Choose “Watch this instance” in the details of a single process to record memory even below the top list.",
-    "start": "Watch this instance",
+    "empty": "Choose “Watch process” from a process’s context menu or details to record memory even below the top list.",
+    "start": "Watch process",
     "target": "Watching {name} (PID {pid})",
     "stop": "Stop recording",
     "delete": "Delete recording",
-    "note": "Records only this instance, for up to 1 hour. Stopping keeps the data. Deleting ends observation and erases the recording.",
+    "note": "Each launch from the same path is recorded separately. Data is kept for up to 7 days. Older data is cleared sooner if storage fills up. Stopping keeps the data. Deleting ends observation and erases the recording. Start observation again after restarting Argus.",
     "metric": {
       "memory": "Private working set",
       "commit": "Private commit"
@@ -39,13 +39,11 @@
       "storage": "The recording could not be read or written. Recording has stopped.",
       "invalid": "The recording is damaged or uses an unsupported format. It can be deleted."
     },
-    "startProgram": "Watch future launches",
     "chooseRun": "Choose a launch",
     "run": "{started} · PID {pid} · {state}",
     "runSummary": "Showing {shown}/{total} launches; {points} saved points in this launch",
     "earlier": "Earlier points",
     "latest": "Latest points",
-    "programNote": "Each launch from the same path is recorded separately. Data is kept for up to 7 days. Older data is cleared sooner if storage fills up. Stopping keeps the data. Deleting ends observation and erases the recording. Start observation again after restarting Argus.",
     "damaged": "Some records are damaged. The affected intervals are blank.",
     "earlierRuns": "Earlier launches",
     "latestRuns": "Latest launches",

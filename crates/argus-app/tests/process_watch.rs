@@ -5,7 +5,7 @@ use argus_app::{
 };
 use argus_core::{
     Collector, MetaStore,
-    watch::{WatchAction, WatchError, WatchMode, WatchRecorder, WatchState, WatchView},
+    watch::{FILE_NAME, WatchAction, WatchError, WatchRecorder, WatchState, WatchView},
 };
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -58,19 +58,17 @@ fn observes_and_deletes_through_the_real_sampler() {
             "no valid observation through sampler"
         );
     }
-    assert_eq!(
-        request(&sampler, &dir, WatchAction::Stop)
-            .unwrap()
-            .unwrap()
-            .state,
-        WatchState::Stopped
-    );
+    let stopped = request(&sampler, &dir, WatchAction::Stop).unwrap().unwrap();
+    assert_eq!(stopped.state, WatchState::Stopped);
+    assert_eq!(stopped.live_runs, 0);
+    assert!(WatchRecorder::storage_bytes(&dir) > 0);
     assert!(
         request(&sampler, &dir, WatchAction::Delete)
             .unwrap()
             .is_none()
     );
-    assert!(!dir.join("process-watch.jsonl").exists());
+    assert!(!dir.join(FILE_NAME).exists());
+    assert_eq!(WatchRecorder::storage_bytes(&dir), 0);
     request(
         &sampler,
         &dir,
@@ -78,55 +76,6 @@ fn observes_and_deletes_through_the_real_sampler() {
             pid: own.pid,
             create_time: own.create_time,
             name: "sampler-owned-test".into(),
-        },
-    )
-    .unwrap();
-    let (clear_tx, clear_rx) = mpsc::channel();
-    sampler.send(Control::ClearHistory(dir.clone(), clear_tx));
-    clear_rx
-        .recv_timeout(Duration::from_secs(15))
-        .unwrap()
-        .unwrap();
-    assert!(
-        request(&sampler, &dir, WatchAction::Status)
-            .unwrap()
-            .is_none()
-    );
-    request(
-        &sampler,
-        &dir,
-        WatchAction::StartProgram {
-            pid: own.pid,
-            create_time: own.create_time,
-            name: "sampler-owned-program".into(),
-        },
-    )
-    .unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(15);
-    loop {
-        let _ = rx.recv_timeout(Duration::from_secs(10)).unwrap();
-        let view = request(&sampler, &dir, WatchAction::Status)
-            .unwrap()
-            .unwrap();
-        assert_eq!(view.mode, WatchMode::Program);
-        if view.points.iter().any(|point| point.memory.is_some()) {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline);
-    }
-    let stopped = request(&sampler, &dir, WatchAction::Stop).unwrap().unwrap();
-    assert_eq!(stopped.state, WatchState::Stopped);
-    assert_eq!(stopped.live_runs, 0);
-    assert!(WatchRecorder::storage_bytes(&dir) > 0);
-    request(&sampler, &dir, WatchAction::Delete).unwrap();
-    assert_eq!(WatchRecorder::storage_bytes(&dir), 0);
-    request(
-        &sampler,
-        &dir,
-        WatchAction::StartProgram {
-            pid: own.pid,
-            create_time: own.create_time,
-            name: "sampler-owned-program".into(),
         },
     )
     .unwrap();

@@ -1399,6 +1399,28 @@ impl Desktop {
             label("processes.menu.addRule"),
             Action::Dialog("ruleScope".into(), json!({"name":text(&row.raw,"name")})),
         ));
+        let watch_target = row
+            .members
+            .iter()
+            .find(|member| number(member, "createTime") > 0.);
+        items.push(
+            MenuItem::new(
+                label("history.watch.start"),
+                Action::Preference(
+                    "watchProcess".into(),
+                    watch_target.map_or(Value::Null, |target| {
+                        json!({
+                            "op": "start",
+                            "pid": target["pid"],
+                            "createTime": target["createTime"],
+                            "name": target["name"],
+                        })
+                    }),
+                ),
+            )
+            .icon("EyeIcon")
+            .disabled(watch_target.is_none()),
+        );
         items.push(MenuItem::separator());
         if row.expandable && self.view != "tree" {
             items.push(MenuItem::new(

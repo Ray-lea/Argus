@@ -462,25 +462,60 @@ impl Desktop {
         if let Some(company) = process["company"].as_str().filter(|c| !c.is_empty()) {
             subtitle = subtitle.child(company.to_owned());
         }
+        let watch_target = if picked.group {
+            picked
+                .members
+                .iter()
+                .copied()
+                .find(|member| number(member, "createTime") > 0.)
+        } else {
+            (number(process, "createTime") > 0.).then_some(process)
+        };
         let controls = div()
             .flex()
+            .flex_col()
+            .items_end()
             .gap(px(2.))
-            .child(self.details_icon_button(
-                "copy-process-details",
-                "CopyIcon",
-                label("details.copy.action"),
-                Action::CopyDetails(key.to_owned()),
-                px(14.),
-                cx,
-            ))
-            .child(self.details_icon_button(
-                "deselect-process",
-                "DismissIcon",
-                label("details.deselect"),
-                Action::Select(String::new()),
-                px(14.),
-                cx,
-            ));
+            .child(
+                div()
+                    .flex()
+                    .gap(px(2.))
+                    .child(self.details_icon_button(
+                        "copy-process-details",
+                        "CopyIcon",
+                        label("details.copy.action"),
+                        Action::CopyDetails(key.to_owned()),
+                        px(14.),
+                        cx,
+                    ))
+                    .child(self.details_icon_button(
+                        "deselect-process",
+                        "DismissIcon",
+                        label("details.deselect"),
+                        Action::Select(String::new()),
+                        px(14.),
+                        cx,
+                    )),
+            )
+            .children(watch_target.map(|target| {
+                self.details_icon_button(
+                    "details-watch",
+                    "EyeIcon",
+                    label("history.watch.start"),
+                    Action::Preference(
+                        "watchProcess".into(),
+                        json!({
+                            "op": "start",
+                            "pid": target["pid"],
+                            "createTime": target["createTime"],
+                            "name": target["name"],
+                        }),
+                    ),
+                    px(14.),
+                    cx,
+                )
+                .child(self.watch_anchor("details-watch"))
+            }));
         let head = self.details_head(
             self.details_process_icon(process, window, cx),
             model::title(process),
@@ -889,28 +924,7 @@ impl Desktop {
                 .hover(move |style| style.bg(control_hover)),
             );
         }
-        let mut actions = div().flex_none().flex().flex_col();
-        if !picked.group && number(process, "createTime") > 0. {
-            actions = actions.child(div().px(px(16.)).pt(px(8.)).child(
-                self.btn_small("details-watch", label("history.watch.start"), None, widgets::Tone::Plain)
-                    .child(self.watch_anchor("details-watch"))
-                    .w_full()
-                    .on_click(cx.listener({
-                        let target = json!({"op":"start","pid":process["pid"],"createTime":process["createTime"],"name":process["name"]});
-                        move |this, _, window, cx| this.preference("watchProcess",target.clone(),window,cx)
-                    }))
-            ));
-            actions = actions.child(div().px(px(16.)).pt(px(8.)).child(
-                self.btn_small("details-watch-program", label("history.watch.startProgram"), None, widgets::Tone::Plain)
-                    .child(self.watch_anchor("details-watch-program"))
-                    .w_full()
-                    .on_click(cx.listener({
-                        let target = json!({"op":"startProgram","pid":process["pid"],"createTime":process["createTime"],"name":process["name"]});
-                        move |this, _, window, cx| this.preference("watchProcess",target.clone(),window,cx)
-                    }))
-            ));
-        }
-        actions.child(row).into_any_element()
+        row.into_any_element()
     }
 
     fn details_exited(&self, cx: &mut Context<Self>) -> AnyElement {

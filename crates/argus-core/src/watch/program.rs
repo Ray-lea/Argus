@@ -1,6 +1,6 @@
-//! Opt-in observation of future instances, with one validated handle per live instance.
+//! Opt-in process observation, with one validated handle per live instance.
 use super::{
-    SAMPLE_MS, WatchError, WatchMode, WatchPoint, WatchRun, WatchState, WatchView,
+    SAMPLE_MS, WatchError, WatchPoint, WatchRun, WatchState, WatchView,
     identity::Instance,
     store::{self, Metadata, Store},
 };
@@ -37,7 +37,8 @@ pub(super) struct ProgramWatch {
 impl ProgramWatch {
     pub fn start(dir: &Path, pid: u32, created: i64, name: String) -> Result<Self, WatchError> {
         let instance = Instance::open(pid, created)?;
-        let program = instance.program()?;
+        // Image identity is optional: without it, only this live instance is observed.
+        let program = instance.program().ok();
         std::fs::create_dir_all(dir).map_err(|_| WatchError::Storage)?;
         let store = Store::create(&dir.join(store::FILE_NAME), Metadata { program, name })?;
         Ok(Self {
@@ -94,6 +95,7 @@ impl ProgramWatch {
         let state = match store.entries.back().map(|e| e.point.state) {
             Some(WatchState::Stopped) => WatchState::Stopped,
             Some(WatchState::Limit) => WatchState::Limit,
+            Some(WatchState::Exited) if store.meta.program.is_none() => WatchState::Exited,
             _ => WatchState::Interrupted,
         };
         Ok(Self {
@@ -146,6 +148,11 @@ impl ProgramWatch {
         self.run_offset = offset.min(store::CAPACITY - 1);
     }
 
+    #[cfg(test)]
+    pub(super) fn clear_sample_timer_for_test(&mut self) {
+        self.last = None;
+    }
+
     fn terminal(&mut self, key: Key, state: WatchState, ts: i64) -> Result<(), WatchError> {
         self.store.push(
             key.0,
@@ -196,55 +203,54 @@ impl ProgramWatch {
         if self.last_ts.is_some_and(|ts| snapshot.timestamp < ts) {
             return self.stop(WatchState::Interrupted, self.last_ts.unwrap());
         }
-        let present: HashSet<_> = snapshot
-            .processes
-            .iter()
-            .map(|row| (row.pid, row.create_time))
-            .collect();
-        self.seen
-            .retain(|key| present.contains(key) || self.handles.contains_key(key));
-        self.unconfirmed.retain(|key, attempted| {
-            if !present.contains(key) {
-                return false;
+        if let Some(target_program) = self.store.meta.program.clone() {
+            let present: HashSet<_> = snapshot
+                .processes
+                .iter()
+                .map(|row| (row.pid, row.create_time))
+                .collect();
+            self.seen
+                .retain(|key| present.contains(key) || self.handles.contains_key(key));
+            self.unconfirmed.retain(|key, attempted| {
+                if !present.contains(key) {
+                    return false;
+                }
+                if attempted.elapsed() >= Duration::from_secs(60) {
+                    self.seen.remove(key);
+                    return false;
+                }
+                true
+            });
+            let basename = target_program
+                .display_path
+                .rsplit(['\\', '/'])
+                .next()
+                .unwrap_or("");
+            for row in &snapshot.processes {
+                let key = (row.pid, row.create_time);
+                // The basename only reduces queries. Final identity always comes from the validated handle.
+                if row.create_time <= 0
+                    || !row.name.eq_ignore_ascii_case(basename)
+                    || !self.seen.insert(key)
+                {
+                    continue;
+                }
+                let Ok(instance) = Instance::open(row.pid, row.create_time) else {
+                    self.unconfirmed.insert(key, Instant::now());
+                    continue;
+                };
+                let Ok(identity) = instance.program() else {
+                    self.unconfirmed.insert(key, Instant::now());
+                    continue;
+                };
+                if !target_program.same_program(&identity) {
+                    continue;
+                }
+                if self.handles.len() == MAX_ACTIVE {
+                    return self.stop(WatchState::Limit, snapshot.timestamp);
+                }
+                self.handles.insert(key, instance.into_handle());
             }
-            if attempted.elapsed() >= Duration::from_secs(60) {
-                self.seen.remove(key);
-                return false;
-            }
-            true
-        });
-        let basename = self
-            .store
-            .meta
-            .program
-            .display_path
-            .rsplit(['\\', '/'])
-            .next()
-            .unwrap_or("");
-        for row in &snapshot.processes {
-            let key = (row.pid, row.create_time);
-            // The basename only reduces queries. Final identity always comes from the validated handle.
-            if row.create_time <= 0
-                || !row.name.eq_ignore_ascii_case(basename)
-                || !self.seen.insert(key)
-            {
-                continue;
-            }
-            let Ok(instance) = Instance::open(row.pid, row.create_time) else {
-                self.unconfirmed.insert(key, Instant::now());
-                continue;
-            };
-            let Ok(identity) = instance.program() else {
-                self.unconfirmed.insert(key, Instant::now());
-                continue;
-            };
-            if !self.store.meta.program.same_program(&identity) {
-                continue;
-            }
-            if self.handles.len() == MAX_ACTIVE {
-                return self.stop(WatchState::Limit, snapshot.timestamp);
-            }
-            self.handles.insert(key, instance.into_handle());
         }
         let terminal: Vec<_> = self
             .handles
@@ -257,9 +263,16 @@ impl ProgramWatch {
                 },
             )
             .collect();
+        let mut ended_state = None;
         for (key, state) in terminal {
             self.terminal(key, state, snapshot.timestamp)?;
             self.handles.remove(&key);
+            ended_state = Some(state);
+        }
+        if self.store.meta.program.is_none() && self.handles.is_empty() {
+            self.active = false;
+            self.state = ended_state.unwrap_or(WatchState::Exited);
+            return self.store.flush();
         }
         if self
             .last
@@ -408,8 +421,7 @@ impl ProgramWatch {
             pid: key.0,
             create_time: key.1,
             name: self.store.meta.name.clone(),
-            program: Some(self.store.meta.program.clone()),
-            mode: WatchMode::Program,
+            program: self.store.meta.program.clone(),
             state: self.state,
             points,
             runs,
@@ -448,10 +460,10 @@ mod tests {
             &dir.join(store::FILE_NAME),
             Metadata {
                 name: "same.exe".into(),
-                program: super::super::ProgramIdentity {
+                program: Some(super::super::ProgramIdentity {
                     native_path: "\\Device\\disk\\same.exe".into(),
                     display_path: "C:\\same.exe".into(),
-                },
+                }),
             },
         )
         .unwrap();

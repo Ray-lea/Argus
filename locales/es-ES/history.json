@@ -12,12 +12,12 @@
   "off": "El registro del historial está desactivado. <link>Abrir Configuración</link>",
   "watch": {
     "title": "Observación de proceso",
-    "empty": "Elija «Observar esta instancia» en los detalles de un solo proceso para registrar memoria fuera de la lista principal.",
-    "start": "Observar esta instancia",
+    "empty": "Elija «Observar proceso» en el menú contextual o en los detalles de un proceso para registrar memoria fuera de la lista principal.",
+    "start": "Observar proceso",
     "target": "Observando {name} (PID {pid})",
     "stop": "Detener registro",
     "delete": "Eliminar registro",
-    "note": "Solo se registra esta instancia, durante un máximo de 1 hora. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro.",
+    "note": "Cada ejecución desde la misma ruta se registra por separado. Los datos se conservan hasta 7 días. Si se alcanza el límite de almacenamiento, se borran antes los más antiguos. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro. Tras reiniciar Argus, se debe iniciar otra observación.",
     "metric": {
       "memory": "Conjunto de trabajo privado",
       "commit": "Memoria privada comprometida"
@@ -39,13 +39,11 @@
       "storage": "No se pudo leer o escribir el registro. Se ha detenido.",
       "invalid": "El registro está dañado o su formato no es compatible. Puede eliminarlo."
     },
-    "startProgram": "Observar próximos inicios",
     "chooseRun": "Elegir un inicio",
     "run": "{started} · PID {pid} · {state}",
     "runSummary": "Se muestran {shown}/{total} inicios; {points} puntos guardados en este inicio",
     "earlier": "Puntos anteriores",
     "latest": "Últimos puntos",
-    "programNote": "Cada ejecución desde la misma ruta se registra por separado. Los datos se conservan hasta 7 días. Si se alcanza el límite de almacenamiento, se borran antes los más antiguos. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro. Tras reiniciar Argus, se debe iniciar otra observación.",
     "damaged": "Algunos registros están dañados. Los intervalos afectados quedan en blanco.",
     "earlierRuns": "Inicios anteriores",
     "latestRuns": "Últimos inicios",

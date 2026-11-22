@@ -1620,7 +1620,7 @@ mod tests {
         let created = sample().unwrap();
         ask(
             "watch_process",
-            json!({"action":{"op":"startProgram","pid":std::process::id(),"createTime":created,"name":"test"}}),
+            json!({"action":{"op":"start","pid":std::process::id(),"createTime":created,"name":"test"}}),
         );
         std::fs::create_dir_all(&other).unwrap();
         let existing = std::fs::read_dir(&default)

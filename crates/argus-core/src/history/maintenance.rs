@@ -267,11 +267,7 @@ pub fn move_records<T>(
                 for entry in entries? {
                     let entry = entry?;
                     let name = entry.file_name();
-                    if owned_day(&name).is_some()
-                        || matches!(
-                            name.to_str(),
-                            Some("process-watch.jsonl" | "program-watch.v1.bin")
-                        )
+                    if owned_day(&name).is_some() || name.to_str() == Some(crate::watch::FILE_NAME)
                     {
                         if !entry.file_type()?.is_file() {
                             return Err(invalid());

@@ -87,7 +87,7 @@ impl Desktop {
                 .into_any_element();
         }
         let state = text(watch, "state");
-        let program_mode = text(watch, "mode") == "program";
+        let has_program = watch["program"].is_object();
         let points = values(&watch["points"]);
         let start = points
             .first()
@@ -173,13 +173,11 @@ impl Desktop {
                 div()
                     .text_size(theme::font(12.))
                     .text_color(p.muted)
-                    .child(label(
-                        &if program_mode && active && watch["liveRuns"] == 0 {
-                            "history.watch.waiting".into()
-                        } else {
-                            format!("history.watch.state.{state}")
-                        },
-                    )),
+                    .child(label(&if has_program && active && watch["liveRuns"] == 0 {
+                        "history.watch.waiting".into()
+                    } else {
+                        format!("history.watch.state.{state}")
+                    })),
             )
             .child(
                 self.btn_small("watch-stop", label("history.watch.stop"), None, Tone::Plain)
@@ -202,87 +200,78 @@ impl Desktop {
                 })),
             );
         card = card.child(header).child(legend);
-        if program_mode {
-            let runs = values(&watch["runs"]);
-            let options = runs
-                .iter()
-                .map(|run| {
-                    tr!(
-                        "history.watch.run",
-                        started = date_time(number(run, "createTime")),
-                        pid = run["pid"],
-                        state = label(&format!("history.watch.state.{}", text(run, "state")))
-                    )
-                })
-                .collect();
-            let selected = runs.iter().position(|run| {
-                run["pid"] == watch["pid"] && run["createTime"] == watch["createTime"]
-            });
-            let keys: Vec<_> = runs
-                .iter()
-                .map(
-                    |run| json!({"op":"selectRun","pid":run["pid"],"createTime":run["createTime"]}),
+        let runs = values(&watch["runs"]);
+        let options = runs
+            .iter()
+            .map(|run| {
+                tr!(
+                    "history.watch.run",
+                    started = date_time(number(run, "createTime")),
+                    pid = run["pid"],
+                    state = label(&format!("history.watch.state.{}", text(run, "state")))
                 )
-                .collect();
-            card = card.child(self.select(
-                "watch-run",
-                label("history.watch.chooseRun"),
-                options,
-                selected,
-                keys.is_empty(),
-                move |this, index, window, cx| {
-                    if let Some(action) = keys.get(index) {
-                        this.preference("watchProcess", action.clone(), window, cx);
-                    }
-                },
-                cx,
-            ));
-            let offset = watch["runOffset"].as_u64().unwrap_or(0);
-            let total = watch["totalRuns"].as_u64().unwrap_or(0);
-            card = card.child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(8.))
-                    .child(
-                        self.btn_small(
-                            "watch-older-runs",
-                            label("history.watch.earlierRuns"),
-                            None,
-                            Tone::Plain,
-                        )
-                        .child(self.watch_anchor("watch-older-runs"))
-                        .disabled(offset + runs.len() as u64 >= total)
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.preference(
-                                    "watchProcess",
-                                    json!({"op":"runs","offset":offset+256}),
-                                    window,
-                                    cx,
-                                )
-                            },
-                        )),
+            })
+            .collect();
+        let selected = runs
+            .iter()
+            .position(|run| run["pid"] == watch["pid"] && run["createTime"] == watch["createTime"]);
+        let keys: Vec<_> = runs
+            .iter()
+            .map(|run| json!({"op":"selectRun","pid":run["pid"],"createTime":run["createTime"]}))
+            .collect();
+        card = card.child(self.select(
+            "watch-run",
+            label("history.watch.chooseRun"),
+            options,
+            selected,
+            keys.is_empty(),
+            move |this, index, window, cx| {
+                if let Some(action) = keys.get(index) {
+                    this.preference("watchProcess", action.clone(), window, cx);
+                }
+            },
+            cx,
+        ));
+        let offset = watch["runOffset"].as_u64().unwrap_or(0);
+        let total = watch["totalRuns"].as_u64().unwrap_or(0);
+        card = card.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(8.))
+                .child(
+                    self.btn_small(
+                        "watch-older-runs",
+                        label("history.watch.earlierRuns"),
+                        None,
+                        Tone::Plain,
                     )
-                    .child(
-                        self.btn_small(
-                            "watch-latest-runs",
-                            label("history.watch.latestRuns"),
-                            None,
-                            Tone::Plain,
+                    .child(self.watch_anchor("watch-older-runs"))
+                    .disabled(offset + runs.len() as u64 >= total)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.preference(
+                            "watchProcess",
+                            json!({"op":"runs","offset":offset+256}),
+                            window,
+                            cx,
                         )
-                        .child(self.watch_anchor("watch-latest-runs"))
-                        .disabled(offset == 0)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preference(
-                                "watchProcess",
-                                json!({"op":"runs","offset":0}),
-                                window,
-                                cx,
-                            )
-                        })),
-                    ),
-            );
+                    })),
+                )
+                .child(
+                    self.btn_small(
+                        "watch-latest-runs",
+                        label("history.watch.latestRuns"),
+                        None,
+                        Tone::Plain,
+                    )
+                    .child(self.watch_anchor("watch-latest-runs"))
+                    .disabled(offset == 0)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.preference("watchProcess", json!({"op":"runs","offset":0}), window, cx)
+                    })),
+                ),
+        );
+        if has_program {
             card = card.child(
                 div()
                     .min_w_0()
@@ -290,75 +279,81 @@ impl Desktop {
                     .text_color(p.muted)
                     .child(text(&watch["program"], "displayPath").to_owned()),
             );
-            card = card.child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(8.))
-                    .child(
-                        div()
-                            .text_size(theme::font(12.))
-                            .text_color(p.muted)
-                            .child(tr!(
-                                "history.watch.runSummary",
-                                shown = runs.len(),
-                                total = watch["totalRuns"],
-                                points = watch["totalPoints"]
-                            )),
-                    )
-                    .child(
-                        self.btn_small(
-                            "watch-earlier",
-                            label("history.watch.earlier"),
-                            None,
-                            Tone::Plain,
-                        )
-                        .child(self.watch_anchor("watch-earlier"))
-                        .disabled(watch["hasEarlier"] != true)
-                        .on_click(cx.listener({
-                            let before = watch["firstSequence"].clone();
-                            move |this, _, window, cx| {
-                                this.preference(
-                                    "watchProcess",
-                                    json!({"op":"page","before":before}),
-                                    window,
-                                    cx,
-                                )
-                            }
-                        })),
-                    )
-                    .child(
-                        self.btn_small(
-                            "watch-latest",
-                            label("history.watch.latest"),
-                            None,
-                            Tone::Plain,
-                        )
-                        .child(self.watch_anchor("watch-latest"))
-                        .disabled(watch["hasLater"] != true)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preference(
-                                "watchProcess",
-                                json!({"op":"page","before":null}),
-                                window,
-                                cx,
-                            )
-                        })),
-                    ),
-            );
-            if watch["damaged"] == true {
-                card = card.child(
+        }
+        card = card.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(8.))
+                .child(
                     div()
                         .text_size(theme::font(12.))
                         .text_color(p.muted)
-                        .child(label("history.watch.damaged")),
-                );
-            }
-            if number(watch, "unconfirmed") > 0. {
-                card = card.child(div().text_size(theme::font(12.)).text_color(p.muted).child(
-                    tr!("history.watch.unconfirmed", count = watch["unconfirmed"]),
-                ));
-            }
+                        .child(tr!(
+                            "history.watch.runSummary",
+                            shown = runs.len(),
+                            total = watch["totalRuns"],
+                            points = watch["totalPoints"]
+                        )),
+                )
+                .child(
+                    self.btn_small(
+                        "watch-earlier",
+                        label("history.watch.earlier"),
+                        None,
+                        Tone::Plain,
+                    )
+                    .child(self.watch_anchor("watch-earlier"))
+                    .disabled(watch["hasEarlier"] != true)
+                    .on_click(cx.listener({
+                        let before = watch["firstSequence"].clone();
+                        move |this, _, window, cx| {
+                            this.preference(
+                                "watchProcess",
+                                json!({"op":"page","before":before}),
+                                window,
+                                cx,
+                            )
+                        }
+                    })),
+                )
+                .child(
+                    self.btn_small(
+                        "watch-latest",
+                        label("history.watch.latest"),
+                        None,
+                        Tone::Plain,
+                    )
+                    .child(self.watch_anchor("watch-latest"))
+                    .disabled(watch["hasLater"] != true)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.preference(
+                            "watchProcess",
+                            json!({"op":"page","before":null}),
+                            window,
+                            cx,
+                        )
+                    })),
+                ),
+        );
+        if watch["damaged"] == true {
+            card = card.child(
+                div()
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .child(label("history.watch.damaged")),
+            );
+        }
+        if number(watch, "unconfirmed") > 0. {
+            card = card.child(
+                div()
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .child(tr!(
+                        "history.watch.unconfirmed",
+                        count = watch["unconfirmed"]
+                    )),
+            );
         }
         if let Some(message) = self.data.get("watchError").and_then(Value::as_str) {
             card = card.child(div().text_size(theme::font(12.)).child(message.to_owned()));
@@ -402,11 +397,7 @@ impl Desktop {
             div()
                 .text_size(theme::font(12.))
                 .text_color(p.muted)
-                .child(label(if program_mode {
-                    "history.watch.programNote"
-                } else {
-                    "history.watch.note"
-                })),
+                .child(label("history.watch.note")),
         );
         for point in points
             .iter()

@@ -1,4 +1,4 @@
-//! Fixed-size rolling records. Legacy single-run JSONL is never rewritten.
+//! Fixed-size rolling records for process observation.
 use super::{ProgramIdentity, WatchError, WatchPoint, WatchState};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,7 +8,7 @@ use std::{
     path::Path,
 };
 
-pub(super) const FILE_NAME: &str = "program-watch.v1.bin";
+pub const FILE_NAME: &str = "program-watch.v1.bin";
 const MAGIC: &[u8; 8] = b"ARGWCH01";
 const HEADER: u64 = 1 << 20;
 const RECORD: u64 = 64;
@@ -19,7 +19,8 @@ pub const MAX_BYTES: u64 = HEADER + CAPACITY as u64 * RECORD;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Metadata {
-    pub program: ProgramIdentity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub program: Option<ProgramIdentity>,
     pub name: String,
 }
 
@@ -123,7 +124,10 @@ impl Entry {
 impl Store {
     pub fn create(path: &Path, meta: Metadata) -> Result<Self, WatchError> {
         let encoded = serde_json::to_vec(&meta).map_err(|_| WatchError::Invalid)?;
-        if !meta.program.valid()
+        if meta
+            .program
+            .as_ref()
+            .is_some_and(|program| !program.valid())
             || meta.name.is_empty()
             || meta.name.len() > 1024
             || encoded.len() as u64 > HEADER - 16
@@ -182,7 +186,13 @@ impl Store {
             return Err(WatchError::Invalid);
         }
         let meta: Metadata = serde_json::from_slice(&data).map_err(|_| WatchError::Invalid)?;
-        if !meta.program.valid() || meta.name.is_empty() || meta.name.len() > 1024 {
+        if meta
+            .program
+            .as_ref()
+            .is_some_and(|program| !program.valid())
+            || meta.name.is_empty()
+            || meta.name.len() > 1024
+        {
             return Err(WatchError::Invalid);
         }
         file.seek(SeekFrom::Start(HEADER))
@@ -311,10 +321,10 @@ mod tests {
     fn meta() -> Metadata {
         Metadata {
             name: "same.exe".into(),
-            program: ProgramIdentity {
+            program: Some(ProgramIdentity {
                 native_path: "\\Device\\disk\\one\\same.exe".into(),
                 display_path: "C:\\one\\same.exe".into(),
-            },
+            }),
         }
     }
     fn point(ts: i64, value: u64) -> WatchPoint {

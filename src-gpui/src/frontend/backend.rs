@@ -154,12 +154,7 @@ impl Desktop {
                     self.data.remove("watchError");
                     self.data.insert("processWatch".into(), value.clone());
                 }
-                if pending.command == "watch_process"
-                    && matches!(
-                        pending.args["action"]["op"].as_str(),
-                        Some("start" | "startProgram")
-                    )
-                {
+                if pending.command == "watch_process" && pending.args["action"]["op"] == "start" {
                     self.act(Action::Page("history".into()), window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {

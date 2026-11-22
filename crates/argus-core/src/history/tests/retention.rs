@@ -32,7 +32,7 @@ fn limits_evict_whole_oldest_days_and_protect_writer_and_today() {
                 fs::write(day_path(&dir, day).with_extension(ext), [0; 10]).unwrap();
             }
         }
-        fs::write(dir.join("process-watch.jsonl"), [0; 5]).unwrap();
+        fs::write(dir.join(crate::watch::FILE_NAME), [0; 5]).unwrap();
         fs::write(dir.join("notes"), [0; 200]).unwrap();
         maintenance::maintain_at(
             &dir,
@@ -191,8 +191,7 @@ fn move_validates_and_rolls_back_collisions_and_failed_settings_writes() {
         "2026-01-01.proc",
         "2026-01-01.roll",
         "2026-01-01.measure",
-        "process-watch.jsonl",
-        "program-watch.v1.bin",
+        crate::watch::FILE_NAME,
     ];
     for name in files {
         fs::write(old.join(name), name).unwrap();
