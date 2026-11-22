@@ -44,9 +44,6 @@ pub(crate) const IMAGE: &str = "argus-service.exe";
 const STEM: &str = "argus-service";
 /// A new executable, written in full before it takes `IMAGE`'s place.
 const STAGED: &str = "argus-service.new.exe";
-/// `IMAGE` as an update found it, until the new one has started: what the
-/// update goes back to when it does not. `layout::aside` names it so.
-const BACKUP: &str = "argus-service.old.exe";
 /// Where the SCM keeps its database.
 const SERVICES_KEY: &str = r"SYSTEM\CurrentControlSet\Services";
 /// What `manage` and the elevated helper accept.
@@ -795,8 +792,8 @@ pub(crate) fn new_protected_file(path: &Path) -> Result<fs::File> {
 }
 
 /// The service's executables in its folder: `IMAGE`, a new one on its way
-/// there (`STAGED`), the one it replaced (`BACKUP`), and copies of Argus 0.5
-/// and earlier.
+/// there (`STAGED`), the one it replaced (`argus-service.old.exe`, see
+/// `swap`), and copies of Argus 0.5 and earlier.
 fn image_name(name: &str) -> bool {
     name.eq_ignore_ascii_case(IMAGE)
         || name.eq_ignore_ascii_case(STAGED)
@@ -839,9 +836,10 @@ trait Steps {
     fn path(&self, name: &str) -> PathBuf;
     /// Writes this executable in full as `path`, in place of a file there.
     fn write(&mut self, path: &Path) -> Result<()>;
-    /// Gives the file `from` names the name `to` as well, in place of a file
-    /// there.
-    fn link(&mut self, from: &Path, to: &Path) -> Result<()>;
+    /// Gives the file `image` names another name as well, and returns it:
+    /// `argus-service.old.exe`, or the next `layout::aside` name while
+    /// something holds that one.
+    fn backup(&mut self, image: &Path) -> Result<PathBuf>;
     /// Renames `from` to `to`, in place of a file there, in one step: `to`
     /// names a whole file throughout, the one before or `from`'s.
     fn rename(&mut self, from: &Path, to: &Path) -> Result<()>;
@@ -984,12 +982,11 @@ impl Steps for Machine<'_> {
         write_binary(path)
     }
 
-    fn link(&mut self, from: &Path, to: &Path) -> Result<()> {
-        remove_file(to)?;
+    fn backup(&mut self, image: &Path) -> Result<PathBuf> {
         crate::util::file_stage(
             "service executable backup link",
-            to,
-            fs::hard_link(from, to).map_err(io),
+            image,
+            crate::layout::link_aside(self.dir, image, STEM),
         )
     }
 
@@ -1101,28 +1098,33 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 /// Replaces the registered `image` with `staged`, the registration naming it
-/// all along. The image it replaces keeps the name `BACKUP` until the new one
-/// has started, and comes back when it does not. An image that is gone is
-/// nothing to go back to: the new one stays, and may start the next time.
+/// all along. The image it replaces keeps another name (`backup`) until the
+/// new one has started, and comes back when it does not. An image that is
+/// gone is nothing to go back to: the new one stays, and may start the next
+/// time.
 fn swap(system: &mut impl Steps, image: &Path, staged: &Path, was_running: bool) -> Result<()> {
-    let backup = system.path(BACKUP);
     system.stop()?;
-    let backed_up = system.present(image);
-    let swapped = if backed_up {
-        system.link(image, &backup)
-    } else {
-        Ok(())
-    }
-    .and_then(|()| system.rename(staged, image));
-    if let Err(error) = swapped {
-        // `image` is as it was.
-        if was_running {
-            system.start()?;
+    let swapped = (|| {
+        let backup = if system.present(image) {
+            Some(system.backup(image)?)
+        } else {
+            None
+        };
+        system.rename(staged, image)?;
+        Ok(backup)
+    })();
+    let backup = match swapped {
+        Ok(backup) => backup,
+        Err(error) => {
+            // `image` is as it was.
+            if was_running {
+                system.start()?;
+            }
+            return Err(error);
         }
-        return Err(error);
-    }
+    };
     if let Err(error) = system.start() {
-        if backed_up {
+        if let Some(backup) = backup {
             system.stop()?;
             system.rename(&backup, image)?;
             if was_running {
@@ -2052,6 +2054,8 @@ mod tests {
     }
 
     const REFUSED: u32 = 0x00c0_ffee;
+    /// Where `swap` keeps the image it replaces, unless something holds it.
+    const BACKUP: &str = "argus-service.old.exe";
 
     impl World {
         /// A service registered with `image`, for `ACCOUNT`.
@@ -2200,11 +2204,12 @@ mod tests {
             self.survives_a_crash();
             Ok(())
         }
-        fn link(&mut self, from: &Path, to: &Path) -> Result<()> {
-            self.step("link", &[from, to])?;
-            let build = *self.files.get(from).ok_or(2u32)?;
-            self.put(to, build);
-            Ok(())
+        fn backup(&mut self, image: &Path) -> Result<PathBuf> {
+            let to = PathBuf::from(BACKUP);
+            self.step("link", &[image, &to])?;
+            let build = *self.files.get(image).ok_or(2u32)?;
+            self.put(&to, build);
+            Ok(to)
         }
         fn rename(&mut self, from: &Path, to: &Path) -> Result<()> {
             self.step("rename", &[from, to])?;

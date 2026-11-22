@@ -40,10 +40,11 @@ pub(super) trait Steps {
     /// Writes the task's registration to disk.
     fn flush(&mut self) -> Result<()>;
     /// Points this account's shortcuts and sign-in entry at the launcher.
-    fn links(&mut self);
-    /// Deletes what Argus 0.5 or earlier left of the account
-    /// (`retire_legacy`).
-    fn retire(&mut self);
+    /// False when anything could not be changed.
+    fn links(&mut self) -> bool;
+    /// Deletes what Argus 0.5 or earlier left of the account; with
+    /// `forward`, all but its launcher (`retire_legacy`).
+    fn retire(&mut self, forward: bool);
 }
 
 /// `enable`: the task starts the copy, as a grant does; otherwise only the
@@ -80,13 +81,12 @@ pub(super) fn commit(
     // before that goes, the registration has to reach the disk, or a crash
     // could bring back one that names a deleted copy.
     let settled = !steps.legacy() || steps.flush().is_ok();
-    if same_account {
-        // The grant is committed. Optional shortcut/compatibility migration
-        // failures must not report that the working authorization failed.
-        steps.links();
-    }
+    // The grant is committed. Optional shortcut/compatibility migration
+    // failures must not report that the working authorization failed; what
+    // still starts the old launcher keeps it, as another account's does.
+    let followed = same_account && steps.links();
     if settled {
-        steps.retire();
+        steps.retire(!followed);
     }
     Ok(())
 }
@@ -103,7 +103,6 @@ pub(super) struct Runtime<'a> {
     pub previous: Option<(PathBuf, Grant)>,
     pub scheduler: &'a task::Scheduler,
     pub enable: bool,
-    pub same_account: bool,
     /// The grant record to commit.
     pub pending: PathBuf,
     pub swapped: Option<crate::layout::Swapped>,
@@ -214,31 +213,22 @@ impl Steps for Runtime<'_> {
     }
 
     fn flush(&mut self) -> Result<()> {
-        util::stage(
-            "administrator task registration flush",
-            crate::install::flush_key(
-                windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
-                TASK_CACHE,
-            ),
+        if flush_tasks() { Ok(()) } else { Err(1016) }
+    }
+
+    fn links(&mut self) -> bool {
+        let moved = legacy_directory(self.id, self.sid).map(|legacy| legacy.join(LAUNCHER));
+        let moved = moved.as_ref().ok().filter(|moved| moved.is_file());
+        links::retarget(
+            self.id,
+            &self.record.source,
+            &self.dir.join(LAUNCHER),
+            moved.map(PathBuf::as_path),
         )
     }
 
-    fn links(&mut self) {
-        let moved = legacy_directory(self.id, self.sid).map(|legacy| legacy.join(LAUNCHER));
-        let moved = moved.as_ref().ok().filter(|moved| moved.is_file());
-        let _ = util::stage(
-            "administrator shortcut refresh",
-            links::retarget(
-                self.id,
-                &self.record.source,
-                &self.dir.join(LAUNCHER),
-                moved.map(PathBuf::as_path),
-            ),
-        );
-    }
-
-    fn retire(&mut self) {
-        retire_legacy(self.id, self.sid, self.same_account);
+    fn retire(&mut self, forward: bool) {
+        retire_legacy(self.id, self.sid, forward);
     }
 }
 
@@ -266,6 +256,12 @@ mod tests {
         records: Option<&'static str>,
         legacy_records: Option<&'static str>,
         granted: bool,
+        legacy_granted: bool,
+        /// What `retire` left of the earlier folder: only its launcher.
+        forwarder: bool,
+        /// The model stands for a crash right after the step that fails:
+        /// nothing after it runs, `discard` included.
+        crash: bool,
         /// Whether the grant is on, as `commit` is told.
         enable: bool,
         pending: bool,
@@ -285,6 +281,7 @@ mod tests {
                 task: Some(LEGACY),
                 disk: vec![Some(LEGACY)],
                 legacy_records: Some(LEGACY),
+                legacy_granted: true,
                 previous: Some(LEGACY),
                 enable: true,
                 ..Default::default()
@@ -330,7 +327,29 @@ mod tests {
 
         /// The copy the launcher's records name, where `located` reads them.
         fn located(&self) -> Option<&'static str> {
-            self.records.or(self.legacy_records)
+            if self.in_protected() {
+                self.records
+            } else {
+                self.legacy_records
+            }
+        }
+
+        /// Whether `located` reads the protected folder, as `located_in`
+        /// decides.
+        fn in_protected(&self) -> bool {
+            let moving = self.legacy_granted && !self.granted;
+            let protected = self.records.is_some() || self.granted;
+            let legacy = self.legacy_records.is_some() || self.legacy_granted;
+            (protected && !moving) || !legacy
+        }
+
+        /// Whether the folder `located` reads holds a grant.
+        fn authorized(&self) -> bool {
+            if self.in_protected() {
+                self.granted
+            } else {
+                self.legacy_granted
+            }
         }
 
         /// After a crash now, the task starts one of `disk`, and the
@@ -340,6 +359,14 @@ mod tests {
                 assert!(
                     self.files.contains_key(image),
                     "a crash after {:?} leaves {image} named and missing",
+                    self.steps.last()
+                );
+            }
+            // A grant is never lost on the way: what reads the records finds it.
+            if self.enable {
+                assert!(
+                    self.authorized(),
+                    "a crash after {:?} leaves the grant unread",
                     self.steps.last()
                 );
             }
@@ -407,7 +434,7 @@ mod tests {
         fn discard(&mut self, moving: bool) {
             self.steps.push("discard");
             self.pending = false;
-            if moving {
+            if moving && !self.crash {
                 self.records = None;
             }
             self.check();
@@ -420,14 +447,16 @@ mod tests {
             self.disk = vec![self.task];
             Ok(())
         }
-        fn links(&mut self) {
-            self.steps.push("links");
+        fn links(&mut self) -> bool {
+            self.step("links").is_ok()
         }
-        fn retire(&mut self) {
+        fn retire(&mut self, forward: bool) {
             self.steps.push("retire");
-            if self.records.is_some() {
+            if self.in_protected() && self.legacy() {
                 self.files.remove(LEGACY);
                 self.legacy_records = None;
+                self.legacy_granted = false;
+                self.forwarder = forward;
             }
             self.check();
         }
@@ -456,6 +485,37 @@ mod tests {
         assert_eq!((world.task, world.located()), (Some(NEW), Some(NEW)));
         assert!(world.granted && !world.pending);
         assert!(world.legacy_records.is_none());
+    }
+
+    #[test]
+    fn what_could_not_follow_the_launcher_keeps_the_earlier_one_to_forward() {
+        // Another account's shortcuts, or this one's that could not change.
+        for (same_account, links) in [(false, None), (true, Some(1))] {
+            let mut world = World::legacy();
+            if let Some(nth) = links {
+                world = world.refusing("links", nth);
+            }
+            assert_eq!(commit(&mut world, true, true, same_account), Ok(()));
+            assert!(world.forwarder, "same account: {same_account}");
+            assert!(!world.files.contains_key(LEGACY));
+            assert_eq!(world.located(), Some(NEW));
+        }
+        let mut world = World::legacy();
+        assert_eq!(commit(&mut world, true, true, true), Ok(()));
+        assert!(!world.forwarder);
+    }
+
+    #[test]
+    fn a_move_cut_short_leaves_the_grant_where_it_is_read() {
+        // The launch record is written here, the grant not yet: the earlier
+        // folder's grant stays the one read (`check` asserts it each step).
+        let mut world = World::legacy().refusing("commit_grant", 1);
+        world.crash = true;
+        assert_eq!(commit(&mut world, true, true, true), Err(REFUSED));
+        assert_eq!(world.records, Some(NEW));
+        assert!(world.legacy_granted && !world.granted);
+        assert_eq!(world.located(), Some(LEGACY));
+        assert!(world.authorized());
     }
 
     #[test]
@@ -513,6 +573,7 @@ mod tests {
             "commit_grant",
             "restore_task",
             "flush",
+            "links",
         ];
         for (index, (make, enable, moving)) in worlds.into_iter().enumerate() {
             for step in steps {

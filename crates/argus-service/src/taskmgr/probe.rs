@@ -44,14 +44,23 @@ pub trait Probe {
 pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Box<Failure>> {
     cleanup(probe, Step::ProbeLeftover)?;
     let name = PROGRAM.to_owned();
-    match probe.exists(&name) {
-        Ok(false) => {}
-        Ok(true) => return Err(failed(Step::ProbeFiles, tr!("taskManager.probeNameTaken"))),
-        Err(error) => {
-            return Err(refused(probe, Step::ProbeFiles, &name, error, |error| {
-                tr!("taskManager.selfTestFailed", error = error)
-            }));
+    let failed_check = |error| tr!("taskManager.selfTestFailed", error = error);
+    // An entry of the name that redirects the start would test another
+    // program. One without, as Windows Exploit Protection keeps per program,
+    // is another tool's: the test runs, and it stays untouched.
+    let entry = match probe.exists(&name) {
+        Ok(false) => None,
+        Ok(true) => Some(probe.observe(&name)),
+        Err(error) => return Err(refused(probe, Step::ProbeFiles, &name, error, failed_check)),
+    };
+    match entry {
+        Some(Ok(entry)) if entry.debugger.is_some() || entry.filtered => {
+            return Err(failed(Step::ProbeFiles, tr!("taskManager.probeNameTaken")));
         }
+        Some(Err(error)) => {
+            return Err(refused(probe, Step::ProbeFiles, &name, error, failed_check));
+        }
+        _ => {}
     }
     probe.prepare(&name).map_err(|error| {
         Failure::new(
@@ -117,9 +126,12 @@ pub fn cleanup(probe: &mut impl Probe, step: Step) -> std::result::Result<(), Bo
     if !valid(&name) {
         return Err(Failure::new(step, text(tr!("taskManager.probeRecordInvalid"))).into());
     }
-    if probe
-        .exists(&name)
-        .map_err(|error| refused(probe, step, &name, error, text))?
+    // Only the self-tests of Argus 0.5 and earlier created an entry of the
+    // program's name; one of the fixed name is another tool's.
+    if legacy(&name)
+        && probe
+            .exists(&name)
+            .map_err(|error| refused(probe, step, &name, error, text))?
     {
         let actual = probe
             .observe(&name)
@@ -399,6 +411,32 @@ mod tests {
         m.refuse_files = false;
         cleanup(&mut m, Step::ProbeLeftover).unwrap();
         assert!(!m.left_anything());
+
+        // Another tool's entry of the fixed name (Exploit Protection's
+        // settings, say): the test runs, and the entry is left as it was.
+        let mut m = Memory::default();
+        m.entries.insert(PROGRAM.into(), Observation::default());
+        run(&mut m).unwrap();
+        assert_eq!(m.starts, [false, true]);
+        assert!(m.entries.contains_key(PROGRAM) && m.registry_calls.is_empty());
+        assert!(m.record.is_none() && m.program.is_none());
+        // One that redirects the start would test another program.
+        for entry in [
+            Observation {
+                debugger: Some(Value::string("other.exe")),
+                filtered: false,
+            },
+            Observation {
+                debugger: None,
+                filtered: true,
+            },
+        ] {
+            let mut m = Memory::default();
+            m.entries.insert(PROGRAM.into(), entry.clone());
+            assert_eq!(run(&mut m).unwrap_err().step, Step::ProbeFiles);
+            assert!(m.starts.is_empty() && m.registry_calls.is_empty());
+            assert_eq!(m.entries.get(PROGRAM), Some(&entry));
+        }
 
         // Argus 0.5 and earlier: a name of its own, and an IFEO entry.
         let mut m = Memory::legacy();

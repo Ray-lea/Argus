@@ -146,40 +146,47 @@ struct Targets<'a> {
 
 /// Points the account's shortcuts at `launcher`: those that start `source`
 /// or an Argus copy, and those that start `moved` (the launcher of Argus 0.5
-/// or earlier), as does the sign-in entry then.
-pub(super) fn retarget(
-    id: &str,
-    source: &Path,
-    launcher: &Path,
-    moved: Option<&Path>,
-) -> Result<()> {
+/// or earlier), as does the sign-in entry then. False when anything could
+/// not be changed: `moved` must then stay to forward.
+pub(super) fn retarget(id: &str, source: &Path, launcher: &Path, moved: Option<&Path>) -> bool {
     if !launcher.is_file() {
-        return Ok(());
+        return false;
     }
-    clear_run_as_admin(source)?;
-    let _com = task::Scheduler::new()?;
-    retarget_with(&Targets {
+    let cleared = util::stage(
+        "administrator compatibility flag removal",
+        clear_run_as_admin(source),
+    )
+    .is_ok();
+    let Ok(_com) = task::Scheduler::new() else {
+        return false;
+    };
+    let moved_all = retarget_with(&Targets {
         id,
         source: Some(source),
         launcher,
         moved,
     });
-    Ok(())
+    cleared && moved_all
 }
 
 /// `retarget` of only what starts the launcher of Argus 0.5 or earlier, for
 /// an account whose folder an installer running as another account moved.
-/// Needs no elevation, and leaves the process's COM security alone.
-pub(super) fn follow(id: &str, moved: &Path, launcher: &Path) -> Result<()> {
+/// Needs no elevation, and leaves the process's COM security alone. False
+/// when anything could not be changed.
+pub(super) fn follow(id: &str, moved: &Path, launcher: &Path) -> bool {
     use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
     if !launcher.is_file() {
-        return Ok(());
+        return false;
     }
     let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     if initialized.is_err() && initialized.0 as u32 != 0x80010106 {
-        return Err(initialized.0 as u32);
+        argus_core::diagnostics::warn(
+            "administrator shortcut move COM initialization",
+            argus_core::diagnostics::code(initialized.0 as u32),
+        );
+        return false;
     }
-    retarget_with(&Targets {
+    let moved_all = retarget_with(&Targets {
         id,
         source: None,
         launcher,
@@ -188,10 +195,13 @@ pub(super) fn follow(id: &str, moved: &Path, launcher: &Path) -> Result<()> {
     if initialized.is_ok() {
         unsafe { CoUninitialize() };
     }
-    Ok(())
+    moved_all
 }
 
-fn retarget_with(targets: &Targets) {
+/// False when a shortcut or sign-in entry to change could not be changed,
+/// or a folder that may hold them could not be looked through.
+fn retarget_with(targets: &Targets) -> bool {
+    let mut all = true;
     if let Some(moved) = targets.moved
         && let Err(code) = follow_run(moved, targets.launcher)
     {
@@ -199,24 +209,29 @@ fn retarget_with(targets: &Targets) {
             "administrator sign-in entry move",
             argus_core::diagnostics::code(code),
         );
+        all = false;
     }
     let mut roots = Vec::new();
     for (folder, stage) in [
         (&FOLDERID_Desktop, "administrator desktop folder lookup"),
         (&FOLDERID_Programs, "administrator programs folder lookup"),
     ] {
-        if let Ok(path) = util::stage(stage, known(folder)) {
-            roots.push(path);
+        match util::stage(stage, known(folder)) {
+            Ok(path) => roots.push(path),
+            Err(_) => all = false,
         }
     }
-    if let Ok(roaming) = known(&FOLDERID_RoamingAppData) {
-        roots.push(roaming.join(r"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"));
+    match known(&FOLDERID_RoamingAppData) {
+        Ok(roaming) => roots
+            .push(roaming.join(r"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar")),
+        Err(_) => all = false,
     }
     for root in roots {
-        walk(&root, 0, targets);
+        walk(&root, 0, targets, &mut all);
     }
+    all
 }
-fn walk(root: &Path, depth: usize, targets: &Targets) {
+fn walk(root: &Path, depth: usize, targets: &Targets, all: &mut bool) {
     if depth > 3 {
         return;
     }
@@ -236,7 +251,7 @@ fn walk(root: &Path, depth: usize, targets: &Targets) {
             continue;
         }
         if kind.is_dir() {
-            walk(&entry.path(), depth + 1, targets);
+            walk(&entry.path(), depth + 1, targets, all);
         } else if kind.is_file()
             && entry
                 .path()
@@ -244,7 +259,10 @@ fn walk(root: &Path, depth: usize, targets: &Targets) {
                 .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
         {
             let result = rewrite(&entry.path(), targets);
-            let _ = util::file_stage("administrator shortcut migration", &entry.path(), result);
+            if util::file_stage("administrator shortcut migration", &entry.path(), result).is_err()
+            {
+                *all = false;
+            }
         }
     }
 }

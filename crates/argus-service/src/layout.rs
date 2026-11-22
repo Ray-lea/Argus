@@ -199,7 +199,7 @@ pub(crate) fn swap_in(staged: &Path, target: &Path, stem: &str) -> Result<Swappe
 
 /// Gives the file `target` names a free `aside` name as well. One taken by a
 /// program that has exited is deleted first; one still running is skipped.
-fn link_aside(dir: &Path, target: &Path, stem: &str) -> Result<PathBuf> {
+pub(crate) fn link_aside(dir: &Path, target: &Path, stem: &str) -> Result<PathBuf> {
     let mut last = 32;
     for nth in 1..=ASIDE_LIMIT {
         let path = dir.join(aside(stem, nth));

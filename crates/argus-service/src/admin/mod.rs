@@ -39,9 +39,10 @@ const IMAGE: &str = "argus-admin.exe";
 const STEM: &str = "argus-admin";
 const LAUNCHER: &str = "argus-launcher.exe";
 const ICON: &str = "argus.ico";
-/// Where the Task Scheduler keeps its registrations, which reach the disk
-/// lazily, as the SCM's do.
-const TASK_CACHE: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache";
+/// A key of the registry hive that holds the Task Scheduler's registrations
+/// (`Schedule\TaskCache`), which reach the disk lazily, as the SCM's do.
+/// Flushing any key writes its whole hive; this one every account may open.
+const TASK_HIVE: &str = "SOFTWARE";
 
 static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// A persistent grant is offered by release builds only, never by a mutable
@@ -112,10 +113,14 @@ fn located(id: &str, sid: &str) -> Result<PathBuf> {
     Ok(located_in(directory(id, sid)?, legacy_directory(id, sid)?))
 }
 fn located_in(dir: PathBuf, legacy: PathBuf) -> PathBuf {
-    if !records(&dir) && records(&legacy) {
-        legacy
-    } else {
+    let granted = |dir: &Path| dir.join("grant.json").exists();
+    // A grant the move has not committed yet (cut short after the launch
+    // record) is still the earlier folder's: revocation deletes both.
+    let moving = granted(&legacy) && !granted(&dir);
+    if (records(&dir) && !moving) || !records(&legacy) {
         dir
+    } else {
+        legacy
     }
 }
 fn grant(id: &str, sid: &str) -> Result<Option<(PathBuf, Grant)>> {
@@ -318,17 +323,21 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         let scheduler = task::Scheduler::new()?;
         let current = located(id, sid)?;
         revoke(&current, || scheduler.remove(id, sid))?;
+        let (dir, legacy) = (directory(id, sid)?, legacy_directory(id, sid)?);
+        if current != dir {
+            return Ok(());
+        }
+        // A grant of Argus 0.5 or earlier the move did not finish goes too,
+        // or it would count again.
+        revoke(&legacy, || Ok(()))?;
         // The standard launcher stays; this account's shortcuts and sign-in
         // entry follow it from where Argus 0.5 or earlier kept it, if one was
-        // left there to forward.
-        let dir = directory(id, sid)?;
-        let moved = legacy_directory(id, sid)?.join(LAUNCHER);
-        if current == dir && moved.is_file() {
-            let _ = util::stage(
-                "administrator shortcut move",
-                links::follow(id, &moved, &dir.join(LAUNCHER)),
-            );
-            retire_legacy(id, sid, true);
+        // left there to forward. That goes once the task's deletion is on
+        // disk, which could otherwise bring back one that names its copy.
+        let moved = legacy.join(LAUNCHER);
+        let followed = !moved.is_file() || links::follow(id, &moved, &dir.join(LAUNCHER));
+        if flush_tasks() {
+            retire_legacy(id, sid, !followed);
         }
         return Ok(());
     }
@@ -391,7 +400,6 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
             previous,
             scheduler: &scheduler,
             enable,
-            same_account,
             pending,
             swapped: None,
         },
@@ -399,6 +407,18 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         moving,
         same_account,
     )
+}
+
+/// Writes the Task Scheduler's registrations to disk; false when that failed.
+fn flush_tasks() -> bool {
+    util::stage(
+        "administrator task registration flush",
+        crate::install::flush_key(
+            windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
+            TASK_HIVE,
+        ),
+    )
+    .is_ok()
 }
 
 /// Writes this build's launcher into `dir` in place of the one there.
@@ -417,20 +437,20 @@ fn put_launcher(dir: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 /// Once the account's records are in the protected folder, deletes what
-/// Argus 0.5 or earlier left where it kept them. This account's shortcuts and
-/// sign-in entry follow the launcher first (`links::retarget`). Another
-/// account's may still start the old launcher: it stays, brought to this
-/// build, and starts what the protected folder's records name
-/// (`launcher_mode`). That account's next grant, revocation or the uninstaller
-/// deletes it. Failures leave files for a later maintenance to delete.
-fn retire_legacy(id: &str, sid: &str, same_account: bool) {
+/// Argus 0.5 or earlier left where it kept them. With `forward` the old
+/// launcher stays, brought to this build, and starts what the protected
+/// folder's records name (`launcher_mode`): another account's shortcuts, or
+/// those of this account that could not be changed (`links::retarget`), may
+/// still start it. The account's next grant, revocation or the uninstaller
+/// deletes it then. Failures leave files for a later maintenance to delete.
+fn retire_legacy(id: &str, sid: &str, forward: bool) {
     let (Ok(dir), Ok(legacy)) = (directory(id, sid), legacy_directory(id, sid)) else {
         return;
     };
-    if !records(&dir) || !legacy.exists() {
+    if !records(&dir) || located_in(dir, legacy.clone()) == legacy || !legacy.exists() {
         return;
     }
-    let result = retire(&legacy, !same_account);
+    let result = retire(&legacy, forward);
     if let Err(code) = &result {
         argus_core::diagnostics::warn(
             "administrator earlier folder cleanup",
@@ -510,13 +530,11 @@ pub fn follow_layout(id: &str) {
         return;
     };
     let moved = legacy.join(LAUNCHER);
-    if !records(&dir) || !moved.is_file() {
+    if !records(&dir) || located_in(dir.clone(), legacy) != dir || !moved.is_file() {
         return;
     }
-    let _ = util::stage(
-        "administrator shortcut move",
-        links::follow(id, &moved, &dir.join(LAUNCHER)),
-    );
+    // What fails is logged; the next start tries again.
+    links::follow(id, &moved, &dir.join(LAUNCHER));
 }
 /// Revocation trusts neither the owner nor the ACL of the runtime directory
 /// (#46). It still takes the lock that enable and maintenance hold while they
@@ -812,20 +830,33 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
     let mut accounts = std::collections::BTreeSet::new();
     let mut guards = Vec::new();
     let legacy = legacy_root(id)?;
-    for root in [root(id)?, legacy.clone()] {
-        if !root.exists() {
-            continue;
-        }
-        let guard = security::protect_directory(&root)?;
+    let root = root(id)?;
+    if root.exists() {
+        guards.push(security::protect_directory(&root)?);
         for entry in fs::read_dir(&root).map_err(io)? {
             let entry = entry.map_err(io)?;
             let sid = entry.file_name().to_string_lossy().into_owned();
             security::validate_sid(&sid)?;
             accounts.insert(sid);
         }
-        // The earlier folder is not held: maintenance deletes it once empty.
-        if root != legacy {
-            guards.push(guard);
+    }
+    // The earlier folder is not held, so that maintenance can delete it once
+    // empty, and what is wrong with it holds up no account's maintenance.
+    if legacy.exists() {
+        let listed = security::protect_directory(&legacy).and_then(|_guard| {
+            Ok(fs::read_dir(&legacy)
+                .map_err(io)?
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|sid| security::validate_sid(sid).is_ok())
+                .collect::<Vec<_>>())
+        });
+        match listed {
+            Ok(sids) => accounts.extend(sids),
+            Err(code) => argus_core::diagnostics::warn(
+                "administrator earlier folder listing",
+                argus_core::diagnostics::code(code),
+            ),
         }
     }
     for sid in accounts {
@@ -1074,8 +1105,17 @@ mod tests {
         fs::write(dir.join(IMAGE), b"image").unwrap();
         fs::write(dir.join(LAUNCHER), b"launcher").unwrap();
         assert_eq!(at(), legacy);
-        // The launch record does: a grant writes it once the task names the copy here.
+        // A grant writes the launch record once the task names the copy
+        // here, then commits the grant: until then the earlier folder's
+        // grant is the one read, as when a crash cut the move short.
         fs::write(dir.join("launch.json"), b"{}").unwrap();
+        assert_eq!(at(), legacy);
+        fs::write(dir.join("grant.json"), b"{}").unwrap();
+        assert_eq!(at(), dir);
+        // A revoked grant's move: only launch records on either side.
+        fs::remove_file(dir.join("grant.json")).unwrap();
+        fs::remove_file(legacy.join("grant.json")).unwrap();
+        fs::write(legacy.join("launch.json"), b"{}").unwrap();
         assert_eq!(at(), dir);
         fs::remove_dir_all(base).unwrap();
     }

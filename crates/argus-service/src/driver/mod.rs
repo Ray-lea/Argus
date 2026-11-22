@@ -984,6 +984,9 @@ pub(crate) fn run_helper() -> Result<()> {
             .open(root.join(SETUP_LOCK))
             .map_err(io),
     )?;
+    // What the setups of Argus 0.5 and earlier left (a portable Argus never
+    // runs the installer's maintenance that removes it otherwise).
+    let _ = retire_legacy_setup();
     let result = current_plan().and_then(|plan| {
         let migrate = plan == Plan::MigrateLegacy;
         finish_preparation(plan, || install_package(&root, migrate), start)
