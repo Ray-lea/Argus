@@ -24,15 +24,15 @@ import {
   visibleColumns,
   type ColumnPrefs,
 } from "./Columns";
-import { advanceClock, sampleClock, type Motion } from "./Curve";
+import { advanceClock, freezeClock, sampleClock, type Motion } from "./Curve";
 import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
 import { hoverIcons, setIconsStill } from "./iconMotion";
 import { CaptionIcon, Icon, type UiIcon } from "./icons";
 import {
+  appVersion,
   defaultVisibility,
   hidesProcess,
-  historyRanges,
   processes,
   readings,
   sampleAt,
@@ -67,16 +67,19 @@ import {
   type SortKey,
   type View,
 } from "./Processes";
-import { useShared, type Page } from "./store";
-import { Button, localRect, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
+import { store, useShared, type Page } from "./store";
+import { exportTable, copyEntries } from "./tableActions";
+import { Button, rollAway, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 // Only the processes page shows at first; the others' code loads off the
 // first paint's path. React.lazy would hold a page that loads late behind a
 // fallback for another 300 ms, so the modules are kept in state instead:
 // loaded when the browser is idle, or at once when their page opens first.
 const loadPages = () => import("./Pages");
+const loadHistory = () => import("./History");
+const loadComponents = () => import("./Components");
 const loadPerformance = () => import("./Performance");
-function useLater<T>(load: () => Promise<T>, needed: boolean): T | null {
+function useLater<T>(load: () => Promise<T>, needed: boolean, prefetch = true): T | null {
   const [loaded, setLoaded] = useState<T | null>(null);
   useEffect(() => {
     if (loaded) return;
@@ -88,6 +91,7 @@ function useLater<T>(load: () => Promise<T>, needed: boolean): T | null {
         live = false;
       };
     }
+    if (!prefetch) return;
     if (typeof requestIdleCallback === "function") {
       const id = requestIdleCallback(get, { timeout: 4000 });
       return () => {
@@ -100,7 +104,7 @@ function useLater<T>(load: () => Promise<T>, needed: boolean): T | null {
       live = false;
       clearTimeout(id);
     };
-  }, [load, needed, loaded]);
+  }, [load, needed, loaded, prefetch]);
   return loaded;
 }
 
@@ -111,6 +115,7 @@ const pages: [Page, string, UiIcon][] = [
   ["startup", "启动", "power"],
   ["connections", "连接", "globe"],
   ["history", "历史", "history"],
+  ["components", "组件", "apps"],
   ["settings", "设置", "settings"],
   ["about", "关于", "info"],
 ];
@@ -134,6 +139,7 @@ interface MenuState {
   y: number;
   items: MenuEntry[];
   keyboard: boolean;
+  anchor?: string;
   id: number;
 }
 type Dialog =
@@ -145,75 +151,13 @@ type Dialog =
   | { kind: "signOut"; row: Row }
   | { kind: "rule"; row: Row }
   | { kind: "columns" }
+  | { kind: "shortcuts" }
+  | { kind: "delete"; title: string; body: string; accept: () => void }
   | { kind: "visibility" };
 interface Toast {
   text: string;
   id: number;
   tone: "ok" | "info" | "error";
-}
-
-// The toolbar's compact levels (layout.rs `fit_toolbar`): 1 drops the trailing
-// buttons' text, 2 the view labels, 3 moves the page controls to a row of their
-// own, 4 the search box too.
-function useToolbarFit(key: string, hasSearch: boolean, searchFit: number) {
-  const bar = useRef<HTMLDivElement>(null);
-  const start = useRef<HTMLDivElement>(null);
-  const trailing = useRef<HTMLDivElement>(null);
-  const [level, setLevel] = useState(0);
-  const [search, setSearch] = useState<{ left: number; width: number } | null>(null);
-  const need = useRef<number[]>([]);
-  const reset = useRef(key);
-  if (reset.current !== key) {
-    // Another page, navigation or text starts over from the widest level.
-    reset.current = key;
-    need.current = [];
-    if (level !== 0) setLevel(0);
-  }
-  const measure = useCallback(() => {
-    const row = bar.current;
-    const a = start.current;
-    const b = trailing.current;
-    if (!row || !a || !b) return;
-    const box = localRect(row);
-    const width = box.width + 102; // the caption buttons beside the row
-    const trail = localRect(b);
-    const left = localRect(a).right - box.left + 8;
-    const right = trail.left - box.left - 8;
-    let current = level;
-    while (current > 0 && width + 0.5 >= (need.current[current - 1] ?? Infinity)) current--;
-    if (current !== level) {
-      setLevel(current);
-      return;
-    }
-    const room = hasSearch && current < 4 ? searchFit + 16 : 8;
-    // The start may not reach the search box (or the end controls), nor the
-    // end controls pass the row's 4 px inset before the caption buttons.
-    const overflow = Math.max(left - 8 + room - (right + 8), trail.right - (box.right - 4));
-    if (overflow > 0.5 && current < 4) {
-      need.current[current] = width + overflow;
-      setLevel(current + 1);
-      return;
-    }
-    if (hasSearch && current < 4) {
-      const w = Math.max(0, Math.min(360, right - left));
-      const centered = (box.width + 102 - w) / 2 - 1;
-      setSearch((s) => {
-        const next = { left: Math.round(Math.max(left, Math.min(right - w, centered))), width: Math.round(w) };
-        return s && s.left === next.left && s.width === next.width ? s : next;
-      });
-    }
-  }, [level, hasSearch, searchFit]);
-  useIsoLayoutEffect(() => {
-    measure();
-  });
-  useEffect(() => {
-    const row = bar.current;
-    if (!row) return;
-    const observer = new ResizeObserver(() => measure());
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, [measure]);
-  return { bar, start, trailing, level, search };
 }
 
 type DetailsMode = "open" | "auto" | "closed";
@@ -251,13 +195,13 @@ export default function Replica({
     filter: "all",
     diskPage: "overview",
     // Performance.tsx `defaultDevices` (the page loads later).
-    order: ["cpu", "memory", "disk", "wifi", "gpu", "battery"],
+    order: ["cpu", "memory", "disk", "wifi", "gpu", "npu", "battery"],
     hidden: [],
     kernel: true,
   });
   const [view, setView] = useState<View>("apps");
-  const [sort, setSort] = useState<SortKey>("name");
-  const [descending, setDescending] = useState(false);
+  const [sort, setSort] = useState<SortKey>("cpu");
+  const [descending, setDescending] = useState(true);
   // The process columns shown and their order (Columns.tsx).
   const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(defaultPrefs);
   const shownColumns = useMemo(() => visibleColumns(columnPrefs), [columnPrefs]);
@@ -265,7 +209,7 @@ export default function Replica({
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("all");
   const [connectionView, setConnectionView] = useState<"apps" | "list">("list");
-  const [historyRange, setHistoryRange] = useState<HistoryRange>("1h");
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("5m");
   const [historyAt, setHistoryAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [service, setService] = useState<string | null>(null);
@@ -285,8 +229,10 @@ export default function Replica({
   // One user is signed in to the demo: "auto" leaves the list ungrouped.
   const [userGroups, setUserGroups] = useState<UserGrouping>("auto");
   const [uiMotion, setUiMotion] = useState(true);
-  const [hold, setHold] = useState(false);
-  const order = useRef<string[]>([]);
+  const [pauseSorting, setPauseSorting] = useState(true);
+  const [hovering, setHold] = useState(false);
+  const hold = hovering && pauseSorting && page === "processes";
+  const sortSnapshot = useRef<Map<number, Reading> | null>(null);
   const [ended, setEnded] = useState<Set<number>>(() => new Set());
   const [efficiency, setEfficiency] = useState<Set<number>>(() => new Set());
   const [suspension, setSuspension] = useState<Map<number, boolean>>(() => new Map());
@@ -296,15 +242,37 @@ export default function Replica({
   );
   const [startup, setStartup] = useState(startupItems);
   const [interval, setIntervalMs] = useState(1000);
-  const [paused, setPaused] = useState(false);
+  const paused = shared.paused;
+  const setPaused = (on: boolean) => store.set({ paused: on });
   const [ctrlHeld, setCtrlHeld] = useState(false);
   const [motion, setMotion] = useState<Motion>("smooth");
   const [theme, setTheme] = useState<ThemeChoice>("site");
   const [scale, setScale] = useState(100);
   const [fontSize, setFontSize] = useState(13);
   const [navLeft, setNavLeft] = useState(false);
+  const [settingsSection, setSettingsSection] = useState("");
   const [navOpen, setNavOpen] = useState(false);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialogState] = useState<Dialog | null>(null);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const setDialog = useCallback(
+    (next: Dialog | null) => {
+      clearTimeout(exitTimer.current);
+      const scrim = root.current?.querySelector<HTMLElement>(".a-scrim");
+      if (!next && scrim && uiMotion && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        scrim.dataset.closing = "";
+        scrim.inert = true;
+        exitTimer.current = setTimeout(() => setDialogState(null), 100);
+      } else {
+        if (scrim) {
+          delete scrim.dataset.closing;
+          scrim.inert = false;
+        }
+        setDialogState(next);
+      }
+    },
+    [uiMotion],
+  );
+  useEffect(() => () => clearTimeout(exitTimer.current), []);
   const [lock, setLock] = useState<LockResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [elevated, setElevated] = useState(false);
@@ -314,16 +282,26 @@ export default function Replica({
   const [toast, setToast] = useState<Toast | null>(null);
   const [tray, setTray] = useState<null | "tray" | "exited">(null);
   // The demo shows everything the app can, run as administrator.
+  const [pinned, setPinned] = useState(false);
+  const [foreground,setForeground]=useState(true);
+  const [hostActive,setHostActive]=useState(true);
   const [maximized, setMaximized] = useState(false);
+  const [deletedServices, setDeletedServices] = useState<string[]>([]);
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
   const [starts, setStarts] = useState<Map<string, Service["start"]>>(() => new Map());
   const services = useMemo(
-    () => serviceList.map((s) => (starts.has(s.name) ? { ...s, start: starts.get(s.name)! } : s)),
-    [starts],
+    () =>
+      serviceList
+        .filter((s) => !deletedServices.includes(s.name))
+        .map((s) => (starts.has(s.name) ? { ...s, start: starts.get(s.name)! } : s)),
+    [starts, deletedServices],
   );
   const [onScreen, setOnScreen] = useState(true);
   const [tick, setTick] = useState(0);
   const later = useLater(loadPages, page !== "processes" && page !== "performance");
-  const { Services, Startup, Connections, History, Settings, About, VisibilityDialog } = later ?? {};
+  const { Services, Startup, Connections, Settings, About, VisibilityDialog } = later ?? {};
+  const History = useLater(loadHistory, page === "history", false)?.default;
+  const Components = useLater(loadComponents, page === "components", false)?.default;
   const Performance = useLater(loadPerformance, page === "performance")?.default;
   const sampled = page === "processes" || page === "performance";
   const running = !paused && !(ctrlHeld && sampled) && onScreen && !tray;
@@ -365,7 +343,7 @@ export default function Replica({
     const id = setInterval(sample, interval);
     return () => {
       clearInterval(id);
-      sampleClock.rest = true;
+      freezeClock(sampleClock,interval);
     };
   }, [running, interval]);
   useEffect(() => setIconsStill(!uiMotion), [uiMotion]);
@@ -377,7 +355,7 @@ export default function Replica({
   useEffect(() => {
     if (tray !== "tray") return;
     const key = (event: globalThis.KeyboardEvent) => {
-      if (event.ctrlKey && event.altKey && event.key === "Escape") setTray(null);
+      if (event.ctrlKey && event.altKey && event.key === "Escape") {setForeground(true);setTray(null)}
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
@@ -404,6 +382,7 @@ export default function Replica({
   const go = useCallback(
     (next: Page) => {
       setMenu(null);
+      setHold(false);
       setPaneEnters(false);
       setPage((current) => {
         if (current !== next) {
@@ -424,6 +403,7 @@ export default function Replica({
     go(request.page);
     setDialog(null);
     setQueries((q) => (q[request.page] ? { ...q, [request.page]: "" } : q));
+    if (request.pid !== undefined) showPid(request.pid);
     if (request.view) {
       setView(request.view);
       setSort("name");
@@ -443,7 +423,7 @@ export default function Replica({
       setHistoryRange(request.range);
       setHistoryAt(null);
     }
-    setTray(null);
+    setForeground(true); setTray(null);
     root.current?.scrollIntoView({
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "center",
@@ -458,16 +438,31 @@ export default function Replica({
     const command = shared.command;
     if (!command) return;
     if (command.action === "lock") lookUp(command.names);
-    else if (command.action === "show") setTray(null);
-    else setTray((current) => current ?? "tray");
+    else if (command.action === "pause") setPaused(!store.get().paused);
+    else if (command.action === "exit") setTray("exited");
+    else if (command.action === "show") {
+      setForeground(true);setTray(null);
+      if (store.get().widgets.restore === "打开默认页面") go("processes");
+    } else setTray((current) => current ?? "tray");
   }, [shared.command]);
   const closeMenu = useCallback(() => setMenu(null), []);
   // The window keeps the keyboard when what had it goes away (another page,
   // a closed dialog or menu), as a desktop window does.
   const focused = useRef(false);
+  useEffect(()=>{
+    const focus=()=>setHostActive(document.visibilityState==="visible"&&document.hasFocus());
+    const blur=()=>setHostActive(false);
+    focus();
+    window.addEventListener("focus",focus);window.addEventListener("blur",blur);document.addEventListener("visibilitychange",focus);
+    return ()=>{window.removeEventListener("focus",focus);window.removeEventListener("blur",blur);document.removeEventListener("visibilitychange",focus)};
+  },[]);
+
   useEffect(() => {
     const away = (event: Event) => {
-      if (!(event.target instanceof Node) || !root.current?.contains(event.target)) focused.current = false;
+      if (!(event.target instanceof Node) || !root.current?.contains(event.target)) {
+        focused.current=false;
+        if(!(event.target instanceof Element && event.target.closest("[data-argus-toggle]")))setForeground(false);
+      }
     };
     document.addEventListener("pointerdown", away, true);
     return () => document.removeEventListener("pointerdown", away, true);
@@ -492,11 +487,13 @@ export default function Replica({
   );
   const byPid = useMemo(() => new Map(alive.map((p) => [p.pid, p])), [alive]);
   const now = useMemo(() => readings(tick, alive), [tick, alive]);
+  const needsProcessHistory = page === "processes" && selected !== null && detailsMode !== "closed";
   const past = useMemo(() => {
     const out: Map<number, Reading>[] = [];
+    if (!needsProcessHistory) return out;
     for (let t = tick - span - 1; t <= tick; t++) out.push(t === tick ? now : readings(t, alive));
     return out;
-  }, [tick, alive, now]);
+  }, [needsProcessHistory, tick, alive, now]);
   const history = useCallback(
     (pids: number[]) => ({
       cpu: past.map((m) => pids.reduce((a, pid) => a + (m.get(pid)?.cpu ?? 0), 0)),
@@ -513,25 +510,21 @@ export default function Replica({
     () => (hideSystem.processes ? alive.filter((p) => !hides(p)) : alive),
     [alive, hideSystem.processes, hides],
   );
-  let rows = buildRows({
+  if (!hold || !sortSnapshot.current) sortSnapshot.current = now;
+  const rows = buildRows({
     view,
     sort,
     descending,
     query,
     list: listed,
     now,
+    sortReadings: hold ? sortSnapshot.current : undefined,
     open,
     closed,
     treeOpen,
     sortValue: (row) => columnSortValue(sort, row, cellContext),
     users: userGroups === "on",
   });
-  // While the pointer rests on the list the row order holds; values keep updating.
-  if (hold && order.current.length) {
-    const rank = new Map(order.current.map((key, i) => [key, i]));
-    const known = rows.filter((r) => rank.has(r.key)).sort((a, b) => rank.get(a.key)! - rank.get(b.key)!);
-    rows = [...known, ...rows.filter((r) => !rank.has(r.key))];
-  } else order.current = rows.map((r) => r.key);
   const selectedRow = rows.find((r) => r.key === selected) ?? null;
   const detailsOpen = detailsMode === "open" || (detailsMode === "auto" && selectedRow !== null);
   // A row asked for its details: a hidden pane opens and stays open.
@@ -701,6 +694,7 @@ export default function Replica({
       return next;
     });
   };
+  const [resourcePriority, setResourcePriority] = useState<Record<string, string>>({});
   const toggleEfficiency = (row: Row) => {
     const on = !row.pids.every((pid) => efficiency.has(pid));
     setEfficiency((set) => {
@@ -731,13 +725,13 @@ export default function Replica({
   };
 
   // Menus open at the pointer toward the free side, as Windows menus do.
-  const showMenu = (at: { x: number; y: number }, items: MenuEntry[], keyboard = false) => {
+  const showMenu = (at: { x: number; y: number }, items: MenuEntry[], keyboard = false, anchor?: string) => {
     const frame = root.current!.querySelector(".a-window")!;
     const box = frame.getBoundingClientRect(),
       k = scaleOf(frame);
-    setMenu({ x: (at.x - box.left) / k, y: (at.y - box.top) / k, items, keyboard, id: Date.now() });
+    setMenu({ x: (at.x - box.left) / k, y: (at.y - box.top) / k, items, keyboard, anchor, id: Date.now() });
   };
-  const processMenu = (row: Row): MenuEntry[] => {
+  const processMenu = (row: Row, source: Element): MenuEntry[] => {
     const group = row.count > 1;
     const proc = byPid.get(row.pids[0]);
     const current = new Set(row.pids.map((pid) => priority.get(pid) ?? "正常"));
@@ -750,11 +744,22 @@ export default function Replica({
       ...(branch
         ? ([
             { label: "展开", icon: "chevronDown", disabled: !!query.trim() || row.expanded, run: () => toggleRow(row) },
-            { label: "折叠", icon: "chevronRight", disabled: !!query.trim() || !row.expanded, run: () => toggleRow(row) },
+            {
+              label: "折叠",
+              icon: "chevronRight",
+              disabled: !!query.trim() || !row.expanded,
+              run: () => toggleRow(row),
+            },
             "-",
           ] satisfies MenuEntry[])
         : []),
-      { label: group ? `结束全部 ${row.count} 个进程` : "结束进程", icon: "end", hint: "Del", danger: true, run: () => end(row, true) },
+      {
+        label: group ? `结束全部 ${row.count} 个进程` : "结束进程",
+        icon: "end",
+        hint: "Del",
+        danger: true,
+        run: () => end(row, true),
+      },
       ...(group ? [] : [{ label: "结束进程树", icon: "branchEnd" as UiIcon, run: () => end(row, true, true) }]),
       ...(proc?.exe === "explorer.exe"
         ? [{ label: "重新启动", icon: "restart" as UiIcon, run: () => say("演示窗口不会重新启动资源管理器。", "info") }]
@@ -775,19 +780,48 @@ export default function Replica({
           },
         })),
       },
+      ...(
+        [
+          ["I/O 优先级", ["非常低", "低", "正常", "高", "关键"]],
+          ["内存优先级", ["非常低", "低", "中", "低于正常", "正常"]],
+        ] as const
+      ).map(([label, levels]) => ({
+        label,
+        children: levels.map((level) => ({
+          label: level,
+          checked: row.pids.every((pid) => (resourcePriority[label + pid] ?? "正常") === level),
+          run: () => {
+            setResourcePriority((prev) => ({
+              ...prev,
+              ...Object.fromEntries(row.pids.map((pid) => [label + pid, level])),
+            }));
+            say(
+              label === "I/O 优先级"
+                ? `${row.label} 的 I/O 优先级已设为“${level}”。`
+                : `${row.label} 的内存优先级已设为“${level}”。`,
+            );
+          },
+        })),
+      })),
       { label: "效率模式", icon: "leaf", checked: efficient, run: () => toggleEfficiency(row) },
       ...(running.length
-        ? [{ label: "暂停进程", icon: "pause" as UiIcon, run: () => setDialog({ kind: "suspend", row, pids: running }) }]
+        ? [
+            {
+              label: "暂停进程",
+              icon: "pause" as UiIcon,
+              run: () => setDialog({ kind: "suspend", row, pids: running }),
+            },
+          ]
         : []),
       ...(halted.length ? [{ label: "恢复进程", icon: "play" as UiIcon, run: () => suspend(row, halted, false) }] : []),
       { label: "添加规则", run: () => setDialog({ kind: "rule", row }) },
       "-",
       ...(row.expandable && !branch ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
       { label: "打开文件位置", icon: "folder", run: () => say(`演示窗口不会打开 ${proc?.path ?? "该位置"}。`, "info") },
-      { label: "复制路径", icon: "copy", run: () => copy(proc?.path ?? "", "路径") },
-      group
-        ? { label: "复制名称", run: () => copy(proc?.exe ?? row.label, "名称") }
-        : { label: "复制 PID", run: () => copy(String(row.pids[0]), " PID") },
+      ...copyEntries(source, row.label, [
+        { label: "复制路径", run: () => copy(proc?.path ?? "", "路径") },
+        ...(group ? [] : [{ label: "复制 PID", run: () => copy(String(row.pids[0]), " PID") }]),
+      ]),
       "-",
       {
         label: "详细信息",
@@ -815,11 +849,11 @@ export default function Replica({
         : []),
     ]);
   const openRowMenu = (event: MouseEvent | KeyboardEvent, row: Row) => {
-    if ("clientX" in event) showMenu({ x: event.clientX, y: event.clientY }, processMenu(row));
+    if ("clientX" in event) showMenu({ x: event.clientX, y: event.clientY }, processMenu(row, event.target as Element));
     else {
       const line = root.current!.querySelector(`[data-key="${CSS.escape(row.key)}"]`)!;
       const el = line.getBoundingClientRect();
-      showMenu({ x: el.left + 40 * scaleOf(line), y: el.bottom }, processMenu(row), true);
+      showMenu({ x: el.left + 40 * scaleOf(line), y: el.bottom }, processMenu(row, line), true);
     }
   };
   const control = (name: string, action: "start" | "stop" | "restart") => {
@@ -827,8 +861,18 @@ export default function Replica({
     setServiceStates((m) => new Map(m).set(name, target));
     setTimeout(() => {
       setServiceStates((m) => new Map(m).set(name, action === "stop" ? "stopped" : "running"));
+      if (action === "stop" && pendingDeletes.includes(name)) {
+        setDeletedServices((prev) => [...prev, name]);
+        setService(null);
+      }
       const display = serviceList.find((x) => x.name === name)?.display;
-      say(action === "start" ? `已启动“${display}”。` : action === "stop" ? `已停止“${display}”。` : `已重新启动“${display}”。`);
+      say(
+        action === "start"
+          ? `已启动“${display}”。`
+          : action === "stop"
+            ? `已停止“${display}”。`
+            : `已重新启动“${display}”。`,
+      );
     }, 800);
   };
   const serviceMenu = (event: MouseEvent, s: Service) => {
@@ -837,20 +881,50 @@ export default function Replica({
     showMenu({ x: event.clientX, y: event.clientY }, [
       { label: "启动", icon: "play", disabled: state === "running" || pending, run: () => control(s.name, "start") },
       { label: "停止", icon: "stop", disabled: state !== "running" || pending, run: () => control(s.name, "stop") },
-      { label: "重新启动", icon: "restart", disabled: state !== "running" || pending, run: () => control(s.name, "restart") },
+      {
+        label: "重新启动",
+        icon: "restart",
+        disabled: state !== "running" || pending,
+        run: () => control(s.name, "restart"),
+      },
       "-",
       ...(["auto", "autoDelayed", "manual", "disabled"] as const).map((type) => ({
         label: `启动类型：${{ auto: "自动", autoDelayed: "自动（延迟启动）", manual: "手动", disabled: "禁用" }[type]}`,
         checked: s.start === type,
         run: () => {
           setStarts((m) => new Map(m).set(s.name, type));
-          say(`“${s.display}”的启动类型已设为“${{ auto: "自动", autoDelayed: "自动（延迟启动）", manual: "手动", disabled: "禁用" }[type]}”。`);
+          say(
+            `“${s.display}”的启动类型已设为“${{ auto: "自动", autoDelayed: "自动（延迟启动）", manual: "手动", disabled: "禁用" }[type]}”。`,
+          );
         },
       })),
       "-",
       { label: "转到进程", icon: "goTo", disabled: !s.pid || state !== "running", run: () => s.pid && showPid(s.pid) },
       { label: "打开文件位置", icon: "folder" },
-      { label: "复制服务名称", icon: "copy", run: () => copy(s.name, "服务名称") },
+      ...copyEntries(event.target as Element, s.display, [
+        { label: "复制服务名称", run: () => copy(s.name, "服务名称") },
+      ]),
+      {
+        label: "删除",
+        icon: "trash",
+        danger: true,
+        disabled: pendingDeletes.includes(s.name),
+        run: () =>
+          setDialog({
+            kind: "delete",
+            title: `删除服务 ${s.display}？`,
+            body: `将删除服务 ${s.name} 及其配置，此操作无法撤销；服务的程序文件保留。`,
+            accept: () => {
+              if (state === "running") {
+                setPendingDeletes((names) => [...names, s.name]);
+                say(`已将服务 ${s.name} 标记为删除，该服务停止且不再被其他程序使用后由 Windows 移除。`);
+              } else {
+                setDeletedServices((names) => [...names, s.name]);
+                setService(null);
+              }
+            },
+          }),
+      },
       "-",
       { label: "置顶", icon: "pin" },
       { label: "添加备注", icon: "note" },
@@ -861,9 +935,15 @@ export default function Replica({
     const target = event.target as HTMLElement;
     const typing = target.closest("input, textarea, [role=combobox], [role=menu]");
     if (event.key === "Control" && !event.repeat && sampled && !dialog) setCtrlHeld(true);
-    if (event.ctrlKey && !event.altKey && /^[1-8]$/.test(event.key)) {
+    if (event.ctrlKey && !event.altKey && /^[1-9]$/.test(event.key)) {
       event.preventDefault();
       go(pages[Number(event.key) - 1][0]);
+    } else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c" && page === "processes") {
+      event.preventDefault();
+      root.current?.querySelector<HTMLElement>("[data-details-copy]")?.click();
+    } else if (event.ctrlKey && event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      setDialog({ kind: "run" });
     } else if (event.ctrlKey && event.key.toLowerCase() === "f" && searchHint[page]) {
       event.preventDefault();
       search.current?.focus();
@@ -901,17 +981,6 @@ export default function Replica({
     : undefined;
   const mode = theme === "site" ? undefined : theme;
   const hasSearch = !!searchHint[page];
-  // The narrowest the search box gets: its placeholder and the room around it.
-  const searchFit = useMemo(() => {
-    const hint = searchHint[page] ?? "";
-    const canvas = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
-    if (!canvas) return hint.length * 12 + 48;
-    canvas.font = '13px "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif';
-    return Math.ceil(canvas.measureText(hint).width) + 48;
-  }, [page]);
-  const fit = useToolbarFit(`${page}|${navLeft}|${navOpen}`, hasSearch, searchFit);
-  const level = fit.level;
-  const wide = level === 0;
   const serviceState = service ? serviceStates.get(service) : undefined;
 
   const hidden = page === "connections" ? "connections" : "processes";
@@ -946,27 +1015,64 @@ export default function Replica({
           label="视图"
           value={view}
           onChange={setView}
-          iconsOnly={level === 2}
+          iconsOnly
           items={[
-            { value: "apps", label: "按应用", icon: "apps", title: "按应用：同一程序的多个进程合并为一行", tour: "view-apps" },
+            {
+              value: "apps",
+              label: "按应用",
+              icon: "apps",
+              title: "按应用：同一程序的多个进程合并为一行",
+              tour: "view-apps",
+            },
             { value: "tree", label: "进程树", icon: "tree", title: "进程树：按父子关系显示", tour: "view-tree" },
             { value: "list", label: "列表", icon: "list", title: "列表：所有进程平铺显示", tour: "view-list" },
           ]}
         />
         {hideToggle}
+        <span
+          data-details
+          onContextMenu={(event) => {
+            event.preventDefault();
+            showMenu(
+              { x: event.clientX, y: event.clientY },
+              DETAILS_MODES.map((mode) => ({
+                label: DETAILS_MODE_NAMES[mode],
+                checked: detailsMode === mode,
+                run: () => chooseDetails(mode),
+              })),
+            );
+          }}
+        >
+          <Button
+            icon={detailsMode === "auto" ? "panelAuto" : "panel"}
+            title={`详细信息面板：${DETAILS_MODE_NAMES[detailsMode]}\n单击改为“${DETAILS_MODE_NAMES[nextDetails(detailsMode)]}”，右键可直接选择`}
+            label="详细信息面板"
+            pressed={detailsMode !== "closed"}
+            onClick={() => chooseDetails(nextDetails(detailsMode))}
+          />
+        </span>
       </>
     ) : page === "services" ? (
-      <Segments
-        key="services"
-        label="筛选"
-        value={serviceFilter}
-        onChange={setServiceFilter}
-        items={[
-          { value: "all", label: "全部" },
-          { value: "running", label: "正在运行" },
-          { value: "stopped", label: "已停止" },
-        ]}
-      />
+      <>
+        <Button
+          icon="play"
+          title="启动服务"
+          disabled={!service || serviceState !== "stopped"}
+          onClick={() => service && control(service, "start")}
+        />
+        <Button
+          icon="stop"
+          title="停止服务"
+          disabled={!service || serviceState !== "running"}
+          onClick={() => service && control(service, "stop")}
+        />
+        <Button
+          icon="restart"
+          title="重新启动服务"
+          disabled={!service || serviceState !== "running"}
+          onClick={() => service && control(service, "restart")}
+        />
+      </>
     ) : page === "connections" ? (
       <>
         <Segments
@@ -980,44 +1086,22 @@ export default function Replica({
             { value: "list", label: "列表", icon: "list" },
           ]}
         />
-        <Segments
-          key="connections"
-          label="筛选"
-          value={connectionFilter}
-          onChange={setConnectionFilter}
-          items={[
-            { value: "all", label: "全部", title: "所有 TCP 和 UDP 端点" },
-            { value: "listen", label: "监听", title: "正在等待连接的 TCP 端口" },
-            { value: "established", label: "已连接", title: "已建立的 TCP 连接" },
-            { value: "udp", label: "UDP", title: "UDP 端点" },
-          ]}
-        />
         {hideToggle}
       </>
     ) : page === "history" ? (
       <>
-        <Segments
-          key="history"
-          label="时间范围"
-          value={historyRange}
-          onChange={(v) => {
-            setHistoryRange(v);
-            setHistoryAt(null);
-          }}
-          items={historyRanges.map((r) => ({ value: r.value, label: r.label }))}
-        />
-        {historyAt !== null && (
-          <Button onClick={() => setHistoryAt(null)} title="取消选中的时刻，显示最新数据">
-            回到最新
-          </Button>
-        )}
+        <Button
+          className="h-follow"
+          pressed={historyAt === null}
+          onClick={()=>setHistoryAt(historyAt===null?(shared.recording.until??performance.now()/1000)-(motion!=="step"&&uiMotion&&historyRange==="5m"?(2*interval+250)/1000:0):null)}
+        >
+          {historyAt === null ? "实时" : "回到最新"}
+        </Button>
       </>
     ) : null;
   const searchBox = hasSearch && (
     <label
       className={"a-search" + ((queries[page] ?? "").trim() ? " is-filled" : "")}
-      data-placed={level < 4 && fit.search ? "" : undefined}
-      style={level < 4 && fit.search ? { left: fit.search.left, width: fit.search.width } : undefined}
     >
       <Icon name="search" />
       <input
@@ -1031,6 +1115,7 @@ export default function Replica({
         autoComplete="off"
         onChange={(e) => setQueries((q) => ({ ...q, [page]: e.target.value }))}
       />
+      {!queries[page] && <kbd>Ctrl+F</kbd>}
       {(queries[page] ?? "") && (
         <button
           type="button"
@@ -1047,6 +1132,13 @@ export default function Replica({
       )}
     </label>
   );
+  const navigation = (
+    <Navigation page={page} side={navLeft} open={navOpen} onToggle={() => setNavOpen(!navOpen)} onPage={go} />
+  );
+  const goHistorySettings = () => {
+    setSettingsSection("data");
+    go("settings");
+  };
   const pageIndex = pages.findIndex((p) => p[0] === page);
 
   return (
@@ -1061,12 +1153,16 @@ export default function Replica({
         (tray ? " is-tray" : "")
       }
       data-ui
+      data-motion-off={!uiMotion || undefined}
+      data-active={foreground&&hostActive&&!tray?"true":"false"}
+      onPointerDownCapture={()=>setForeground(true)}
+      onClickCapture={()=>setForeground(true)}
       data-window={tray ?? (maximized ? "maximized" : "normal")}
       data-mode={mode}
       tabIndex={-1}
-      onFocus={() => (focused.current = true)}
+      onFocus={()=>{focused.current=true;setForeground(true)}}
       onBlur={(event) => {
-        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) focused.current = false;
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) {focused.current=false;setForeground(false)}
       }}
       style={{ ...accent, "--a-rail": navLeft && navOpen ? "176px" : "48px", "--a-text": fontSize / 13 } as CSSProperties}
       onKeyDown={keys}
@@ -1083,123 +1179,113 @@ export default function Replica({
       onDrop={drop}
     >
       <div
+        data-pinned={pinned || undefined}
         className="a-window"
         aria-hidden={tray ? true : undefined}
         inert={tray ? true : undefined}
         style={scale === 100 ? undefined : { zoom: scale / 100 }}
       >
-        <div className="a-titlebar" role="toolbar" aria-label="工具栏">
-          <div className="a-toolbar" ref={fit.bar}>
-            <div className="a-start" ref={fit.start}>
-              <div className="a-brand">
-                <img src="/assets/argus.svg" width="18" height="18" alt="" draggable={false} />
-                <span>Argus</span>
-              </div>
-              {level < 3 && controls}
-            </div>
-            <span className="a-grow" />
-            <div className="a-trailing" ref={fit.trailing}>
-              <Button icon="runTask" title="运行新任务" label="运行新任务" onClick={() => setDialog({ kind: "run" })}>
-                {wide ? "运行新任务" : undefined}
-              </Button>
-              {page === "services" && (
-                <>
-                  <Button
-                    icon="play"
-                    title="启动服务"
-                    disabled={!service || serviceState !== "stopped"}
-                    onClick={() => service && control(service, "start")}
-                  />
-                  <Button
-                    icon="stop"
-                    title="停止服务"
-                    disabled={!service || serviceState !== "running"}
-                    onClick={() => service && control(service, "stop")}
-                  />
-                  <Button
-                    icon="restart"
-                    title="重新启动服务"
-                    disabled={!service || serviceState !== "running"}
-                    onClick={() => service && control(service, "restart")}
-                  />
-                  <Button
-                    icon="external"
-                    title="打开 Windows 服务管理器"
-                    label="服务管理器"
-                    onClick={() => say("演示窗口不会打开 Windows 服务管理器。", "info")}
-                  >
-                    {wide ? "服务管理器" : undefined}
-                  </Button>
-                </>
-              )}
-              {sampled && (
-                <>
-                  <Select
-                    label="刷新频率"
-                    value={interval}
-                    onChange={setIntervalMs}
-                    options={[500, 1000, 2000, 5000].map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }))}
-                  />
-                  <Button
-                    icon={paused ? "play" : "pause"}
-                    title={paused ? "继续刷新" : "暂停刷新"}
-                    pressed={paused}
-                    tour="pause"
-                    onClick={() => setPaused(!paused)}
-                  />
-                </>
-              )}
-              <Button icon="lock" title="查找文件占用（也可将文件拖放到窗口）" label="查找占用文件的进程" onClick={() => setDialog({ kind: "lock" })} />
-              {page === "processes" && (
-                <span
-                  data-details
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    showMenu(
-                      { x: event.clientX, y: event.clientY },
-                      DETAILS_MODES.map((mode) => ({
-                        label: DETAILS_MODE_NAMES[mode],
-                        checked: detailsMode === mode,
-                        run: () => chooseDetails(mode),
-                      })),
-                    );
-                  }}
-                >
-                  <Button
-                    icon={detailsMode === "auto" ? "panelAuto" : "panel"}
-                    title={`详细信息面板：${DETAILS_MODE_NAMES[detailsMode]}\n单击改为“${DETAILS_MODE_NAMES[nextDetails(detailsMode)]}”，右键可直接选择`}
-                    label="详细信息面板"
-                    pressed={detailsMode !== "closed"}
-                    onClick={() => chooseDetails(nextDetails(detailsMode))}
-                  />
-                </span>
-              )}
-            </div>
+        <div className="a-titlebar" onDoubleClick={e=>{if(!(e.target as Element).closest("button,input,label"))setMaximized(v=>!v)}} role="toolbar" aria-label="工具栏">
+          <div className="a-brand">
+            <img src="/assets/argus.svg" width="28" height="28" alt="" draggable={false} />
+            <span>Argus</span>
           </div>
-          {level < 4 && searchBox}
+          {searchBox}
           <div className="a-caption">
+            <button
+              type="button"
+              aria-pressed={pinned}
+              aria-label={pinned ? "取消置顶显示" : "置顶显示"}
+              title={pinned ? "取消置顶显示" : "置顶显示"}
+              onClick={() => setPinned(!pinned)}
+            >
+              <Icon name={pinned ? "unpin" : "pin"} size={14} />
+            </button>
             <button type="button" aria-label="最小化" title="最小化" onClick={() => setTray("tray")}>
               <CaptionIcon name="minimize" />
             </button>
             <button type="button" aria-label={maximized ? "向下还原" : "最大化"} title={maximized ? "向下还原" : "最大化"} onClick={() => setMaximized(!maximized)}>
               <CaptionIcon name={maximized ? "restore" : "maximize"} />
             </button>
-            <button type="button" aria-label="关闭" title="关闭" className="is-close" onClick={() => setTray("tray")}>
+            <button
+              type="button"
+              aria-label="关闭"
+              title="关闭"
+              className="is-close"
+              onClick={() => setTray(shared.widgets.closeToTray ? "tray" : "exited")}
+            >
               <CaptionIcon name="close" />
             </button>
           </div>
         </div>
-        {level >= 3 && controls && <div className="a-toolbar-row">{controls}</div>}
-        {level >= 4 && searchBox && <div className="a-toolbar-row">{searchBox}</div>}
         <div className="a-frame">
-          <Navigation
-            page={page}
-            side={navLeft}
-            open={navOpen}
-            onToggle={() => setNavOpen(!navOpen)}
-            onPage={go}
-          />
+          {navLeft && navigation}
           <div className="a-body">
+            <div className="a-page-bar">
+              {navLeft ? <strong data-i18n="nav">{pages[pageIndex][1]}</strong> : navigation}
+              <div className="a-page-actions">{controls}</div>
+              <button
+                type="button"
+                className="a-btn a-more"
+                aria-label="更多操作"
+                title="更多操作"
+                data-tour="more"
+                aria-expanded={!!menu && menu.anchor === "more"}
+                onClick={(event) => {
+                  if (menu?.anchor === "more") {
+                    closeMenu();
+                    return;
+                  }
+                  const box = event.currentTarget.getBoundingClientRect();
+                  showMenu(
+                    { x: box.right, y: box.bottom },
+                    [
+                      { label: "运行新任务…", icon: "runTask", hint: "Ctrl+N", run: () => setDialog({ kind: "run" }) },
+                      {
+                        label: "查找占用文件的进程…",
+                        icon: "lock",
+                        detail: "可拖放文件",
+                        run: () => setDialog({ kind: "lock" }),
+                      },
+                      ...(hasSearch
+                        ? [
+                            {
+                              label: "导出当前页为 CSV…",
+                              icon: "download" as const,
+                              run: () => exportTable(content.current!, page),
+                            },
+                          ]
+                        : []),
+                      ...(page === "services"
+                        ? [
+                            {
+                              label: "打开 Windows 服务管理器",
+                              icon: "external" as const,
+                              run: () => say("演示窗口不会打开 Windows 服务管理器。", "info"),
+                            },
+                          ]
+                        : []),
+                      ...(page === "history"
+                        ? [
+                            {
+                              label: "显示最低到最高的范围",
+                              checked: shared.historyBand,
+                              run: () => store.set({ historyBand: !shared.historyBand }),
+                            },
+                            { label: "历史记录设置…", icon: "settings" as const, run: () => goHistorySettings() },
+                          ]
+                        : []),
+                      "-",
+                      { label: "快捷键", icon: "keyboard", run: () => setDialog({ kind: "shortcuts" }) },
+                    ],
+                    false,
+                    "more",
+                  );
+                }}
+              >
+                •••
+              </button>
+            </div>
             <main
               key={page}
               ref={content}
@@ -1231,6 +1317,9 @@ export default function Replica({
                         tick={tick}
                         rows={rows}
                         total={alive.length}
+                        onLeak={() => showPid(18340)}
+                        held={hold}
+                        hiddenCount={hideSystem.processes ? alive.length - listed.length : 0}
                         columns={shownColumns}
                         sizing={columnPrefs}
                         onWidth={(key, width) => setColumnPrefs((p) => setWidth(p, key, width))}
@@ -1266,6 +1355,7 @@ export default function Replica({
                           history={history}
                           efficiency={efficiency}
                           priority={priority}
+                          resourcePriority={resourcePriority}
                           onDeselect={() => setSelected(null)}
                           onEnd={end}
                           onSelectPid={showPid}
@@ -1306,6 +1396,7 @@ export default function Replica({
                     list={services}
                     states={serviceStates}
                     filter={serviceFilter}
+                    onFilter={setServiceFilter}
                     query={queries.services ?? ""}
                     selected={service}
                     onSelect={setService}
@@ -1314,7 +1405,7 @@ export default function Replica({
                 )}
                 {page === "startup" && Startup && (
                   <Startup
-                    items={startup}
+                    items={startup} onDelete={item => setDialog({kind:"delete",title:`删除启动项 ${item.name}？`,body:`将从${item.location}中删除“${item.name}”，此操作无法撤销；程序本身保留。`,accept:()=>setStartup(items=>items.filter(i=>i.name!==item.name))})}
                     query={queries.startup ?? ""}
                     onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
                     onToggle={(name) => {
@@ -1328,6 +1419,7 @@ export default function Replica({
                   <Connections
                     alive={alive}
                     filter={connectionFilter}
+                    onFilter={setConnectionFilter}
                     grouped={connectionView === "apps"}
                     query={queries.connections ?? ""}
                     hidden={hideSystem.connections ? hides : undefined}
@@ -1337,10 +1429,23 @@ export default function Replica({
                   />
                 )}
                 {page === "history" && History && (
-                  <History range={historyRange} cursor={historyAt} onCursor={setHistoryAt} onOpen={showPid} />
+                  <History onMenu={(e,items)=>showMenu({x:e.clientX,y:e.clientY},items)}
+                    range={historyRange} interval={interval} running={running} pace={motion} smooth={motion!=="step"} animate={uiMotion}
+                    tick={shared.recording.until ?? tick}
+                    alive={alive}
+                    cursor={historyAt}
+                    onCursor={setHistoryAt}
+                    onRange={setHistoryRange}
+                    onOpen={showPid}
+                  />
                 )}
+                {page === "components" && Components && <Components />}
                 {page === "settings" && Settings && (
                   <Settings
+                    pauseSorting={pauseSorting}
+                    onPauseSorting={setPauseSorting}
+                    section={settingsSection}
+                    onComponents={() => go("components")}
                     theme={theme}
                     onTheme={setTheme}
                     motion={motion}
@@ -1359,16 +1464,27 @@ export default function Replica({
                     onUserGroups={setUserGroups}
                     uiMotion={uiMotion}
                     onUiMotion={setUiMotion}
+                    onShortcuts={() => setDialog({ kind: "shortcuts" })}
                     onVisibility={() => setDialog({ kind: "visibility" })}
                     onSay={(text) => say(text, "info")}
                   />
                 )}
                 {page === "about" && About && (
-                  <About onCopy={copy} onQuit={() => setTray("exited")} onSay={(text) => say(text, "info")} />
+                  <About
+                    tick={tick}
+                    interval={interval}
+                    navLeft={navLeft}
+                    onNav={setNavLeft}
+                    onInterval={setIntervalMs}
+                    onCopy={copy}
+                    onQuit={() => setTray("exited")}
+                    onSay={(text) => say(text, "info")}
+                  />
                 )}
               </>
             </main>
             <footer className="a-status">
+              <button className="a-version" title={appVersion} onClick={()=>window.open((lang==="zh"?"":"/"+lang)+"/changelog/","_blank","noopener")} onContextMenu={e=>{e.preventDefault();copy(appVersion,"版本号")}}>v{appVersion}</button>
               <span className="a-status-figures">
                 <span>
                   线程 <b>{thousands(threads)}</b>
@@ -1387,11 +1503,18 @@ export default function Replica({
                 </span>
               </span>
               {hold && page === "processes" && !paused && (
-                <span title="鼠标移出列表后按当前排序重新排列">指针位于列表上，暂停重新排序</span>
+                <span
+                  className="a-sort-held"
+                  title="指针位于进程列表上，行位置保持不变，读数照常刷新；移出列表后按当前排序重新排列。"
+                >
+                  <Icon name="pointer" size={12} />
+                  排序已暂停
+                </span>
               )}
-              <span className={"a-pulse" + (paused || (ctrlHeld && sampled) ? " is-paused" : "")}>
-                {paused || (ctrlHeld && sampled) ? "已暂停刷新" : `每 ${interval / 1000} 秒刷新`}
-              </span>
+              <div className="a-refresh">
+                <Select label="刷新频率" value={interval} onChange={setIntervalMs} displayLabel={paused || (ctrlHeld && sampled) ? "已暂停刷新" : `每 ${interval/1000} 秒刷新`} options={[500,1000,2000,5000].map(ms => ({value:ms,label:`每 ${ms/1000} 秒`}))}/>
+                <Button icon={paused ? "play" : "pause"} title={paused ? "继续刷新" : "暂停刷新"} pressed={paused} tour="pause" onClick={() => setPaused(!paused)}/>
+              </div>
               <span className="a-privilege" title="Argus 正以管理员身份运行，可查看和结束绝大多数进程">
                 <Icon name="shield" size={12} />
                 管理员
@@ -1415,6 +1538,45 @@ export default function Replica({
               }
             }}
           >
+            {dialog.kind === "shortcuts" && (
+              <div className="a-dialog" role="dialog" aria-label="快捷键">
+                <div className="a-dialog-body">
+                  <h3>快捷键</h3>
+                  {[
+                    ["Ctrl+1 … Ctrl+9", "页面"],
+                    ["Ctrl+F", "搜索"],
+                    ["Ctrl+N", "运行新任务"],
+                    ["Ctrl", "暂停刷新"],
+                  ].map(([key, label]) => (
+                    <p key={key}>
+                      <kbd>{key}</kbd> {label}
+                    </p>
+                  ))}
+                </div>
+                <div className="a-dialog-foot">
+                  <Button onClick={() => setDialog(null)}>关闭</Button>
+                </div>
+              </div>
+            )}
+            {dialog.kind === "delete" && (
+              <div className="a-dialog" role="alertdialog">
+                <div className="a-dialog-body">
+                  <h3>{dialog.title}</h3>
+                  <p>{dialog.body}</p>
+                </div>
+                <div className="a-dialog-foot">
+                  <Button onClick={() => setDialog(null)}>取消</Button>
+                  <Button
+                    onClick={() => {
+                      dialog.accept();
+                      setDialog(null);
+                    }}
+                  >
+                    删除
+                  </Button>
+                </div>
+              </div>
+            )}
             {dialog.kind === "lock" && (
               <div className="a-dialog is-lock" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
                 <div className="a-dialog-body a-scroll">
@@ -1807,6 +1969,12 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
   const [keyboard, setKeyboard] = useState(menu.keyboard);
   const [place, setPlace] = useState<{ x: number; y: number } | null>(null);
   const [subPlace, setSubPlace] = useState<{ x: number; y: number } | null>(null);
+  useIsoLayoutEffect(()=>{
+    const el=box.current;if(!el)return;return ()=>rollAway(el,el.offsetTop<menu.y);
+  },[menu.id]);
+  useIsoLayoutEffect(()=>{
+    const el=subBox.current;if(!el||sub===null)return;return ()=>rollAway(el);
+  },[sub]);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const children = sub !== null ? ((items[sub] as Exclude<MenuEntry, "-">).children ?? []) : null;
   useIsoLayoutEffect(() => {
@@ -1838,6 +2006,8 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
   }, [sub, place]);
   useEffect(() => {
     const close = (event: Event) => {
+      if (event.target instanceof Element && menu.anchor && event.target.closest(`[data-tour="${menu.anchor}"]`))
+        return;
       if (!(event.target instanceof Element) || !event.target.closest(".a-menu")) onClose();
     };
     const blur = () => onClose();
@@ -1848,7 +2018,7 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
       window.removeEventListener("blur", blur);
       clearTimeout(timer.current);
     };
-  }, [onClose]);
+  }, [onClose, menu.anchor]);
   const activate = (entry: MenuEntry, index: number, inSub: boolean) => {
     if (entry === "-" || entry.disabled) return;
     if (!inSub && entry.children) {
@@ -1947,8 +2117,9 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
           aria-expanded={owner ? sub === index : undefined}
           aria-keyshortcuts={entry.hint}
           disabled={entry.disabled}
-          className={(entry.danger ? "is-danger" : "") + (lit ? " is-lit" : "")}
+          className={(entry.danger && !entry.disabled ? "is-danger" : "") + (lit ? " is-lit" : "")}
           onPointerEnter={() => {
+            if (entry.disabled) return;
             setKeyboard(false);
             if (inSub) {
               clearTimeout(timer.current);

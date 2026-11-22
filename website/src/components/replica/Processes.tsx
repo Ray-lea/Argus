@@ -1,5 +1,6 @@
 /** @jsxImportSource @/components/replica/i18n */
 "use client";
+import { store, useShared } from "./store";
 import { dateLocale } from "@/lib/languages";
 import {
   useEffect,
@@ -53,7 +54,7 @@ import { scaleOf, slideIn, useIsoLayoutEffect } from "./widgets";
 export type View = "apps" | "tree" | "list";
 /** A process column's key (Columns.tsx). */
 export type SortKey = string;
-export type Device = "cpu" | "memory" | "disk" | "wifi" | "gpu" | "battery";
+export type Device = "cpu" | "memory" | "disk" | "wifi" | "gpu" | "npu" | "battery";
 
 export interface Row {
   key: string;
@@ -127,6 +128,7 @@ interface BuildOptions {
   query: string;
   list: Process[];
   now: Map<number, Reading>;
+  sortReadings?: Map<number, Reading>;
   open: Set<string>;
   closed: Set<string>;
   /** The tree's branches shown open; the rest stay folded, as the app starts. */
@@ -187,6 +189,7 @@ export function buildRows(o: BuildOptions): Row[] {
     net: 1 / 1024,
   };
   const compare = (a: Row, b: Row) => {
+    if(o.sortReadings){a={...a,values:sum(a.pids,o.sortReadings)};b={...b,values:sum(b.pids,o.sortReadings)}}
     let c: number;
     if (o.sort === "name") c = collator.compare(name(a), name(b));
     else if (o.sort === "pid") c = (a.count === 1 ? a.pids[0] : 1e9) - (b.count === 1 ? b.pids[0] : 1e9);
@@ -452,7 +455,7 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
             style={{ "--c": card.color } as CSSProperties}
             onClick={() => onOpen(card.id)}
             aria-label={open}
-            title={open}
+            title={card.id === "memory" ? "整机已用物理内存为总量减去可用内存，包括使用中和已修改的内存。" : open}
           >
             {/* Under the curve, which keeps below them, as the app draws them. */}
             <span className="a-vital-scale" aria-hidden="true">
@@ -497,6 +500,9 @@ interface TableProps {
   tick: number;
   rows: Row[];
   total: number;
+  held: boolean;
+  hiddenCount: number;
+  onLeak: () => void;
   /** The columns shown, in their order, the name first (Columns.tsx). */
   columns: ColumnDef[];
   sizing: Pick<ColumnPrefs, "autoWidth" | "fullWidth" | "widths">;
@@ -528,12 +534,31 @@ interface TableProps {
   onMoveColumn: (key: string, before: string | null) => void;
 }
 export function ProcessTable(t: TableProps) {
+  const { leakHints, ignoreLeak } = useShared();
+  const leak = leakHints && !ignoreLeak && t.list.some((p) => p.pid === 18340);
   const table = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const deselectTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  useEffect(()=>()=>clearTimeout(deselectTimer.current),[t.selected]);
   const others = t.columns.slice(1);
+  const [scrollGroup, setScrollGroup] = useState("");
+  const groups = t.rows.flatMap((r, i) => (r.kind === "group" ? [{ row: r, at: i }] : []));
+  const markScroll = () => {
+    const b = body.current;
+    if (!b) return;
+    const visible = [...b.querySelectorAll<HTMLElement>(".a-group")]
+      .filter((g) => g.offsetTop - b.offsetTop <= b.scrollTop + 2)
+      .at(-1);
+    setScrollGroup(b.scrollTop > 0 ? (visible?.dataset.group ?? "") : "");
+  };
   const ctx = useMemo<CellContext>(
-    () => ({ byPid: new Map(t.list.map((p) => [p.pid, p])), tick: t.tick, efficiency: t.efficiency, priority: t.priority }),
+    () => ({
+      byPid: new Map(t.list.map((p) => [p.pid, p])),
+      tick: t.tick,
+      efficiency: t.efficiency,
+      priority: t.priority,
+    }),
     [t.list, t.tick, t.efficiency, t.priority],
   );
   const [room, setRoom] = useState(0);
@@ -546,7 +571,26 @@ export function ProcessTable(t: TableProps) {
     observer.observe(b);
     return () => observer.disconnect();
   }, []);
-  const { widths, fill } = useColumnWidths(t.columns, t.sizing, t.text, t.rows, ctx, room);
+  const sizingRows = useMemo(
+    () =>
+      t.list.map((p) => ({
+        kind: "unit" as const,
+        key: String(p.pid),
+        pids: [p.pid],
+        label: p.name,
+        detail: p.name !== p.exe ? p.exe : undefined,
+        count: 1,
+        depth: 0,
+        exe: p.exe,
+        group: p.group,
+        expandable: false,
+        expanded: false,
+        suspended: p.suspended,
+        values: zero,
+      })),
+    [t.list],
+  );
+  const { widths, fill } = useColumnWidths(t.columns, t.sizing, t.text, sizingRows, ctx, room);
   const nameWidth = fill ? NAME_MIN : (widths.get("name") ?? NAME_MIN);
   const rowMin = others.reduce((a, c) => a + (widths.get(c.key) ?? c.width), nameWidth);
   // Dragging a column's edge: the column keeps the width; a double-click
@@ -677,7 +721,7 @@ export function ProcessTable(t: TableProps) {
       {resizing && <style>{`.a-ptable .a-col-${resizing}{box-shadow:inset -2px 0 0 var(--a-accent)}`}</style>}
       {fitted && <style key={fitted.id}>{`.a-ptable .a-col-${fitted.key}{animation:a-fit-flash 700ms ease-out}`}</style>}
       <div
-        className="a-thead"
+        className={"a-thead" + (t.held ? " is-held" : "")}
         ref={head}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -697,7 +741,7 @@ export function ProcessTable(t: TableProps) {
           >
             <span className="a-th-total">
               {t.filtered && <Icon name="filter" size={13} />}
-              {t.total} 个进程
+              {t.hiddenCount ? `${t.total} (${t.hiddenCount} 个隐藏)` : `${t.total} 个进程`}
             </span>
             <span className="a-th-label">
               <span>名称</span>
@@ -705,6 +749,7 @@ export function ProcessTable(t: TableProps) {
             </span>
             {edge("name")}
           </button>
+          {leak&&<button type="button" className="a-leak-indicator" title="1 项可能的资源泄漏" onClick={t.onLeak}>⚠ 1</button>}
           {others.map((c) => (
             <button
               key={c.key}
@@ -712,7 +757,7 @@ export function ProcessTable(t: TableProps) {
               role="columnheader"
               className={`a-th a-col-${c.key}` + align(c)}
               style={{ width: width(c) }}
-              title={c.title}
+              title={c.key === "mem" ? "百分比为整机物理内存占用率。进程行显示专用工作集，分组显示成员合计。" : c.title}
               aria-sort={ariaSort(c.key)}
               data-tour={"col-" + c.key}
               data-col={c.key}
@@ -734,6 +779,7 @@ export function ProcessTable(t: TableProps) {
       <div
         className="a-tbody a-scroll"
         ref={body}
+        onScroll={markScroll}
         tabIndex={0}
         role="rowgroup"
         onKeyDown={keyed}
@@ -817,12 +863,14 @@ export function ProcessTable(t: TableProps) {
               aria-expanded={row.expandable ? row.expanded : undefined}
               className={"a-tr" + (t.selected === row.key ? " is-selected" : "")}
               onClick={(event) => {
-                t.onSelect(t.selected === row.key ? null : row.key);
-                if (event.detail === 2 && row.expandable) t.onToggle(row);
+                clearTimeout(deselectTimer.current);
+                if(event.detail>=2&&row.expandable){t.onSelect(row.key);t.onToggle(row)}
+                else if(t.selected===row.key&&row.expandable)deselectTimer.current=setTimeout(()=>t.onSelect(null),500);
+                else t.onSelect(t.selected===row.key?null:row.key);
               }}
               onContextMenu={(event) => {
                 event.preventDefault();
-                t.onSelect(row.key);
+                clearTimeout(deselectTimer.current);t.onSelect(row.key);
                 t.onMenu(event, row);
               }}
             >
@@ -864,6 +912,7 @@ export function ProcessTable(t: TableProps) {
                     <Icon name="leaf" size={12} />
                   </span>
                 )}
+                {leak && row.pids.includes(18340) && <span className="a-leak-tag">句柄泄漏</span>}
                 {row.suspended && <span className="a-tag">已暂停</span>}
               </span>
               {others.map((c) => {
@@ -890,6 +939,10 @@ export function ProcessTable(t: TableProps) {
           ),
         )}
       </div>
+      {groups.length>1&&<div className="a-group-track">{groups.map(({row,at})=><button type="button" key={row.key} data-group={row.key} aria-label={row.label} title={row.label}
+        style={{top:(at/t.rows.length*100)+"%"}} onClick={()=>{const b=body.current,el=b?.querySelector<HTMLElement>(`[data-group="${row.key}"]`);if(el&&b)b.scrollTop+= (el.getBoundingClientRect().top-b.getBoundingClientRect().top)/scaleOf(b)}}/>)}
+        {scrollGroup&&<span>{groups.find(g=>g.row.key===scrollGroup)?.row.label}</span>}</div>}
+
       {/* The raised strip under a dragged column, within the scrolled columns' lane. */}
       {drag.lifted && (
         <div
@@ -943,6 +996,7 @@ interface DetailsProps {
   history: (pids: number[]) => { cpu: number[]; mem: number[] };
   efficiency: Set<number>;
   priority: Map<number, string>;
+  resourcePriority: Record<string, string>;
   onDeselect: () => void;
   onEnd: (row: Row, confirm: boolean, tree?: boolean) => void;
   onSelectPid: (pid: number) => void;
@@ -1001,6 +1055,7 @@ export function Details(d: DetailsProps) {
 }
 function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
   const { row, proc } = d;
+  const { watch, leakHints, ignoreLeak } = useShared();
   const group = row.count > 1;
   const members = row.pids.map((pid) => d.list.find((p) => p.pid === pid)).filter(Boolean) as Process[];
   const parent = d.list.find((p) => p.pid === proc.ppid);
@@ -1037,6 +1092,7 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
             <Icon name="dismiss" size={14} />
           </button>
         </header>
+        {leakHints&&!ignoreLeak&&row.pids.includes(18340)&&<div className="a-leak-note"><b>可能存在句柄泄漏</b><p>8,126 → 38,240</p><button className="a-btn" onClick={()=>store.set({ignoreLeak:true})}>忽略此程序</button></div>}
         <div className="a-minis">
           <div className="a-mini">
             <span>CPU</span>
@@ -1119,12 +1175,16 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
                 ["完整性", proc.integrity],
                 ["架构", "64 位 (x64)"],
                 ["优先级", d.priority.get(proc.pid) ?? "正常"],
+                ["I/O 优先级", d.resourcePriority["I/O 优先级" + proc.pid] ?? "正常"],
+                ["内存优先级", d.resourcePriority["内存优先级" + proc.pid] ?? "正常"],
                 ["效率模式", d.efficiency.has(proc.pid) ? "开启" : "关闭"],
                 ["会话", proc.group === "windows" && proc.user.startsWith("NT") ? "0" : "1"],
               ]}
             />
             <h4>资源</h4>
             <Facts rows={resources} />
+            <h4>累计</h4><Facts rows={[["CPU 时间",cpuTime(proc.cpuTime)],["用户 CPU 时间",cpuTime(Math.floor(proc.cpuTime*.72))],["内核 CPU 时间",cpuTime(proc.cpuTime-Math.floor(proc.cpuTime*.72))],["I/O 读取",bytes(proc.mem*4.8)],["I/O 写入",bytes(proc.mem*2.3)]]}/>
+            <h4>进程观察</h4><div className="a-watch-buttons">{[false,true].map(program=><button type="button" className="a-btn" disabled={!!watch} key={String(program)} onClick={()=>store.set({watch:{pid:proc.pid,program,start:d.tick,stop:null},request:{page:"history",at:Date.now()}})}>{program?"观察后续运行":"观察此运行实例"}</button>)}</div>
             <h4>文件位置</h4>
             <PathRow path={proc.path} onCopy={d.onCopy} />
             {proc.args && (
@@ -1150,6 +1210,7 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
         )}
       </div>
       <footer className="a-details-foot">
+        <button type="button" className="a-btn" data-details-copy title="复制详细信息（Ctrl+Shift+C）" onClick={e=>d.onCopy(e.currentTarget.closest(".a-details-body")?.querySelector<HTMLElement>(".a-details-scroll")?.innerText??row.label,"详细信息")}><Icon name="copy"/></button>
         <button type="button" className="a-btn is-danger" onClick={() => d.onEnd(row, true)}>
           {group ? "全部结束" : "结束进程"}
         </button>

@@ -51,7 +51,7 @@ function enterEase(t: number) {
  * pixel; the compositor plays them as it plays a CSS animation.
  */
 export function slideIn(el: HTMLElement | null, { x = 0, y = 0, duration = 250, fade = false }) {
-  if (!el || (!x && !y && !fade) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (!el || el.closest("[data-motion-off]") || (!x && !y && !fade) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const box = el.getBoundingClientRect(),
     s = el.offsetWidth ? (box.width * devicePixelRatio) / el.offsetWidth : devicePixelRatio;
   const steps = Math.max(1, Math.round(duration / 4)),
@@ -69,6 +69,18 @@ export function slideIn(el: HTMLElement | null, { x = 0, y = 0, duration = 250, 
   el.animate(frames, { duration, easing: "linear" });
 }
 
+// Roll away the existing pixels while releasing focus and invoking the command.
+export function rollAway(el:HTMLElement,up=false){
+  const frame=el.closest<HTMLElement>(".a-window");
+  if(!frame||!el.isConnected||el.closest("[data-motion-off]")||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const rect=localRect(el),parent=localRect(frame),copy=el.cloneNode(true) as HTMLElement;
+  copy.inert=true;copy.setAttribute("aria-hidden","true");copy.removeAttribute("role");
+  copy.removeAttribute("id");copy.querySelectorAll("[role],[id]").forEach(n=>n.removeAttribute("id"));
+  Object.assign(copy.style,{position:"absolute",top:rect.top-parent.top+"px",left:rect.left-parent.left+"px",bottom:"auto",width:rect.width+"px",height:rect.height+"px",minWidth:"0",zIndex:"39",pointerEvents:"none",animation:"none"});
+  frame.append(copy);
+  const animation=copy.animate([{clipPath:"inset(0)"},{clipPath:up?"inset(100% 0 0 0)":"inset(0 0 100% 0)"}],{duration:83,easing:"linear",fill:"forwards"});
+  animation.onfinish=()=>copy.remove();
+}
 export interface SegItem<T extends string> {
   value: T;
   label?: string;
@@ -180,6 +192,8 @@ export function Select<T extends string | number>({
   className,
   title,
   context,
+  displayLabel,
+  reselect,
 }: {
   value: T;
   options: Choice<T>[];
@@ -189,6 +203,8 @@ export function Select<T extends string | number>({
   title?: string;
   /** Where a choice reads differently here than elsewhere (the translations' data-i18n). */
   context?: string;
+  displayLabel?: string;
+  reselect?: boolean;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<null | { up: boolean }>(null);
@@ -216,9 +232,13 @@ export function Select<T extends string | number>({
     setActive(selected);
     setOpen({ up: below < wanted && above > below });
   };
+  useIsoLayoutEffect(()=>{
+    const list=wrap.current?.querySelector<HTMLElement>(".a-listbox");
+    if(list&&open)return ()=>rollAway(list,open.up);
+  },[open]);
   const pick = (index: number) => {
     setOpen(null);
-    if (options[index] && index !== selected) onChange(options[index].value);
+    if (options[index] && (reselect || index !== selected)) onChange(options[index].value);
     wrap.current?.querySelector<HTMLElement>(".a-select")?.focus();
   };
   const keys = (event: KeyboardEvent) => {
@@ -257,7 +277,8 @@ export function Select<T extends string | number>({
         onClick={() => (open ? setOpen(null) : show())}
         onKeyDown={keys}
       >
-        <span className="a-select-labels">
+        {displayLabel && <span>{displayLabel}</span>}
+        <span className="a-select-labels" hidden={!!displayLabel}>
           {options.map((o, i) => (
             <span key={String(o.value)} hidden={i !== selected} data-i18n={context}>
               {o.label}
@@ -269,6 +290,7 @@ export function Select<T extends string | number>({
       {open && (
         <div
           className="a-listbox"
+          data-up={open.up||undefined}
           role="listbox"
           aria-label={label}
           style={open.up ? { bottom: "calc(100% + 4px)" } : { top: "calc(100% + 4px)" }}

@@ -84,6 +84,8 @@ export const COLUMNS: ColumnDef[] = [
   col("handles", "general", "count", 86, true, "句柄", "句柄数"),
   col("suspended", "general", "bool", 90, false, "已暂停", "进程的全部线程处于暂停等待状态。"),
   col("efficiency", "general", "bool", 100, false, "效率模式", "进程的 EcoQoS 节能状态。"),
+  col("power","general","text",120,true,"电源使用情况","按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。"),
+  col("powerTrend","general","text",140,true,"电源使用情况趋势","最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。"),
   col("cpu", "cpu", "percent", 70, true, "CPU", "占全部处理器能力的百分比", "percent"),
   col("cpuTime", "cpu", "duration", 100, true, "CPU 时间", "累计用户态与内核态 CPU 时间；分组显示成员合计。"),
   col("cpuUserTime", "cpu", "duration", 115, true, "用户 CPU 时间", "进程累计使用的用户态 CPU 时间。"),
@@ -295,6 +297,12 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "handles": value = total((p) => p.handles); break;
     case "suspended": value = instance((p) => (p.suspended ? "是" : "否")); break;
     case "efficiency": value = instance((p) => (ctx.efficiency.has(p.pid) ? "是" : "否")); break;
+    case "power":
+    case "powerTrend": {
+      const estimate=c.key==="power" ? v.cpu*.2+v.gpu*.04+Math.min(1.5,(v.read+v.write)/(512*1024**2)) : total(p=>(p.cpu??0)*.2+(p.gpu??0)*.04+(p.disk??0)/512);
+      const level=[.1,.3,.8,2].filter(n=>estimate>=n).length;
+      return {text:["非常低","低","中","高","非常高"][level],sort:estimate};
+    }
     case "cpu": value = v.cpu; break;
     case "cpuTime": value = total((p) => p.cpuTime); break;
     case "cpuUserTime": value = total(userTime); break;

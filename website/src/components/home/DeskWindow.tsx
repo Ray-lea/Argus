@@ -24,6 +24,41 @@ export default function DeskWindow({
 }) {
   const self = useRef<HTMLDivElement>(null);
   const [rect, setRect] = useState(() => ({ x: (AREA.w - width) / 2, y: (AREA.h - height) / 2, w: width, h: height }));
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const node = event.target as Element;
+    const frame = event.currentTarget;
+    const desk = frame.parentElement;
+    if (
+      event.button !== 0 ||
+      !desk ||
+      !node.closest(".a-titlebar") ||
+      node.closest("button,input,label") ||
+      frame.querySelector(".argus-app.is-max")
+    )
+      return;
+    event.preventDefault();
+    const scale = desk.getBoundingClientRect().width / desk.offsetWidth;
+    const { clientX, clientY, pointerId } = event;
+    const drag = (pointer: PointerEvent) => {
+      if (pointer.pointerId !== pointerId) return;
+      setRect({
+        ...rect,
+        x: clamp(Math.round(rect.x + (pointer.clientX - clientX) / scale), 0, AREA.w - rect.w),
+        y: clamp(Math.round(rect.y + (pointer.clientY - clientY) / scale), 0, AREA.h - rect.h),
+      });
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", drag, true);
+      window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+      window.removeEventListener("blur", end);
+    };
+    frame.setPointerCapture(pointerId);
+    window.addEventListener("pointermove", drag, true);
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    window.addEventListener("blur", end);
+  };
   const resize = (edge: Edge) => (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -65,10 +100,16 @@ export default function DeskWindow({
     <div
       className="window"
       ref={self}
-      style={{ "--wx": rect.x + "px", "--wy": rect.y + "px", "--ww": rect.w + "px", "--wh": rect.h + "px" } as CSSProperties}
+      onPointerDown={move}
+      style={
+        { "--wx": rect.x + "px", "--wy": rect.y + "px", "--ww": rect.w + "px", "--wh": rect.h + "px" } as CSSProperties
+      }
     >
       {children}
-      {resizable && edges.map((edge) => <i key={edge} className={"win-edge is-" + edge} onPointerDown={resize(edge)} aria-hidden="true" />)}
+      {resizable &&
+        edges.map((edge) => (
+          <i key={edge} className={"win-edge is-" + edge} onPointerDown={resize(edge)} aria-hidden="true" />
+        ))}
     </div>
   );
 }

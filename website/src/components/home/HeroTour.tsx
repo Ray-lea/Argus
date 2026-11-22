@@ -14,6 +14,7 @@ interface Step {
   // What the cursor does there: a click by default.
   type?: string;
   menu?: boolean;
+  sort?: "descending" | "ascending";
   at?: number;
   sweep?: [number, number];
   run?: () => void;
@@ -39,7 +40,7 @@ const chapters: Chapter[] = [
     label: "进程",
     steps: [
       { label: "打开进程页", find: nav("processes", "进程") },
-      { label: "按 CPU 占用排序", find: tour("col-cpu") },
+      { label: "按 CPU 占用排序", find: tour("col-cpu"), sort:"descending" },
       { label: "选中占用最高的进程，查看详细信息", find: (a) => a.querySelector(".a-tbody .a-tr[data-key]") },
       { label: "右键菜单：结束进程树、设置优先级、效率模式与规则", find: (a) => a.querySelector(".a-tbody .a-tr.is-selected, .a-tbody .a-tr[data-key]"), menu: true, hold: 2200 },
       { label: "为该进程开启效率模式", find: (a) => byText(a, ".a-menu [role^=menuitem]", "效率模式") },
@@ -48,7 +49,7 @@ const chapters: Chapter[] = [
       { label: "展开所有", find: tour("col-name"), menu: true },
       { label: "展开所有", find: (a) => byText(a, ".a-menu [role^=menuitem]", "展开所有") },
       { label: "回到按应用分组", find: tour("view-apps") },
-      { label: "按名称排序", find: tour("col-name") },
+      { label: "按名称排序", find: tour("col-name"), sort:"ascending" },
     ],
   },
   {
@@ -57,7 +58,8 @@ const chapters: Chapter[] = [
       { label: "打开性能页", find: nav("performance", "性能") },
       { label: "CPU：利用率、频率、温度与功耗", find: tour("device-cpu") },
       { label: "悬停曲线，查看任一时刻的读数", find: (a) => a.querySelector(".a-chart .curve.is-readout"), sweep: [0.92, 0.3], hold: 2600 },
-      { label: "每个逻辑处理器一张曲线，区分性能核与能效核", find: tour("graph-logical") },
+      { label:"CPU 图表", find:(a)=>a.querySelector(".a-cpu-graphs"), menu:true },
+      { label: "每个逻辑处理器一张曲线，区分性能核与能效核", find: (a) => byText(a,".a-menu [role^=menuitem]","多核视图") },
       { label: "查看内存的使用情况", find: tour("device-memory") },
       { label: "查看磁盘的读写速率与活动时间", find: tour("device-disk") },
       { label: "磁盘详情：健康状况、剩余寿命与 SMART 属性", find: (a) => [...a.querySelectorAll<HTMLElement>(".a-disk-controls .a-seg button")].at(-1), hold: 2600 },
@@ -76,6 +78,8 @@ const chapters: Chapter[] = [
     label: "服务",
     steps: [
       { label: "打开服务页", find: nav("services", "服务") },
+      { label: "状态", find: (a) => a.querySelector(".a-services [role=combobox]") },
+      { label: "正在运行", find: (a) => byText(a, ".a-services [role=option]", "正在运行") },
       {
         label: "选中正在运行的服务",
         find: (a) => [...a.querySelectorAll(".a-services .a-tr")].find((row) => row.textContent?.includes(translate("正在运行"))),
@@ -104,18 +108,21 @@ const chapters: Chapter[] = [
   {
     label: "历史",
     steps: [
-      { label: "打开历史页，最近 7 天的记录保存在本机", find: nav("history", "历史") },
-      { label: "切换时间范围", find: segment("1 天") },
+      { label: "历史", find: nav("history", "历史") },
+      { label:"时间范围",find:(a)=>a.querySelector(".h-navigator [role=combobox]") },
+      { label: "切换时间范围", find:(a)=>byText(a,".h-navigator [role=option]","1 天") },
       { label: "选择任一时刻，查看当时最忙的进程", find: (a) => a.querySelector(".a-history-plot"), at: 0.36, hold: 2600 },
     ],
   },
   {
     label: "工具",
     steps: [
-      { label: "运行新任务，可选择以管理员身份运行", find: titled("运行新任务") },
+      { label:"更多操作",find:tour("more") },
+      { label: "运行新任务，可选择以管理员身份运行", find:(a)=>byText(a,".a-menu [role^=menuitem]","运行新任务…") },
       { label: "输入程序名称或路径", find: (a) => a.querySelector("#a-task-input"), type: "notepad.exe" },
       { label: "关闭对话框", find: (a) => byText(a, ".a-dialog.is-task .a-dialog-foot button", "取消") },
-      { label: "查找占用文件的进程，也可将文件拖放到窗口", find: titled("查找文件占用（也可将文件拖放到窗口）") },
+      { label:"更多操作",find:tour("more") },
+      { label: "查找占用文件的进程，也可将文件拖放到窗口", find:(a)=>byText(a,".a-menu [role^=menuitem]","查找占用文件的进程…") },
       {
         label: "列出占用该文件的进程，可直接结束",
         find: (a) => a.querySelector(".a-dialog.is-lock"),
@@ -125,6 +132,12 @@ const chapters: Chapter[] = [
       { label: "关闭对话框", find: (a) => a.querySelector(".a-dialog.is-lock .a-dialog-foot [data-primary]") },
     ],
   },
+  { label:"组件", steps:[
+    {label:"组件",find:nav("components","组件")},
+    {label:"桌面监控",find:(a)=>byText(a,".a-settings-rail button","桌面监控")},
+    {label:"任务栏监控",find:(a)=>byText(a,".a-settings-rail button","任务栏监控")},
+    {label:"托盘",find:(a)=>byText(a,".a-settings-rail button","托盘")},
+  ]},
   {
     label: "设置",
     steps: [
@@ -227,7 +240,7 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
   useEffect(() => {
     const stage = self.current?.closest(".stage") as HTMLElement | null;
     if (!stage) return;
-    const io = new IntersectionObserver(([e]) => setVisible(e.intersectionRatio > 0.45), {
+    const io = new IntersectionObserver((entries) => setVisible(entries[entries.length-1].intersectionRatio > 0.45), {
       threshold: [0, 0.45, 0.8],
     });
     io.observe(stage);
@@ -325,7 +338,7 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
       } else if (step.menu)
         target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: x, clientY: y }));
       else if (step.at !== undefined) target.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
-      else target.click();
+      else if(!step.sort || target.getAttribute("aria-sort")!==step.sort) target.click();
       await wait(step.hold ?? (step.type ? 1700 : 1500), signal);
     };
     (async () => {
@@ -354,6 +367,13 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
     };
   }, [mode, visible, start]);
 
+  const playFrom=(index:number)=>{
+    const stage=self.current?.closest(".stage");
+    if(!stage)return;
+    const box=stage.getBoundingClientRect();
+    if(Math.min(innerHeight,box.bottom)-Math.max(0,box.top)<box.height*.45)stage.scrollIntoView({block:"center",behavior:"instant"});
+    setVisible(true);touched.current=false;setStart({chapter:index,at:Date.now()});setMode("playing");
+  };
   const playing = mode === "playing";
   return (
     <div className="tour" ref={self}>
@@ -391,9 +411,7 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
           <button
             type="button"
             onClick={() => {
-              touched.current = playing;
-              if (!playing) setStart({ chapter, at: Date.now() });
-              setMode(playing ? "paused" : "playing");
+              if(playing){touched.current=true;setMode("paused")}else playFrom(chapter);
             }}
           >
             {playing ? "暂停" : "播放演示"}
@@ -408,9 +426,7 @@ export default function HeroTour({ lang = "zh" }: { lang?: Language }) {
               data-i18n="nav"
               style={{ "--p": i === chapter ? (playing ? progress : 1) : 0 } as CSSProperties}
               onClick={() => {
-                touched.current = false;
-                setStart({ chapter: i, at: Date.now() });
-                setMode("playing");
+                playFrom(i);
               }}
             >
               {c.label}

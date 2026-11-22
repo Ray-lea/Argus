@@ -13,7 +13,7 @@ export interface Series {
   /** A compact chart's secondary series: solid, at 55% (dashes break up at preview sizes). */
   faint?: boolean;
 }
-export type Motion = "smooth" | "step";
+export type Motion = "smooth" | "balanced" | "pixel" | "step";
 const fillOf = (s: Series) => (s.fill === false ? 0 : s.fill === true || s.fill === undefined ? 0.3 : s.fill);
 
 /**
@@ -24,6 +24,7 @@ const fillOf = (s: Series) => (s.fill === false ? 0 : s.fill === true || s.fill 
 export interface SampleClock {
   at: number;
   rest: boolean;
+  heldPhase?:number;
 }
 /** The window's clock: the window advances it, its charts follow it. */
 export const sampleClock: SampleClock = { at: 0, rest: true };
@@ -43,11 +44,16 @@ export function advanceClock(clock: SampleClock, interval: number) {
     clock.at = Math.max(clock.at + interval + Math.max(0, late) * 0.1, now - OVERRUN * interval);
   }
   clock.rest = false;
+  clock.heldPhase=undefined;
 }
 /** How far into its step a curve on this clock is, in ms. */
 const elapsed = (clock: SampleClock, interval: number) =>
   Math.min(interval * (1 + OVERRUN), clock.rest ? interval : Math.max(0, performance.now() - clock.at));
 // Seconds as the app's readout shows them: tenths below ten.
+export function freezeClock(clock:SampleClock,interval:number){
+  if(!clock.rest)clock.heldPhase=elapsed(clock,interval)/interval;
+  clock.rest=true;
+}
 const ago = (seconds: number) => (seconds < 10 ? String(Math.round(seconds * 10) / 10) : String(Math.round(seconds)));
 
 /*
@@ -143,6 +149,7 @@ export default function Curve({
   const id = useId().replace(/:/g, "");
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const track=useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLElement>(null);
   const strokes = useRef<(SVGPathElement | null)[]>([]);
   const chart = useRef<number | null>(null);
@@ -164,10 +171,9 @@ export default function Curve({
   );
   // The curve scrolls unless it is held, stepped or motion is reduced. Held
   // while it scrolls, it stays where it is (the worker keeps it there too).
-  const still = () => clock.rest || !running || motion !== "smooth" || matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const held = useRef<number | null>(null),
-    moved = useRef(false);
-  const phase = () => (still() ? (held.current ?? 1) : elapsed(clock, interval) / interval);
+  const still = () => clock.rest || !running || motion === "step" || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const phase = () => motion==="step"||matchMedia("(prefers-reduced-motion: reduce)").matches ? 1
+    :clock.rest ? clock.heldPhase??1 : elapsed(clock,interval)/interval;
 
   // The demo is drawn scaled, so a curve's box seldom starts or ends on a
   // whole screen pixel. The canvas lies on whole device pixels around the box,
@@ -215,10 +221,13 @@ export default function Curve({
   const send = useRef(() => {});
   useLayoutEffect(() => {
     send.current = () => {
-      const moving = !still();
-      if (moving) held.current = null;
-      else held.current ??= moved.current ? elapsed(clock, interval) / interval : 1;
-      moved.current = moving;
+      const position=phase();
+      if(track.current&&!box.current?.hasAttribute("data-live")){
+        track.current.getAnimations().forEach(a=>a.cancel());
+        track.current.style.transform=at(position);
+        if(!still())track.current.animate([{ transform:at(position) },{transform:at(1+OVERRUN)}],
+          {duration:Math.max(1,(1+OVERRUN-position)*interval),easing:"linear",fill:"forwards"});
+      }
       if (chart.current === null) return;
       const frame: Frame = {
         series: series.map((s, i) => ({
@@ -232,6 +241,7 @@ export default function Curve({
         shown,
         margin,
         interval,
+        phase:position, mode:motion,
         at: still() ? null : performance.timeOrigin + clock.at,
         tick,
         ring: rgba(ring.current ? getComputedStyle(ring.current).color : "#000"),
@@ -373,7 +383,7 @@ export default function Curve({
     >
       {/* The server's drawing, and the curve where no worker can draw it. */}
       <div className="curve-clip">
-        <div className="curve-track" style={{ width: `${(drawn / shown) * 100}%`, transform: at(1) }}>
+        <div ref={track} className="curve-track" style={{ width: `${(drawn / shown) * 100}%`, transform: at(1) }}>
           <svg viewBox={`0 0 ${drawn} 100`} preserveAspectRatio="none" aria-hidden="true">
             <defs>
               {series.map((s, i) =>

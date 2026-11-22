@@ -12,6 +12,7 @@ import {
 } from "react";
 import theme from "../../../../resources/theme.json";
 import Curve, { type Motion, type Readout, type Series } from "./Curve";
+import {graphSnapshot,animateGraphSwitch} from "./graphSwitch";
 import DiskDetails from "./DiskDetails";
 import { Icon } from "./icons";
 import type { MenuEntry } from "./Pages";
@@ -64,7 +65,7 @@ export interface PerformancePages {
   /** The CPU graphs draw the kernel time (right-click a CPU graph). */
   kernel: boolean;
 }
-export const defaultDevices: Device[] = ["cpu", "memory", "disk", "wifi", "gpu", "battery"];
+export const defaultDevices: Device[] = ["cpu", "memory", "disk", "wifi", "gpu", "npu", "battery"];
 interface CurveProps {
   tick: number;
   interval: number;
@@ -187,22 +188,22 @@ const split = (text: string): [string, string] => {
 // it wins only where no full grid fits or its plots would be much smaller.
 // While resizing, the columns it had stay unless another count is clearly
 // better.
-const { coreMinWidth, coreMinHeight, coreHeaderHeight, coreGap } = theme.layout;
-const CORE_GRID_GAPPED = 0.6;
+const { coreMinWidth, coreHeaderHeight, coreGap } = theme.layout;
+const CORE_GRID_GAPPED = 0.8;
 function coreGridColumns(count: number, width: number, height: number, previous: number) {
   if (count <= 1 || width <= 0) return 1;
-  const limit = Math.min(count, Math.max(1, Math.floor((width + coreGap) / (coreMinWidth + coreGap))));
+  const limit = Math.min(count, Math.max(1, Math.floor((width + coreGap) / (Math.min(coreMinWidth, 52) + coreGap))));
   const score = (columns: number) => {
     const rows = Math.ceil(count / columns);
     const cell = (width - (columns - 1) * coreGap) / columns;
     const row = (height - (rows - 1) * coreGap) / rows;
-    if (row < coreMinHeight - 0.5) return 0;
-    const plot = Math.min(cell / 1.8, row - coreHeaderHeight);
-    const slots = rows * columns;
-    if (slots === count) return plot;
-    // Among grids with empty slots, fewer of them.
-    const empty = 1 - count / slots;
-    return plot * CORE_GRID_GAPPED * (1 - empty * 0.5);
+    const minPlot=Math.max(28,Math.min(64,cell/2.8));
+    const heading=cell>=66&&row>=minPlot+coreHeaderHeight;
+    const minHeight=minPlot+(heading?coreHeaderHeight:0);
+    const caption=heading?(cell>=112?1:.93):.72;
+    const plot=Math.max(row,minHeight)-(heading?coreHeaderHeight:0);
+    const empty=rows*columns-count;
+    return Math.min(cell/1.4,plot)*caption*(empty?CORE_GRID_GAPPED*(1-.5*empty/columns):1)*Math.min(1,(height/(rows*(minHeight+coreGap)-coreGap))**3);
   };
   let best = limit;
   let bestScore = 0;
@@ -232,8 +233,22 @@ export default function Performance(p: Props) {
   useEffect(() => {
     if (hidden.includes(p.device)) p.onPages({ hidden: hidden.filter((d) => d !== p.device) });
   }, [p.device]);
-  const setGraph = (graph: PerformancePages["graph"]) => p.onPages({ graph });
-  const setFilter = (filter: PerformancePages["filter"]) => p.onPages({ filter });
+  const graphs=useRef<HTMLDivElement>(null);
+  const leaving=useRef<HTMLElement|null>(null);
+  const previousCards=useRef<Map<string,DOMRect>|null>(null);
+  const animates=()=>!!graphs.current&&!graphs.current.closest("[data-motion-off]")&&!matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const setGraph=(next:PerformancePages["graph"])=>{
+    if(next===graph)return;
+    const current=graphs.current?.firstElementChild as HTMLElement|undefined;
+    if(current&&animates())leaving.current=graphSnapshot(current);
+    p.onPages({graph:next});
+  };
+  useIsoLayoutEffect(()=>{const parent=graphs.current,ghost=leaving.current;leaving.current=null;if(parent&&ghost)animateGraphSwitch(parent,ghost)},[graph]);
+  const setFilter=(next:PerformancePages["filter"])=>{
+    if(next===filter)return;
+    if(animates()) previousCards.current=new Map([...graphs.current!.querySelectorAll<HTMLElement>("[data-core]")].map(card=>[card.dataset.core!,card.getBoundingClientRect()]));
+    p.onPages({filter:next});
+  };
   const setCpuPage = (cpuPage: PerformancePages["cpuPage"]) => p.onPages({ cpuPage });
   const setDiskPage = (diskPage: PerformancePages["diskPage"]) => p.onPages({ diskPage });
   // The tick at which the disk's details were last read: each time its
@@ -241,16 +256,17 @@ export default function Performance(p: Props) {
   const [diskRead, setDiskRead] = useState(0);
   const [engineCount, setEngineCount] = useState<"smart" | "3" | "6">("smart");
   const [engineLayout, setEngineLayout] = useState<"grid" | "focus" | "rows">("grid");
-  const last = useRef({ device: p.device, dir: 1 });
-  if (last.current.device !== p.device) {
-    last.current = {
-      device: p.device,
-      dir: Math.sign(devices.indexOf(p.device) - devices.indexOf(last.current.device)) || 1,
-    };
-  }
-  // A device's view moves in from the side of its entry in the list.
-  const view = useRef<HTMLDivElement>(null);
-  useIsoLayoutEffect(() => slideIn(view.current, { y: last.current.dir * 16 }), [p.device]);
+  const previousDevice=useRef(p.device);
+  const view=useRef<HTMLDivElement>(null);
+  useIsoLayoutEffect(()=>{
+    const previous=previousDevice.current;
+    previousDevice.current=p.device;
+    if(previous===p.device)return;
+    const page=view.current?.closest(".a-perf-main");
+    if(page)page.scrollTop=0;
+    const dir=Math.sign(devices.indexOf(p.device)-devices.indexOf(previous));
+    slideIn(view.current,{y:dir*16,duration:250});
+  },[p.device,devices]);
   // The disk's details are read as their page opens (another device and
   // back, or the overview and back), not with every sample.
   useIsoLayoutEffect(() => {
@@ -266,6 +282,7 @@ export default function Performance(p: Props) {
   const vram = (t: number) => 3.3 + sampleAt(t).gpu / 900 + noise(41, t) * 0.04;
   const battery = (t: number) => 84 - ((((t % 600) + 600) % 600) / 300);
   const discharge = (t: number) => 16.5 + noise(71, Math.floor(t / 3)) * 1.4;
+  const npuLoad=(t:number)=>3+sampleAt(t).gpu*.17;
   const rail: { id: Device; name: string; info: string; values: number[][]; color: string; max: number }[] = [
     { id: "cpu", name: "CPU", info: `${Math.round(s.cpu)}% ${clock("p", p.tick).toFixed(2)} GHz`, values: [h.cpu], color: "var(--a-cpu)", max: 100 },
     {
@@ -293,6 +310,7 @@ export default function Performance(p: Props) {
       color: "var(--a-gpu)",
       max: 100,
     },
+    {id:"npu",name:"NPU 0",info:percentOf(npuLoad(p.tick)),values:[seriesOf(samples,npuLoad,p.tick)],color:"var(--a-net)",max:100},
     {
       id: "battery",
       name: "电池",
@@ -347,10 +365,24 @@ export default function Performance(p: Props) {
         })),
     [filter, p.tick],
   );
-  // Right-click on the CPU graphs: the kernel time shown or not, in both views.
-  const cpuMenu = (event: ReactMouseEvent) => {
+  useIsoLayoutEffect(()=>{
+    const previous=previousCards.current;previousCards.current=null;
+    if(!previous||!graphs.current)return;
+    const k=scaleOf(graphs.current);
+    for(const card of graphs.current.querySelectorAll<HTMLElement>("[data-core]")){
+      const old=previous.get(card.dataset.core!);
+      if(old){const next=card.getBoundingClientRect();card.animate([{transform:`translate(${(old.left-next.left)/k}px,${(old.top-next.top)/k}px) scale(${old.width/next.width},${old.height/next.height})`},{transform:"none"}],{duration:260,easing:"cubic-bezier(.1,.9,.2,1)"})}
+      else card.animate([{opacity:0,transform:"scale(.96)"},{opacity:1,transform:"none"}],{duration:230,delay:30,fill:"backwards",easing:"cubic-bezier(.1,.9,.2,1)"});
+    }
+  },[filter]);
+  const cpuMenu=(event:ReactMouseEvent)=>{
     event.preventDefault();
-    p.onMenu(event, [{ label: "显示内核时间", checked: kernel, run: () => p.onPages({ kernel: !kernel }) }]);
+    p.onMenu(event,[
+      {label:"整体视图",checked:graph==="overall",run:()=>setGraph("overall")},
+      {label:"多核视图",checked:graph==="logical",run:()=>setGraph("logical")},
+      ...(graph==="logical"?["-" as const,...([["all","全部核心"],["p","仅性能核"],["e","仅能效核"]] as const).map(([key,label])=>({label,checked:filter===key,run:()=>setFilter(key)}))]:[]),
+      "-",{label:"显示内核时间",checked:kernel,run:()=>p.onPages({kernel:!kernel})}
+    ]);
   };
   const uptime = (
     <>
@@ -377,30 +409,7 @@ export default function Performance(p: Props) {
       body = (
         <>
           {head}
-          <div className="a-perf-tools">
-            {graph === "logical" && (
-              <Segments
-                label="核心类型"
-                value={filter}
-                onChange={setFilter}
-                items={[
-                  { value: "all", label: "全部", title: "显示所有逻辑处理器" },
-                  { value: "p", label: "P 核", title: "只显示性能核（P 核）" },
-                  { value: "e", label: "E 核", title: "只显示能效核（E 核）" },
-                ]}
-              />
-            )}
-            <Segments
-              label="CPU 图表"
-              value={graph}
-              onChange={setGraph}
-              items={[
-                { value: "overall", label: "整体", title: "所有逻辑处理器的整体利用率", tour: "graph-overall" },
-                { value: "logical", label: "多核", title: "每个逻辑处理器一张曲线图", tour: "graph-logical" },
-              ]}
-            />
-          </div>
-          <div className="a-cpu-graphs" onContextMenu={cpuMenu}>
+          <div className="a-cpu-graphs" ref={graphs} onContextMenu={cpuMenu}>
           {graph === "overall" ? (
             <Chart
               title="利用率 %"
@@ -415,13 +424,14 @@ export default function Performance(p: Props) {
               ]}
             />
           ) : (
-            <div className="a-cores-grid" ref={coreGrid} style={{ "--cols": coreCols } as CSSProperties} key={filter}>
+            <div className="a-cores-grid" ref={coreGrid} style={{ "--cols": coreCols } as CSSProperties}>
               {cores.map((core) => {
                 const color = core.kind === "p" ? "var(--a-cpu)" : "var(--a-cpu-e)";
                 return (
                   <div
                     className="a-core"
                     key={core.index}
+                    data-core={core.index}
                     title={`逻辑处理器 ${core.index}，物理核心 ${core.kind === "p" ? core.index >> 1 : core.index - 6}（${core.kind === "p" ? "性能核" : "能效核"}）`}
                   >
                     <div className="a-core-head">
@@ -608,19 +618,21 @@ export default function Performance(p: Props) {
           readout={{ format: (v) => gigabytes((v / 100) * 32) }}
         />
         <div className="a-membar" role="img" aria-label="内存组成">
-          <i style={{ width: `${(inUse / 32) * 100}%`, background: "color-mix(in srgb, var(--a-mem) 62%, transparent)" }} title="由进程、驱动程序或操作系统使用的内存" />
+          <i style={{ width: `${((inUse - 0.5) / 32) * 100}%`, background: "color-mix(in srgb, var(--a-mem) 62%, transparent)" }} title="由进程、驱动程序或操作系统使用的内存" />
+          <i className="a-compressed" style={{width:"1.5625%"}} title="以压缩形式保存进程页面的内存，属于使用中的内存"/>
           <i style={{ width: `${(modified / 32) * 100}%`, background: "var(--a-mem)" }} title="内容必须先写入磁盘才能用于其他用途的内存" />
           <i style={{ width: `${(standby / 32) * 100}%`, background: "color-mix(in srgb, var(--a-mem) 22%, transparent)" }} title="包含未频繁使用的缓存数据和代码的内存" />
         </div>
         <div className="a-legend">
           <span className="is-square is-mem">使用中 {inUse.toFixed(1)} GB</span>
+          <span className="is-square is-compressed">已压缩 512 MB</span>
           <span className="is-square is-mem-mod">已修改 256.0 MB</span>
           <span className="is-square is-mem-standby">备用 {standby.toFixed(2)} GB</span>
           <span className="is-hollow">空闲 {free.toFixed(2)} GB</span>
         </div>
         <Stats
           figures={[
-            ["使用中", inUse.toFixed(1), "GB"],
+            ["使用中（已压缩）", <span title="压缩内存估计存储了 1.4 GB 的数据，为系统节省了 0.9 GB 内存">{inUse.toFixed(1)} <small>GB (512 MB)</small></span>],
             ["可用", (32 - inUse).toFixed(1), "GB"],
             ["已提交", `${(inUse * 1.27).toFixed(1)} / 48.0`, "GB"],
             ["已缓存", "7.7", "GB"],
@@ -866,6 +878,8 @@ export default function Performance(p: Props) {
         />
       </>
     );
+  } else if (p.device==="npu") {
+    body=<><Head title="NPU 0" model="Contoso Neural Accelerator"/><Chart title="利用率 %" top="100%" max={100} curve={curve} color="var(--a-net)" fill series={[{values:seriesOf(samples,npuLoad,p.tick),color:"var(--a-net)"}]} readout={{format:percentOf}}/><Stats figures={[["利用率",percentOf(npuLoad(p.tick))]]} specs={[]}/></>;
   } else {
     body = (
       <>

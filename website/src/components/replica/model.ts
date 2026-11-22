@@ -63,12 +63,17 @@ export interface Sample {
 }
 
 // History ranges: the toolbar (Replica.tsx) and the page (Pages.tsx) both use them.
-export type HistoryRange = "1h" | "6h" | "1d" | "7d";
+export type HistoryRange = "5m" | "1h" | "3h" | "6h" | "1d" | "3d" | "7d" | "30d" | "all";
 export const historyRanges: { value: HistoryRange; label: string; hours: number; tick: number }[] = [
+  { value: "5m", label: "5 分钟", hours: 1 / 12, tick: 1 },
   { value: "1h", label: "1 小时", hours: 1, tick: 10 },
+  { value: "3h", label: "3 小时", hours: 3, tick: 30 },
   { value: "6h", label: "6 小时", hours: 6, tick: 60 },
   { value: "1d", label: "1 天", hours: 24, tick: 180 },
+  { value: "3d", label: "3 天", hours: 72, tick: 720 },
   { value: "7d", label: "7 天", hours: 168, tick: 1440 },
+  { value: "30d", label: "30 天", hours: 720, tick: 7200 },
+  { value: "all", label: "全部", hours: 720, tick: 7200 },
 ];
 
 export const totalMemory = 32 * 1024 ** 3;
@@ -220,6 +225,8 @@ export const processes: Process[] = [
   p(15204, 6120, "记事本", "Notepad.exe", "app", "note", 48, { cpu: 0.1, path: "C:\\Program Files\\WindowsApps\\Microsoft.WindowsNotepad\\Notepad\\Notepad.exe" }),
   p(16072, 6120, "Argus", "argus.exe", "app", "argus", 17.8, { cpu: 0.4, gpu: 0.6, path: "C:\\Program Files\\Argus\\argus.exe", threads: 28, handles: 610 }),
   p(17320, 1196, "设置", "SystemSettings.exe", "app", "gear", 31, { suspended: true, path: "C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe" }),
+  // One fictional utility illustrates the resource-leak warning.
+  p(18340, 6120, "Contoso Sync", "ContosoSync.exe", "background", "app", 42, { cpu: 0.2, handles: 38240, path: "C:\\Program Files\\Contoso\\ContosoSync.exe" }),
   // Background processes
   p(13004, 12880, "PowerShell 7", "pwsh.exe", "background", "pwsh", 78, { cpu: 0.1, path: "C:\\Program Files\\PowerShell\\7\\pwsh.exe" }),
   p(13010, 13004, "控制台窗口主进程", "conhost.exe", "background", "console", 3.1, { path: win + "conhost.exe" }),

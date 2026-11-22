@@ -2,7 +2,7 @@
 import { useSiteCopy } from "@/components/site/LocaleProvider";
 import { dateLocale, type Language } from "@/lib/languages";
 import { useEffect, useRef, useState } from "react";
-import Curve, { advanceClock, type SampleClock } from "../replica/Curve";
+import Curve, { advanceClock, freezeClock, type SampleClock } from "../replica/Curve";
 import { sampleAt, span } from "../replica/model";
 
 const text = {
@@ -57,7 +57,7 @@ export default function CurveCompare({ lang }: { lang: Language }) {
     const id = setInterval(sample, 1000);
     return () => {
       clearInterval(id);
-      clock.rest = true;
+      freezeClock(clock,1000);
     };
   }, [visible, clock]);
   // Count animation frames for a second, then snap to the nearest common refresh rate.
