@@ -1091,25 +1091,57 @@ impl Desktop {
         } else if row.user.is_none() {
             return;
         }
+        // The other lists copy the cells shown as their details, taken now:
+        // a connection can leave the list while its menu is open.
+        let details = self.cells_text(&row, cx);
+        // Their name column is what Ctrl+C copies; it gets its own item, as
+        // the process list's copy submenu has "Name".
+        let first = tables::first_column(&self.page);
+        let name_cell = details
+            .is_some()
+            .then(|| self.cell_copy(&row, first, cx))
+            .flatten();
         let cell = column
-            .filter(|_| row.section.is_none() && self.page == "processes")
+            .filter(|key| {
+                row.section.is_none()
+                    && list_copy::LISTS.contains(&self.page.as_str())
+                    && !(name_cell.is_some() && *key == first)
+            })
             .and_then(|key| self.cell_copy(&row, key, cx));
         let mut items = self.row_menu(&row);
-        if let Some((name, value)) = cell {
-            // After the copy submenu, as the cell's own copy.
-            let at = items
-                .iter()
-                .position(|item| !item.children.is_empty() && item.icon == Some("CopyIcon"))
-                .map_or(items.len(), |at| at + 1);
+        let column_item = |(name, value): (String, String)| {
             let nothing = value.is_empty() || value == label("format.missing");
-            items.insert(
-                at,
+            MenuItem::new(
+                tr!("processes.menu.copyColumn", column = &name),
+                Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
+            )
+            .disabled(nothing)
+        };
+        // The other lists gather their copies in one submenu, the clicked
+        // column's too, so the menu keeps its height whatever it holds (a
+        // note adds a row): the page's own copies, the name (Ctrl+C), the
+        // column, then the details (Ctrl+Shift+C).
+        if let Some(details) = details {
+            let mut more = Vec::new();
+            if let Some((name, value)) = name_cell {
+                more.push(
+                    MenuItem::new(name, Action::CopyAs(value, label("actions.copyWhat.name")))
+                        .hint("Ctrl+C"),
+                );
+            }
+            more.extend(cell.map(column_item));
+            more.push(MenuItem::separator());
+            more.push(
                 MenuItem::new(
-                    tr!("processes.menu.copyColumn", column = &name),
-                    Action::CopyAs(value, tr!("processes.menu.columnWhat", column = &name)),
+                    label("processes.menu.details"),
+                    Action::CopyAs(details, label("actions.copyWhat.details")),
                 )
-                .disabled(nothing),
+                .hint("Ctrl+Shift+C"),
             );
+            items = list_copy::gather_copies(items, more, label("common.edit.copy"));
+        } else if let Some(cell) = cell {
+            // The process list's cell copy follows its copy submenu.
+            items.insert(list_copy::copy_position(&items), column_item(cell));
         }
         self.open_popup(items, window, cx);
         cx.notify();
@@ -1181,7 +1213,7 @@ impl Desktop {
                     .icon("FolderIcon")
                     .disabled(!boolean(raw, "exists") || path.is_none()),
                     MenuItem::new(
-                        label("startup.menu.copyCommand"),
+                        label("common.command"),
                         Action::Copy(text(raw, "command").into(), "startup.copied.command"),
                     )
                     .icon("CopyIcon")
@@ -1521,7 +1553,7 @@ impl Desktop {
             .icon("FolderIcon")
             .disabled(binary.is_none()),
             MenuItem::new(
-                label("services.menu.copyName"),
+                label("common.name"),
                 Action::Copy(name.into(), "services.copied.name"),
             )
             .icon("CopyIcon"),
@@ -1588,7 +1620,7 @@ impl Desktop {
             .disabled(!closable),
             MenuItem::separator(),
             MenuItem::new(
-                label("connections.menu.copyLocal"),
+                label("connections.column.localAddress"),
                 Action::Copy(
                     endpoint(text(raw, "localAddress"), &raw["localPort"]),
                     "connections.copied.local",
@@ -1596,7 +1628,7 @@ impl Desktop {
             )
             .icon("CopyIcon"),
             MenuItem::new(
-                label("connections.menu.copyRemote"),
+                label("connections.column.remoteAddress"),
                 Action::Copy(
                     remote
                         .map(|r| endpoint(r, &raw["remotePort"]))

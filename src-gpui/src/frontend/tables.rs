@@ -435,6 +435,26 @@ fn entry_cell(raw: &Value, field: &Field) -> String {
     }
 }
 
+/// What copying `row`'s cell in `field` gives: its text, with what the cell
+/// draws apart from the text, such as an IPv6 connection's "v6" tag.
+fn copied_cell(row: &Row, field: &Field, bits: bool) -> String {
+    let text = display_cell(row, field, bits);
+    if field.kind == CellKind::Protocol {
+        protocol_copy(text, boolean(&row.raw, "ipv6"))
+    } else {
+        text
+    }
+}
+
+/// A protocol as copied: "TCPv6" for IPv6, as the protocol filter names it.
+fn protocol_copy(protocol: String, ipv6: bool) -> String {
+    if ipv6 && !protocol.is_empty() {
+        format!("{protocol}v6")
+    } else {
+        protocol
+    }
+}
+
 fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
     if field.kind == CellKind::NetworkRate {
         row.metric(field.key)
@@ -1828,7 +1848,22 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let content = self.td_content(row_index, column, window, cx);
-        self.gliding_cell(column, false, content)
+        let key = self.fields.get(column).map(|field| field.key);
+        // The row menu offers to copy the cell under the pointer. Rows Argus
+        // draws note it themselves (`body`); here the cell does, before the
+        // row's own right press opens the menu.
+        div()
+            .size_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |state, _: &MouseDownEvent, _, _| {
+                    state.delegate_mut().context_column = key;
+                }),
+            )
+            .child(self.gliding_cell(column, false, content))
     }
     fn render_tr(
         &mut self,
@@ -2897,10 +2932,21 @@ impl Desktop {
         key: &str,
         cx: &App,
     ) -> Option<(String, String)> {
-        let state = self.table.as_ref()?.read(cx);
-        let delegate = state.delegate();
+        let delegate = self.exportable_table(cx)?;
         let field = delegate.fields.iter().find(|field| field.key == key)?;
-        Some((field.label.clone(), display_cell(row, field, delegate.bits)))
+        Some((field.label.clone(), copied_cell(row, field, delegate.bits)))
+    }
+    /// Every column of the current table with `row`'s cell in it, as the
+    /// table shows them.
+    pub(in crate::frontend) fn row_cells(&self, row: &Row, cx: &App) -> Vec<(String, String)> {
+        let Some(delegate) = self.exportable_table(cx) else {
+            return Vec::new();
+        };
+        delegate
+            .fields
+            .iter()
+            .map(|field| (field.label.clone(), copied_cell(row, field, delegate.bits)))
+            .collect()
     }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {
@@ -3252,8 +3298,16 @@ pub(super) fn descending_first(page: &str, key: &str) -> bool {
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
     use super::{
-        Value, json, prefs, restore_sort, saved_filters, sort_columns, sort_preference, sortable,
+        Value, json, prefs, protocol_copy, restore_sort, saved_filters, sort_columns,
+        sort_preference, sortable,
     };
+
+    #[test]
+    fn copied_protocols_keep_the_ipv6_tag() {
+        assert_eq!(protocol_copy("TCP".into(), true), "TCPv6");
+        assert_eq!(protocol_copy("UDP".into(), false), "UDP");
+        assert_eq!(protocol_copy(String::new(), true), "");
+    }
 
     #[test]
     fn saved_orders_keep_persistent_column_ids() {
