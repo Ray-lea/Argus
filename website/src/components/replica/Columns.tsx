@@ -15,13 +15,26 @@ import {
 import { flushSync } from "react-dom";
 import { language, translate } from "./i18n";
 import { Icon, type UiIcon } from "./icons";
-import { appVersion, bytes, heat, noise, percent, rate, sessionOf, thousands, type Process } from "./model";
+import {
+  appVersion,
+  gpuEngine,
+  heat,
+  memory,
+  noise,
+  percent,
+  rate,
+  sessionOf,
+  thousands,
+  transferred,
+  type Process,
+  type Reading,
+} from "./model";
 import type { MenuEntry } from "./Pages";
 import type { Row } from "./Processes";
 import { Button, Segments, useIsoLayoutEffect } from "./widgets";
 
 export type Category = "general" | "cpu" | "memory" | "io" | "network" | "gpu";
-type Format = "name" | "text" | "id" | "count" | "percent" | "memory" | "space" | "rate" | "duration" | "time" | "bool";
+type Format = "name" | "text" | "id" | "count" | "percent" | "memory" | "space" | "rate" | "duration" | "time" | "bool" | "power";
 export interface ColumnDef {
   key: string;
   category: Category;
@@ -33,7 +46,7 @@ export interface ColumnDef {
   label: string;
   title: string;
   /** A live reading, tinted by its load; peaks and running totals are not. */
-  heat?: "percent" | "memory" | "rate";
+  heat?: "percent" | "memory" | "rate" | "power";
 }
 const col = (
   key: string,
@@ -67,7 +80,7 @@ const categoryIcon: Record<Category, UiIcon> = {
 /** The name takes the room the others leave, never less than this. */
 export const NAME_MIN = 180;
 export const COLUMNS: ColumnDef[] = [
-  col("name", "general", "name", NAME_MIN, false, "名称", "应用名称或文件描述；次级文字显示可执行文件名。"),
+  col("name", "general", "name", 220, false, "名称", "应用名称或文件描述；次级文字显示可执行文件名。"),
   col("imageName", "general", "text", 180, false, "映像名称", "可执行文件的名称。"),
   col("pid", "general", "id", 72, false, "PID", "进程 ID"),
   col("ppid", "general", "id", 82, false, "父进程 ID", "创建时记录的父进程 ID。"),
@@ -84,8 +97,8 @@ export const COLUMNS: ColumnDef[] = [
   col("handles", "general", "count", 86, true, "句柄", "句柄数"),
   col("suspended", "general", "bool", 90, false, "已暂停", "进程的全部线程处于暂停等待状态。"),
   col("efficiency", "general", "bool", 100, false, "效率模式", "进程的 EcoQoS 节能状态。"),
-  col("power","general","text",120,true,"电源使用情况","按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。"),
-  col("powerTrend","general","text",140,true,"电源使用情况趋势","最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。"),
+  col("power", "general", "power", 120, true, "电源使用情况", "按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。", "power"),
+  col("powerTrend", "general", "power", 140, true, "电源使用情况趋势", "最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。", "power"),
   col("cpu", "cpu", "percent", 70, true, "CPU", "占全部处理器能力的百分比", "percent"),
   col("cpuTime", "cpu", "duration", 100, true, "CPU 时间", "累计用户态与内核态 CPU 时间；分组显示成员合计。"),
   col("cpuUserTime", "cpu", "duration", 115, true, "用户 CPU 时间", "进程累计使用的用户态 CPU 时间。"),
@@ -97,6 +110,7 @@ export const COLUMNS: ColumnDef[] = [
   col("commit", "memory", "memory", 110, true, "提交大小", "进程专用的已提交内存。", "memory"),
   col("virtualSize", "memory", "space", 150, false, "虚拟地址空间", "单进程预留与已提交的虚拟地址范围；已提交内存见“提交大小”。"),
   col("pageFaults", "memory", "count", 110, true, "缺页次数", "累计缺页次数，包含软缺页与硬缺页。"),
+  col("memoryPriority", "memory", "text", 120, false, "内存优先级", "内存紧张时回收该进程内存页的先后，越低越先回收。"),
   col("diskRead", "io", "rate", 104, true, "磁盘读取", "每秒磁盘读取字节数，不包含网络及其他设备 I/O", "rate"),
   col("diskWrite", "io", "rate", 104, true, "磁盘写入", "每秒磁盘写入字节数，不包含网络及其他设备 I/O", "rate"),
   col("io", "io", "rate", 92, true, "I/O", "读、写及其他 I/O 合计，包含文件、网络和设备访问", "rate"),
@@ -106,6 +120,7 @@ export const COLUMNS: ColumnDef[] = [
   col("ioReadTotal", "io", "memory", 130, true, "累计 I/O 读取", "进程生存期内累计读取的 I/O 字节数。"),
   col("ioWriteTotal", "io", "memory", 130, true, "累计 I/O 写入", "进程生存期内累计写入的 I/O 字节数。"),
   col("ioOtherTotal", "io", "memory", 130, true, "累计其他 I/O", "进程生存期内其他 I/O 累计传输的字节数。"),
+  col("ioPriority", "io", "text", 110, false, "I/O 优先级", "进程磁盘与其他 I/O 请求的优先级提示。"),
   col("net", "network", "rate", 92, true, "网络", "每秒发送和接收的字节数", "rate"),
   col("netReceived", "network", "rate", 110, true, "网络接收", "进程每秒接收的网络流量。", "rate"),
   col("netSent", "network", "rate", 110, true, "网络发送", "进程每秒发送的网络流量。", "rate"),
@@ -120,7 +135,7 @@ const DEFAULTS = ["name", "pid", "cpu", "mem", "diskRead", "diskWrite", "io", "g
 const VIRTUAL_ALIASES = "虚拟内存 虚拟字节 地址预留";
 
 /** Text columns read from the start of their cell, figures from its end. */
-export const alignsEnd = (c: ColumnDef) => !["name", "text", "time", "bool"].includes(c.format);
+export const alignsEnd = (c: ColumnDef) => !["name", "text", "time", "bool", "power"].includes(c.format);
 /** Text columns start ascending and figures descending, the useful first view. */
 export const descendingFirst = (key: string) => {
   const c = byKey.get(key);
@@ -204,11 +219,28 @@ export const visibleColumns = (p: ColumnPrefs) => p.selected.map((key) => byKey.
 const MB = 1024 * 1024;
 const TB = 1024 ** 4;
 const priorityBase: Record<string, number> = { 实时: 24, 高: 13, 高于正常: 10, 正常: 8, 低于正常: 6, 低: 4 };
-const quiet = new Set(["cargo.exe", "rustc.exe", "rust-analyzer.exe", "argus.exe"]);
+const quiet = new Set(["cargo.exe", "rustc.exe", "rust-analyzer.exe", "rust-analyzer-proc-macro-srv.exe", "argus.exe"]);
+const isQuiet = (p: Process) => quiet.has(p.exe) || p.exe.startsWith("argus-service-");
 const userTime = (p: Process) => Math.round(p.cpuTime * (0.58 + noise(p.pid * 3 + 1, 0) * 0.3));
-const describe = (p: Process) => (p.glyph === "kernel" ? "" : p.exe === "svchost.exe" ? "Windows 服务主机进程" : p.name);
-const company = (p: Process) =>
-  p.glyph === "kernel" || quiet.has(p.exe) ? "" : p.exe === "node.exe" ? "Node.js" : "Microsoft Corporation";
+const describe = (p: Process) =>
+  p.glyph === "kernel" ? "" : p.exe === "svchost.exe" ? "Windows 服务主机进程" : p.exe === "msedgewebview2.exe" ? "Microsoft Edge WebView2" : p.name;
+// The publishers that are not Microsoft, by image name.
+const companies: Record<string, string> = {
+  "node.exe": "Node.js",
+  "chrome.exe": "Google LLC",
+  "Discord.exe": "Discord Inc.",
+  "steam.exe": "Valve Corporation",
+  "steamwebhelper.exe": "Valve Corporation",
+  "NVDisplay.Container.exe": "NVIDIA Corporation",
+  "RtkAudUService64.exe": "Realtek Semiconductor",
+  "OneApp.IGCC.WinService.exe": "Intel Corporation",
+  "jhi_service.exe": "Intel Corporation",
+  "IntelCpHDCPSvc.exe": "Intel Corporation",
+  "WMIRegistrationService.exe": "Intel Corporation",
+  "ContosoSync.exe": "Contoso Ltd.",
+};
+export const company = (p: Process) =>
+  p.glyph === "kernel" || isQuiet(p) ? "" : (companies[p.exe] ?? "Microsoft Corporation");
 // Version resources: Windows' own programs share the system's, build tools
 // carry none (made-up but plausible numbers).
 const products: Record<string, [string, string]> = {
@@ -224,9 +256,34 @@ const products: Record<string, [string, string]> = {
   "CalculatorApp.exe": ["Windows Calculator", "11.2410.0.0"],
   "PhoneExperienceHost.exe": ["Microsoft Phone Link", "1.24112.89.0"],
   "MsMpEng.exe": ["Microsoft Malware Protection", "4.18.24090.11"],
+  "MpDefenderCoreService.exe": ["Microsoft Malware Protection", "4.18.24090.11"],
+  "NisSrv.exe": ["Microsoft Malware Protection", "4.18.24090.11"],
+  "chrome.exe": ["Google Chrome", "131.0.6778.205"],
+  "msedgewebview2.exe": ["Microsoft Edge WebView2", "131.0.2903.112"],
+  "ms-teams.exe": ["Microsoft Teams", "25290.205.4069.4894"],
+  "Discord.exe": ["Discord", "1.0.9175"],
+  "steam.exe": ["Steam", "9.81.27.40"],
+  "steamwebhelper.exe": ["Steam Client WebHelper", "126.0.6478.183"],
+  "OpenConsole.exe": ["Windows Terminal", "1.21.3231.0"],
+  "wsl.exe": ["Windows Subsystem for Linux", "2.3.26.0"],
+  "wslservice.exe": ["Windows Subsystem for Linux", "2.3.26.0"],
+  "FileCoAuth.exe": ["Microsoft OneDrive", "24.226.1110.0004"],
+  "Widgets.exe": ["Windows Web Experience Pack", "524.33400.0.0"],
+  "WidgetService.exe": ["Windows Web Experience Pack", "524.33400.0.0"],
+  "PowerToys.exe": ["PowerToys", "0.86.0"],
+  "PowerToys.Awake.exe": ["PowerToys", "0.86.0"],
+  "PowerToys.PowerLauncher.exe": ["PowerToys", "0.86.0"],
+  "PowerToys.FancyZones.exe": ["PowerToys", "0.86.0"],
+  "NVDisplay.Container.exe": ["NVIDIA Container", "1.40.3466.6012"],
+  "RtkAudUService64.exe": ["Realtek HD Audio Universal Service", "1.0.0.762"],
+  "OneApp.IGCC.WinService.exe": ["Intel(R) Graphics Command Center", "1.100.5536.0"],
+  "jhi_service.exe": ["Intel(R) Dynamic Application Loader Host Interface", "2.1.24.1"],
+  "IntelCpHDCPSvc.exe": ["Intel(R) Content Protection HDCP Service", "32.0.101.6299"],
+  "WMIRegistrationService.exe": ["Intel(R) Management Engine Components", "2406.5.5.0"],
+  "ContosoSync.exe": ["Contoso Sync", "2.4.0.0"],
 };
 export const versionInfo = (p: Process): [string, string] | null =>
-  p.glyph === "kernel" || quiet.has(p.exe)
+  p.glyph === "kernel" || isQuiet(p)
     ? null
     : (products[p.exe] ?? (p.path.startsWith("C:\\Windows\\") ? ["Microsoft® Windows® Operating System", "10.0.26100.2605"] : null));
 export const architecture = (p: Process) => (p.glyph === "kernel" ? "" : "64 位 (x64)");
@@ -249,6 +306,10 @@ function ioTotal(p: Process, tick: number, seed: number, share: number) {
 }
 const dedicated = (p: Process) => (p.gpu ? Math.round(p.gpu * 24 + 12) * MB : 0);
 const sharedGpu = (p: Process) => (p.gpu ? Math.round(p.gpu * 5 + 6) * MB : 0);
+/** The power estimates the demo makes up: now from a row's readings, the trend from its processes' steady loads. */
+export const powerEstimate = (v: Reading) =>
+  v.cpu * 0.2 + v.gpu * 0.04 + Math.min(1.5, (v.read + v.write) / (512 * 1024 ** 2));
+export const trendEstimate = (p: Process) => (p.cpu ?? 0) * 0.2 + (p.gpu ?? 0) * 0.04 + (p.disk ?? 0) / 512;
 const hms = (seconds: number) =>
   `${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
@@ -257,7 +318,21 @@ export interface CellContext {
   tick: number;
   efficiency: Set<number>;
   priority: Map<number, string>;
+  /** I/O and memory priority set from the menu, by "I/O 优先级" or "内存优先级" and the PID. */
+  resource?: Record<string, string>;
+  /** Processes the leak alerts mark (a handle leak in the demo). */
+  leaks?: Set<number>;
 }
+/** What a cell without a reading shows (format.missing). */
+export const MISSING = "—";
+/** The levels of the priority columns, lowest first, as they sort (columns.rs `rank_levels`). */
+export const IO_LEVELS = ["非常低", "低", "正常", "高", "关键"];
+export const MEMORY_LEVELS = ["非常低", "低", "中", "低于正常", "正常"];
+export const POWER_LEVELS = ["非常低", "低", "中", "高", "非常高"];
+/** argus_core::power: where each level above the lowest begins. */
+export const powerLevel = (estimate: number) => [0.1, 0.3, 0.8, 2].filter((n) => estimate >= n).length;
+export const resourceLevel = (ctx: Pick<CellContext, "resource">, kind: "I/O 优先级" | "内存优先级", p: Process) =>
+  p.glyph === "kernel" ? "" : (ctx.resource?.[kind + p.pid] ?? "正常");
 export interface Cell {
   text: string;
   sort: number | string;
@@ -296,12 +371,21 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "threads": value = total((p) => p.threads); break;
     case "handles": value = total((p) => p.handles); break;
     case "suspended": value = instance((p) => (p.suspended ? "是" : "否")); break;
-    case "efficiency": value = instance((p) => (ctx.efficiency.has(p.pid) ? "是" : "否")); break;
+    // The app names EcoQoS on and off (common.on / common.off).
+    case "efficiency": value = instance((p) => (ctx.efficiency.has(p.pid) ? "开启" : "关闭")); break;
     case "power":
     case "powerTrend": {
-      const estimate=c.key==="power" ? v.cpu*.2+v.gpu*.04+Math.min(1.5,(v.read+v.write)/(512*1024**2)) : total(p=>(p.cpu??0)*.2+(p.gpu??0)*.04+(p.disk??0)/512);
-      const level=[.1,.3,.8,2].filter(n=>estimate>=n).length;
-      return {text:["非常低","低","中","高","非常高"][level],sort:estimate};
+      const estimate = c.key === "power" ? powerEstimate(v) : total(trendEstimate);
+      // Faint at the lowest level; tinted by the level shown (theme::heat_alpha).
+      const level = powerLevel(estimate);
+      return { text: POWER_LEVELS[level], sort: estimate, faint: level === 0, heat: (level / 4) * 0.34 };
+    }
+    case "memoryPriority":
+    case "ioPriority": {
+      const levels = c.key === "ioPriority" ? IO_LEVELS : MEMORY_LEVELS;
+      const name = common((p) => resourceLevel(ctx, c.key === "ioPriority" ? "I/O 优先级" : "内存优先级", p));
+      if (!name) return { text: MISSING, sort: -1, faint: true };
+      return { text: name, sort: levels.indexOf(name), faint: true };
     }
     case "cpu": value = v.cpu; break;
     case "cpuTime": value = total((p) => p.cpuTime); break;
@@ -332,19 +416,26 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "netReceived": value = v.net * 0.78; break;
     case "netSent": value = v.net * 0.22; break;
     case "gpu": value = v.gpu; break;
-    case "gpuEngine": value = !heading && v.gpu >= 0.05 ? "GPU 0 - 3D" : null; break;
+    case "gpuEngine": value = !heading && v.gpu >= 0.05 ? gpuEngine(row.pids) : null; break;
     case "gpuDedicated": value = total(dedicated); break;
     case "gpuShared": value = total(sharedGpu); break;
     default: value = null;
   }
   const textual = ["text", "time", "bool"].includes(c.format);
-  if (value === null || value === "") return { text: "", sort: textual ? "" : -1 };
-  if (typeof value === "string") return { text: value, sort: value };
+  // Text columns and identifiers are quiet (cells.rs `ProcessText`, `Identifier`).
+  const quiet = c.format === "text" || c.format === "id";
+  // No reading, or members that disagree: a dash, but a group's PID stays empty.
+  if (value === null || value === "") return { text: c.key === "pid" ? "" : MISSING, sort: textual ? "" : -1, faint: quiet };
+  if (typeof value === "string") return { text: value, sort: value, faint: c.format === "text" };
   switch (c.format) {
     case "percent":
-      return { text: percent(value), sort: value, faint: value < 0.05, heat: heat("percent", value) };
+      return { text: percent(value) + "%", sort: value, faint: value < 0.05, heat: heat("percent", value) };
     case "memory":
-      return { text: value ? bytes(value) : "0", sort: value, faint: !value, heat: c.heat ? heat("memory", value) : 0 };
+      return {
+        text: c.key.startsWith("io") ? transferred(value) : memory(value),
+        sort: value,
+        heat: c.heat ? heat("memory", value) : 0,
+      };
     case "rate":
       return { text: rate(value), sort: value, faint: value < 1, heat: heat("rate", value) };
     case "count":
@@ -352,7 +443,7 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "duration":
       return { text: hms(value), sort: value };
     case "space":
-      return { text: value >= TB ? (value / TB).toFixed(2) + " TB" : bytes(value), sort: value };
+      return { text: transferred(value), sort: value };
     case "id":
       return { text: String(value), sort: value, faint: true };
     default:
@@ -479,21 +570,53 @@ class Flips {
 }
 
 // ---------------------------------------------------------------------------
-// Widths (tables/widths.rs). Figures keep their format's width, more where a
-// header label needs it, in 8 px steps. With automatic widths the name and
-// the text columns take what their contents need: what most rows need (at
-// least 95% of them; lengths far past the rest are cut short) where room is
-// short, up to what every row needs where there is room, the difference
+// Widths (tables/widths.rs). With automatic widths every column follows what
+// it shows, in 8 px steps, at least its header (the label beside the sort
+// mark, and the figure above it). A figure column is as wide as the widest
+// value its format shows in practice (`envelope`), or as every row needs, and
+// only ever widens. The name and the text columns take what most rows need
+// (at least 95% of them; lengths far past the rest are cut short) where room
+// is short, up to what every row needs where there is room, the difference
 // shared out. The rest of the table stays empty unless the name takes it
-// ("全宽"). A width dragged by hand stays as it is.
+// ("全宽"). Without automatic widths the columns keep their designed widths.
+// A width dragged by hand stays as it is.
 let measure: CanvasRenderingContext2D | null | undefined;
-function textWidth(text: string, scale: number, size = 13, weight = 400) {
+const SANS = `"Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif`;
+const DISPLAY = `"Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif`;
+function textWidth(text: string, scale: number, size = 13, weight = 400, family = SANS) {
   measure ??= typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
   if (!measure || !text) return 0;
-  measure.font = `${weight} ${size * scale}px "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif`;
+  measure.font = `${weight} ${size * scale}px ${family}`;
   return measure.measureText(text).width;
 }
 const labelWidth = (text: string, scale: number) => textWidth(text, scale, 12, 500);
+/** The header's figure above its label: 15 px in the display face. */
+const totalWidth = (text: string, scale: number) => textWidth(text, scale, 15, 400, DISPLAY);
+const stepped = (width: number) => Math.ceil(width / 8) * 8;
+/** Digits all measure alike: one measure serves every value with as many. */
+const figures = (text: string) => text.replace(/\d/g, "8");
+const numeric = (c: ColumnDef) => !["name", "text", "bool", "power"].includes(c.format);
+const isText = (c: ColumnDef) => c.format === "name" || c.format === "text";
+/** The widest values a figure column shows in practice (widths.rs `envelope`). */
+function envelope(c: ColumnDef): string[] {
+  switch (c.format) {
+    case "percent":
+      return ["100%", "8.8%"];
+    case "memory":
+      return c.key.startsWith("io") ? ["888.8 GB", "8888 KB"] : ["88.8 GB", "8.88 GB", "888.8 MB"];
+    case "space":
+      return ["888.8 TB", "888.8 GB"];
+    case "rate":
+      return ["8888 KB/s", "888.8 MB/s"];
+    case "power":
+      return POWER_LEVELS;
+    default:
+      return [];
+  }
+}
+/** The widest totals above a column, reached within moments on a busy machine. */
+const totalEnvelope = (c: ColumnDef) =>
+  ["cpu", "mem", "gpu"].includes(c.key) ? ["100%"] : c.format === "percent" || c.format === "power" ? [] : envelope(c);
 /** What most of `needs` fit in, and what all of them do. */
 function spread(needs: number[]): [number, number] {
   if (!needs.length) return [0, 0];
@@ -504,19 +627,27 @@ function spread(needs: number[]): [number, number] {
   const most = Math.max(...sorted.filter((n) => n <= fence));
   return [most, sorted[sorted.length - 1]];
 }
-/** A name cell's text and marks, from its padding to its right edge. */
+/** A name cell's text and marks, padding included (widths.rs `name_width`). */
 function nameNeed(row: Row, ctx: CellContext, scale: number) {
-  const inset = 6 + (row.nested ? 20 : 0) + row.depth * 20;
-  let need = inset + 14 + 8 + 16 * scale + 8 + textWidth(translate(row.label), scale, 13, row.count > 1 ? 500 : 400) + 10;
-  if (row.detail) need += 8 + textWidth(translate(row.detail), scale);
-  if (row.count > 1) need += 8 + Math.max(20, 12 + textWidth(String(row.count), scale, 11));
-  if (row.pids.some((pid) => ctx.efficiency.has(pid))) need += 8 + 12 * scale;
-  if (row.suspended) need += 8 + 14 + textWidth(translate("已暂停"), scale, 11);
+  const GAP = 8,
+    FOLD = 18,
+    edges = 26;
+  const inset = row.nested ? 20 : 0;
+  const title = textWidth(translate(row.label), scale, row.kind === "unit" ? 13 : 14, row.kind !== "unit" || row.count > 1 ? 500 : 400);
+  if (row.kind === "user") return edges + FOLD + GAP + 16 + GAP + title + GAP + labelWidth(translate(row.detail ?? ""), scale);
+  if (row.kind === "group") return edges + inset + FOLD + GAP + title + GAP + Math.max(22, textWidth(String(row.count), scale, 11, 600) + 14);
+  let need = edges + inset + row.depth * 20 + 14 + GAP + 16 + GAP + title;
+  if (row.count > 1) need += GAP + Math.max(20, 12 + textWidth(String(row.count), scale, 11));
+  if (row.detail) need += GAP + textWidth(translate(row.detail), scale);
+  if (row.pids.some((pid) => ctx.efficiency.has(pid))) need += GAP + 12;
+  if (row.suspended) need += GAP + 14 + textWidth(translate("已暂停"), scale, 11);
+  if (row.pids.some((pid) => ctx.leaks?.has(pid))) need += GAP + 14 + textWidth(translate("句柄泄漏"), scale, 11);
   return need;
 }
-// The base priority shows a class name, as wide as a translation makes it.
-const TEXT_COLUMNS = new Set(["name", "imageName", "path", "description", "company", "version", "architecture", "commandLine", "gpuEngine", "basePriority"]);
-/** The narrowest and widest a text column is made, whatever its contents (widths.rs `limits`). */
+/** What a cell showing `text` needs, its padding included. */
+const cellNeed = (c: ColumnDef, text: string, scale: number) =>
+  text ? textWidth(numeric(c) ? figures(translate(text)) : translate(text), scale) + 20 : 0;
+/** The narrowest and widest a column is made, whatever its contents (widths.rs `limits`). */
 const limits = (key: string): [number, number] =>
   key === "name"
     ? [180, 520]
@@ -542,12 +673,15 @@ export function useColumnWidths(
   ctx: CellContext,
   /** The table's width, in the window's own pixels. */
   room: number,
+  /** The figures above the labels, by column. */
+  totals: Record<string, string>,
 ): ColumnWidths {
-  // The server knows no fonts: the first render keeps the format widths.
+  // The server knows no fonts: the first render keeps the designed widths.
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
   const fitting = ready && prefs.autoWidth;
-  // Text needs follow the rows shown and the language, not every reading.
+  // Row needs follow the list measured and the language, not every reading:
+  // the list as it is with every group open and nothing searched.
   const latest = useRef({ rows, ctx });
   latest.current = { rows, ctx };
   const shape = fitting ? rows.map((r) => r.key + (r.suspended ? "~" : "")).join() + "|" + columns.map((c) => c.key).join() : "";
@@ -557,52 +691,67 @@ export function useColumnWidths(
     const { rows, ctx } = latest.current;
     const units = rows.filter((r) => r.kind === "unit");
     for (const c of columns) {
-      if (!TEXT_COLUMNS.has(c.key)) continue;
-      const label = c.key === "name" ? 0 : labelWidth(columnLabel(c), scale) + 20 + 14;
-      const list =
-        c.key === "name"
-          ? units.map((r) => nameNeed(r, ctx, scale))
-          : units.map((r) => {
-              const text = cellOf(c, r, ctx).text;
-              return text ? textWidth(translate(text), scale) + 20 : 0;
-            });
-      const [most, all] = spread(list);
-      const [lo, hi] = limits(c.key);
-      const clamp = (w: number) => Math.ceil(Math.min(hi, Math.max(lo, w, label)));
-      out.set(c.key, [clamp(most), clamp(all)]);
+      if (c.key === "name") {
+        out.set(c.key, spread(rows.map((r) => nameNeed(r, ctx, scale))));
+        continue;
+      }
+      const list = units.map((r) => cellNeed(c, cellOf(c, r, ctx).text, scale));
+      if (isText(c)) out.set(c.key, spread(list));
+      else {
+        const most = Math.max(0, ...list, ...envelope(c).map((text) => cellNeed(c, text, scale)));
+        out.set(c.key, [most, most]);
+      }
     }
     return out;
   }, [shape, columns, scale, language()]);
-  return useMemo(() => {
-    const widths = new Map<string, number>();
-    const grow = new Map<string, number>();
-    for (const c of columns) {
-      const manual = prefs.widths[c.key];
-      let w = c.width;
-      if (manual !== undefined) w = manual;
-      else if (fitting && needs.has(c.key)) {
-        const [most, all] = needs.get(c.key)!;
-        w = most;
-        if (all > w) grow.set(c.key, all - w);
-      } else if (ready && prefs.autoWidth && c.key !== "name") {
-        // The label, the cell's padding and the sort mark beside it.
-        const need = Math.ceil(labelWidth(columnLabel(c), scale) + 20 + 14);
-        if (need > w) w += Math.ceil((need - w) / 8) * 8;
+  // A figure column only widens: a value or total growing a digit moves it once.
+  const widest = useRef({ era: "", widths: new Map<string, number>() });
+  const era = columns.map((c) => c.key).join() + "|" + scale + "|" + language() + "|" + fitting;
+  if (widest.current.era !== era) widest.current = { era, widths: new Map() };
+  const header = (c: ColumnDef) => {
+    const label = labelWidth(columnLabel(c), scale) + 14 + 20;
+    const shown = translate(totals[c.key] ?? "");
+    let total = totalWidth(numeric(c) ? figures(shown) : shown, scale);
+    for (const text of totalEnvelope(c)) total = Math.max(total, totalWidth(text, scale));
+    // The name's figure has the search's filter mark beside it.
+    return Math.max(label, total + (c.key === "name" ? 17 : 0) + 20);
+  };
+  const widths = new Map<string, number>();
+  const grow = new Map<string, number>();
+  for (const c of columns) {
+    const manual = prefs.widths[c.key];
+    let w = c.width;
+    if (manual !== undefined) w = manual;
+    else if (fitting) {
+      const [lo, hi] = limits(c.key);
+      const head = header(c);
+      const floor = Math.max(head, lo),
+        ceiling = Math.max(hi, head);
+      const clamp = (n: number) => stepped(Math.min(ceiling, Math.max(floor, n)));
+      const [most, all] = needs.get(c.key) ?? [0, 0];
+      if (isText(c)) {
+        w = clamp(most);
+        const full = Math.max(w, clamp(all));
+        if (full > w) grow.set(c.key, full - w);
+      } else {
+        w = Math.max(clamp(most), widest.current.widths.get(c.key) ?? 0);
+        widest.current.widths.set(c.key, w);
       }
-      widths.set(c.key, w);
     }
-    if (!fitting) return { widths, fill: true };
-    // Room to spare widens the text columns toward what every row needs.
-    let left = room - [...widths.values()].reduce((a, w) => a + w, 0);
-    const wanted = [...grow.values()].reduce((a, w) => a + w, 0);
-    if (left > 0 && wanted > 0) {
-      const share = Math.min(1, left / wanted);
-      for (const [key, more] of grow) widths.set(key, widths.get(key)! + Math.floor(more * share));
-      left = room - [...widths.values()].reduce((a, w) => a + w, 0);
-    }
-    if (prefs.fullWidth && prefs.widths.name === undefined && left > 0) widths.set("name", widths.get("name")! + left);
-    return { widths, fill: false };
-  }, [columns, prefs, scale, ready, fitting, needs, room]);
+    widths.set(c.key, w);
+  }
+  if (!ready) return { widths, fill: true };
+  if (!fitting) return { widths, fill: false };
+  // Room to spare widens the text columns toward what every row needs (widths.rs `allocate`).
+  let left = room - [...widths.values()].reduce((a, w) => a + w, 0);
+  const wanted = [...grow.values()].reduce((a, w) => a + w, 0);
+  if (left > 0 && wanted > 0) {
+    const share = Math.min(1, left / wanted);
+    for (const [key, more] of grow) widths.set(key, widths.get(key)! + Math.floor(more * share));
+    left = room - [...widths.values()].reduce((a, w) => a + w, 0);
+  }
+  if (prefs.fullWidth && prefs.widths.name === undefined && left > 0) widths.set("name", widths.get("name")! + Math.floor(left));
+  return { widths, fill: false };
 }
 
 // ---------------------------------------------------------------------------

@@ -12,11 +12,22 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   alignsEnd,
+  architecture,
   cellOf,
+  columnDef,
+  company,
+  MISSING,
   NAME_MIN,
+  POWER_LEVELS,
+  powerEstimate,
+  powerLevel,
+  resourceLevel,
+  trendEstimate,
   type ColumnPrefs,
   useColumnWidths,
   useHeaderDrag,
@@ -29,20 +40,31 @@ import Curve, { type Motion } from "./Curve";
 import { language, translate } from "./i18n";
 import { Icon, ProcessIcon, type UiIcon } from "./icons";
 import {
-  bytes,
+  adapters,
   clock,
+  cpuPower,
+  cpuTemperature,
+  disks,
+  gpuPower,
+  gpuTemperature,
+  gpuEngine,
+  gpus,
   groupLabel,
+  machineTotals,
   machine,
+  memory,
   noise,
   percent,
   rate,
   rateCeiling,
+  rateLabel,
   sampleAt,
   samples,
   services,
   sessionOf,
   thousands,
   totalMemory,
+  transferred,
   userName,
   type Glyph,
   type Group,
@@ -51,10 +73,13 @@ import {
 } from "./model";
 import { scaleOf, slideIn, useIsoLayoutEffect } from "./widgets";
 
+/** The memory card's and the column's scope (processes.memoryScope). */
+const MEMORY_SCOPE = "整机已用物理内存为总量减去可用内存，包括使用中和已修改的内存。";
+
 export type View = "apps" | "tree" | "list";
 /** A process column's key (Columns.tsx). */
 export type SortKey = string;
-export type Device = "cpu" | "memory" | "disk" | "wifi" | "gpu" | "npu" | "battery";
+export type Device = "cpu" | "memory" | "disk" | "disk1" | "wifi" | "wsl" | "gpu" | "gpu1" | "npu" | "battery";
 
 export interface Row {
   key: string;
@@ -139,6 +164,8 @@ interface BuildOptions {
   users?: boolean;
   /** Prefixes the category headings' keys within a user's group. */
   scope?: string;
+  /** Every group and branch open: the list the column widths measure (widths.rs `WidthRows`). */
+  openAll?: boolean;
 }
 // Rows as the app builds them (frontend/model.rs): sorted by name, the list
 // falls into the Task Manager categories; any other sort keeps one list.
@@ -157,7 +184,7 @@ export function buildRows(o: BuildOptions): Row[] {
       if (!rows.length) continue;
       // The processes its rows stand for: all of the user's, or a search's matches.
       const members = searching ? [...new Set(rows.flatMap((r) => (r.kind === "unit" ? r.pids : [])))] : part.map((p) => p.pid);
-      const expanded = searching || !o.closed.has(key);
+      const expanded = o.openAll || searching || !o.closed.has(key);
       out.push({
         key,
         kind: "user",
@@ -251,7 +278,7 @@ export function buildRows(o: BuildOptions): Row[] {
         .map((proc) => {
           const row = named(proc, depth);
           row.expandable = children.has(proc.pid);
-          row.expanded = row.expandable && (o.treeOpen.has(row.key) || !!o.query.trim());
+          row.expanded = row.expandable && (o.openAll || o.treeOpen.has(row.key) || !!o.query.trim());
           return row;
         });
       for (const row of rows.sort(compare)) {
@@ -280,7 +307,7 @@ export function buildRows(o: BuildOptions): Row[] {
       const pids = [root.pid, ...members.filter((m) => m !== root).map((m) => m.pid)];
       const row = unit("a:" + root.exe + ":" + root.pid, pids, 0, root.name, root.name !== root.exe ? root.exe : undefined);
       row.expandable = pids.length > 1;
-      row.expanded = row.expandable && (o.open.has(row.key) || shown.length < members.length);
+      row.expanded = row.expandable && (o.openAll || o.open.has(row.key) || shown.length < members.length);
       (row as Row & { shown?: number[] }).shown = shown.map((m) => m.pid);
       units.push(row);
     }
@@ -300,11 +327,12 @@ export function buildRows(o: BuildOptions): Row[] {
       const members = units.filter((u) => u.group === group).sort(compare);
       if (!members.length) continue;
       const key = (o.scope ?? "") + "g:" + group;
-      const expanded = !o.closed.has(key) || !!o.query.trim();
+      const expanded = o.openAll || !o.closed.has(key) || !!o.query.trim();
       out.push({
         key,
         kind: "group",
         depth: 0,
+        group,
         label: groupLabel[group],
         count: members.length,
         pids: members.flatMap((m) => m.pids),
@@ -329,26 +357,26 @@ export function treeParents(list: Process[]) {
 
 export function useSystemHistory(tick: number) {
   return useMemo(() => {
-    const points = Array.from({ length: samples }, (_, i) => sampleAt(tick - samples + 1 + i));
+    const ticks = Array.from({ length: samples }, (_, i) => tick - samples + 1 + i);
+    const points = ticks.map(sampleAt);
     return {
       cpu: points.map((p) => p.cpu),
       kernel: points.map((p) => p.kernel),
       mem: points.map((p) => p.mem),
-      disk: points.map((p) => p.read + p.write),
+      // The whole machine's disk and network rates, and its busiest GPU (vitals.rs totals);
+      // the others are the first disk's and adapter's.
+      disk: ticks.map((t) => machineTotals(t).disk),
       read: points.map((p) => p.read),
       write: points.map((p) => p.write),
       active: points.map((p) => p.active),
       rx: points.map((p) => p.rx),
       tx: points.map((p) => p.tx),
-      net: points.map((p) => p.rx + p.tx),
-      gpu: points.map((p) => p.gpu),
+      net: ticks.map((t) => machineTotals(t).net),
+      gpu: ticks.map((t) => machineTotals(t).gpu),
     };
   }, [tick]);
 }
-export const cpuTemperature = (t: number) => 62 + sampleAt(t).cpu * 0.32 + noise(31, t) * 2;
-export const cpuPower = (t: number) => 28 + sampleAt(t).cpu * 0.82 + noise(32, t) * 4;
-export const gpuTemperature = (t: number) => 50 + noise(7, t) * 4;
-export const gpuPower = (t: number) => 18 + sampleAt(t).gpu * 0.2;
+export { cpuPower, cpuTemperature, gpuPower, gpuTemperature };
 const split = (text: string): [string, string] => {
   const at = text.indexOf(" ");
   return at < 0 ? [text, ""] : [text.slice(0, at), text.slice(at + 1)];
@@ -368,10 +396,15 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
   const used = (s.mem / 100) * totalMemory;
   const diskMax = rateCeiling(Math.max(...h.disk));
   const netMax = rateCeiling(Math.max(...h.net), true);
-  const [diskValue, diskUnit] = s.read + s.write < 1 ? ["0", "KB/s"] : split(rate(s.read + s.write));
-  const [netValue, netUnit] = s.rx + s.tx < 1 ? ["0", "KB/s"] : split(rate(s.rx + s.tx));
+  const totals = machineTotals(tick);
+  const [diskValue, diskUnit] = totals.disk < 1 ? ["0", "KB/s"] : split(rate(totals.disk));
+  const [netValue, netUnit] = totals.net < 1 ? ["0", "KB/s"] : split(rate(totals.net));
+  const gpuNow = totals.busiestGpu;
+  const gpuWatts = gpuNow.power < 1 ? gpuNow.power.toFixed(3) : gpuNow.power < 10 ? gpuNow.power.toFixed(1) : String(Math.round(gpuNow.power));
   const cards: {
     id: Device;
+    /** The device a click opens: the busiest disk or GPU, the first adapter. */
+    open?: Device;
     name: string;
     color: string;
     values: number[];
@@ -382,6 +415,9 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
     unit: string;
     /** Separate readings (CPU, GPU), or one line. */
     readings: string[];
+    /** What each reading is, and the figure's own hint (vitals.rs). */
+    tips: string[];
+    figureTip?: string;
   }[] = [
     {
       id: "cpu",
@@ -397,6 +433,7 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
         `${Math.round(cpuTemperature(tick))} °C`,
         `${Math.round(cpuPower(tick))} W`,
       ],
+      tips: ["速度", "温度", "封装功耗"],
     },
     {
       id: "memory",
@@ -408,6 +445,8 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       figure: (used / 1024 ** 3).toFixed(1),
       unit: "/ 32.0 GB",
       readings: [`${Math.round(s.mem)}%`],
+      tips: [MEMORY_SCOPE],
+      figureTip: MEMORY_SCOPE,
     },
     {
       id: "disk",
@@ -415,10 +454,12 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-io)",
       values: h.disk,
       max: diskMax,
-      scale: rate(diskMax),
+      scale: rateLabel(diskMax),
       figure: diskValue,
       unit: diskUnit,
-      readings: [`活动 ${Math.round(s.active)}%`],
+      readings: [`活动 ${Math.round(totals.busiestDisk.active)}%`],
+      tips: [],
+      open: totals.busiestDisk.id,
     },
     {
       id: "wifi",
@@ -426,10 +467,11 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       color: "var(--a-net)",
       values: h.net,
       max: netMax,
-      scale: rate(netMax),
+      scale: rateLabel(netMax),
       figure: netValue,
       unit: netUnit,
-      readings: [`收 ${rate(s.rx)} 发 ${rate(s.tx)}`],
+      readings: [`收 ${rate(totals.rx)} 发 ${rate(totals.tx)}`],
+      tips: ["接收 / 发送"],
     },
     {
       id: "gpu",
@@ -438,9 +480,12 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
       values: h.gpu,
       max: 100,
       scale: "100%",
-      figure: String(Math.round(s.gpu)),
+      figure: String(Math.round(gpuNow.util)),
       unit: "%",
-      readings: [`${Math.round(gpuTemperature(tick))} °C`, `${Math.round(gpuPower(tick))} W`],
+      readings: [`${Math.round(gpuNow.temperature)} °C`, `${gpuWatts} W`],
+      tips: ["GPU 温度", "功耗"],
+      figureTip: "Windows 引擎",
+      open: gpuNow.id,
     },
   ];
   return (
@@ -453,9 +498,9 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
             type="button"
             className={"a-vital" + (card.id === "cpu" ? " is-cpu" : "")}
             style={{ "--c": card.color } as CSSProperties}
-            onClick={() => onOpen(card.id)}
+            onClick={() => onOpen(card.open ?? card.id)}
             aria-label={open}
-            title={card.id === "memory" ? "整机已用物理内存为总量减去可用内存，包括使用中和已修改的内存。" : open}
+            title={open}
           >
             {/* Under the curve, which keeps below them, as the app draws them. */}
             <span className="a-vital-scale" aria-hidden="true">
@@ -471,13 +516,15 @@ export function Vitals({ tick, interval, running, motion, onOpen }: VitalProps) 
             <span className="a-vital-scrim" aria-hidden="true" />
             <span className="a-vital-tint" aria-hidden="true" />
             <span className="a-vital-name">{card.name}</span>
-            <span className="a-figure">
+            <span className="a-figure" title={card.figureTip}>
               <b>{card.figure}</b>
               <small>{card.unit}</small>
             </span>
             <span className={"a-vital-readings" + (card.readings.length > 1 ? " is-split" : "")}>
-              {card.readings.map((r) => (
-                <span key={r.slice(-3)}>{r}</span>
+              {card.readings.map((r, i) => (
+                <span key={r.slice(-3)} title={card.tips[i]}>
+                  {r}
+                </span>
               ))}
             </span>
           </button>
@@ -496,13 +543,28 @@ const VITAL_STRETCH = 118 / 98;
 
 /** How far a user's rows stand in from its heading (tables.rs `USER_INSET`). */
 const USER_INSET = 20;
+/** The rows put in the page around the view: past it by at least OVERSCAN, in steps of STEP. */
+const WINDOW_OVERSCAN = 8;
+const WINDOW_STEP = 16;
 interface TableProps {
   tick: number;
   rows: Row[];
+  /** Every row in the page, not only those near the view: an export reads them all. */
+  whole?: boolean;
+  /** The list with every group open and nothing searched, which the widths measure. */
+  measured: Row[];
   total: number;
-  held: boolean;
+  /** Rows held out of the order the sort would give them (`Desktop::holds_order`). */
+  heldOrder: boolean;
   hiddenCount: number;
-  onLeak: () => void;
+  /** Processes the leak alerts mark; the header's mark lists them. */
+  leaks: Set<number>;
+  onLeak: (anchor: HTMLElement) => void;
+  /** I/O and memory priority set from the menu (Columns.tsx `CellContext`). */
+  resource: Record<string, string>;
+  /** The search that left the list empty, and the button that clears it. */
+  query: string;
+  onClearSearch: () => void;
   /** The columns shown, in their order, the name first (Columns.tsx). */
   columns: ColumnDef[];
   sizing: Pick<ColumnPrefs, "autoWidth" | "fullWidth" | "widths">;
@@ -534,32 +596,51 @@ interface TableProps {
   onMoveColumn: (key: string, before: string | null) => void;
 }
 export function ProcessTable(t: TableProps) {
-  const { leakHints, ignoreLeak } = useShared();
-  const leak = leakHints && !ignoreLeak && t.list.some((p) => p.pid === 18340);
   const table = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const deselectTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   useEffect(()=>()=>clearTimeout(deselectTimer.current),[t.selected]);
   const others = t.columns.slice(1);
-  const [scrollGroup, setScrollGroup] = useState("");
-  const groups = t.rows.flatMap((r, i) => (r.kind === "group" ? [{ row: r, at: i }] : []));
-  const markScroll = () => {
+  const groups = useMemo(() => groupsOf(t.rows), [t.rows]);
+  const scroller = useGroupScroll(body, t.rows, groups);
+  // Only the rows near the view are in the page, which keeps each refresh
+  // cheap on a long list; spacers keep the others' height. The headings
+  // (held at the top) and the selected row always are.
+  const [span, setSpan] = useState<[number, number]>([0, 3 * WINDOW_STEP]);
+  const follow = (scrolled: boolean) => {
     const b = body.current;
     if (!b) return;
-    const visible = [...b.querySelectorAll<HTMLElement>(".a-group")]
-      .filter((g) => g.offsetTop - b.offsetTop <= b.scrollTop + 2)
-      .at(-1);
-    setScrollGroup(b.scrollTop > 0 ? (visible?.dataset.group ?? "") : "");
+    const rowH = b.querySelector<HTMLElement>(":scope > .a-tr")?.offsetHeight || 30;
+    const first = Math.floor(b.scrollTop / rowH),
+      last = Math.ceil((b.scrollTop + b.clientHeight) / rowH);
+    const next: [number, number] = [
+      Math.max(0, Math.floor((first - WINDOW_OVERSCAN) / WINDOW_STEP) * WINDOW_STEP),
+      Math.ceil((last + WINDOW_OVERSCAN) / WINDOW_STEP) * WINDOW_STEP,
+    ];
+    if (next[0] === span[0] && next[1] === span[1]) return;
+    // Scrolled past the rows in the page: they come in before the frame shows.
+    if (scrolled && (first < span[0] || last > span[1])) flushSync(() => setSpan(next));
+    else setSpan(next);
   };
+  useIsoLayoutEffect(() => follow(false));
+  const shown: { row: Row; index: number; gap: number }[] = [];
+  t.rows.forEach((row, index) => {
+    if (t.whole || row.kind !== "unit" || (index >= span[0] && index < span[1]) || row.key === t.selected)
+      shown.push({ row, index, gap: 0 });
+    else if (shown.at(-1)?.gap) shown[shown.length - 1].gap++;
+    else shown.push({ row, index, gap: 1 });
+  });
   const ctx = useMemo<CellContext>(
     () => ({
       byPid: new Map(t.list.map((p) => [p.pid, p])),
       tick: t.tick,
       efficiency: t.efficiency,
       priority: t.priority,
+      resource: t.resource,
+      leaks: t.leaks,
     }),
-    [t.list, t.tick, t.efficiency, t.priority],
+    [t.list, t.tick, t.efficiency, t.priority, t.resource, t.leaks],
   );
   const [room, setRoom] = useState(0);
   useIsoLayoutEffect(() => {
@@ -571,26 +652,8 @@ export function ProcessTable(t: TableProps) {
     observer.observe(b);
     return () => observer.disconnect();
   }, []);
-  const sizingRows = useMemo(
-    () =>
-      t.list.map((p) => ({
-        kind: "unit" as const,
-        key: String(p.pid),
-        pids: [p.pid],
-        label: p.name,
-        detail: p.name !== p.exe ? p.exe : undefined,
-        count: 1,
-        depth: 0,
-        exe: p.exe,
-        group: p.group,
-        expandable: false,
-        expanded: false,
-        suspended: p.suspended,
-        values: zero,
-      })),
-    [t.list],
-  );
-  const { widths, fill } = useColumnWidths(t.columns, t.sizing, t.text, sizingRows, ctx, room);
+  const totals = Object.fromEntries(t.columns.map((c) => [c.key, totalText(c.key, t.tick, t.list, t.total, t.hiddenCount)]));
+  const { widths, fill } = useColumnWidths(t.columns, t.sizing, t.text, t.measured, ctx, room, totals);
   const nameWidth = fill ? NAME_MIN : (widths.get("name") ?? NAME_MIN);
   const rowMin = others.reduce((a, c) => a + (widths.get(c.key) ?? c.width), nameWidth);
   // Dragging a column's edge: the column keeps the width; a double-click
@@ -642,8 +705,16 @@ export function ProcessTable(t: TableProps) {
   );
   useTableScroll(table, head, body);
   const drag = useHeaderDrag({ table, head, body, columns: t.columns, widths, onMove: t.onMoveColumn });
-  const reveal = (key: string) =>
-    body.current?.querySelector(`[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "nearest" });
+  const reveal = (key: string) => {
+    const b = body.current;
+    const line = b?.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (line) return line.scrollIntoView({ block: "nearest" });
+    // A row not in the page lies beyond the view: scroll to where it is.
+    const index = t.rows.findIndex((r) => r.key === key);
+    if (!b || index < 0) return;
+    const top = index * scroller.rowH;
+    b.scrollTop = top < b.scrollTop ? top : top + scroller.rowH - b.clientHeight;
+  };
   const keyed = (event: KeyboardEvent<HTMLDivElement>) => {
     const units = t.rows.filter((r) => r.kind === "unit");
     const at = units.findIndex((r) => r.key === t.selected);
@@ -699,8 +770,18 @@ export function ProcessTable(t: TableProps) {
       }
     }
   };
+  // Rows held out of this order: the arrow gives way to a pause mark in the accent until they re-sort.
   const sortMark = (key: SortKey) =>
-    t.sort === key ? <Icon name={t.descending ? "chevronDown" : "chevronUp"} size={12} /> : null;
+    t.sort !== key ? null : t.heldOrder ? (
+      <span className="a-order-held" title="排序已暂停，读数照常刷新。移开指针或关闭菜单、对话框后恢复排序。">
+        <Icon name="pause" size={12} />
+      </span>
+    ) : (
+      <Icon name={t.descending ? "chevronDown" : "chevronUp"} size={12} />
+    );
+  const leakCount = t.list.filter((p) => t.leaks.has(p.pid)).length;
+  const efficient = (row: Row) => row.pids.filter((pid) => t.efficiency.has(pid)).length;
+  const leaking = (row: Row) => row.pids.some((pid) => t.leaks.has(pid));
   const ariaSort = (key: SortKey) => (t.sort === key ? (t.descending ? "descending" : "ascending") : "none");
   const width = (c: ColumnDef) => widths.get(c.key) ?? c.width;
   const align = (c: ColumnDef) => (alignsEnd(c) ? " is-end" : "");
@@ -721,7 +802,7 @@ export function ProcessTable(t: TableProps) {
       {resizing && <style>{`.a-ptable .a-col-${resizing}{box-shadow:inset -2px 0 0 var(--a-accent)}`}</style>}
       {fitted && <style key={fitted.id}>{`.a-ptable .a-col-${fitted.key}{animation:a-fit-flash 700ms ease-out}`}</style>}
       <div
-        className={"a-thead" + (t.held ? " is-held" : "")}
+        className="a-thead"
         ref={head}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -740,8 +821,31 @@ export function ProcessTable(t: TableProps) {
             onClick={() => t.onSort("name")}
           >
             <span className="a-th-total">
-              {t.filtered && <Icon name="filter" size={13} />}
-              {t.hiddenCount ? `${t.total} (${t.hiddenCount} 个隐藏)` : `${t.total} 个进程`}
+              {t.filtered && (
+                <span className="a-filter-mark" title="列表已按搜索内容筛选">
+                  <Icon name="filter" size={13} />
+                </span>
+              )}
+              <span className="a-th-count">{totals.name}</span>
+              {/* Leak alerts: a mark after the count, which lists them; its press never sorts. */}
+              {leakCount > 0 && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="a-leak-mark"
+                  data-anchor="leak-mark"
+                  title={`${leakCount} 项可能的资源泄漏`}
+                  aria-label={`${leakCount} 项可能的资源泄漏`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    t.onLeak(event.currentTarget);
+                  }}
+                >
+                  <Icon name="warning" size={11} />
+                  {leakCount}
+                </span>
+              )}
             </span>
             <span className="a-th-label">
               <span>名称</span>
@@ -749,7 +853,6 @@ export function ProcessTable(t: TableProps) {
             </span>
             {edge("name")}
           </button>
-          {leak&&<button type="button" className="a-leak-indicator" title="1 项可能的资源泄漏" onClick={t.onLeak}>⚠ 1</button>}
           {others.map((c) => (
             <button
               key={c.key}
@@ -764,9 +867,7 @@ export function ProcessTable(t: TableProps) {
               onPointerDown={(event) => drag.press(event, c.key)}
               onClick={() => !drag.dragged() && t.onSort(c.key)}
             >
-              <span className="a-th-total">
-                <TotalFor column={c.key} tick={t.tick} list={t.list} />
-              </span>
+              <span className="a-th-total">{totals[c.key]}</span>
               <span className="a-th-label">
                 <span data-i18n="column">{c.label}</span>
                 {sortMark(c.key)}
@@ -779,7 +880,10 @@ export function ProcessTable(t: TableProps) {
       <div
         className="a-tbody a-scroll"
         ref={body}
-        onScroll={markScroll}
+        onScroll={() => {
+          follow(true);
+          scroller.onScroll();
+        }}
         tabIndex={0}
         role="rowgroup"
         onKeyDown={keyed}
@@ -795,46 +899,36 @@ export function ProcessTable(t: TableProps) {
               </button>
             </div>
           ) : (
-            <p className="a-empty">没有匹配的进程</p>
-          ))}
-        {t.rows.map((row) =>
-          row.kind === "user" ? (
-            <div
-              key={row.key}
-              role="row"
-              data-group={row.key}
-              aria-expanded={row.expanded}
-              className={"a-tr a-user" + (row.expanded ? "" : " is-folded")}
-              onClick={() => t.onToggle(row)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                t.onHeadingMenu(event, row);
-              }}
-            >
-              <span role="gridcell" className="a-td a-td-name a-col-name">
-                <span className="a-fold" aria-expanded={row.expanded}>
-                  <Icon name="chevronRight" size={12} />
-                </span>
-                <Icon name={row.system ? "computer" : "user"} />
-                <span className="a-user-name" data-i18n="user">
-                  {row.label}
-                </span>
-                <span className="a-user-detail">{row.detail}</span>
-              </span>
-              {others.map((c) => (
-                <span role="gridcell" key={c.key} className={`a-td a-col-${c.key}` + align(c)} style={{ width: width(c) }}>
-                  {c.aggregate ? cellOf(c, row, ctx).text : ""}
-                </span>
-              ))}
+            <div className="a-empty">
+              <span>{`没有与“${t.query.trim()}”匹配的进程`}</span>
+              <button type="button" className="a-btn" onClick={t.onClearSearch}>
+                清除搜索
+              </button>
             </div>
-          ) : row.kind === "group" ? (
+          ))}
+        {shown.map(({ row, index, gap }) =>
+          gap ? (
+            <div key={"gap:" + index} className="a-tgap" style={{ height: gap * scroller.rowH }} aria-hidden="true" />
+          ) : row.kind !== "unit" ? (
+            // A user's or a category's heading, in its group's colour (tables/groups.rs).
             <div
               key={row.key}
               role="row"
+              aria-rowindex={index + 2}
+              data-row={index}
               data-group={row.key}
+              data-tone={groups.find((g) => g.heading === index)?.tone}
               aria-expanded={row.expanded}
-              className={"a-tr a-group" + (row.expanded ? "" : " is-folded") + (row.nested ? " is-nested" : "")}
-              onClick={() => t.onToggle(row)}
+              className={
+                "a-tr " +
+                (row.kind === "user" ? "a-user" : "a-group") +
+                (row.expanded ? "" : " is-folded") +
+                (row.nested ? " is-nested" : "") +
+                (t.filtered ? " is-locked" : "")
+              }
+              // Every match shows while searching: a heading cannot fold.
+              title={t.filtered ? "搜索时显示全部匹配项，清除搜索后可折叠" : undefined}
+              onClick={() => !t.filtered && t.onToggle(row)}
               onContextMenu={(event) => {
                 event.preventDefault();
                 t.onHeadingMenu(event, row);
@@ -844,21 +938,47 @@ export function ProcessTable(t: TableProps) {
                 <span className="a-fold" aria-expanded={row.expanded}>
                   <Icon name="chevronRight" size={12} />
                 </span>
-                <span className="a-group-name">{row.label}</span>
-                <span className="a-group-count">{row.count}</span>
-                <span className="a-group-rule" />
+                {row.kind === "user" ? (
+                  <>
+                    <span className="a-user-mark">
+                      <Icon name={row.system ? "computer" : "user"} size={12} />
+                    </span>
+                    <span className="a-user-name" data-i18n="user">
+                      {row.label}
+                    </span>
+                    <span className="a-user-detail">{row.detail}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="a-group-mark" />
+                    <span className="a-group-name">{row.label}</span>
+                    <span className="a-group-count">{row.count}</span>
+                    <span className="a-group-rule" />
+                  </>
+                )}
               </span>
-              {others.map((c) => (
-                <span role="gridcell" key={c.key} className={`a-td a-col-${c.key}` + align(c)} style={{ width: width(c) }}>
-                  {c.aggregate ? cellOf(c, row, ctx).text : ""}
-                </span>
-              ))}
+              {others.map((c) => {
+                const cell = cellOf(c, row, ctx);
+                return (
+                  <span
+                    role="gridcell"
+                    key={c.key}
+                    className={`a-td a-col-${c.key}` + align(c)}
+                    style={{ width: width(c) }}
+                    title={c.key === "mem" ? "此分类的专用工作集合计。共享内存和系统内存另计。" : undefined}
+                  >
+                    {cell.text}
+                  </span>
+                );
+              })}
             </div>
           ) : (
             <div
               key={row.key}
               data-key={row.key}
               role="row"
+              aria-rowindex={index + 2}
+              data-row={index}
               aria-selected={t.selected === row.key}
               aria-expanded={row.expandable ? row.expanded : undefined}
               className={"a-tr" + (t.selected === row.key ? " is-selected" : "")}
@@ -878,7 +998,7 @@ export function ProcessTable(t: TableProps) {
                 role="gridcell"
                 className="a-td a-td-name a-col-name"
                 style={{ paddingLeft: 6 + (row.nested ? USER_INSET : 0) + row.depth * 20 }}
-                title={row.label + "\n" + (row.exe ?? "")}
+                title={row.label + "\n" + (ctx.byPid.get(row.pids[0])?.path ?? row.exe ?? "")}
               >
                 {row.expandable ? (
                   <button
@@ -907,29 +1027,53 @@ export function ProcessTable(t: TableProps) {
                 </span>
                 {row.count > 1 && <span className="a-count">{row.count}</span>}
                 {row.detail && <span className="a-exe">{row.detail}</span>}
-                {row.pids.some((pid) => t.efficiency.has(pid)) && (
-                  <span title="效率模式" className="a-leaf">
+                {efficient(row) > 0 && (
+                  <span
+                    title={row.count > 1 ? `${efficient(row)} 个进程处于效率模式` : "效率模式"}
+                    className="a-leaf"
+                  >
                     <Icon name="leaf" size={12} />
                   </span>
                 )}
-                {leak && row.pids.includes(18340) && <span className="a-leak-tag">句柄泄漏</span>}
                 {row.suspended && <span className="a-tag">已暂停</span>}
+                {/* A leak alert: the kind in amber, what it rests on under the pointer. */}
+                {leaking(row) && (
+                  <span className="a-tag is-warn" title={LEAK.describe}>
+                    句柄泄漏
+                  </span>
+                )}
               </span>
               {others.map((c) => {
                 const cell = cellOf(c, row, ctx);
                 // Long text ends in an ellipsis; hovering shows all of it.
                 const long = (c.format === "text" || c.key === "basePriority") && !!cell.text;
+                // The count a handle leak alert is about, in its amber.
+                const warn = c.key === "handles" && leaking(row);
+                const hint = long
+                  ? cell.text
+                  : warn
+                    ? LEAK.describe
+                    : c.key === "gpu" && row.values.gpu >= 0.05
+                      ? gpuEngine(row.pids)
+                      : c.key === "net"
+                        ? `发送 ${byteRate(row.values.net * 0.22)}，接收 ${byteRate(row.values.net * 0.78)}`
+                        : undefined;
                 return (
                   <span
                     role="gridcell"
                     key={c.key}
                     className={
-                      `a-td a-col-${c.key}` + align(c) + (cell.faint ? " is-faint" : "") + (cell.heat ? " is-heat" : "")
+                      `a-td a-col-${c.key}` +
+                      align(c) +
+                      (cell.faint ? " is-faint" : "") +
+                      (cell.heat ? " is-heat" : "") +
+                      (warn ? " is-warn" : "")
                     }
                     style={
                       cell.heat ? ({ width: width(c), "--h": cell.heat.toFixed(3) } as CSSProperties) : { width: width(c) }
                     }
-                    title={long ? cell.text : undefined}
+                    data-i18n={c.key === "efficiency" ? "state" : c.format === "power" ? "power" : undefined}
+                    title={hint}
                   >
                     {long ? <span className="a-cell-text">{cell.text}</span> : cell.text}
                   </span>
@@ -939,9 +1083,7 @@ export function ProcessTable(t: TableProps) {
           ),
         )}
       </div>
-      {groups.length>1&&<div className="a-group-track">{groups.map(({row,at})=><button type="button" key={row.key} data-group={row.key} aria-label={row.label} title={row.label}
-        style={{top:(at/t.rows.length*100)+"%"}} onClick={()=>{const b=body.current,el=b?.querySelector<HTMLElement>(`[data-group="${row.key}"]`);if(el&&b)b.scrollTop+= (el.getBoundingClientRect().top-b.getBoundingClientRect().top)/scaleOf(b)}}/>)}
-        {scrollGroup&&<span>{groups.find(g=>g.row.key===scrollGroup)?.row.label}</span>}</div>}
+      {scroller.track}
 
       {/* The raised strip under a dragged column, within the scrolled columns' lane. */}
       {drag.lifted && (
@@ -958,31 +1100,230 @@ export function ProcessTable(t: TableProps) {
 }
 
 // Column totals come from the system sample, as in the app's header band;
-// threads and handles count the whole system, as the status bar does.
-function TotalFor({ column, tick, list }: { column: string; tick: number; list: Process[] }) {
+// threads and handles count the whole system, as the status bar does. The
+// name's counts every process, and with system processes hidden, how many
+// of them the list leaves out (tables.rs `column_total`).
+function totalText(column: string, tick: number, list: Process[], total: number, hidden: number) {
   const s = sampleAt(tick);
+  const disk = (value: number) => (value < 1 ? "0 KB/s" : rate(value));
   switch (column) {
+    case "name":
+      return hidden ? `${total} 个进程 (${hidden} 个隐藏)` : `${total} 个进程`;
     case "cpu":
-      return <>{Math.round(s.cpu)}%</>;
+      return Math.round(s.cpu) + "%";
     case "mem":
-      return <>{Math.round(s.mem)}%</>;
+      return Math.round(s.mem) + "%";
     case "diskRead":
-      return <>{rate(s.read)}</>;
+      return disk(s.read);
     case "diskWrite":
-      return <>{rate(s.write)}</>;
+      return disk(s.write);
     case "io":
-      return <>{rate((s.read + s.write) * 1.12 + s.rx * 0.05)}</>;
+      return rate((s.read + s.write) * 1.12 + s.rx * 0.05);
     case "gpu":
-      return <>{Math.round(s.gpu)}%</>;
+      return Math.round(s.gpu) + "%";
     case "net":
-      return <>{rate(s.rx + s.tx)}</>;
+      return rate(s.rx + s.tx);
     case "threads":
-      return <>{thousands(list.reduce((a, p) => a + p.threads, 1180))}</>;
+      return thousands(list.reduce((a, p) => a + p.threads, 1180));
     case "handles":
-      return <>{thousands(list.reduce((a, p) => a + p.handles, 52400))}</>;
+      return thousands(list.reduce((a, p) => a + p.handles, 52400));
     default:
-      return null;
+      return "";
   }
+}
+/** The column a right press landed on in a process row, for the menu's
+ *  "复制“{column}”": its label and what the cell shows (tables.rs `context_column`). */
+export function columnUnder(target: Element) {
+  const row = target.closest<HTMLElement>('[role="row"]');
+  const grid = row?.closest<HTMLElement>(".a-ptable");
+  const cell = target.closest<HTMLElement>('[role="gridcell"]');
+  if (!row || !grid || !cell || !row.contains(cell)) return null;
+  const index = [...row.querySelectorAll(':scope > [role="gridcell"]')].indexOf(cell);
+  const header = grid.querySelectorAll<HTMLElement>('[role="columnheader"]')[index];
+  const label = header?.querySelector<HTMLElement>(".a-th-label")?.innerText.trim();
+  if (!label) return null;
+  return { label, value: (cell.querySelector<HTMLElement>(".a-name") ?? cell).innerText.trim() };
+}
+/** A rate as the details write it: an idle reading in kilobytes too (details.rs `byte_rate`). */
+const byteRate = (value: number) => (value < 1 ? "0 KB/s" : rate(value));
+
+// The demo's one leak finding (leaks.rs): a fictional utility whose handles keep rising.
+export const LEAK_PID = 18340;
+const LEAK = {
+  low: 8126,
+  handles: 38240,
+  span: "30 分钟",
+  describe: "30 分钟内句柄数持续上升，增加了 30,114 个，当前 38,240 个",
+};
+
+// ---------------------------------------------------------------------------
+// The process list's groups (tables/groups.rs): a user's or a category's
+// heading and the rows up to the next heading of its level or above; the
+// headings held at the top while their group scrolls under them; a map of
+// the groups beside the scrollbar, with the group's name by the thumb while
+// the list scrolls.
+interface ListGroup {
+  heading: number;
+  end: number;
+  /** A category rather than a user's group. */
+  category: boolean;
+  tone: string;
+}
+function groupsOf(rows: Row[]): ListGroup[] {
+  let users = 0;
+  const heads = rows.flatMap((r, i) =>
+    r.kind === "user"
+      ? [{ i, category: false, tone: r.system ? "system" : "user" + ((users++ % 3) + 1) }]
+      : r.kind === "group"
+        ? [{ i, category: true, tone: r.group === "app" ? "apps" : (r.group ?? "background") }]
+        : [],
+  );
+  return heads.map((h, n) => ({
+    heading: h.i,
+    category: h.category,
+    tone: h.tone,
+    // A category ends at any heading; a user's group at the next user's.
+    end: heads.slice(n + 1).find((next) => h.category || !next.category)?.i ?? rows.length,
+  }));
+}
+/** The headings held at the top of a list scrolled `scroll` down, and how far down each is. */
+function held(groups: ListGroup[], count: number, scroll: number, rowH: number) {
+  const bands: [number, number][] = [];
+  let stack = 0;
+  if (!count) return bands;
+  for (const category of [false, true]) {
+    const at = Math.min(count - 1, Math.floor((scroll + stack) / rowH));
+    const g = groups.find((g) => g.category === category && g.heading <= at && at < g.end);
+    if (!g || g.heading * rowH >= scroll + stack) continue;
+    const y = Math.min(g.end * rowH - scroll - rowH, stack);
+    if (y <= -rowH) continue;
+    bands.push([g.heading, y]);
+    stack = y + rowH;
+  }
+  return bands;
+}
+/** How long the group's name stays beside the scrollbar once scrolling stops. */
+const NAME_HOLD = 1000;
+function useGroupScroll(body: RefObject<HTMLDivElement | null>, rows: Row[], groups: ListGroup[]) {
+  const pill = useRef<HTMLSpanElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const last = useRef<number | null>(null);
+  const covering = useRef(new Set<Element>());
+  const [frame, setFrame] = useState({ top: 0, height: 0, total: 0, rowH: 30 });
+  const rowHeight = (b: HTMLElement) => b.querySelector<HTMLElement>(":scope > .a-tr")?.offsetHeight || 30;
+  const place = (scrolled: boolean) => {
+    const b = body.current;
+    if (!b) return;
+    const rowH = rowHeight(b);
+    const scroll = b.scrollTop,
+      height = b.clientHeight,
+      max = Math.max(0, b.scrollHeight - height);
+    // Headings held at the top, the user's above the category's; the lowest ends them with a line.
+    const bands = held(groups, rows.length, scroll, rowH);
+    for (const g of groups) {
+      const el = b.querySelector<HTMLElement>(`:scope > [data-group="${CSS.escape(rows[g.heading]?.key ?? "")}"]`);
+      if (!el) continue;
+      const band = bands.find(([at]) => at === g.heading);
+      if (band) {
+        el.dataset.held = "";
+        el.style.top = band[1] + "px";
+      } else if ("held" in el.dataset) {
+        delete el.dataset.held;
+        el.style.top = "";
+      }
+      el.toggleAttribute("data-lowest", !!band && band === bands.at(-1));
+    }
+    // The rows under the held headings: their names (sticky to the left)
+    // would otherwise paint over the headings' edge.
+    const covered = bands.length ? bands[bands.length - 1][1] + rowH : 0;
+    const under = new Set<Element>();
+    if (covered > 0) {
+      const from = Math.floor(scroll / rowH),
+        to = Math.floor((scroll + covered) / rowH);
+      for (const el of Array.from(b.children) as HTMLElement[]) {
+        const at = Number(el.dataset.row ?? -1);
+        if (at >= from && at <= to && !("held" in el.dataset)) under.add(el);
+      }
+    }
+    for (const el of covering.current) if (!under.has(el)) el.removeAttribute("data-under");
+    for (const el of under) el.setAttribute("data-under", "");
+    covering.current = under;
+    // The group at the top: stronger on the track, named beside the thumb.
+    const reach = held(groups, rows.length, scroll + 0.5, rowH).length * rowH;
+    const row = Math.min(rows.length - 1, Math.floor((scroll + reach) / rowH));
+    const group = [...groups].reverse().find((g) => g.heading <= row && row < g.end);
+    track.current?.querySelectorAll<HTMLElement>("[data-heading]").forEach((mark) => {
+      mark.toggleAttribute("data-current", Number(mark.dataset.heading) === group?.heading);
+    });
+    const p = pill.current;
+    const moved = last.current !== null && Math.abs(last.current - scroll) > 0.5;
+    last.current = scroll;
+    if (!p || !group || !scrolled || !moved) return;
+    const user = group.category ? groups.find((u) => !u.category && u.heading < group.heading && group.heading < u.end) : undefined;
+    const title = translate(rows[group.heading].label, rows[group.heading].kind === "user" ? "user" : "");
+    p.dataset.tone = group.tone;
+    p.querySelector(".a-group-pill-name")!.textContent = user
+      ? `${translate(rows[user.heading].label, "user")} · ${title}`
+      : title;
+    p.querySelector(".a-group-pill-place")!.textContent = `${Math.max(1, row - group.heading)} / ${group.end - group.heading - 1}`;
+    // By the thumb, as the bar draws it, below the headings at the top.
+    const thumb = Math.min(height, Math.max(17, Math.round((height / (height + max)) * height)));
+    const middle = (scroll / Math.max(1, max)) * (height - thumb) + thumb / 2;
+    p.style.top = Math.min(height - 24 - 4, Math.max(reach + 4, middle - 12)) + "px";
+    p.dataset.shown = "";
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => delete p.dataset.shown, NAME_HOLD);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // Where the list is, as it lays out anew (rows, folds, the window's size).
+  const measure = () => {
+    const b = body.current;
+    if (!b) return;
+    const next = { top: b.offsetTop, height: b.clientHeight, total: b.scrollHeight, rowH: rowHeight(b) };
+    setFrame((f) => (f.top === next.top && f.height === next.height && f.total === next.total && f.rowH === next.rowH ? f : next));
+    place(false);
+  };
+  const latest = useRef(measure);
+  latest.current = measure;
+  useIsoLayoutEffect(() => latest.current());
+  useIsoLayoutEffect(() => {
+    const b = body.current;
+    if (!b) return;
+    const observer = new ResizeObserver(() => latest.current());
+    observer.observe(b);
+    return () => observer.disconnect();
+  }, []);
+  const scrollable = frame.total - frame.height >= 0.5;
+  // The innermost groups: a user's own when it has no categories.
+  const leaves = groups.filter((g) => !groups.some((inner) => inner.heading > g.heading && inner.heading < g.end));
+  const rowH = frame.rowH;
+  return {
+    rowH,
+    onScroll: () => place(true),
+    track: groups.length > 0 && (
+      <div className="a-group-track" ref={track} style={{ top: frame.top, height: frame.height }} aria-hidden="true">
+        {scrollable &&
+          leaves.map((g) => {
+            const top = ((g.heading * rowH) / frame.total) * frame.height;
+            const bottom = ((g.end * rowH) / frame.total) * frame.height;
+            return (
+              <i
+                key={rows[g.heading].key}
+                data-heading={g.heading}
+                data-tone={g.tone}
+                style={{ top: top + 1, height: Math.max(2, bottom - top - 2) }}
+              />
+            );
+          })}
+        <span className="a-group-pill" ref={pill}>
+          <i />
+          <span className="a-group-pill-name" />
+          <span className="a-group-pill-place" />
+        </span>
+      </div>
+    ),
+  };
 }
 
 interface DetailsProps {
@@ -997,6 +1338,11 @@ interface DetailsProps {
   efficiency: Set<number>;
   priority: Map<number, string>;
   resourcePriority: Record<string, string>;
+  /** Each process's readings now. */
+  now: Map<number, Reading>;
+  /** Processes the leak alerts mark, and setting the finding aside. */
+  leaks: Set<number>;
+  onIgnoreLeak: () => void;
   onDeselect: () => void;
   onEnd: (row: Row, confirm: boolean, tree?: boolean) => void;
   onSelectPid: (pid: number) => void;
@@ -1004,15 +1350,168 @@ interface DetailsProps {
   onService: (name: string) => void;
   onCopy: (text: string, what: string) => void;
 }
-const cpuTime = (seconds: number) =>
-  `${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-function Facts({ rows }: { rows: [string, ReactNode][] }) {
+// ---------------------------------------------------------------------------
+// What the pane lists about the selected row (details/sheet.rs), which "Copy
+// details" also puts on the clipboard, so the copy never leaves out a fact.
+interface Fact {
+  name: string;
+  value: string;
+  /** Followed by a quiet part, which copies along. */
+  quiet?: string;
+  /** Quiet text, such as a reading Argus cannot take. */
+  faint?: boolean;
+  /** A link that selects this process. */
+  link?: number;
+  /** A hint on the value. */
+  hint?: string;
+  /** Where the value's words read differently (i18n `data-i18n`). */
+  context?: string;
+}
+interface Sheet {
+  process: Fact[];
+  resources: Fact[];
+  totals: Fact[];
+  paths: string[];
+  command?: string;
+  version: Fact[];
+}
+export interface SheetContext extends CellContext {
+  list: Process[];
+  /** Each process's readings now. */
+  now: Map<number, Reading>;
+}
+const factOf = (ctx: SheetContext, row: Row, key: string) => {
+  const c = columnDef(key);
+  return c ? cellOf(c, row, ctx).text : MISSING;
+};
+function detailsSheet(row: Row, proc: Process, ctx: SheetContext): Sheet {
+  const group = row.count > 1;
+  const members = row.pids.map((pid) => ctx.byPid.get(pid)).filter(Boolean) as Process[];
+  const v = row.values;
+  const cell = (key: string) => factOf(ctx, row, key);
+  const resources: Fact[] = [
+    { name: "专用工作集", value: memory(v.mem) },
+    { name: "工作集", value: cell("workingSet") },
+    // Peaks and address ranges are a single process's.
+    ...(group ? [] : [{ name: "工作集峰值", value: cell("peakWorkingSet") }]),
+    { name: "提交大小", value: cell("commit") },
+    ...(group ? [] : [{ name: "虚拟地址空间", value: cell("virtualSize") }]),
+    { name: "磁盘读取", value: byteRate(v.read), hint: "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
+    { name: "磁盘写入", value: byteRate(v.write), hint: "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
+    { name: "I/O", value: byteRate(v.io), hint: "读、写及其他 I/O 合计，包含文件、网络和设备访问" },
+    // The share of the busiest engine, which it names.
+    { name: "GPU", value: `${percent(Math.min(100, v.gpu))}%`, quiet: v.gpu >= 0.05 ? `（${gpuEngine(row.pids)}）` : undefined },
+    { name: "专用 GPU 内存", value: cell("gpuDedicated") },
+    { name: "共享 GPU 内存", value: cell("gpuShared") },
+    { name: "网络", value: `发送 ${byteRate(v.net * 0.22)}，接收 ${byteRate(v.net * 0.78)}` },
+    {
+      name: "电源使用情况",
+      value: `${POWER_LEVELS[powerLevel(powerEstimate(v))]} · 趋势：${POWER_LEVELS[powerLevel(members.reduce((a, p) => a + trendEstimate(p), 0))]}`,
+      context: "power",
+    },
+    { name: "线程", value: thousands(members.reduce((a, p) => a + p.threads, 0)) },
+    { name: "句柄", value: thousands(members.reduce((a, p) => a + p.handles, 0)) },
+    ...(group ? [{ name: "最早启动", value: members.map((p) => p.started).sort()[0] ?? MISSING }] : []),
+  ];
+  const parent = ctx.list.find((p) => p.pid === proc.ppid);
+  const level = (kind: "I/O 优先级" | "内存优先级") => resourceLevel(ctx, kind, proc) || MISSING;
+  const process: Fact[] = group
+    ? []
+    : [
+        { name: "PID", value: String(proc.pid) },
+        parent
+          ? { name: "父进程", value: `${parent.exe}（${parent.pid}）`, link: parent.pid }
+          : { name: "父进程", value: `无（PID ${proc.ppid}）`, faint: true },
+        { name: "启动时间", value: proc.started },
+        { name: "用户", value: proc.user },
+        { name: "完整性", value: proc.integrity },
+        { name: "架构", value: architecture(proc) || MISSING },
+        { name: "优先级", value: ctx.priority.get(proc.pid) ?? "正常" },
+        { name: "I/O 优先级", value: level("I/O 优先级") },
+        { name: "内存优先级", value: level("内存优先级") },
+        { name: "效率模式", value: ctx.efficiency.has(proc.pid) ? "开启" : "关闭", context: "state" },
+        { name: "已暂停", value: proc.suspended ? "是" : "否" },
+        { name: "会话", value: String(sessionOf(proc)) },
+      ];
+  // Counts since the start, added up over an app group's members.
+  const totals: Fact[] = [
+    { name: "CPU 时间", value: cell("cpuTime") },
+    { name: "用户 CPU 时间", value: cell("cpuUserTime") },
+    { name: "内核 CPU 时间", value: cell("cpuKernelTime") },
+    { name: "I/O 读取", value: cell("ioReadTotal") },
+    { name: "I/O 写入", value: cell("ioWriteTotal") },
+    { name: "其他 I/O", value: cell("ioOtherTotal") },
+    { name: "缺页次数", value: cell("pageFaults") },
+  ];
+  const version = versionInfo(proc);
+  return {
+    process,
+    resources,
+    totals,
+    paths: [...new Set(members.map((p) => p.path))],
+    command: group || !proc.args ? undefined : `"${proc.path}" ${proc.args}`,
+    version: version
+      ? [
+          { name: "产品", value: version[0] },
+          { name: "版本", value: version[1] },
+        ]
+      : [],
+  };
+}
+/** The row's details as text, as the pane lists them ("Copy details", Ctrl+Shift+C). */
+export function detailsText(row: Row, ctx: SheetContext) {
+  const proc = ctx.byPid.get(row.pids[0]);
+  if (!proc) return row.label;
+  const sheet = detailsSheet(row, proc, ctx);
+  const group = row.count > 1;
+  const line = (f: Fact) => translate(`${f.name}：${f.value}${f.quiet ?? ""}`, f.context);
+  const lines = (facts: Fact[]) => facts.filter((f) => f.value !== MISSING).map(line);
+  const hosted = services.filter((s) => s.pid && row.pids.includes(s.pid));
+  const members = row.pids.map((pid) => ctx.byPid.get(pid)).filter(Boolean) as Process[];
+  const sections: [string, string[]][] = [
+    ["进程", lines(sheet.process)],
+    ["资源", lines(sheet.resources)],
+    ["累计", lines(sheet.totals)],
+    [`运行的服务（${hosted.length}）`, hosted.map((s) => `${s.display} · ${s.name}`)],
+    ...(group
+      ? ([
+          [
+            `进程（${members.length}）`,
+            [...members]
+              .sort((a, b) => a.pid - b.pid)
+              .map((p) => {
+                const r = ctx.now.get(p.pid);
+                return [`PID ${p.pid}`, r ? `${percent(r.cpu)}%` : "", r ? memory(r.mem) : ""].filter(Boolean).join(" · ");
+              }),
+          ],
+        ] as [string, string[]][])
+      : []),
+    ["文件位置", sheet.paths],
+    ["命令行", sheet.command ? [sheet.command] : []],
+    ["文件版本", lines(sheet.version)],
+  ];
+  const head = [translate(row.label), [translate(group ? `${proc.exe} · ${row.count} 个进程` : proc.exe), company(proc)].filter(Boolean).join(" · ")];
+  return [
+    head.filter(Boolean).join("\n"),
+    ...sections.filter(([, l]) => l.length).map(([name, l]) => [translate(`【${name}】`), ...l].join("\n")),
+  ].join("\n\n");
+}
+function Facts({ facts, onSelectPid }: { facts: Fact[]; onSelectPid?: (pid: number) => void }) {
   return (
     <dl className="a-facts">
-      {rows.map(([name, value]) => (
-        <div key={name}>
-          <dt>{name}</dt>
-          <dd>{value}</dd>
+      {facts.map((f) => (
+        <div key={f.name}>
+          <dt>{f.name}</dt>
+          <dd className={f.faint ? "is-faint" : undefined} title={f.hint} data-i18n={f.context}>
+            {f.link !== undefined ? (
+              <button type="button" className="a-link" onClick={() => onSelectPid?.(f.link!)}>
+                {f.value}
+              </button>
+            ) : (
+              f.value
+            )}
+            {f.quiet && <span className="is-faint">{f.quiet}</span>}
+          </dd>
         </div>
       ))}
     </dl>
@@ -1035,6 +1534,11 @@ function PathRow({ path, onCopy }: { path: string; onCopy: (text: string, what: 
 }
 // A details card settles into place as it opens: up from 6 px below, fading in.
 const settle = (el: HTMLDivElement | null) => slideIn(el, { y: 6, fade: true });
+/** The pane's width: 348 px at first, dragged between 300 and 560 (details.rs). */
+const DETAILS_WIDTH = 348;
+const DETAILS_MIN = 300;
+const DETAILS_MAX = 560;
+let detailsWidth = DETAILS_WIDTH;
 export function Details(d: DetailsProps) {
   const row = d.row;
   const proc = row ? d.list.find((p) => p.pid === row.pids[0]) : undefined;
@@ -1043,8 +1547,71 @@ export function Details(d: DetailsProps) {
   useIsoLayoutEffect(() => {
     if (d.entering) slideIn(pane.current, { x: 24 });
   }, [d.entering]);
+  // The handle on the pane's left edge: drag it, use the arrow keys, Home or
+  // End, or double-click to go back to the default. Never more than 45% of
+  // the window.
+  const [width, setWidth] = useState(detailsWidth);
+  const [dragging, setDragging] = useState(false);
+  const resize = (next: number) => {
+    detailsWidth = Math.round(Math.min(DETAILS_MAX, Math.max(DETAILS_MIN, next)));
+    setWidth(detailsWidth);
+  };
+  const press = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail >= 2) return;
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const k = scaleOf(handle);
+    const x0 = event.clientX,
+      w0 = pane.current?.offsetWidth ?? width;
+    setDragging(true);
+    const move = (e: PointerEvent) => resize(w0 - (e.clientX - x0) / k);
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      setDragging(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
   return (
-    <aside className="a-details" ref={pane} aria-label="详细信息面板" data-tour="details">
+    <aside
+      className="a-details"
+      ref={pane}
+      aria-label="详细信息面板"
+      data-tour="details"
+      style={{ width: `min(${width}px, 45cqw)` }}
+    >
+      <div
+        className={"a-details-splitter" + (dragging ? " is-dragging" : "")}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整详细信息面板宽度"
+        aria-valuenow={width}
+        aria-valuemin={DETAILS_MIN}
+        aria-valuemax={DETAILS_MAX}
+        tabIndex={0}
+        onPointerDown={press}
+        onDoubleClick={() => resize(DETAILS_WIDTH)}
+        onKeyDown={(event) => {
+          // The pane sits right of its handle: moving the handle left widens it.
+          const next =
+            event.key === "ArrowLeft"
+              ? width + 16
+              : event.key === "ArrowRight"
+                ? width - 16
+                : event.key === "Home"
+                  ? DETAILS_MIN
+                  : event.key === "End"
+                    ? DETAILS_MAX
+                    : null;
+          if (next === null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          resize(next);
+        }}
+      />
       {row && proc ? (
         <ProcessDetails key={row.key} {...d} row={row} proc={proc} />
       ) : (
@@ -1053,30 +1620,31 @@ export function Details(d: DetailsProps) {
     </aside>
   );
 }
+/** Starts watching a process's runs and shows them on the History page (process_watch.rs). */
+export function startWatch(pid: number, tick: number) {
+  store.set({ watch: { pid, start: tick, stop: null }, request: { page: "history", at: Date.now() } });
+}
 function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
   const { row, proc } = d;
-  const { watch, leakHints, ignoreLeak } = useShared();
   const group = row.count > 1;
   const members = row.pids.map((pid) => d.list.find((p) => p.pid === pid)).filter(Boolean) as Process[];
-  const parent = d.list.find((p) => p.pid === proc.ppid);
   const h = d.history(row.pids);
   const memMax = Math.max(...h.mem) * 1.25 || 1;
   const curve = { tick: d.tick, interval: d.interval, running: d.running, motion: d.motion };
   const hosted = services.filter((s) => s.pid && row.pids.includes(s.pid));
-  const total = (key: "threads" | "handles") => thousands(members.reduce((a, p) => a + p[key], 0));
-  const net = row.values.net;
-  const version = versionInfo(proc);
-  const resources: [string, ReactNode][] = [
-    ["专用工作集", bytes(row.values.mem)],
-    ["工作集", bytes(row.values.mem * 1.38)],
-    ["提交大小", bytes(row.values.mem * 1.17)],
-    ["磁盘读取", rate(row.values.read)],
-    ["磁盘写入", rate(row.values.write)],
-    ["GPU", row.values.gpu >= 0.05 ? `${percent(row.values.gpu)}%（3D）` : "0%"],
-    ["网络", `发送 ${rate(net * 0.22)}，接收 ${rate(net * 0.78)}`],
-    ["线程", total("threads")],
-    ["句柄", total("handles")],
-  ];
+  const ctx: SheetContext = {
+    byPid: new Map(d.list.map((p) => [p.pid, p])),
+    tick: d.tick,
+    efficiency: d.efficiency,
+    priority: d.priority,
+    resource: d.resourcePriority,
+    leaks: d.leaks,
+    list: d.list,
+    now: d.now,
+  };
+  const sheet = detailsSheet(row, proc, ctx);
+  const vendor = company(proc);
+  const leak = row.pids.some((pid) => d.leaks.has(pid));
   return (
     <div className="a-details-body" ref={settle}>
       <div className="a-details-scroll a-scroll">
@@ -1087,12 +1655,38 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
           <div className="a-details-title">
             <h3 title={row.label}>{row.label}</h3>
             <p>{group ? `${proc.exe} · ${row.count} 个进程` : proc.exe}</p>
+            {vendor && <p>{vendor}</p>}
           </div>
-          <button type="button" className="a-icon-btn" aria-label="取消选中" title="取消选中" onClick={d.onDeselect}>
-            <Icon name="dismiss" size={14} />
-          </button>
+          {/* Copy and deselect, with watching the process under them (details.rs). */}
+          <div className="a-details-tools is-stack">
+            <div>
+              <button
+                type="button"
+                className="a-icon-btn"
+                data-details-copy
+                title="复制详细信息（Ctrl+Shift+C）"
+                aria-label="复制详细信息（Ctrl+Shift+C）"
+                onClick={() => d.onCopy(detailsText(row, ctx), "详细信息")}
+              >
+                <Icon name="copy" size={14} />
+              </button>
+              <button type="button" className="a-icon-btn" aria-label="取消选中" title="取消选中" onClick={d.onDeselect}>
+                <Icon name="dismiss" size={14} />
+              </button>
+            </div>
+            <button
+              type="button"
+              className="a-icon-btn"
+              aria-label="观察进程"
+              title="观察进程"
+              onClick={() => startWatch((members[0] ?? proc).pid, d.tick)}
+            >
+              <Icon name="eye" size={14} />
+            </button>
+          </div>
         </header>
-        {leakHints&&!ignoreLeak&&row.pids.includes(18340)&&<div className="a-leak-note"><b>可能存在句柄泄漏</b><p>8,126 → 38,240</p><button className="a-btn" onClick={()=>store.set({ignoreLeak:true})}>忽略此程序</button></div>}
+        {/* A leak alert comes first after the heading: it is why to look here (leaks.rs `leak_card`). */}
+        {leak && <LeakCard onIgnore={d.onIgnoreLeak} />}
         <div className="a-minis">
           <div className="a-mini">
             <span>CPU</span>
@@ -1101,7 +1695,7 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
           </div>
           <div className="a-mini">
             <span>内存</span>
-            <b>{bytes(row.values.mem)}</b>
+            <b>{memory(row.values.mem)}</b>
             <Curve series={[{ values: h.mem, color: "var(--a-mem)" }]} max={memMax} {...curve} />
           </div>
         </div>
@@ -1118,108 +1712,98 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
             </div>
           </>
         )}
-        {group ? (
+        {!group && (
           <>
-            <h4>资源</h4>
-            <Facts
-              rows={[
-                ...resources,
-                ["CPU 时间", cpuTime(members.reduce((a, p) => a + p.cpuTime, 0))],
-                ["最早启动", members.map((p) => p.started).sort()[0]],
-              ]}
-            />
+            <h4>进程</h4>
+            <Facts facts={sheet.process} onSelectPid={d.onSelectPid} />
+          </>
+        )}
+        <h4>资源</h4>
+        <Facts facts={sheet.resources} />
+        <h4>累计</h4>
+        <Facts facts={sheet.totals} />
+        {group && (
+          <>
             <h4>进程（{row.count}）</h4>
             <div className="a-pick-list">
               {members
-                .map((p) => ({ p, r: d.history([p.pid]) }))
-                .sort((a, b) => (b.r.cpu.at(-1) ?? 0) - (a.r.cpu.at(-1) ?? 0))
-                .map(({ p, r }) => {
-                  return (
-                    <button
-                      type="button"
-                      key={p.pid}
-                      title={`查看 PID ${p.pid} 的详细信息`}
-                      onClick={() => d.onSelectPid(p.pid)}
-                    >
-                      <span className="is-main">PID {p.pid}</span>
-                      <span className="is-num">{percent(r.cpu.at(-1) ?? 0)}%</span>
-                      <span className="is-num is-wide">{bytes(r.mem.at(-1) ?? p.mem)}</span>
-                    </button>
-                  );
-                })}
+                .map((p) => ({ p, r: d.now.get(p.pid) }))
+                .sort((a, b) => (b.r?.cpu ?? 0) - (a.r?.cpu ?? 0) || (b.r?.mem ?? 0) - (a.r?.mem ?? 0))
+                .map(({ p, r }) => (
+                  <button
+                    type="button"
+                    key={p.pid}
+                    title={`查看 PID ${p.pid} 的详细信息`}
+                    onClick={() => d.onSelectPid(p.pid)}
+                  >
+                    <span className="is-main">PID {p.pid}</span>
+                    <span className="is-num">{percent(r?.cpu ?? 0)}%</span>
+                    <span className="is-num is-wide">{memory(r?.mem ?? p.mem)}</span>
+                  </button>
+                ))}
             </div>
-            <h4>文件位置</h4>
-            {[...new Set(members.map((p) => p.path))].map((path) => (
-              <PathRow key={path} path={path} onCopy={d.onCopy} />
-            ))}
-          </>
-        ) : (
-          <>
-            <h4>进程</h4>
-            <Facts
-              rows={[
-                ["PID", proc.pid],
-                [
-                  "父进程",
-                  parent ? (
-                    <button type="button" className="a-link" onClick={() => d.onSelectPid(parent.pid)}>
-                      {parent.exe}（{parent.pid}）
-                    </button>
-                  ) : (
-                    `无（PID ${proc.ppid}）`
-                  ),
-                ],
-                ["启动时间", proc.started],
-                ["CPU 时间", cpuTime(proc.cpuTime)],
-                ["用户", proc.user],
-                ["完整性", proc.integrity],
-                ["架构", "64 位 (x64)"],
-                ["优先级", d.priority.get(proc.pid) ?? "正常"],
-                ["I/O 优先级", d.resourcePriority["I/O 优先级" + proc.pid] ?? "正常"],
-                ["内存优先级", d.resourcePriority["内存优先级" + proc.pid] ?? "正常"],
-                ["效率模式", d.efficiency.has(proc.pid) ? "开启" : "关闭"],
-                ["会话", proc.group === "windows" && proc.user.startsWith("NT") ? "0" : "1"],
-              ]}
-            />
-            <h4>资源</h4>
-            <Facts rows={resources} />
-            <h4>累计</h4><Facts rows={[["CPU 时间",cpuTime(proc.cpuTime)],["用户 CPU 时间",cpuTime(Math.floor(proc.cpuTime*.72))],["内核 CPU 时间",cpuTime(proc.cpuTime-Math.floor(proc.cpuTime*.72))],["I/O 读取",bytes(proc.mem*4.8)],["I/O 写入",bytes(proc.mem*2.3)]]}/>
-            <h4>进程观察</h4><div className="a-watch-buttons">{[false,true].map(program=><button type="button" className="a-btn" disabled={!!watch} key={String(program)} onClick={()=>store.set({watch:{pid:proc.pid,program,start:d.tick,stop:null},request:{page:"history",at:Date.now()}})}>{program?"观察后续运行":"观察此运行实例"}</button>)}</div>
-            <h4>文件位置</h4>
-            <PathRow path={proc.path} onCopy={d.onCopy} />
-            {proc.args && (
-              <>
-                <h4>命令行</h4>
-                <p className="a-code">
-                  "{proc.path}" {proc.args}
-                </p>
-              </>
-            )}
           </>
         )}
-        {version && (
+        {sheet.paths.length > 0 && <h4>文件位置</h4>}
+        {sheet.paths.map((path) => (
+          <PathRow key={path} path={path} onCopy={d.onCopy} />
+        ))}
+        {sheet.command && (
+          <>
+            <h4>命令行</h4>
+            <p className="a-code">{sheet.command}</p>
+          </>
+        )}
+        {sheet.version.length > 0 && (
           <>
             <h4>文件版本</h4>
-            <Facts
-              rows={[
-                ["产品", version[0]],
-                ["版本", version[1]],
-              ]}
-            />
+            <Facts facts={sheet.version} />
           </>
         )}
       </div>
-      <footer className="a-details-foot">
-        <button type="button" className="a-btn" data-details-copy title="复制详细信息（Ctrl+Shift+C）" onClick={e=>d.onCopy(e.currentTarget.closest(".a-details-body")?.querySelector<HTMLElement>(".a-details-scroll")?.innerText??row.label,"详细信息")}><Icon name="copy"/></button>
-        <button type="button" className="a-btn is-danger" onClick={() => d.onEnd(row, true)}>
-          {group ? "全部结束" : "结束进程"}
-        </button>
-        {!group && (
-          <button type="button" className="a-btn" onClick={() => d.onEnd(row, true, true)}>
-            结束进程树
+      <div className="a-details-actions">
+        <footer className="a-details-foot">
+          <button type="button" className="a-btn is-danger" onClick={() => d.onEnd(row, true)}>
+            {group ? "全部结束" : "结束进程"}
           </button>
-        )}
-      </footer>
+          {!group && (
+            <button type="button" className="a-btn" onClick={() => d.onEnd(row, true, true)}>
+              结束进程树
+            </button>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/** The details pane's notice for the process the alert marks: what was seen,
+ *  how the count went, what can be done, and the way to stop the alert. */
+function LeakCard({ onIgnore }: { onIgnore: () => void }) {
+  // The handle count over the last half hour, rising from 8,126 to 38,240.
+  const trend = Array.from({ length: 31 }, (_, i) => LEAK.low + (LEAK.handles - LEAK.low) * (i / 30) ** 1.15 + noise(LEAK_PID + i, 0) * 600 * (i ? 1 : 0));
+  trend[30] = LEAK.handles;
+  const low = Math.min(...trend),
+    top = Math.max(...trend);
+  const points = trend.map((v, i) => `${((i / 30) * 100).toFixed(2)},${(31 - ((v - low) / (top - low)) * 30).toFixed(2)}`).join(" ");
+  return (
+    <div className="a-leak-card" role="note">
+      <div className="a-leak-card-head">
+        <Icon name="warning" size={14} />
+        <b>可能存在句柄泄漏</b>
+        <button type="button" className="a-btn is-small is-ghost" onClick={onIgnore}>
+          忽略此程序
+        </button>
+      </div>
+      <p>{LEAK.describe}</p>
+      <div className="a-leak-trend">
+        <span>{`句柄数 · 近 ${LEAK.span}`}</span>
+        <span>{`${thousands(LEAK.low)} → ${thousands(LEAK.handles)}`}</span>
+      </div>
+      <svg className="a-leak-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <p className="a-leak-advice">结束或重新启动该进程即可释放这些句柄；若反复出现，可更新或卸载其所属软件。</p>
     </div>
   );
 }
@@ -1234,9 +1818,26 @@ const parts: { device: Device; icon: UiIcon; color: string; kind: string; name: 
     detail: "14 核（6 性能核 + 8 能效核） · 20 线程 · 基准 2.50 GHz",
   },
   { device: "memory", icon: "memory", color: "var(--a-mem)", kind: "内存", name: "32 GB DDR5", detail: "5600 MT/s · 已用插槽 2 / 2 · SODIMM" },
-  { device: "disk", icon: "disk", color: "var(--a-io)", kind: "存储", name: machine.disk, detail: "1.8 TB · SSD (NVMe) · C:" },
-  { device: "wifi", icon: "network", color: "var(--a-net)", kind: "Wi-Fi", name: machine.wifi, detail: "WLAN · 1.2 Gbps" },
-  { device: "gpu", icon: "gpu", color: "var(--a-gpu)", kind: "显卡", name: machine.gpu, detail: "8.0 GB 专用显存" },
+  // Every disk and GPU, the adapters but the virtual ones (details.rs overview).
+  ...disks.map((d) => ({
+    device: d.id,
+    icon: "disk" as UiIcon,
+    color: d.color,
+    kind: "存储",
+    name: d.model,
+    detail: `${(d.size / 1024 ** 4).toFixed(1)} TB · ${d.kind} · ${d.volumes.join(" ")}`,
+  })),
+  ...adapters
+    .filter((a) => a.kind !== "virtual")
+    .map((a) => ({ device: a.id, icon: "network" as UiIcon, color: a.color, kind: "Wi-Fi", name: a.model, detail: `${a.name} · ${(a.link / 1e9).toFixed(1)} Gbps` })),
+  ...gpus.map((g) => ({
+    device: g.id,
+    icon: "gpu" as UiIcon,
+    color: g.color,
+    kind: "显卡",
+    name: g.model,
+    detail: g.dedicated > 0 ? `${(g.dedicated / 1024 ** 3).toFixed(1)} GB 专用显存` : "使用共享内存",
+  })),
   { device: "battery", icon: "battery", color: "var(--a-bat)", kind: "电池", name: "Contoso CT-4410", detail: "设计容量 80 Wh · 健康度 90%" },
 ];
 function Overview({ onDevice, onCopy }: { onDevice: (device: Device) => void; onCopy: (text: string, what: string) => void }) {

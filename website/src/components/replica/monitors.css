@@ -1,3 +1,5 @@
+/* The monitors and the tray (src-gpui/src/frontend/monitors, tray; shell/taskbar_draw.rs):
+   their faces in the window's style previews, on the demo desktop and on its taskbar. */
 .w-setting.is-wide {
   flex-direction: column;
   align-items: stretch;
@@ -6,141 +8,733 @@
   width: 100%;
   display: block;
 }
+/* The devices' colours: the window's palette, the taskbar's own on the taskbar. */
+:is(.w-face, .w-readings) {
+  --w-cpu: var(--a-cpu);
+  --w-mem: var(--a-mem);
+  --w-gpu: var(--a-gpu);
+  --w-io: var(--a-io);
+  --w-net: var(--a-net);
+  --w-bat: var(--a-bat);
+  --w-ink: var(--a-ink);
+  --w-high: rgb(var(--a-heat, 244 170 60));
+}
+
+/* The style cards (components.rs `desk_style_card`, `style_card`): a preview over a radio mark. */
 .w-styles {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 .w-styles > button {
-  flex: 1;
-  min-width: 94px;
-  display: grid;
-  gap: 4px;
-  justify-items: center;
+  display: flex;
+  flex: 1 1 150px;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 7px;
+  background: transparent;
   color: inherit;
-  border: 1px solid var(--a-stroke);
-  border-radius: 6px;
-  background: var(--a-layer);
-  padding: 6px;
+  text-align: start;
+}
+.w-styles > button:hover {
+  background: var(--a-hover);
 }
 .w-styles > button[aria-pressed="true"] {
   border-color: var(--a-accent);
-  background: color-mix(in srgb, var(--a-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
 }
-.w-styles strong {
-  font-weight: 500;
+.w-styles:has([data-kind="desktop"]) > button {
+  flex-basis: 180px;
 }
-.w-face {
-  display: flex;
-  align-items: stretch;
-  gap: 5px;
-  max-width: 100%;
-  font-variant-numeric: tabular-nums;
-}
-.w-reading {
-  position: relative;
-  isolation: isolate;
+.w-preview {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--tb-ground);
+}
+.w-preview:has([data-kind="desktop"]) {
+  display: block;
+  height: 128px;
+  padding: 8px;
+  background: var(--a-layer);
+}
+.w-preview .w-face[data-kind="taskbar"] {
+  transform-origin: center;
+  scale: 0.86;
+}
+.w-preview .w-face[data-kind="desktop"] {
+  width: 100%;
+}
+.w-styles strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 0 2px;
+  font-size: calc(13px * var(--a-text, 1));
+  font-weight: 400;
+}
+.w-styles strong i {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 50%;
+}
+.w-styles > button[aria-pressed="true"] strong i {
+  border-color: var(--a-accent);
+}
+.w-styles > button[aria-pressed="true"] strong i::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--a-accent);
+}
+
+/* A value: figures semibold, the unit smaller, medium and quieter; amber when high. */
+.w-face {
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+.w-value {
+  display: inline-grid;
+  flex: none;
+  justify-items: end;
   white-space: nowrap;
 }
-.w-reading small {
-  color: var(--metric);
-  font-size: 11px;
+.w-value > span {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
 }
-.w-reading b {
-  font-size: 14px;
+.w-value > span[aria-hidden] {
+  visibility: hidden;
+}
+.w-fig {
+  font-weight: 600;
+  color: var(--w-ink);
+}
+.w-unit {
+  font-weight: 500;
+  color: var(--a-ink-2);
+}
+.w-unit + .w-fig {
+  margin-left: 2px;
+}
+.w-value[data-high] :is(.w-fig, .w-unit) {
+  color: var(--w-high);
+}
+.w-rate {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.w-rate em {
+  font-size: 13px;
+  font-style: normal;
   font-weight: 600;
 }
-.w-reading b[data-high] {
-  color: #bd8116;
+.w-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.w-face[data-style="capsule"] .w-reading {
-  border: 1px solid var(--metric);
-  border-radius: 18px;
-  padding: 3px 7px;
-}
-.w-face[data-style="capsule"] small::before {
-  content: "●";
-  margin-right: 4px;
-}
-.w-face:is([data-style="curve"], [data-style="number"], [data-style="gauge"]) .w-reading {
+
+/* The desktop monitor's panel (monitors/desk.rs): 264, 280 or 320 px. */
+.w-face[data-kind="desktop"] {
+  display: flex;
   flex-direction: column;
-  align-items: start;
+  width: 264px;
+}
+.w-face[data-kind="desktop"][data-style="curve"] {
+  width: 280px;
+}
+.w-face[data-kind="desktop"][data-style="gauge"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 320px;
+  padding: 6px;
+}
+.w-face[data-grouping="cards"]:not([data-style="gauge"]) {
+  gap: 6px;
+  padding: 6px;
+}
+.w-face[data-grouping="stripes"]:not([data-style="gauge"]) {
+  gap: 12px;
+  padding: 10px 12px 10px 10px;
+}
+.w-face[data-grouping="rules"]:not([data-style="gauge"]) {
+  padding: 0 12px;
+}
+.w-group-box {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+}
+[data-grouping="cards"] > .w-group-box {
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-layer-strong);
+}
+[data-grouping="cards"][data-style="list"] > .w-group-box {
+  padding: 8px 10px;
+}
+[data-grouping="stripes"] > .w-group-box {
+  padding-left: 11px;
+}
+[data-grouping="stripes"] > .w-group-box::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--stripe);
+}
+[data-grouping="rules"][data-style="list"] > .w-group-box {
+  padding: 8px 0;
+}
+[data-grouping="rules"] > .w-group-box + .w-group-box {
+  border-top: 1px solid var(--a-stroke-strong);
+}
+.w-list {
+  display: flex;
+  flex-direction: column;
+}
+.w-line {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(28px, 1fr) minmax(64px, max-content);
+  align-items: center;
+  gap: 10px;
+  height: 22px;
+}
+.w-line.is-head {
+  height: 28px;
+}
+.w-list:has(.w-line:nth-child(2)) .w-line {
+  grid-template-columns: minmax(0, 72px) minmax(28px, 1fr) minmax(64px, max-content);
+}
+.w-line.is-head:has(.w-rate) {
+  display: flex;
+}
+.w-line.is-head:has(.w-rate) .w-name {
+  flex: 1;
+}
+.w-line:not(.is-head) .w-name {
+  font-size: 12px;
+}
+.w-end {
+  display: flex;
+  justify-content: flex-end;
+}
+.w-bar {
+  display: block;
+  min-width: 28px;
+  overflow: hidden;
+  background: var(--a-stroke-strong);
+}
+.w-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.w-fill {
+  display: block;
+}
+.w-stats {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.w-tile .w-stats {
+  margin: 0;
+}
+.w-stats > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.w-stats small {
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.w-stats > div > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 19px;
+}
+.w-stats .w-value {
+  justify-items: start;
+}
+.w-curves {
+  display: flex;
+  min-height: 52px;
+}
+.w-curve-text {
+  display: flex;
+  flex: none;
+  flex-direction: column;
   justify-content: center;
-  gap: 0;
+  width: 148px;
+  min-width: 0;
+  padding-right: 10px;
 }
-.w-face[data-style="number"] b {
-  font-size: 20px;
-  line-height: 1.1;
+[data-grouping="cards"] .w-curve-text {
+  padding: 8px 10px;
 }
-.w-mini {
+[data-grouping="rules"] .w-curve-text {
+  padding: 8px 10px 8px 0;
+}
+.w-curves:not(:has(.w-curve-box)) .w-curve-text {
+  flex: 1;
+  width: auto;
+}
+.w-curve-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+.w-curve-head .w-name {
+  flex: 1;
+}
+.w-curve-head.is-pair {
+  align-items: flex-start;
+  height: auto;
+}
+.w-curve-head.is-pair .w-name {
+  line-height: 28px;
+}
+.w-curve-head.is-pair > span:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.w-curve-head.is-pair .w-rate {
+  height: 22px;
+  align-items: center;
+}
+.w-curve-head.is-pair .w-rate:first-child {
+  height: 28px;
+}
+.w-keyed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 19px;
+}
+.w-keyed .w-name {
+  font-size: 12px;
+}
+.w-keyed > span:last-child {
+  display: flex;
+  gap: 6px;
+}
+.w-curve-box {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--a-stroke);
+}
+.w-plot {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  color: var(--metric, var(--accent));
-  opacity: 0.55;
-  z-index: -1;
 }
-.w-face[data-kind="desktop"]:not([data-style="strip"]) {
-  display: grid;
-}
-.w-face[data-kind="desktop"][data-style="gauge"] {
-  grid-template-columns: 1fr 1fr;
-}
-.w-face[data-kind="desktop"] .w-reading {
-  justify-content: space-between;
-  padding: 5px 9px;
-  border-radius: 4px;
-  background: var(--a-layer);
+.w-tile {
+  display: flex;
+  flex: 1 1 140px;
+  flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-layer-strong);
 }
-.w-face[data-style="list"] .w-reading::after {
-  content: "";
-  height: 2px;
-  position: absolute;
-  bottom: 1px;
-  left: 8px;
-  width: calc(var(--level) * 0.8);
-  background: var(--metric);
-}
-.w-face[data-style="gauge"] .w-reading::before {
-  content: "";
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: conic-gradient(var(--metric) var(--level), var(--a-stroke) 0);
-  mask: radial-gradient(circle, transparent 50%, black 51%);
-}
-.w-group {
-  display: grid;
-  grid-template-columns: minmax(90px, 23%) 1fr;
+.w-tile-top {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 7px 4px;
-  border-bottom: 1px solid var(--a-stroke);
+  gap: 10px;
+  min-width: 0;
 }
-.w-group > b {
-  cursor: grab;
-  font-weight: 500;
+.w-ring {
+  flex: none;
 }
-.w-group > div {
+.w-tile-top > div,
+.w-tile-pair {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.w-big {
+  display: flex;
+  align-items: center;
+  height: 26px;
+}
+.w-big .w-value {
+  justify-items: start;
+}
+.w-tile-pair > div {
+  display: flex;
+  flex-direction: column;
+}
+.w-tile[data-wide] .w-tile-pair > div {
+  flex-direction: row;
+  gap: 24px;
+}
+.w-tile-pair > div > span {
+  display: flex;
+  align-items: center;
+  height: 24px;
+}
+/* The strip along a screen edge: a meter, then a name over a value for each reading. */
+.w-face[data-style="strip"] {
+  width: max-content;
+  max-width: 1880px;
+}
+.w-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  align-items: stretch;
+  gap: 8px 0;
+  padding: 8px 2px;
 }
-.w-group label {
+.w-strip-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 14px;
+  padding: 0 16px;
+}
+.w-strip-group + .w-strip-group {
+  border-left: 1px solid var(--a-stroke-strong);
+}
+.w-meter {
+  position: relative;
+  display: block;
+  width: 6px;
+  height: 36px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--a-stroke-strong);
+}
+.w-meter > i {
+  position: absolute;
+  inset: auto 0 0;
+  border-radius: 3px;
+}
+.w-cell {
+  display: flex;
+  flex-direction: column;
+}
+.w-cell small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  color: var(--a-ink-2);
+  font-size: 12px;
+}
+.w-cell small em {
+  font-style: normal;
+  font-weight: 600;
+}
+.w-cell .w-value {
+  height: 22px;
+  align-items: center;
+  justify-items: start;
+}
+
+/* The taskbar monitor's faces (taskbar_draw.rs), sized for the 48 px taskbar. */
+.w-face[data-kind="taskbar"] {
+  --w-cpu: var(--series-cpu);
+  --w-mem: var(--series-mem);
+  --w-gpu: var(--series-gpu);
+  --w-io: var(--series-io);
+  --w-net: var(--series-net);
+  --w-bat: #4f8a10;
+  --w-ink: #1a1a1a;
+  --w-high: #c27a00;
+  --tb-name: rgb(26 26 26 / 0.72);
+  --tb-unit: rgb(26 26 26 / 0.6);
+  --tb-tile: rgb(0 0 0 / 0.045);
+  --tb-pill: rgb(0 0 0 / 0.06);
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 8px;
+  color: var(--w-ink);
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] .w-face[data-kind="taskbar"] {
+  --w-bat: #a3d65c;
+  --w-ink: #ffffff;
+  --w-high: #f4b446;
+  --tb-name: rgb(255 255 255 / 0.78);
+  --tb-unit: rgb(255 255 255 / 0.6);
+  --tb-tile: rgb(255 255 255 / 0.06);
+  --tb-pill: rgb(255 255 255 / 0.085);
+}
+:root {
+  --tb-ground: rgb(238 240 244);
+}
+:root[data-theme="dark"] {
+  --tb-ground: rgb(28 28 30);
+}
+.w-face[data-kind="taskbar"] .w-fig {
+  font-weight: 500;
+}
+.w-face[data-kind="taskbar"] .w-unit {
+  margin-left: 0.25em;
+  color: var(--tb-unit);
+}
+.w-face[data-kind="taskbar"] .w-value[data-high] :is(.w-fig, .w-unit) {
+  color: var(--w-high);
+}
+.w-face[data-kind="taskbar"] .w-value > span {
+  gap: 0;
+}
+.w-tb-name {
+  color: var(--tb-name);
+}
+.w-face[data-kind="taskbar"] em {
+  color: var(--tone);
+  font-style: normal;
+  font-weight: 500;
+}
+.w-tb-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.w-tb-column + .w-tb-column {
+  margin-left: 12px;
+}
+.w-tb-column .w-tb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+  height: 20px;
+  font-size: 15px;
+  line-height: 20px;
+}
+.w-tb-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 40px;
+  padding: 0 9px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--tb-tile);
+}
+.w-tb-tile + .w-tb-tile {
+  margin-left: 6px;
+}
+.w-tb-tile .w-tb-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 9px;
+  height: 20px;
+  padding-top: 2px;
+  font-size: 12px;
+}
+.w-tb-tile[data-pair] .w-tb-row {
+  gap: 6px;
+  height: 13px;
+  padding-top: 1px;
+  line-height: 13px;
+}
+.w-tb-tile[data-pair] .w-tb-row:first-child {
+  margin-top: 2px;
+}
+.w-tb-curve {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 20px;
+  bottom: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 21px);
+}
+.w-tb-tile[data-pair] .w-tb-curve {
+  top: 29px;
+  height: calc(100% - 30px);
+}
+.w-tb-pill {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 15px;
+  background: var(--tb-pill);
+  font-size: 13px;
+}
+.w-tb-pill + .w-tb-pill {
+  margin-left: 5px;
+}
+.w-tb-pill > i {
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.w-tb-pill .w-tb-name {
+  margin-right: 5px;
+}
+.w-tb-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.w-tb-rate + .w-tb-rate {
+  margin-left: 8px;
+}
+.w-tb-pill .w-value {
+  justify-items: start;
+}
+.w-tb-figure {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.w-tb-figure + .w-tb-figure {
+  margin-left: 9px;
+}
+.w-tb-figure > em {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 15px;
+}
+.w-tb-figure > .w-value {
+  justify-items: start;
+  line-height: 24px;
+}
+.w-tb-figure[data-pair] .w-tb-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  height: 17px;
+  font-size: 14px;
+}
+
+/* The readings checklist (components.rs `metric_card`): a grip in the icon
+   column, the kind's name in a 240 px column, then a grid of three options. */
+.a-settings .w-readings {
+  padding: 0;
+}
+.a-settings .w-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  border: 0;
+}
+.a-settings .w-group > .w-row {
+  display: grid;
+  grid-template-columns: 20px 256px minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+}
+.a-settings .w-group + .w-group::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 36px;
+  right: 0;
+  height: 1px;
+  background: var(--a-stroke);
+}
+.a-settings .w-group[data-lifted] {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
+}
+.w-grip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 32px;
+  color: var(--a-ink-3);
   cursor: grab;
 }
-.w-readings input,
-.h-column-options input {
+.w-readings .w-name {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0 0 16px;
+  overflow: visible;
+  color: var(--a-ink);
+  white-space: normal;
+}
+.w-readings .w-name b {
+  font-weight: 400;
+}
+.w-readings .w-name small {
+  color: var(--a-ink-2);
+  font-size: 12px;
+}
+.a-settings .w-row > .w-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 4px;
+  margin-left: 12px;
+}
+.a-settings .w-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.a-settings .w-options label[draggable="true"] {
+  cursor: grab;
+}
+.a-settings .w-options label[data-lifted] {
+  outline: 1px solid color-mix(in srgb, var(--a-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
+}
+.a-settings .w-options input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
   accent-color: var(--a-accent);
 }
+
+/* The surfaces outside the window: the desktop monitor, the taskbar monitor and the tray's flyouts. */
 .w-popup,
 .w-desktop-monitor,
 .w-task-monitor {
@@ -181,8 +775,8 @@
 }
 .w-desktop-monitor {
   position: absolute;
-  right: 12px;
-  top: 12px;
+  right: 24px;
+  top: 24px;
   user-select: none;
   touch-action: none;
   max-width: 100%;
@@ -192,12 +786,6 @@
   right: 0;
   top: 100%;
   min-width: 150px;
-}
-.w-desktop-monitor[data-grouping="色条"] .w-reading {
-  border-left: 3px solid var(--metric);
-}
-.w-desktop-monitor[data-grouping="分隔线"] .w-reading {
-  border-bottom: 1px solid var(--a-stroke);
 }
 .w-task-monitor {
   position: relative;
@@ -214,10 +802,20 @@
   margin-left: auto;
 }
 .w-task-monitor > button {
+  display: flex;
+  align-items: stretch;
+  height: 48px;
   color: inherit;
   border: 0;
+  border-radius: 4px;
   background: transparent;
-  padding: 3px 6px;
+  padding: 0;
+}
+.w-task-monitor > button:hover {
+  background: rgb(0 0 0 / 0.05);
+}
+:root[data-theme="dark"] .w-task-monitor > button:hover {
+  background: rgb(255 255 255 / 0.08);
 }
 .w-task-panel,
 .w-tray-popup {
@@ -256,7 +854,6 @@
   gap: 5px;
   flex-wrap: wrap;
 }
-
 .w-popup.w-tray-popup {
   box-sizing: border-box;
   display: flex;
@@ -272,6 +869,7 @@
 }
 .desk {
   --w-floor: #fafafc;
+  --w-monitor-floor: #ececef;
   --w-control: rgb(0 0 0 / 0.035);
   --w-stroke: rgb(0 0 0 / 0.09);
   --w-text: #1b1c22;
@@ -281,6 +879,7 @@
 :root[data-theme="dark"] .desk:not(:has([data-mode="light"])),
 .desk:has([data-mode="dark"]) {
   --w-floor: #282930;
+  --w-monitor-floor: #1d1e21;
   --w-control: rgb(255 255 255 / 0.055);
   --w-stroke: rgb(255 255 255 / 0.1);
   --w-text: #f1f2f6;
@@ -296,6 +895,7 @@
   --a-stroke: var(--w-stroke);
   --a-stroke-strong: var(--w-stroke);
   --a-layer: var(--w-control);
+  --a-layer-strong: var(--w-control);
   --a-control: var(--w-control);
   --a-on-accent: #fff;
 }
@@ -308,6 +908,21 @@
   --a-gpu: #ff79a7;
   --a-io: #f5b944;
   --a-bat: #b9da42;
+}
+/* The desktop monitor's window: the panel's floor under cards and tiles, a flyout's otherwise. */
+.w-desktop-monitor {
+  width: auto;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--w-stroke);
+  background: var(--w-floor);
+  color: var(--w-text);
+}
+.w-desktop-monitor:has(.w-face:is([data-grouping="cards"]:not([data-style="strip"]), [data-style="gauge"])) {
+  background: var(--w-monitor-floor);
+}
+.w-desktop-monitor:has(.w-popup) {
+  overflow: visible;
 }
 .w-tray-popup.is-panel {
   width: 362px;
@@ -366,6 +981,15 @@
   font-size: 20px;
   font-weight: 600;
   line-height: 24px;
+}
+.w-mini {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--metric, var(--accent));
+  opacity: 0.55;
+  z-index: -1;
 }
 .w-tiles .w-mini {
   inset: auto 8px 5px;
@@ -452,116 +1076,293 @@
   padding-top: 8px;
   line-height: 20px;
 }
+.w-tray-popup.is-menu {
+  min-width: 160px;
+  padding: 4px;
+  gap: 0;
+}
+.w-tray-popup.is-menu > button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+}
+.w-tray-popup.is-menu > button:hover {
+  background: var(--w-control);
+}
+.w-tray-popup.is-menu > hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--w-stroke);
+}
+
+/* The taskbar monitor's panel (tray/monitor.rs). */
 .w-task-panel {
   width: 384px;
   max-height: 820px;
   overflow: auto;
+  padding: 0;
+  gap: 0;
   background: var(--w-floor);
   color: var(--w-text);
-  padding: 14px;
+}
+.w-task-panel > div:first-child {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 9px;
+}
+.w-task-panel h4 {
+  margin: 0 0 8px;
+  color: var(--w-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.w-task-panel h4 + .w-readings {
+  margin-top: -3px;
+}
+.w-task-panel h4:not(:first-child) {
+  margin-top: 14px;
 }
 .w-task-panel .w-styles {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
-.w-task-panel .w-group {
-  grid-template-columns: 66px 1fr;
-  gap: 3px;
-  border: 0;
+.w-task-panel .w-styles > button {
+  gap: 5px;
 }
-.w-task-panel .w-group > b small,
-.w-task-panel .w-group .ico {
-  display: none;
+.w-task-panel .w-preview {
+  height: 38px;
 }
-.w-task-panel .w-group label {
-  padding: 4px;
-  border: 1px solid var(--w-stroke);
-  border-radius: 4px;
-  background: var(--w-control);
+.w-task-panel .w-styles strong {
+  min-height: 18px;
+  font-size: 12.5px;
 }
-.w-task-panel .w-group > div {
-  gap: 4px;
-}
-.w-task-panel .w-popup-actions {
-  border-top: 1px solid var(--w-stroke);
-  justify-content: space-between;
-  padding-top: 8px;
-}
-.w-face[data-kind="desktop"][data-style="list"] .w-reading {
-  height: 44px;
-  background: var(--w-control, var(--a-layer));
-  border: 1px solid var(--w-stroke, var(--a-stroke));
-  border-radius: 6px;
-  padding: 0 10px;
-}
-.w-desktop-monitor {
-  width: 266px;
-  background: var(--w-floor);
-  padding: 6px;
-  border-color: var(--w-stroke);
-  color: var(--w-text);
-}
-.w-desktop-monitor .w-reading b {
-  font-size: 17px;
-}
-.w-desktop-monitor .w-face[data-style="list"] .w-reading::after {
-  top: 50%;
-  bottom: auto;
-  left: 45px;
-  right: 85px;
-  width: auto;
-  transform: translateY(-50%);
-  height: 6px;
-  background: linear-gradient(to right, var(--metric) var(--level), var(--w-stroke) var(--level));
-  border-radius: 3px;
-}
-.w-desktop-monitor .w-face[data-style="list"] .w-reading:has(.w-rate)::after {
-  display: none;
-}
-.w-desktop-monitor:has([data-style="strip"]) {
-  width: max-content;
-  max-width: 100%;
-}
-
-.w-rate em {
-  font: inherit;
-  font-size: 12px;
-  color: var(--metric);
-}
-.w-styles > button {
+.w-task-panel .w-readings {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: space-between;
-  padding: 5px;
-  text-align: start;
+  gap: 4px;
 }
-.w-styles > button .w-face {
-  justify-content: center;
-  height: 42px;
-  overflow: hidden;
-  border-radius: 5px;
-  background: var(--a-surface, var(--w-control));
-  padding: 4px;
+.w-task-panel .w-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin: 0 -6px;
+  padding: 3px 6px;
+  border-radius: 6px;
 }
-.w-styles > button strong {
+.w-task-panel .w-group[data-lifted] {
+  background: color-mix(in srgb, var(--w-accent) 8%, transparent);
+}
+.w-task-panel .w-grip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  padding: 2px;
+  justify-content: flex-start;
+  gap: 7px;
+  width: 60px;
+  height: 28px;
+  flex: none;
+  color: inherit;
 }
-.w-styles > button strong i {
+.w-task-panel .w-grip > i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.w-task-panel .w-grip > b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.w-task-panel .w-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.w-task-panel .w-options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px 0 7px;
+  border: 1px solid var(--w-stroke);
+  border-radius: 6px;
+  background: var(--w-control);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.w-task-panel .w-options label[data-on] {
+  border-color: color-mix(in srgb, var(--tone) 50%, transparent);
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+}
+.w-task-panel .w-options input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.w-chip-box {
+  display: grid;
+  place-items: center;
   width: 14px;
   height: 14px;
-  border: 1px solid var(--a-stroke-strong);
+  flex: none;
+  border: 1px solid var(--w-stroke);
+  border-radius: 4px;
+  color: transparent;
+}
+label[data-on] > .w-chip-box {
+  border-color: transparent;
+  background: var(--tone);
+  color: var(--w-floor);
+}
+.w-task-panel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-top: 1px solid var(--w-stroke);
+  background: var(--w-control);
+}
+.w-task-panel > footer button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+}
+.w-task-panel > footer button:hover {
+  background: var(--w-control);
+}
+.w-task-panel > footer .ico {
+  color: var(--w-muted);
+}
+
+/* The desktop monitor's menu, as the app's popup menus. */
+.w-popup.w-desk-menu {
+  min-width: 180px;
+  padding: 4px;
+  gap: 0;
+}
+.w-desk-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  white-space: nowrap;
+}
+.w-desk-menu button:hover {
+  background: var(--w-control);
+}
+.w-desk-menu button > .ico:last-child {
+  margin-left: auto;
+  color: var(--w-muted);
+}
+.w-desk-menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--w-stroke);
+}
+.w-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  flex: none;
+}
+.w-desk-menu > button:not(:has(.w-mark)) {
+  padding-left: 32px;
+}
+.w-desk-menu [aria-checked="true"] > .w-mark:empty::after {
+  content: "";
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
+  background: currentColor;
 }
-.w-styles > button[aria-pressed="true"] strong i {
-  background: var(--a-accent);
-  border: 2px solid var(--a-surface);
-  outline: 1px solid var(--a-accent);
+.w-desk-sub {
+  position: relative;
 }
-.w-styles:has([data-kind="desktop"]) .w-face {
-  min-height: 128px;
+.w-desk-sub > .w-popup {
+  position: absolute;
+  top: -5px;
+  right: calc(100% + 4px);
+  display: none;
+}
+.w-desk-sub:hover > .w-popup,
+.w-desk-sub:focus-within > .w-popup {
+  display: flex;
+}
+/* The tray icon's colours (tray_icon.rs `colors`), by the taskbar's theme. */
+.w-tray-glyph {
+  --tg-accent: #0067c0;
+  --tg-load: #0a8bbd;
+  --tg-high: #c27a00;
+  overflow: visible;
+}
+:root[data-theme="dark"] .w-tray-glyph {
+  --tg-accent: #4cc2ff;
+  --tg-load: #46cff4;
+  --tg-high: #f4b446;
+}
+
+/* The panel's kinds of several devices: a tab per device, a dot on those with readings chosen. */
+.w-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.w-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--w-stroke);
+  border-radius: 6px;
+  background: var(--w-control);
+}
+.w-tabs button {
+  position: relative;
+  max-width: 120px;
+  height: 22px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--w-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.w-tabs button:hover {
+  background: var(--w-control);
+}
+.w-tabs button[aria-selected="true"] {
+  background: var(--w-stroke);
+  color: var(--w-text);
+}
+.w-tabs button[data-chosen]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--tone);
 }

@@ -2,7 +2,7 @@
 "use client";
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { machine, thousands } from "./model";
-import { scaleOf, useIsoLayoutEffect } from "./widgets";
+import { scaleOf, Segments, useIsoLayoutEffect } from "./widgets";
 
 // The disk's details page as the app draws it (performance/disk_details.rs):
 // health, device information and the NVMe SMART/health log as cards, read
@@ -174,9 +174,11 @@ interface Attribute {
   raw: string;
   alert?: boolean;
 }
-// The SMART/health log's fields in three groups: health, usage and temperature.
-function attributes(log: Log): [string, Attribute[]][] {
+// The SMART/health log's fields in three groups: health, usage and
+// temperature, raw values in the regional grouping or in hexadecimal.
+function attributes(log: Log, hex: boolean): [string, Attribute[]][] {
   const n = thousands;
+  const raw = (v: number) => (hex ? "0x" + v.toString(16).toUpperCase() : thousands(v));
   const named = warnings(log).map(([, reason]) => reason);
   return [
     [
@@ -185,64 +187,70 @@ function attributes(log: Log): [string, Attribute[]][] {
         {
           name: "严重警告",
           value: named.length ? list(named) : "无",
-          raw: "0x" + log.criticalWarning.toString(16).toUpperCase().padStart(2, "0"),
+          // A bit field: both digits even in hexadecimal.
+          raw: hex ? "0x" + log.criticalWarning.toString(16).toUpperCase().padStart(2, "0") : String(log.criticalWarning),
           alert: log.criticalWarning !== 0,
         },
-        { name: "可用备用空间", value: log.availableSpare + "%", raw: n(log.availableSpare), alert: spareLow(log) },
-        { name: "可用备用空间阈值", value: log.spareThreshold + "%", raw: n(log.spareThreshold) },
-        { name: "已用寿命", value: log.percentageUsed + "%", raw: n(log.percentageUsed), alert: life(log) <= WORN },
-        { name: "介质与数据完整性错误", value: n(log.mediaErrors), raw: n(log.mediaErrors), alert: log.mediaErrors > 0 },
-        { name: "错误日志条目", value: n(log.errorLogEntries), raw: n(log.errorLogEntries) },
+        { name: "可用备用空间", value: log.availableSpare + "%", raw: raw(log.availableSpare), alert: spareLow(log) },
+        { name: "可用备用空间阈值", value: log.spareThreshold + "%", raw: raw(log.spareThreshold) },
+        { name: "已用寿命", value: log.percentageUsed + "%", raw: raw(log.percentageUsed), alert: life(log) <= WORN },
+        { name: "介质与数据完整性错误", value: n(log.mediaErrors), raw: raw(log.mediaErrors), alert: log.mediaErrors > 0 },
+        { name: "错误日志条目", value: n(log.errorLogEntries), raw: raw(log.errorLogEntries) },
       ],
     ],
     [
       "使用情况",
       [
-        { name: "读取数据单位", value: capacity(log.dataUnitsRead * UNIT), raw: n(log.dataUnitsRead) },
-        { name: "写入数据单位", value: capacity(log.dataUnitsWritten * UNIT), raw: n(log.dataUnitsWritten) },
-        { name: "主机读取命令", value: n(log.hostReadCommands), raw: n(log.hostReadCommands) },
-        { name: "主机写入命令", value: n(log.hostWriteCommands), raw: n(log.hostWriteCommands) },
-        { name: "控制器忙碌时间", value: n(log.controllerBusyMinutes) + " 分钟", raw: n(log.controllerBusyMinutes) },
-        { name: "通电次数", value: n(log.powerCycles), raw: n(log.powerCycles) },
-        { name: "通电时间", value: n(log.powerOnHours) + " 小时", raw: n(log.powerOnHours) },
-        { name: "不安全关机次数", value: n(log.unsafeShutdowns), raw: n(log.unsafeShutdowns) },
+        { name: "读取数据单位", value: capacity(log.dataUnitsRead * UNIT), raw: raw(log.dataUnitsRead) },
+        { name: "写入数据单位", value: capacity(log.dataUnitsWritten * UNIT), raw: raw(log.dataUnitsWritten) },
+        { name: "主机读取命令", value: n(log.hostReadCommands), raw: raw(log.hostReadCommands) },
+        { name: "主机写入命令", value: n(log.hostWriteCommands), raw: raw(log.hostWriteCommands) },
+        { name: "控制器忙碌时间", value: n(log.controllerBusyMinutes) + " 分钟", raw: raw(log.controllerBusyMinutes) },
+        { name: "通电次数", value: n(log.powerCycles), raw: raw(log.powerCycles) },
+        { name: "通电时间", value: n(log.powerOnHours) + " 小时", raw: raw(log.powerOnHours) },
+        { name: "不安全关机次数", value: n(log.unsafeShutdowns), raw: raw(log.unsafeShutdowns) },
       ],
     ],
     [
       "温度",
       [
-        { name: "综合温度", value: celsius(log.kelvin), raw: n(log.kelvin) },
-        ...log.sensors.map((kelvin, i) => ({ name: `温度传感器 ${i + 1}`, value: celsius(kelvin), raw: n(kelvin) })),
-        { name: "警告温度时间", value: n(log.warningMinutes) + " 分钟", raw: n(log.warningMinutes) },
-        { name: "严重温度时间", value: n(log.criticalMinutes) + " 分钟", raw: n(log.criticalMinutes) },
-        ...log.transitions.map((count, i) => ({ name: `热管理温度 ${i + 1} 转换次数`, value: n(count), raw: n(count) })),
-        ...log.thermalSeconds.map((s, i) => ({ name: `热管理温度 ${i + 1} 总时间`, value: n(s) + " 秒", raw: n(s) })),
+        { name: "综合温度", value: celsius(log.kelvin), raw: raw(log.kelvin) },
+        ...log.sensors.map((kelvin, i) => ({ name: `温度传感器 ${i + 1}`, value: celsius(kelvin), raw: raw(kelvin) })),
+        { name: "警告温度时间", value: n(log.warningMinutes) + " 分钟", raw: raw(log.warningMinutes) },
+        { name: "严重温度时间", value: n(log.criticalMinutes) + " 分钟", raw: raw(log.criticalMinutes) },
+        ...log.transitions.map((count, i) => ({ name: `热管理温度 ${i + 1} 转换次数`, value: n(count), raw: raw(count) })),
+        ...log.thermalSeconds.map((s, i) => ({ name: `热管理温度 ${i + 1} 总时间`, value: n(s) + " 秒", raw: raw(s) })),
       ],
     ],
   ];
 }
 
+// A card whose head ends in a control in place of the summary: the control
+// overhangs the title's line, and takes a line of its own where the title
+// leaves it too little room.
 function Card({
   title,
   note,
   summary,
+  control,
   alert,
   children,
 }: {
   title: string;
   note?: string;
   summary?: string;
+  control?: ReactNode;
   alert?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className={"a-card" + (alert ? " is-alert" : "")}>
-      <div className="a-card-head">
+      <div className={"a-card-head" + (control ? " has-control" : "")}>
         <b>
           {title}
           {note && <small className="a-card-note">{note}</small>}
         </b>
-        <span>{summary}</span>
+        {control ? <div className="a-card-control">{control}</div> : <span>{summary}</span>}
       </div>
       {children}
     </section>
@@ -317,7 +325,223 @@ function useCardWidth() {
   return [ref, box] as const;
 }
 
-export default function DiskDetails({ read, interval }: { read: number; interval: number }) {
+interface DetailsProps {
+  read: number;
+  interval: number;
+  /** Raw values in hexadecimal, for every disk (the window keeps the choice). */
+  hex: boolean;
+  onHex: (hex: boolean) => void;
+}
+/** The raw values' radix, in the SMART card's head. */
+const RawSwitch = ({ hex, onHex }: Pick<DetailsProps, "hex" | "onHex">) => (
+  <Segments
+    label="原始值"
+    value={hex ? "hex" : "decimal"}
+    onChange={(v) => onHex(v === "hex")}
+    items={[
+      { value: "decimal", label: "十进制" },
+      { value: "hex", label: "十六进制" },
+    ]}
+  />
+);
+/** The details of disk `disk` (its number): the NVMe drive's or the hard disk's. */
+export default function DiskDetails({ disk, ...props }: DetailsProps & { disk: number }) {
+  return disk === 1 ? <HardDiskDetails {...props} /> : <NvmeDetails {...props} />;
+}
+
+// The laptop hard disk (disk_details/legacy.rs): ATA SMART attributes, its
+// health as the drive reports it, and the counts it keeps.
+const HDD = {
+  model: "ST2000LM015-2E8174",
+  firmware: "SDM1",
+  serial: "ZDZ0A1B2",
+  capacity: 2_000_398_934_016,
+  rpm: 5400,
+};
+// id, name (the app's attribute names), current, worst, threshold, raw (six bytes as one number).
+const HDD_ATTRIBUTES: [number, string, number, number, number, number][] = [
+  [0x01, "读取错误率", 78, 64, 6, 68_342_950],
+  [0x03, "启动时间", 99, 99, 0, 0],
+  [0x04, "启停次数", 97, 97, 20, 3_412],
+  [0x05, "重映射扇区", 100, 100, 10, 0],
+  [0x07, "寻道错误率", 82, 60, 45, 192_489_038],
+  [0x09, "通电时间", 90, 90, 0, 9_512],
+  [0x0a, "启动重试", 100, 100, 97, 0],
+  [0x0c, "通电次数", 97, 97, 20, 3_301],
+  [0xb8, "端到端错误", 100, 100, 99, 0],
+  [0xbb, "已报告不可校正错误", 100, 100, 0, 0],
+  [0xbc, "命令超时", 100, 99, 0, 0],
+  // Airflow temperature: the current reading, and the lowest and highest since power-on.
+  [0xbe, "气流温度", 62, 52, 40, 38 + 23 * 2 ** 16 + 41 * 2 ** 24],
+  [0xc0, "断电收回次数", 100, 100, 0, 412],
+  [0xc1, "磁头加载次数", 79, 79, 0, 42_618],
+  [0xc2, "温度", 38, 48, 0, 38 + 16 * 2 ** 32],
+  [0xc5, "待映射扇区", 100, 100, 0, 0],
+  [0xc6, "离线不可校正扇区", 100, 100, 0, 0],
+  [0xc7, "接口 CRC 错误", 200, 200, 0, 0],
+  [0xf0, "厂商属性", 100, 253, 0, 7_980],
+  [0xf1, "写入总量", 100, 253, 0, 17_968_750_000],
+  [0xf2, "读取总量", 100, 253, 0, 50_000_000_000],
+];
+// The attribute list goes into at most this many tables side by side, each of at least this many rows.
+const SPLIT_TABLES = 3;
+const SPLIT_ROWS = 5;
+function HardDiskDetails({ read, interval, hex, onHex }: DetailsProps) {
+  const [ref, { width, text }] = useCardWidth();
+  const [serialShown, setSerialShown] = useState(false);
+  const seconds = (read * interval) / 1000;
+  const raw = (v: number) => (hex ? "0x" + v.toString(16).toUpperCase().padStart(12, "0") : thousands(v));
+  const rows = HDD_ATTRIBUTES.map(([id, name, current, worst, threshold, value]) => ({
+    id: id.toString(16).toUpperCase().padStart(2, "0"),
+    name,
+    cells: [String(current), String(worst), String(threshold), raw(value)],
+  }));
+  const heads = ["当前值", "最差值", "阈值", "原始值"];
+  // The widest name and each column of figures, read off a hidden copy.
+  const ruler = useRef<HTMLDivElement>(null);
+  const [needs, setNeeds] = useState({ name: 170 * text, cells: [44, 44, 36, 96].map((w) => w * text) });
+  useIsoLayoutEffect(() => {
+    const el = ruler.current;
+    if (!el || el.children.length < 5) return;
+    const k = scaleOf(el);
+    const [name, ...cells] = [0, 1, 2, 3, 4].map((i) => Math.ceil(el.children[i].getBoundingClientRect().width / k) + 1);
+    setNeeds((n) => (n.name === name && n.cells.every((cell, i) => cell === cells[i]) ? n : { name, cells }));
+  });
+  const sheet = fitTables(width, needs.name, needs.cells, Math.min(SPLIT_TABLES, Math.max(1, Math.floor(rows.length / SPLIT_ROWS))));
+  const per = Math.ceil(rows.length / sheet.tables);
+  const row = (name: ReactNode, cells: string[], head: boolean, key: string) => (
+    <div className={"a-smart-row" + (head ? " is-head" : "") + (sheet.stacked ? " is-stacked" : "")} key={key}>
+      <span className="a-smart-name">{name}</span>
+      <span className="a-smart-figures">
+        {cells.map((cell, i) => (
+          <span key={i} className={"a-smart-cell" + (i === 3 && !head ? " is-raw" : "")} style={{ width: sheet.cells[i] }}>
+            {cell}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+  // A hard disk's summary: hours and counts, without endurance estimates.
+  const totals: [string, number, string?][] = [
+    ["通电时间", 9_512, "小时"],
+    ["通电次数", 3_301],
+    ["启停次数", 3_412],
+    ["磁头加载次数", 42_618],
+    ["重映射扇区", 0],
+    ["待映射扇区", 0],
+    ["离线不可校正扇区", 0],
+    ["接口 CRC 错误", 0],
+  ];
+  const specs = (list: [string, ReactNode][]) => (
+    <dl className="a-specs">
+      {list.map(([label, value]) => [<dt key={label + ":t"}>{label}</dt>, <dd key={label + ":d"}>{value}</dd>])}
+    </dl>
+  );
+  const identityRows: [string, ReactNode][] = [
+    ["型号", HDD.model],
+    ["固件版本", HDD.firmware],
+    [
+      "序列号",
+      <div className="a-disk-serial">
+        {serialShown ? HDD.serial : "•".repeat(12)}
+        <button type="button" onClick={() => setSerialShown((v) => !v)}>
+          {serialShown ? "隐藏" : "显示"}
+        </button>
+      </div>,
+    ],
+    ["容量", `${capacity(HDD.capacity)}（${thousands(HDD.capacity)} 字节）`],
+    ["卷", "D:"],
+  ];
+  const linkRows: [string, ReactNode][] = [
+    ["接口", "SATA"],
+    ["传输模式", "SATA 6 Gb/s"],
+    ["标准", "ACS-3"],
+    ["扇区大小", "逻辑 512 B，物理 4 KB"],
+    [
+      "支持的功能",
+      <div className="a-disk-tags">
+        {["SMART", "易失性写入缓存", "NCQ"].map((feature) => (
+          <span key={feature}>{feature}</span>
+        ))}
+      </div>,
+    ],
+    ["转速", `${HDD.rpm} 转／分钟`],
+  ];
+  return (
+    <div className="a-cards a-disk" ref={ref}>
+      <Card title="健康状况" note="ATA SMART" summary={`读取于 ${clockText(START + seconds)}`}>
+        <div className="a-hdd-health">
+          <div
+            className="a-disk-tiles"
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.min(2, Math.floor((width + TILE_GAP) / (TILE_MIN + TILE_GAP))))}, minmax(0, 1fr))` }}
+          >
+            <div className="a-disk-reading is-good">
+              <span>状态</span>
+              <b>良好</b>
+            </div>
+            <Reading label="温度" value="38" unit="°C" />
+          </div>
+          <div className="a-disk-readings">
+            {totals.map(([label, value, unit]) => (
+              <Reading key={label} label={label} value={thousands(value)} unit={unit} />
+            ))}
+            <Reading label="读取总量" {...reading(capacity(50_000_000_000 * 512))} />
+            <Reading label="写入总量" {...reading(capacity(17_968_750_000 * 512))} />
+          </div>
+        </div>
+      </Card>
+      <Card title="设备信息">
+        {width >= 2 * 300 + GROUP_GAP ? (
+          <div className="a-disk-device">
+            {specs(identityRows)}
+            {specs(linkRows)}
+          </div>
+        ) : (
+          specs([...identityRows, ...linkRows])
+        )}
+      </Card>
+      <Card title="SMART 属性" note="ATA SMART" control={<RawSwitch hex={hex} onHex={onHex} />}>
+        <div className="a-smart">
+          <div className="a-smart-ruler" ref={ruler} aria-hidden="true" style={{ gridTemplateColumns: "repeat(5, max-content)" }}>
+            <span>属性</span>
+            {heads.map((head) => (
+              <span key={head}>{head}</span>
+            ))}
+            {rows.flatMap((r) => [
+              <span key={r.id} data-i18n="smart">
+                {r.id + "\u00a0\u00a0"}
+                {r.name}
+              </span>,
+              ...r.cells.map((cell, i) => <span key={r.id + ":" + i}>{cell}</span>),
+            ])}
+          </div>
+          <div className="a-smart-lanes">
+            {Array.from({ length: sheet.tables }, (_, lane) => (
+              <div className="a-smart-lane" key={lane} style={{ maxWidth: sheet.limit }}>
+                <div className="a-smart-table">
+                  {row("属性", heads, true, "head")}
+                  {rows.slice(lane * per, (lane + 1) * per).map((r) =>
+                    row(
+                      <span data-i18n="smart">
+                        {r.id + "\u00a0\u00a0"}
+                        {r.name}
+                      </span>,
+                      r.cells,
+                      false,
+                      r.id,
+                    ),
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function NvmeDetails({ read, interval, hex, onHex }: DetailsProps) {
   const [ref, { width, text }] = useCardWidth();
   const [serialShown, setSerialShown] = useState(false);
   const seconds = (read * interval) / 1000;
@@ -330,7 +554,7 @@ export default function DiskDetails({ read, interval }: { read: number; interval
   const top = Math.max(1, identity.critical);
   const tiles = width >= 3 * TILE_MIN + 2 * TILE_GAP ? 3 : 1;
   const wide = width >= 2 * 300 + GROUP_GAP;
-  const groups = attributes(log);
+  const groups = attributes(log, hex);
   // The widest name (or group title) and the widest of each column of
   // figures, as the page's language and text size draw them: read off a
   // hidden copy of the texts, a pixel to spare.
@@ -479,7 +703,11 @@ export default function DiskDetails({ read, interval }: { read: number; interval
           specs([...identityRows, ...linkRows])
         )}
       </Card>
-      <Card title="SMART 属性" note="NVMe 健康日志">
+      <Card
+        title="SMART 属性"
+        note="NVMe 健康日志"
+        control={<RawSwitch hex={hex} onHex={onHex} />}
+      >
         <div className="a-smart">
           <div className="a-smart-ruler" ref={ruler} aria-hidden="true">
             {groups.map(([group, rows]) => [

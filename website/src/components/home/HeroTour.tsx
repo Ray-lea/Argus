@@ -31,7 +31,6 @@ const labelled = (selector: string, label: string) => `${selector}[aria-label="$
 const nav = (id: string, text: string): Find => (app) =>
   app.querySelector(`[data-tour="nav-${id}"]`) ?? byText(app, ".a-nav button", text);
 const tour = (id: string): Find => (app) => app.querySelector(`[data-tour="${id}"]`);
-const titled = (title: string): Find => (app) => app.querySelector(`button[title="${translate(title)}"]`);
 const segment = (text: string): Find => (app) => byText(app, ".a-window button[aria-checked]", text);
 let startupItem = "";
 
@@ -78,13 +77,14 @@ const chapters: Chapter[] = [
     label: "服务",
     steps: [
       { label: "打开服务页", find: nav("services", "服务") },
-      { label: "状态", find: (a) => a.querySelector(".a-services [role=combobox]") },
-      { label: "正在运行", find: (a) => byText(a, ".a-services [role=option]", "正在运行") },
+      // The status column's filter drops its choices down as a menu.
+      { label: "状态", find: (a) => a.querySelector('.a-services [data-tour="filter-service-state"]') },
+      { label: "正在运行", find: (a) => byText(a, ".a-menu [role^=menuitem]", "正在运行") },
       {
         label: "选中正在运行的服务",
         find: (a) => [...a.querySelectorAll(".a-services .a-tr")].find((row) => row.textContent?.includes(translate("正在运行"))),
       },
-      { label: "重新启动服务，状态随即更新", find: titled("重新启动服务"), hold: 2400 },
+      { label: "重新启动服务，状态随即更新", find: (a) => a.querySelector(labelled("button", "重新启动服务")), hold: 2400 },
     ],
   },
   {

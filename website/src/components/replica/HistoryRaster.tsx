@@ -1,5 +1,5 @@
 "use client";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { paint, type RasterRequest } from "./historyPainter";
 import type { Trace } from "./historySeries";
 import type { Span } from "./historyTime";
@@ -68,6 +68,23 @@ export default function HistoryRaster({
     revision = useRef(0),
     last = useRef<{ key: string; span: Span; anchor: number | null; yMin: number; yMax: number } | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0, k: 1 });
+  // The colours the traces name, resolved once: reading the computed style
+  // forces a style recalculation, which every sample would otherwise pay.
+  // Forgotten when the site's or the window's theme or accent changes.
+  const resolved = useRef(new Map<string, string>());
+  useEffect(() => {
+    const forget = () => resolved.current.clear();
+    const watch = new MutationObserver(forget);
+    watch.observe(document.documentElement, { attributes: true });
+    const app = host.current?.closest(".argus-app");
+    if (app) watch.observe(app, { attributes: true });
+    const scheme = matchMedia("(prefers-color-scheme: dark)");
+    scheme.addEventListener("change", forget);
+    return () => {
+      watch.disconnect();
+      scheme.removeEventListener("change", forget);
+    };
+  }, []);
   useLayoutEffect(() => {
     const el = host.current!;
     const measure = () => {
@@ -95,11 +112,18 @@ export default function HistoryRaster({
   useLayoutEffect(() => {
     const el = host.current;
     if (!el || size.w <= 0 || size.h <= 0) return;
-    const rev = ++revision.current,
-      style = getComputedStyle(el);
+    const rev = ++revision.current;
+    let style: CSSStyleDeclaration | null = null;
     const css = (c: string) => {
       const m = /^var\((--[\w-]+)\)$/.exec(c);
-      return m ? style.getPropertyValue(m[1]).trim() || "#828a91" : c;
+      if (!m) return c;
+      let value = resolved.current.get(m[1]);
+      if (value === undefined) {
+        style ??= getComputedStyle(el);
+        value = style.getPropertyValue(m[1]).trim() || "#828a91";
+        resolved.current.set(m[1], value);
+      }
+      return value;
     };
     const start = times[0],
       length = times.at(-1)! - start,

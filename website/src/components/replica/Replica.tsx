@@ -12,9 +12,11 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   ColumnsDialog,
   columnSortValue,
+  commandLine,
   defaultPrefs,
   descendingFirst,
   headerMenu,
@@ -25,10 +27,10 @@ import {
   type ColumnPrefs,
 } from "./Columns";
 import { advanceClock, freezeClock, sampleClock, type Motion } from "./Curve";
-import { registerDictionary, setLanguage, type Dictionary, type Language } from "./i18n";
+import { registerDictionary, setLanguage, translate, type Dictionary, type Language } from "./i18n";
 import FileLock, { inspect, type LockResult } from "./FileLock";
 import { hoverIcons, setIconsStill } from "./iconMotion";
-import { CaptionIcon, Icon, type UiIcon } from "./icons";
+import { CaptionIcon, Icon, Logo, type UiIcon } from "./icons";
 import {
   appVersion,
   defaultVisibility,
@@ -37,6 +39,7 @@ import {
   readings,
   sampleAt,
   services as serviceList,
+  servicePath,
   span,
   startupItems,
   thousands,
@@ -46,6 +49,8 @@ import {
   type VisibilityRules,
 } from "./model";
 import type {
+  AnchorMenu,
+  Ask,
   ConnectionFilter,
   HistoryRange,
   MenuEntry,
@@ -58,17 +63,22 @@ import type {
 import type { PerformancePages } from "./Performance";
 import {
   buildRows,
+  columnUnder,
   Details,
+  detailsText,
+  LEAK_PID,
   ProcessTable,
+  startWatch,
   treeParents,
   Vitals,
   type Device,
   type Row,
+  type SheetContext,
   type SortKey,
   type View,
 } from "./Processes";
 import { store, useShared, type Page } from "./store";
-import { exportTable, copyEntries } from "./tableActions";
+import { exportTable, copyEntries, listCopy, rowCopy } from "./tableActions";
 import { Button, rollAway, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 // Only the processes page shows at first; the others' code loads off the
@@ -115,11 +125,18 @@ const pages: [Page, string, UiIcon][] = [
   ["startup", "启动", "power"],
   ["connections", "连接", "globe"],
   ["history", "历史", "history"],
-  ["components", "组件", "apps"],
+  ["components", "组件", "blocks"],
   ["settings", "设置", "settings"],
   ["about", "关于", "info"],
 ];
 const critical = new Set([4, 148, 2864, 520, 812, 916, 904, 1004, 1068, 1088]);
+// Executables that host other programs: a rule on one reaches them all (dialogs.rs `SHARED_HOSTS`).
+const SHARED_HOSTS = new Set([
+  "msedgewebview2.exe", "svchost.exe", "dllhost.exe", "rundll32.exe", "conhost.exe", "runtimebroker.exe",
+  "applicationframehost.exe", "taskhostw.exe", "taskhost.exe", "wudfhost.exe", "node.exe", "python.exe",
+  "pythonw.exe", "java.exe", "javaw.exe", "dotnet.exe", "wscript.exe", "cscript.exe", "cmd.exe",
+  "powershell.exe", "pwsh.exe",
+]);
 const searchHint: Partial<Record<Page, string>> = {
   processes: "搜索名称、PID、路径或服务",
   services: "搜索服务名称、描述或 PID",
@@ -151,13 +168,20 @@ type Dialog =
   | { kind: "signOut"; row: Row }
   | { kind: "rule"; row: Row }
   | { kind: "columns" }
-  | { kind: "shortcuts" }
+  | { kind: "shortcuts"; history?: boolean }
+  | { kind: "welcome" }
+  | { kind: "whatsnew" }
+  | ({ kind: "ask" } & Ask)
   | { kind: "delete"; title: string; body: string; accept: () => void }
   | { kind: "visibility" };
 interface Toast {
   text: string;
   id: number;
   tone: "ok" | "info" | "error";
+  /** Buttons under the text, as the app's toasts with actions (dialogs.rs `toast_with`). */
+  actions?: { label: string; run: () => void }[];
+  /** How long it stays, 4.2 s by default. */
+  ms?: number;
 }
 
 type DetailsMode = "open" | "auto" | "closed";
@@ -195,13 +219,16 @@ export default function Replica({
     filter: "all",
     diskPage: "overview",
     // Performance.tsx `defaultDevices` (the page loads later).
-    order: ["cpu", "memory", "disk", "wifi", "gpu", "npu", "battery"],
+    order: ["cpu", "memory", "disk", "disk1", "wifi", "wsl", "gpu", "gpu1", "npu", "battery"],
     hidden: [],
     kernel: true,
   });
   const [view, setView] = useState<View>("apps");
-  const [sort, setSort] = useState<SortKey>("cpu");
-  const [descending, setDescending] = useState(true);
+  // The list opens sorted by name, as the app's does.
+  const [sort, setSort] = useState<SortKey>("name");
+  const [descending, setDescending] = useState(false);
+  // While a CSV export reads the process table, every row is in the page.
+  const [exporting, setExporting] = useState(false);
   // The process columns shown and their order (Columns.tsx).
   const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(defaultPrefs);
   const shownColumns = useMemo(() => visibleColumns(columnPrefs), [columnPrefs]);
@@ -237,6 +264,8 @@ export default function Replica({
   const [efficiency, setEfficiency] = useState<Set<number>>(() => new Set());
   const [suspension, setSuspension] = useState<Map<number, boolean>>(() => new Map());
   const [priority, setPriority] = useState<Map<number, string>>(() => new Map());
+  // I/O and memory priority, by the submenu's name and the PID.
+  const [resourcePriority, setResourcePriority] = useState<Record<string, string>>({});
   const [serviceStates, setServiceStates] = useState<Map<string, ServiceState>>(
     () => new Map(serviceList.map((s) => [s.name, s.pid ? "running" : "stopped"])),
   );
@@ -252,16 +281,21 @@ export default function Replica({
   const [navLeft, setNavLeft] = useState(false);
   const [settingsSection, setSettingsSection] = useState("");
   const [navOpen, setNavOpen] = useState(false);
+  // The expanded rail's width, dragged at its edge (layout.rs `nav_splitter`).
+  const [navWidth, setNavWidth] = useState(184);
+  const [navDrag, setNavDrag] = useState<{ x: number; width: number } | null>(null);
   const [dialog, setDialogState] = useState<Dialog | null>(null);
   const exitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const setDialog = useCallback(
     (next: Dialog | null) => {
       clearTimeout(exitTimer.current);
-      const scrim = root.current?.querySelector<HTMLElement>(".a-scrim");
+      // The dialog recedes and fades out over 100 ms; the dim behind it takes
+      // 167 ms (dialogs/presence.rs, dialogs.rs `Scrim`).
+      const scrim = root.current?.querySelector<HTMLElement>(".a-window > .a-scrim");
       if (!next && scrim && uiMotion && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
         scrim.dataset.closing = "";
         scrim.inert = true;
-        exitTimer.current = setTimeout(() => setDialogState(null), 100);
+        exitTimer.current = setTimeout(() => setDialogState(null), 167);
       } else {
         if (scrim) {
           delete scrim.dataset.closing;
@@ -298,8 +332,12 @@ export default function Replica({
   );
   const [onScreen, setOnScreen] = useState(true);
   const [tick, setTick] = useState(0);
-  const later = useLater(loadPages, page !== "processes" && page !== "performance");
-  const { Services, Startup, Connections, Settings, About, VisibilityDialog } = later ?? {};
+  const later = useLater(
+    loadPages,
+    (page !== "processes" && page !== "performance") ||
+      ["shortcuts", "welcome", "whatsnew", "visibility"].includes(dialog?.kind ?? ""),
+  );
+  const { Services, Startup, Connections, Settings, About, VisibilityDialog, Shortcuts, Welcome, WhatsNew } = later ?? {};
   const History = useLater(loadHistory, page === "history", false)?.default;
   const Components = useLater(loadComponents, page === "components", false)?.default;
   const Performance = useLater(loadPerformance, page === "performance")?.default;
@@ -349,7 +387,7 @@ export default function Replica({
   useEffect(() => setIconsStill(!uiMotion), [uiMotion]);
   useEffect(() => {
     if (!toast) return;
-    const id = setTimeout(() => setToast(null), 4200);
+    const id = setTimeout(() => setToast(null), toast.ms ?? 4200);
     return () => clearTimeout(id);
   }, [toast]);
   useEffect(() => {
@@ -476,7 +514,8 @@ export default function Replica({
     const dialog = el?.querySelector<HTMLElement>(".a-dialog");
     if (dialog && !dialog.contains(document.activeElement)) dialog.focus({ preventScroll: true });
   }, []);
-  const say = (text: string, tone: Toast["tone"] = "ok") => setToast({ text, id: Date.now(), tone });
+  const say = (text: string, tone: Toast["tone"] = "ok", more?: Pick<Toast, "actions" | "ms">) =>
+    setToast({ text, id: Date.now(), tone, ...more });
   // Suspending and resuming in the demo overrides the sample's own state.
   const alive = useMemo(
     () =>
@@ -503,28 +542,45 @@ export default function Replica({
   );
 
   const query = queries.processes ?? "";
-  const cellContext = { byPid, tick, efficiency, priority };
+  // The leak alerts mark the demo's one leaking utility while they are on and it is not set aside.
+  const leaks = useMemo(
+    () => new Set(shared.leakHints && !shared.ignoreLeak && byPid.has(LEAK_PID) ? [LEAK_PID] : []),
+    [shared.leakHints, shared.ignoreLeak, byPid],
+  );
+  const cellContext = { byPid, tick, efficiency, priority, resource: resourcePriority, leaks };
+  const sheetContext: SheetContext = { ...cellContext, list: alive, now };
   // Hidden processes leave the lists only: totals and details keep counting them.
   const hides = useCallback((p: Process) => hidesProcess(visibility, p), [visibility]);
   const listed = useMemo(
     () => (hideSystem.processes ? alive.filter((p) => !hides(p)) : alive),
     [alive, hideSystem.processes, hides],
   );
-  if (!hold || !sortSnapshot.current) sortSnapshot.current = now;
-  const rows = buildRows({
+  // The order holds while the pointer is on the list, and while a menu or dialog is open (tables.rs `holds_order`).
+  const holding = hold || (page === "processes" && (!!menu || !!dialog));
+  if (!holding || !sortSnapshot.current) sortSnapshot.current = now;
+  const rowOptions = {
     view,
     sort,
     descending,
     query,
     list: listed,
     now,
-    sortReadings: hold ? sortSnapshot.current : undefined,
     open,
     closed,
     treeOpen,
-    sortValue: (row) => columnSortValue(sort, row, cellContext),
+    sortValue: (row: Row) => columnSortValue(sort, row, cellContext),
     users: userGroups === "on",
-  });
+  };
+  const rows = buildRows({ ...rowOptions, sortReadings: holding ? sortSnapshot.current : undefined });
+  // Held rows out of the order a fresh sort gives: the header and the status bar say so.
+  const heldOrder =
+    holding && rows.map((r) => r.key).join() !== buildRows(rowOptions).map((r) => r.key).join();
+  // What the column widths measure: the list with every group open and nothing searched.
+  const measuredRows = useMemo(
+    () => buildRows({ ...rowOptions, query: "", openAll: true }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [view, listed, userGroups, efficiency, priority, resourcePriority, leaks],
+  );
   const selectedRow = rows.find((r) => r.key === selected) ?? null;
   const detailsOpen = detailsMode === "open" || (detailsMode === "auto" && selectedRow !== null);
   // A row asked for its details: a hidden pane opens and stays open.
@@ -694,7 +750,6 @@ export default function Replica({
       return next;
     });
   };
-  const [resourcePriority, setResourcePriority] = useState<Record<string, string>>({});
   const toggleEfficiency = (row: Row) => {
     const on = !row.pids.every((pid) => efficiency.has(pid));
     setEfficiency((set) => {
@@ -731,6 +786,9 @@ export default function Replica({
       k = scaleOf(frame);
     setMenu({ x: (at.x - box.left) / k, y: (at.y - box.top) / k, items, keyboard, anchor, id: Date.now() });
   };
+  // A list column's filter menu, under its header button; a second press closes it.
+  const filterMenu: AnchorMenu = (anchor, at, items, keyboard) =>
+    menu?.anchor === anchor ? closeMenu() : showMenu(at, items, keyboard, anchor);
   const processMenu = (row: Row, source: Element): MenuEntry[] => {
     const group = row.count > 1;
     const proc = byPid.get(row.pids[0]);
@@ -740,6 +798,9 @@ export default function Replica({
     const halted = row.pids.filter((pid) => byPid.get(pid)?.suspended);
     const running = row.pids.filter((pid) => !byPid.get(pid)?.suspended);
     const branch = view === "tree" && row.expandable;
+    const path = proc && proc.glyph !== "kernel" ? proc.path : "";
+    const command = proc && !group ? commandLine(proc) : "";
+    const column = columnUnder(source);
     return [
       ...(branch
         ? ([
@@ -780,13 +841,15 @@ export default function Replica({
           },
         })),
       },
+      // The levels a process can be given (menus.rs `IO_PRIORITIES`, `MEMORY_PRIORITIES`).
       ...(
         [
-          ["I/O 优先级", ["非常低", "低", "正常", "高", "关键"]],
-          ["内存优先级", ["非常低", "低", "中", "低于正常", "正常"]],
+          ["I/O 优先级", ["非常低", "低", "正常"], "disk"],
+          ["内存优先级", ["非常低", "低", "中", "低于正常", "正常"], "memory"],
         ] as const
-      ).map(([label, levels]) => ({
+      ).map(([label, levels, icon]) => ({
         label,
+        icon,
         children: levels.map((level) => ({
           label: level,
           checked: row.pids.every((pid) => (resourcePriority[label + pid] ?? "正常") === level),
@@ -814,14 +877,41 @@ export default function Replica({
           ]
         : []),
       ...(halted.length ? [{ label: "恢复进程", icon: "play" as UiIcon, run: () => suspend(row, halted, false) }] : []),
-      { label: "添加规则", run: () => setDialog({ kind: "rule", row }) },
+      { label: "添加规则", run: () => addRule(row) },
+      { label: "观察进程", icon: "eye" as UiIcon, run: () => startWatch(row.pids[0], tick) },
       "-",
       ...(row.expandable && !branch ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
-      { label: "打开文件位置", icon: "folder", run: () => say(`演示窗口不会打开 ${proc?.path ?? "该位置"}。`, "info") },
-      ...copyEntries(source, row.label, [
-        { label: "复制路径", run: () => copy(proc?.path ?? "", "路径") },
-        ...(group ? [] : [{ label: "复制 PID", run: () => copy(String(row.pids[0]), " PID") }]),
-      ]),
+      {
+        label: "打开文件位置",
+        icon: "folder",
+        // The kernel's own processes have no file.
+        disabled: !path,
+        run: () => say(`演示窗口不会打开 ${path}。`, "info"),
+      },
+      // What a process's row can copy; the details come together as the pane lists them.
+      {
+        label: "复制",
+        icon: "copy",
+        children: [
+          { label: "名称", hint: "Ctrl+C", run: () => copy(translate(row.label), "名称") },
+          { label: "映像名称", run: () => copy(proc?.exe ?? "", "映像名称") },
+          ...(group ? [] : [{ label: "PID", run: () => copy(String(row.pids[0]), " PID") }]),
+          { label: "映像路径", disabled: !path, run: () => copy(path, "路径") },
+          ...(group ? [] : [{ label: "命令行", disabled: !command, run: () => copy(command, "命令行") }]),
+          "-",
+          { label: "详细信息", hint: "Ctrl+Shift+C", run: () => copy(detailsText(row, sheetContext), "详细信息") },
+        ],
+      },
+      // The column the right press landed on, right after the copies.
+      ...(column
+        ? [
+            {
+              label: `复制“${column.label}”`,
+              disabled: !column.value || column.value === "—",
+              run: () => copy(column.value, `“${column.label}”`),
+            },
+          ]
+        : []),
       "-",
       {
         label: "详细信息",
@@ -837,9 +927,12 @@ export default function Replica({
   // A heading folds or unfolds; a user's also offers the account, as Task
   // Manager's Users page does (users.rs `user_menu`). The demo's one user is
   // the current one, so signing out is always allowed.
+  // Only a user's heading has a menu (menus.rs `open_row_menu`); every match
+  // shows while searching, so it cannot fold then.
   const headingMenu = (event: MouseEvent, row: Row) =>
+    row.kind === "user" &&
     showMenu({ x: event.clientX, y: event.clientY }, [
-      { label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) },
+      { label: row.expanded ? "折叠" : "展开", disabled: !!query.trim(), run: () => toggleRow(row) },
       ...(row.kind === "user" && !row.system
         ? ([
             "-",
@@ -848,6 +941,56 @@ export default function Replica({
           ] satisfies MenuEntry[])
         : []),
     ]);
+  // A rule matches the executable's name: for a program that hosts others, or
+  // one installed in more than one place, the app asks first; otherwise it
+  // goes straight to the rules (process_actions.rs `add_rule_for`).
+  const openRules = () => {
+    setDialog(null);
+    setSettingsSection("rules");
+    go("settings");
+  };
+  const addRule = (row: Row) => {
+    const exe = byPid.get(row.pids[0])?.exe ?? "";
+    const paths = new Set(alive.filter((p) => p.exe.toLowerCase() === exe.toLowerCase()).map((p) => p.path.toLowerCase()));
+    if (SHARED_HOSTS.has(exe.toLowerCase()) || paths.size > 1) setDialog({ kind: "rule", row });
+    else openRules();
+  };
+  // The header's leak mark lists each finding, then the way to the setting (leaks.rs `open_leak_menu`).
+  const openLeakMenu = (anchor: HTMLElement) => {
+    if (menu?.anchor === "leak-mark") return closeMenu();
+    const box = anchor.getBoundingClientRect();
+    const k = scaleOf(anchor);
+    showMenu(
+      { x: box.left, y: box.bottom + 4 * k },
+      [
+        ...[...leaks].map((pid) => ({
+          label: byPid.get(pid)?.name ?? "",
+          icon: "trendingUp" as UiIcon,
+          detail: `${thousands(byPid.get(pid)?.handles ?? 0)} 个句柄`,
+          run: () => showPid(pid),
+        })),
+        "-",
+        {
+          label: "泄漏提示设置",
+          icon: "settings",
+          run: () => {
+            setSettingsSection("language");
+            go("settings");
+          },
+        },
+      ],
+      false,
+      "leak-mark",
+    );
+  };
+  // Setting a program's finding aside, with a notice that can take it back.
+  const ignoreLeak = () => {
+    store.set({ ignoreLeak: true });
+    say(`不再提示 ${byPid.get(LEAK_PID)?.name ?? ""} 的资源泄漏，可在设置中恢复`, "info", {
+      ms: 8000,
+      actions: [{ label: "撤销", run: () => store.set({ ignoreLeak: false }) }],
+    });
+  };
   const openRowMenu = (event: MouseEvent | KeyboardEvent, row: Row) => {
     if ("clientX" in event) showMenu({ x: event.clientX, y: event.clientY }, processMenu(row, event.target as Element));
     else {
@@ -865,14 +1008,7 @@ export default function Replica({
         setDeletedServices((prev) => [...prev, name]);
         setService(null);
       }
-      const display = serviceList.find((x) => x.name === name)?.display;
-      say(
-        action === "start"
-          ? `已启动“${display}”。`
-          : action === "stop"
-            ? `已停止“${display}”。`
-            : `已重新启动“${display}”。`,
-      );
+      // The list shows the new state; the app says nothing more.
     }, 800);
   };
   const serviceMenu = (event: MouseEvent, s: Service) => {
@@ -891,36 +1027,37 @@ export default function Replica({
       ...(["auto", "autoDelayed", "manual", "disabled"] as const).map((type) => ({
         label: `启动类型：${{ auto: "自动", autoDelayed: "自动（延迟启动）", manual: "手动", disabled: "禁用" }[type]}`,
         checked: s.start === type,
-        run: () => {
-          setStarts((m) => new Map(m).set(s.name, type));
-          say(
-            `“${s.display}”的启动类型已设为“${{ auto: "自动", autoDelayed: "自动（延迟启动）", manual: "手动", disabled: "禁用" }[type]}”。`,
-          );
-        },
+        run: () => setStarts((m) => new Map(m).set(s.name, type)),
       })),
       "-",
       { label: "转到进程", icon: "goTo", disabled: !s.pid || state !== "running", run: () => s.pid && showPid(s.pid) },
       { label: "打开文件位置", icon: "folder" },
-      ...copyEntries(event.target as Element, s.display, [
-        { label: "复制服务名称", run: () => copy(s.name, "服务名称") },
-      ]),
+      ...listCopy(event.target as Element, [{ label: "名称", run: () => copy(s.name, "服务名称") }], copy),
+      "-",
       {
         label: "删除",
         icon: "trash",
         danger: true,
-        disabled: pendingDeletes.includes(s.name),
         run: () =>
           setDialog({
             kind: "delete",
             title: `删除服务 ${s.display}？`,
-            body: `将删除服务 ${s.name} 及其配置，此操作无法撤销；服务的程序文件保留。`,
+            // What else to know: a running service goes once it stops; one of Windows's may be needed.
+            body: [
+              `将删除服务 ${s.name} 及其配置，此操作无法撤销；服务的程序文件保留。`,
+              ...(state !== "stopped" ? ["该服务尚未停止，Windows 将在其停止后移除。"] : []),
+              ...(/^"?c:\\windows\\/i.test(servicePath(s))
+                ? ["此服务的程序位于 Windows 文件夹中。删除可能导致系统功能失效，甚至使 Windows 无法启动。"]
+                : []),
+            ].join("\n"),
             accept: () => {
               if (state === "running") {
                 setPendingDeletes((names) => [...names, s.name]);
-                say(`已将服务 ${s.name} 标记为删除，该服务停止且不再被其他程序使用后由 Windows 移除。`);
+                say(`已将服务 ${s.display} 标记为删除，该服务停止且不再被其他程序使用后由 Windows 移除。`);
               } else {
                 setDeletedServices((names) => [...names, s.name]);
                 setService(null);
+                say(`已删除服务 ${s.display}。`);
               }
             },
           }),
@@ -938,9 +1075,38 @@ export default function Replica({
     if (event.ctrlKey && !event.altKey && /^[1-9]$/.test(event.key)) {
       event.preventDefault();
       go(pages[Number(event.key) - 1][0]);
-    } else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c" && page === "processes") {
-      event.preventDefault();
-      root.current?.querySelector<HTMLElement>("[data-details-copy]")?.click();
+    } else if (
+      // The process list: Ctrl+C copies the selected row's name, Ctrl+Shift+C
+      // its details as the pane lists them, unless text is selected (backend.rs).
+      event.ctrlKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "c" &&
+      page === "processes" &&
+      !typing &&
+      !getSelection()?.toString()
+    ) {
+      if (selectedRow) {
+        event.preventDefault();
+        if (event.shiftKey) copy(detailsText(selectedRow, sheetContext), "详细信息");
+        else copy(translate(selectedRow.label), "名称");
+      }
+    } else if (
+      // The other lists: Ctrl+C copies the selected row's name, Ctrl+Shift+C its
+      // details, unless text is selected (list_copy.rs).
+      event.ctrlKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === "c" &&
+      (page === "services" || page === "startup" || page === "connections") &&
+      !typing &&
+      !getSelection()?.toString()
+    ) {
+      const row = content.current?.querySelector<HTMLElement>(".a-tbody > .a-tr.is-selected");
+      if (row) {
+        event.preventDefault();
+        const { name, details } = rowCopy(row);
+        if (event.shiftKey) copy(details, "详细信息");
+        else copy(name, "名称");
+      }
     } else if (event.ctrlKey && event.key.toLowerCase() === "n") {
       event.preventDefault();
       setDialog({ kind: "run" });
@@ -1017,15 +1183,10 @@ export default function Replica({
           onChange={setView}
           iconsOnly
           items={[
-            {
-              value: "apps",
-              label: "按应用",
-              icon: "apps",
-              title: "按应用：同一程序的多个进程合并为一行",
-              tour: "view-apps",
-            },
-            { value: "tree", label: "进程树", icon: "tree", title: "进程树：按父子关系显示", tour: "view-tree" },
-            { value: "list", label: "列表", icon: "list", title: "列表：所有进程平铺显示", tour: "view-list" },
+            // Icons only, each named in its tooltip (layout.rs `page_bar_controls`).
+            { value: "apps", label: "按应用", icon: "apps", tour: "view-apps" },
+            { value: "tree", label: "进程树", icon: "tree", tour: "view-tree" },
+            { value: "list", label: "列表", icon: "list", tour: "view-list" },
           ]}
         />
         {hideToggle}
@@ -1054,21 +1215,25 @@ export default function Replica({
       </>
     ) : page === "services" ? (
       <>
+        {/* The tooltips name the action, the accessible names its object too. */}
         <Button
           icon="play"
-          title="启动服务"
+          title="启动"
+          label="启动服务"
           disabled={!service || serviceState !== "stopped"}
           onClick={() => service && control(service, "start")}
         />
         <Button
           icon="stop"
-          title="停止服务"
+          title="停止"
+          label="停止服务"
           disabled={!service || serviceState !== "running"}
           onClick={() => service && control(service, "stop")}
         />
         <Button
           icon="restart"
-          title="重新启动服务"
+          title="重新启动"
+          label="重新启动服务"
           disabled={!service || serviceState !== "running"}
           onClick={() => service && control(service, "restart")}
         />
@@ -1093,6 +1258,8 @@ export default function Replica({
         <Button
           className="h-follow"
           pressed={historyAt === null}
+          icon={historyAt === null ? undefined : "arrowRight"}
+          title={historyAt === null ? "暂停跟随最新读数" : "继续跟随最新读数（右键单击图表或按 End）"}
           onClick={()=>setHistoryAt(historyAt===null?(shared.recording.until??performance.now()/1000)-(motion!=="step"&&uiMotion&&historyRange==="5m"?(2*interval+250)/1000:0):null)}
         >
           {historyAt === null ? "实时" : "回到最新"}
@@ -1148,6 +1315,7 @@ export default function Replica({
         "argus-app" +
         (navLeft ? " is-nav-left" : "") +
         (navLeft && navOpen ? " is-nav-open" : "") +
+        (navDrag ? " is-nav-resizing" : "") +
         (maximized ? " is-max" : "") +
         (dragging ? " is-dragging" : "") +
         (tray ? " is-tray" : "")
@@ -1164,7 +1332,7 @@ export default function Replica({
       onBlur={(event) => {
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) {focused.current=false;setForeground(false)}
       }}
-      style={{ ...accent, "--a-rail": navLeft && navOpen ? "176px" : "48px", "--a-text": fontSize / 13 } as CSSProperties}
+      style={{ ...accent, "--a-rail": navLeft && navOpen ? navWidth + "px" : "48px", "--a-text": fontSize / 13 } as CSSProperties}
       onKeyDown={keys}
       onPointerOver={hoverIcons}
       onDragOver={(event) => {
@@ -1187,7 +1355,7 @@ export default function Replica({
       >
         <div className="a-titlebar" onDoubleClick={e=>{if(!(e.target as Element).closest("button,input,label"))setMaximized(v=>!v)}} role="toolbar" aria-label="工具栏">
           <div className="a-brand">
-            <img src="/assets/argus.svg" width="28" height="28" alt="" draggable={false} />
+            <Logo size={24} />
             <span>Argus</span>
           </div>
           {searchBox}
@@ -1199,7 +1367,7 @@ export default function Replica({
               title={pinned ? "取消置顶显示" : "置顶显示"}
               onClick={() => setPinned(!pinned)}
             >
-              <Icon name={pinned ? "unpin" : "pin"} size={14} />
+              <Icon name={pinned ? "pinFilled" : "pin"} size={14} />
             </button>
             <button type="button" aria-label="最小化" title="最小化" onClick={() => setTray("tray")}>
               <CaptionIcon name="minimize" />
@@ -1220,6 +1388,38 @@ export default function Replica({
         </div>
         <div className="a-frame">
           {navLeft && navigation}
+          {navLeft && navOpen && (
+            // The open rail's right edge: drag it, use the arrow keys, Home or
+            // End, or double-click for the default width (150–320 px).
+            <div
+              className={"a-nav-splitter" + (navDrag ? " is-dragging" : "")}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整导航栏宽度"
+              aria-valuenow={navWidth}
+              aria-valuemin={150}
+              aria-valuemax={320}
+              tabIndex={0}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setNavDrag({ x: event.clientX, width: navWidth });
+              }}
+              onPointerMove={(event) => {
+                if (!navDrag) return;
+                const k = scaleOf(event.currentTarget);
+                setNavWidth(Math.round(Math.min(320, Math.max(150, navDrag.width + (event.clientX - navDrag.x) / k))));
+              }}
+              onPointerUp={() => setNavDrag(null)}
+              onPointerCancel={() => setNavDrag(null)}
+              onDoubleClick={() => setNavWidth(184)}
+              onKeyDown={(event) => {
+                const next = { ArrowLeft: navWidth - 16, ArrowRight: navWidth + 16, Home: 150, End: 320 }[event.key];
+                if (next === undefined) return;
+                event.preventDefault();
+                setNavWidth(Math.min(320, Math.max(150, next)));
+              }}
+            />
+          )}
           <div className="a-body">
             <div className="a-page-bar">
               {navLeft ? <strong data-i18n="nav">{pages[pageIndex][1]}</strong> : navigation}
@@ -1236,9 +1436,10 @@ export default function Replica({
                     closeMenu();
                     return;
                   }
+                  // By the button's right edge, 4 px under it (layout.rs `open_anchored`).
                   const box = event.currentTarget.getBoundingClientRect();
                   showMenu(
-                    { x: box.right, y: box.bottom },
+                    { x: box.right, y: box.bottom + 4 * scaleOf(event.currentTarget) },
                     [
                       { label: "运行新任务…", icon: "runTask", hint: "Ctrl+N", run: () => setDialog({ kind: "run" }) },
                       {
@@ -1252,7 +1453,15 @@ export default function Replica({
                             {
                               label: "导出当前页为 CSV…",
                               icon: "download" as const,
-                              run: () => exportTable(content.current!, page),
+                              // Named after the page (and the process view), as the app names it.
+                              run: () => {
+                                const views = { apps: "按应用", tree: "进程树", list: "列表" };
+                                // The process table puts every row in the page for the export to read.
+                                flushSync(() => setExporting(true));
+                                exportTable(content.current!, pages[pageIndex][1], page === "processes" ? views[view] : undefined);
+                                setExporting(false);
+                                say("已导出 CSV 文件。");
+                              },
                             },
                           ]
                         : []),
@@ -1267,23 +1476,24 @@ export default function Replica({
                         : []),
                       ...(page === "history"
                         ? [
+                            "-" as const,
                             {
                               label: "显示最低到最高的范围",
                               checked: shared.historyBand,
                               run: () => store.set({ historyBand: !shared.historyBand }),
                             },
-                            { label: "历史记录设置…", icon: "settings" as const, run: () => goHistorySettings() },
+                            { label: "历史记录设置…", icon: "history" as const, run: () => goHistorySettings() },
                           ]
                         : []),
                       "-",
-                      { label: "快捷键", icon: "keyboard", run: () => setDialog({ kind: "shortcuts" }) },
+                      { label: "快捷键说明", icon: "keyboard", run: () => setDialog({ kind: "shortcuts", history: page === "history" }) },
                     ],
                     false,
                     "more",
                   );
                 }}
               >
-                •••
+                <Icon name="ellipsis" />
               </button>
             </div>
             <main
@@ -1316,9 +1526,15 @@ export default function Replica({
                       <ProcessTable
                         tick={tick}
                         rows={rows}
+                        whole={exporting}
+                        measured={measuredRows}
                         total={alive.length}
-                        onLeak={() => showPid(18340)}
-                        held={hold}
+                        leaks={leaks}
+                        onLeak={openLeakMenu}
+                        resource={resourcePriority}
+                        query={query}
+                        onClearSearch={() => setQueries((q) => ({ ...q, processes: "" }))}
+                        heldOrder={heldOrder}
                         hiddenCount={hideSystem.processes ? alive.length - listed.length : 0}
                         columns={shownColumns}
                         sizing={columnPrefs}
@@ -1356,6 +1572,9 @@ export default function Replica({
                           efficiency={efficiency}
                           priority={priority}
                           resourcePriority={resourcePriority}
+                          now={now}
+                          leaks={leaks}
+                          onIgnoreLeak={ignoreLeak}
                           onDeselect={() => setSelected(null)}
                           onEnd={end}
                           onSelectPid={showPid}
@@ -1401,18 +1620,37 @@ export default function Replica({
                     selected={service}
                     onSelect={setService}
                     onMenu={serviceMenu}
+                    onFilterMenu={filterMenu}
+                    onClear={() => {
+                      setServiceFilter("all");
+                      setQueries((q) => ({ ...q, services: "" }));
+                    }}
+                    onOpen={showPid}
                   />
                 )}
                 {page === "startup" && Startup && (
                   <Startup
-                    items={startup} onDelete={item => setDialog({kind:"delete",title:`删除启动项 ${item.name}？`,body:`将从${item.location}中删除“${item.name}”，此操作无法撤销；程序本身保留。`,accept:()=>setStartup(items=>items.filter(i=>i.name!==item.name))})}
+                    items={startup}
+                    onDelete={(item) =>
+                      setDialog({
+                        kind: "delete",
+                        title: `删除启动项 ${item.name}？`,
+                        // A file in a startup folder goes to the Recycle Bin.
+                        body: item.location.startsWith("启动文件夹")
+                          ? `将把${item.location}中的“${item.entry ?? item.name}”移到回收站；程序本身保留。`
+                          : `将从${item.location}中删除“${item.entry ?? item.name}”，此操作无法撤销；程序本身保留。`,
+                        accept: () => {
+                          setStartup((items) => items.filter((i) => i.name !== item.name));
+                          say(`已删除启动项 ${item.name}。`);
+                        },
+                      })
+                    }
                     query={queries.startup ?? ""}
                     onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
-                    onToggle={(name) => {
-                      const item = startup.find((i) => i.name === name)!;
-                      setStartup(startup.map((i) => (i.name === name ? { ...i, enabled: !i.enabled } : i)));
-                      say(item.enabled ? `已禁用“${name}”，下次登录时生效。` : `已启用“${name}”，下次登录时生效。`);
-                    }}
+                    onCopy={copy}
+                    onToggle={(name) =>
+                      setStartup(startup.map((i) => (i.name === name && !i.blocked ? { ...i, enabled: !i.enabled } : i)))
+                    }
                   />
                 )}
                 {page === "connections" && Connections && (
@@ -1426,6 +1664,17 @@ export default function Replica({
                     onShowAll={() => showAll("connections")}
                     onOpen={showPid}
                     onMenu={(event, items) => showMenu({ x: event.clientX, y: event.clientY }, items)}
+                    onFilterMenu={filterMenu}
+                    onClear={() => {
+                      setConnectionFilter("all");
+                      setQueries((q) => ({ ...q, connections: "" }));
+                    }}
+                    // The app's end dialog names the process by its image.
+                    onEnd={(pid) => {
+                      const proc = byPid.get(pid);
+                      if (proc) end({ ...rowFor(proc), label: proc.exe }, true);
+                    }}
+                    onCopy={copy}
                   />
                 )}
                 {page === "history" && History && (
@@ -1467,24 +1716,37 @@ export default function Replica({
                     onShortcuts={() => setDialog({ kind: "shortcuts" })}
                     onVisibility={() => setDialog({ kind: "visibility" })}
                     onSay={(text) => say(text, "info")}
+                    onAsk={(ask) => setDialog({ kind: "ask", ...ask })}
+                    onWhatsNew={() => setDialog({ kind: "whatsnew" })}
                   />
                 )}
                 {page === "about" && About && (
                   <About
                     tick={tick}
                     interval={interval}
-                    navLeft={navLeft}
-                    onNav={setNavLeft}
-                    onInterval={setIntervalMs}
                     onCopy={copy}
                     onQuit={() => setTray("exited")}
                     onSay={(text) => say(text, "info")}
+                    onWelcome={() => setDialog({ kind: "welcome" })}
+                    onWhatsNew={() => setDialog({ kind: "whatsnew" })}
                   />
                 )}
               </>
             </main>
             <footer className="a-status">
-              <button className="a-version" title={appVersion} onClick={()=>window.open((lang==="zh"?"":"/"+lang)+"/changelog/","_blank","noopener")} onContextMenu={e=>{e.preventDefault();copy(appVersion,"版本号")}}>v{appVersion}</button>
+              {/* This version's notes; a right click copies the version (layout.rs `version_badge`). */}
+              <button
+                type="button"
+                className="a-version"
+                title={`Argus ${appVersion} · 稳定版\n单击查看本版本的更新内容，右键复制版本号`}
+                onClick={() => setDialog({ kind: "whatsnew" })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  copy(appVersion, "版本号");
+                }}
+              >
+                v{appVersion}
+              </button>
               <span className="a-status-figures">
                 <span>
                   线程 <b>{thousands(threads)}</b>
@@ -1502,7 +1764,8 @@ export default function Replica({
                   已运行 <b>5 天 14 小时</b>
                 </span>
               </span>
-              {hold && page === "processes" && !paused && (
+              {/* Only while held rows are out of order and the pointer holds them (layout.rs). */}
+              {hold && heldOrder && !paused && (
                 <span
                   className="a-sort-held"
                   title="指针位于进程列表上，行位置保持不变，读数照常刷新；移出列表后按当前排序重新排列。"
@@ -1511,9 +1774,50 @@ export default function Replica({
                   排序已暂停
                 </span>
               )}
-              <div className="a-refresh">
-                <Select label="刷新频率" value={interval} onChange={setIntervalMs} displayLabel={paused || (ctrlHeld && sampled) ? "已暂停刷新" : `每 ${interval/1000} 秒刷新`} options={[500,1000,2000,5000].map(ms => ({value:ms,label:`每 ${ms/1000} 秒`}))}/>
-                <Button icon={paused ? "play" : "pause"} title={paused ? "继续刷新" : "暂停刷新"} pressed={paused} tour="pause" onClick={() => setPaused(!paused)}/>
+              {/* The reading opens the rates above it; the pause button stays at the
+                  end as the reading changes length (layout.rs `refresh_control`). */}
+              <div className={"a-refresh" + (paused ? " is-paused" : "")}>
+                <button
+                  type="button"
+                  className="a-refresh-rate"
+                  title="刷新频率"
+                  aria-label="刷新频率"
+                  aria-haspopup="menu"
+                  aria-expanded={menu?.anchor === "rate"}
+                  data-tour="rate"
+                  onClick={(event) => {
+                    if (menu?.anchor === "rate") {
+                      closeMenu();
+                      return;
+                    }
+                    const box = event.currentTarget.parentElement!.getBoundingClientRect();
+                    showMenu(
+                      { x: box.right, y: box.top - 4 * scaleOf(event.currentTarget) },
+                      [500, 1000, 2000, 5000].map((ms) => ({
+                        label: `每 ${ms / 1000} 秒`,
+                        checked: interval === ms,
+                        run: () => setIntervalMs(ms),
+                      })),
+                      false,
+                      "rate",
+                    );
+                  }}
+                >
+                  <i className="a-refresh-dot" />
+                  {paused || (ctrlHeld && sampled) ? "已暂停刷新" : `每 ${interval / 1000} 秒刷新`}
+                  <Icon name="chevronUp" size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="a-refresh-pause"
+                  aria-label={paused ? "继续刷新" : "暂停刷新"}
+                  aria-pressed={paused}
+                  title={`${paused ? "继续刷新" : "暂停刷新"}\n在进程页和性能页按住 Ctrl 可临时暂停`}
+                  data-tour="pause"
+                  onClick={() => setPaused(!paused)}
+                >
+                  <Icon name={paused ? "play" : "pause"} size={12} />
+                </button>
               </div>
               <span className="a-privilege" title="Argus 正以管理员身份运行，可查看和结束绝大多数进程">
                 <Icon name="shield" size={12} />
@@ -1527,8 +1831,9 @@ export default function Replica({
           <div
             className="a-scrim"
             ref={focusDialog}
-            // The column dialog keeps its draft: only its own buttons and Esc close it.
-            onPointerDown={(e) => e.target === e.currentTarget && dialog.kind !== "columns" && setDialog(null)}
+            // The column dialog keeps its draft, and the onboarding its step:
+            // only their own buttons and Esc close them.
+            onPointerDown={(e) => e.target === e.currentTarget && dialog.kind !== "columns" && dialog.kind !== "welcome" && setDialog(null)}
             onKeyDown={(event) => {
               // Enter confirms, as the dialog's primary button would.
               const target = event.target as HTMLElement;
@@ -1538,42 +1843,71 @@ export default function Replica({
               }
             }}
           >
-            {dialog.kind === "shortcuts" && (
-              <div className="a-dialog" role="dialog" aria-label="快捷键">
+            {dialog.kind === "shortcuts" && Shortcuts && (
+              <Shortcuts pages={pages} history={!!dialog.history} onClose={() => setDialog(null)} />
+            )}
+            {dialog.kind === "welcome" && Welcome && (
+              <Welcome
+                tick={tick}
+                interval={interval}
+                navLeft={navLeft}
+                onNav={setNavLeft}
+                onInterval={setIntervalMs}
+                motion={motion}
+                onMotion={setMotion}
+                uiMotion={uiMotion}
+                onUiMotion={setUiMotion}
+                close={() => setDialog(null)}
+              />
+            )}
+            {dialog.kind === "whatsnew" && WhatsNew && <WhatsNew onClose={() => setDialog(null)} />}
+            {dialog.kind === "ask" && (
+              // A page's confirmation (dialogs.rs `ask`): the accept button first, then Cancel.
+              <div className="a-dialog" role="alertdialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
                 <div className="a-dialog-body">
-                  <h3>快捷键</h3>
-                  {[
-                    ["Ctrl+1 … Ctrl+9", "页面"],
-                    ["Ctrl+F", "搜索"],
-                    ["Ctrl+N", "运行新任务"],
-                    ["Ctrl", "暂停刷新"],
-                  ].map(([key, label]) => (
-                    <p key={key}>
-                      <kbd>{key}</kbd> {label}
-                    </p>
-                  ))}
+                  <h3 id="a-dialog-title">{dialog.title}</h3>
+                  <p className="a-dialog-text">{dialog.body}</p>
                 </div>
                 <div className="a-dialog-foot">
-                  <Button onClick={() => setDialog(null)}>关闭</Button>
+                  <button
+                    type="button"
+                    className={"a-btn is-wide " + (dialog.danger ? "is-danger" : "is-accent")}
+                    data-primary
+                    onClick={() => {
+                      dialog.run();
+                      setDialog(null);
+                    }}
+                  >
+                    {dialog.accept}
+                  </button>
+                  <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)}>
+                    取消
+                  </button>
                 </div>
               </div>
             )}
             {dialog.kind === "delete" && (
-              <div className="a-dialog" role="alertdialog">
+              // A confirmation as the app's: the danger button first, then Cancel.
+              <div className="a-dialog" role="alertdialog" tabIndex={-1} aria-modal="true" aria-labelledby="a-dialog-title">
                 <div className="a-dialog-body">
-                  <h3>{dialog.title}</h3>
-                  <p>{dialog.body}</p>
+                  <h3 id="a-dialog-title">{dialog.title}</h3>
+                  <p className="a-dialog-text is-lines">{dialog.body}</p>
                 </div>
                 <div className="a-dialog-foot">
-                  <Button onClick={() => setDialog(null)}>取消</Button>
-                  <Button
+                  <button
+                    type="button"
+                    className="a-btn is-danger is-wide"
+                    data-primary
                     onClick={() => {
                       dialog.accept();
                       setDialog(null);
                     }}
                   >
                     删除
-                  </Button>
+                  </button>
+                  <button type="button" className="a-btn is-wide" onClick={() => setDialog(null)}>
+                    取消
+                  </button>
                 </div>
               </div>
             )}
@@ -1588,6 +1922,7 @@ export default function Replica({
                     onFiles={files}
                     onShow={showPid}
                     onEnd={(proc) => end(rowFor(proc), true)}
+                    onRestart={() => say("演示窗口不会重新启动资源管理器。", "info")}
                     footer={false}
                   />
                 </div>
@@ -1782,10 +2117,7 @@ export default function Replica({
                     type="button"
                     className="a-btn is-accent is-wide"
                     data-primary
-                    onClick={() => {
-                      setDialog(null);
-                      go("settings");
-                    }}
+                    onClick={openRules}
                   >
                     继续设置规则
                   </button>
@@ -1829,7 +2161,28 @@ export default function Replica({
               name={toast.tone === "error" ? "warning" : toast.tone === "info" ? "info" : "check"}
               className={toast.tone === "error" ? "is-error" : undefined}
             />
-            <p>{toast.text}</p>
+            {toast.actions ? (
+              <div className="a-toast-body">
+                <p>{toast.text}</p>
+                <div className="a-toast-actions">
+                  {toast.actions.map((action) => (
+                    <button
+                      type="button"
+                      className="a-btn is-small"
+                      key={action.label}
+                      onClick={() => {
+                        setToast(null);
+                        action.run();
+                      }}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p>{toast.text}</p>
+            )}
             <button type="button" className="a-icon-btn" aria-label="关闭" onClick={() => setToast(null)}>
               <Icon name="dismiss" size={12} />
             </button>
@@ -1908,7 +2261,8 @@ function Navigation({
       <nav className="a-nav a-nav-tabs" ref={tabs} aria-label="页面" role="tablist">
         {pages.map(([id, label, icon], i) => (
           <span key={id} style={{ display: "contents" }}>
-            {id === "settings" && <span className="a-nav-spacer" />}
+            {/* Components, Settings and About sit apart at the end (layout.rs). */}
+            {id === "components" && <span className="a-nav-spacer" />}
             <button
               type="button"
               role="tab"

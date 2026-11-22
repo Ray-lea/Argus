@@ -5,6 +5,9 @@ import { Icon } from "./icons";
 import { Button, Select } from "./widgets";
 import { store, useShared } from "./store";
 
+// The history's cards between "记录历史" and "已保存的历史" (history/settings.rs):
+// what is recorded, how long and how much is kept, how older days are merged,
+// and where the records are kept.
 const groups = [
   "处理器",
   "传感器",
@@ -18,6 +21,9 @@ const groups = [
   "进程：网络",
   "进程：显存与计数",
 ];
+// Read through the privileged service under standard rights; the demo runs as
+// administrator, so the service's part is ready.
+const byService = new Set(["传感器", "进程：网络"]);
 const description: Record<string, string> = {
   系统读数: "CPU、内存、磁盘、网络、GPU 与电池的总量",
   处理器: "内核时间、频率、封装功耗",
@@ -33,14 +39,34 @@ const description: Record<string, string> = {
   "进程：显存与计数": "专用显存、线程数、句柄数",
 };
 const details = ["保留全部 5 秒记录", "7 天后合并为每分钟", "30 天后合并为每分钟"];
-export default function HistorySettings() {
+const defaultPlace = "%LOCALAPPDATA%\\dev.argus.taskmanager\\history";
+// What a day of records takes now (MB), and a merged day beside it (12.8 %).
+const PER_DAY = 2.4,
+  MERGED = 0.13;
+const kept = (days: number, merge: number | null) =>
+  merge === null ? days * PER_DAY : Math.min(days, merge) * PER_DAY + Math.max(0, days - merge) * PER_DAY * MERGED;
+const mb = (value: number) => (value >= 1024 ? (value / 1024).toFixed(1) + " GB" : value.toFixed(1) + " MB");
+const Badge = ({ children, service }: { children: string; service?: boolean }) => (
+  <span className="h-record-badge">
+    {service && <Icon name="shieldCheck" size={12} />}
+    {children}
+  </span>
+);
+
+export default function HistorySettings({ onSay }: { onSay: (text: string) => void }) {
   const { recording: r } = useShared();
   const save = (patch: Partial<typeof r>) => store.set({ recording: { ...store.get().recording, ...patch } });
   const [location, setLocation] = useState<string | null>(null);
+  const merge = r.detail === details[0] ? null : r.detail === details[2] ? 30 : 7;
+  // How many days the limits keep at today's rate, and which one sets it.
+  let fit = 0;
+  if (r.size) while (fit < 3650 && kept(fit + 1, merge) <= r.size) fit++;
+  const days = r.days && r.size ? Math.min(r.days, fit) : r.days || fit;
+  const bySpace = !!r.size && (!r.days || fit < r.days);
   return (
     <>
       <div className="a-setting w-setting is-wide h-record-card">
-        <Icon name="storage" size={20} />
+        <Icon name="layers" size={20} />
         <div className="a-setting-text">
           <div>记录内容</div>
           <span>需要特权服务的读数在服务可用后开始记录。</span>
@@ -49,7 +75,9 @@ export default function HistorySettings() {
           <label>
             <input type="checkbox" checked disabled />
             <span>
-              系统读数 <small>始终记录</small>
+              <span className="h-record-name">
+                系统读数 <Badge>始终记录</Badge>
+              </span>
               <small>{description["系统读数"]}</small>
             </span>
           </label>
@@ -61,7 +89,10 @@ export default function HistorySettings() {
                 onChange={(e) => save({ off: e.target.checked ? r.off.filter((k) => k !== g) : [...r.off, g] })}
               />
               <span>
-                {g}
+                <span className="h-record-name">
+                  {g}
+                  {byService.has(g) && <Badge service>由特权服务提供</Badge>}
+                </span>
                 <small>{description[g]}</small>
               </span>
             </label>
@@ -82,73 +113,100 @@ export default function HistorySettings() {
             ]}
           />
         </div>
+        <p className="h-record-estimate">{`按当前选择，连续运行每天约占用 ${mb(PER_DAY * (r.count === 40 ? 1.6 : r.count === 0 ? 2.5 : 1))}。`}</p>
       </div>
       <div className="a-setting">
+        <Icon name="calendarRange" />
         <div className="a-setting-text">
           <div>保留上限</div>
-          <span>两项都设置时，先达到的上限生效；超出时按日期从早到晚删除。</span>
+          {!r.days && !r.size ? (
+            <span className="is-error">两项都不限时，历史记录会持续增长。</span>
+          ) : (
+            <>
+              <span>两项都设置时，先达到的上限生效；超出时按日期从早到晚删除。</span>
+              <span>{`按当前记录内容约可保存 ${days} 天（${bySpace ? "受空间上限限制" : "受时间上限限制"}，约 ${mb(kept(days, merge))}）。`}</span>
+            </>
+          )}
         </div>
-        <Select
-          label="时间"
-          value={r.days}
-          onChange={(days) => save({ days })}
-          options={[7, 14, 30, 90, 180, 365, 0].map((value) => ({ value, label: value ? value + " 天" : "不限" }))}
-        />
-        <Select
-          label="空间"
-          value={r.size}
-          onChange={(size) => save({ size })}
-          options={[256, 512, 1024, 2048, 5120, 10240, 0].map((value) => ({
-            value,
-            label: !value ? "不限" : value < 1024 ? value + " MB" : value / 1024 + " GB",
-          }))}
-        />
+        <div className="a-setting-controls">
+          <small className="h-limit-caption">时间</small>
+          <Select
+            label="时间"
+            value={r.days}
+            onChange={(days) => save({ days })}
+            options={[7, 14, 30, 90, 180, 365, 0].map((value) => ({
+              value,
+              label: !value ? "不限" : value === 365 ? "1 年" : value + " 天",
+            }))}
+          />
+          <small className="h-limit-caption">空间</small>
+          <Select
+            label="空间"
+            value={r.size}
+            onChange={(size) => save({ size })}
+            options={[256, 512, 1024, 2048, 5120, 10240, 0].map((value) => ({
+              value,
+              label: !value ? "不限" : value < 1024 ? value + " MB" : value / 1024 + " GB",
+            }))}
+          />
+        </div>
       </div>
       <div className="a-setting">
+        <Icon name="chartLine" />
         <div className="a-setting-text">
           <div>较早记录的精度</div>
-          <span>合并后保留每分钟的平均值、最高值与占用最高的进程，约为原大小的八分之一。</span>
+          {/* Keeping every record needs no words beyond the option's own name. */}
+          {merge !== null && <span>合并后保留每分钟的平均值、最高值与占用最高的进程，约为原大小的八分之一。</span>}
         </div>
-        <Select
-          label="较早记录的精度"
-          value={r.detail}
-          options={details.map((value) => ({ value, label: value }))}
-          onChange={(detail) => save({ detail })}
-        />
+        <div className="a-setting-controls">
+          <Select
+            label="较早记录的精度"
+            value={r.detail}
+            options={details.map((value) => ({ value, label: value }))}
+            onChange={(detail) => save({ detail })}
+          />
+        </div>
       </div>
       <div className="a-setting">
+        <Icon name="folder" />
         <div className="a-setting-text">
           <div>保存位置</div>
-          <span>{r.location}</span>
+          <span className="h-place">
+            <span translate="no">{r.location}</span>
+            {r.location === defaultPlace && <span className="h-place-default">（默认）</span>}
+          </span>
         </div>
-        {location !== null ? (
-          <>
-            <input
-              className="a-input"
-              aria-label="新位置"
-              autoFocus
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-            <Button
-              disabled={!location.trim()}
-              onClick={() => {
-                save({ location: location.trim() });
-                setLocation(null);
-              }}
-            >
-              更改位置
-            </Button>
-            <Button onClick={() => setLocation(null)}>取消</Button>
-          </>
-        ) : (
-          <>
-            <Button onClick={() => setLocation(r.location)}>更改…</Button>
-            <Button onClick={() => save({ location: "%LOCALAPPDATA%\\dev.argus.taskmanager\\history" })}>
-              恢复默认
-            </Button>
-          </>
-        )}
+        <div className="a-setting-controls">
+          {location !== null ? (
+            <>
+              <input
+                className="a-input"
+                aria-label="新位置"
+                autoFocus
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+              <Button
+                disabled={!location.trim()}
+                onClick={() => {
+                  save({ location: location.trim() });
+                  setLocation(null);
+                }}
+              >
+                更改位置
+              </Button>
+              <Button onClick={() => setLocation(null)}>取消</Button>
+            </>
+          ) : (
+            <>
+              <Button icon="folderOpen" onClick={() => onSay("演示窗口不会打开文件资源管理器。")}>
+                打开
+              </Button>
+              <Button onClick={() => setLocation(r.location)}>更改…</Button>
+              {r.location !== defaultPlace && <Button onClick={() => save({ location: defaultPlace })}>恢复默认</Button>}
+            </>
+          )}
+        </div>
       </div>
     </>
   );

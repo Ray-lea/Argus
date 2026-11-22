@@ -28,6 +28,29 @@ export function localRect(el: Element) {
 // Layout effects only run in the browser; the server render skips them quietly.
 export const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
+// The screen's refresh rate, from the median of 16 frames (60 until measured):
+// the curve choices name their frame rates with it (settings.rs `chart_select`).
+export function useRefreshRate() {
+  const [hz, setHz] = useState(60);
+  useEffect(() => {
+    let frame = 0,
+      previous = 0;
+    const periods: number[] = [];
+    const measure = (time: number) => {
+      if (previous) periods.push(time - previous);
+      previous = time;
+      if (periods.length < 16) frame = requestAnimationFrame(measure);
+      else {
+        periods.sort((a, b) => a - b);
+        setHz(Math.max(1, Math.round(1000 / periods[8])));
+      }
+    };
+    frame = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return hz;
+}
+
 // The interface's entrance curve (--a-ease, cubic-bezier(0.1, 0.9, 0.2, 1)) at time t.
 function enterEase(t: number) {
   const [x1, y1, x2, y2] = [0.1, 0.9, 0.2, 1];
@@ -279,8 +302,10 @@ export function Select<T extends string | number>({
       >
         {displayLabel && <span>{displayLabel}</span>}
         <span className="a-select-labels" hidden={!!displayLabel}>
+          {/* The others take room across, not up: the button is as wide as the
+              longest choice. Not `hidden`, which the site's base styles force out. */}
           {options.map((o, i) => (
-            <span key={String(o.value)} hidden={i !== selected} data-i18n={context}>
+            <span key={String(o.value)} data-off={i !== selected || undefined} aria-hidden={i !== selected || undefined} data-i18n={context}>
               {o.label}
             </span>
           ))}
@@ -310,6 +335,51 @@ export function Select<T extends string | number>({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/*
+ * One feature, one card (settings.rs `feature`): what it is and its state on
+ * top; below a hairline, what it reports beside what can be done, stacked
+ * where the buttons need the width.
+ */
+export function FeatureCard({
+  icon,
+  title,
+  desc,
+  state,
+  tone = "off",
+  note,
+  controls,
+  footer,
+  stacked,
+}: {
+  icon: UiIcon;
+  title: string;
+  desc: string;
+  state: string;
+  tone?: "ok" | "warn" | "off";
+  note: ReactNode;
+  controls?: ReactNode;
+  footer?: string;
+  stacked?: boolean;
+}) {
+  return (
+    <div className="a-feature">
+      <div className="a-feature-head">
+        <Icon name={icon} size={20} />
+        <div className="a-setting-text">
+          <div>{title}</div>
+          <span>{desc}</span>
+        </div>
+        <span className={"a-pill is-" + tone}>{state}</span>
+      </div>
+      <div className={"a-feature-foot" + (stacked ? " is-stacked" : "")}>
+        <div className="a-feature-note">{note}</div>
+        {controls && <div className="a-feature-controls">{controls}</div>}
+      </div>
+      {footer && <p className="a-feature-footer">{footer}</p>}
     </div>
   );
 }
@@ -408,7 +478,8 @@ export function Button({
       aria-label={label ?? (iconOnly ? title : undefined)}
       data-tour={tour}
     >
-      {icon && <Icon name={icon} size={small ? 14 : 16} />}
+      {/* A small button keeps the 16 px glyph (widgets.rs `btn_small`). */}
+      {icon && <Icon name={icon} size={16} />}
       {children}
     </button>
   );

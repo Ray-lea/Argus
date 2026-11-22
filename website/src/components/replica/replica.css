@@ -30,7 +30,9 @@
   --a-scrim: rgb(0 0 0 / 0.28);
   --a-cpu: #0a8bbd;
   --a-temp:#cf4f26; --a-group-bg:#c2407a; --a-group-win:#5c6e82;
+  --a-group-apps: #0067c0; --a-group-user-1: #0b8273; --a-group-user-2: #5c8700; --a-group-user-3: #4361d8;
   --a-cpu-e: #3a6fd6;
+  --a-npu: #3a6fd6;
   --a-mem: #6a52ec;
   --a-io: #c27a00;
   --a-net: #1f9d55;
@@ -93,7 +95,9 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
   --a-scrim: rgb(0 0 0 / 0.45);
   --a-cpu: #46cff4;
   --a-temp:#ff8966; --a-group-bg:#f28cb8; --a-group-win:#9aabbf;
+  --a-group-apps: #4cc2ff; --a-group-user-1: #45c8b4; --a-group-user-2: #b5d64c; --a-group-user-3: #9fb4ff;
   --a-cpu-e: #8eb2ff;
+  --a-npu: #8eb2ff;
   --a-mem: #9b8cff;
   --a-io: #f4b446;
   --a-net: #4fd18b;
@@ -134,7 +138,9 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
     --a-scrim: rgb(0 0 0 / 0.45);
     --a-cpu: #46cff4;
   --a-temp:#ff8966; --a-group-bg:#f28cb8; --a-group-win:#9aabbf;
+  --a-group-apps: #4cc2ff; --a-group-user-1: #45c8b4; --a-group-user-2: #b5d64c; --a-group-user-3: #9fb4ff;
     --a-cpu-e: #8eb2ff;
+    --a-npu: #8eb2ff;
     --a-mem: #9b8cff;
     --a-io: #f4b446;
     --a-net: #4fd18b;
@@ -592,7 +598,7 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
 .a-select-labels > span {
   grid-area: 1 / 1;
 }
-.a-select-labels > span[hidden] {
+.a-select-labels > span[data-off] {
   display: block;
   visibility: hidden;
   height: 0;
@@ -883,6 +889,46 @@ html:is(:lang(zh-TW), :lang(ja)) .argus-app { font-family: var(--font); --a-disp
 }
 .is-nav-left .a-nav .a-nav-spacer {
   display: block;
+}
+/* The open rail's right edge: 8 px across the border, its 2 × 32 px grip
+   showing on hover and focus, in the accent while dragged. */
+.a-nav-splitter {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  width: 8px;
+  margin: 0 -4px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.a-nav-splitter::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 2px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 1px;
+  background: var(--a-stroke-strong);
+  opacity: 0;
+}
+.a-nav-splitter:hover::before,
+.a-nav-splitter:focus-visible::before,
+.a-nav-splitter.is-dragging::before {
+  opacity: 1;
+}
+.a-nav-splitter.is-dragging::before {
+  background: var(--a-accent);
+}
+.is-nav-resizing .a-nav-pane {
+  transition: none;
+}
+@container argus (max-width: 760px) {
+  .a-nav-splitter {
+    display: none;
+  }
 }
 
 /* Body: the page above the status bar. */
@@ -1377,6 +1423,12 @@ button.a-th:active {
   background: transparent;
   color: var(--a-ink-2);
 }
+/* Before a row's icon the button overlaps the gap by 4 px, as the app's does
+   (cells.rs `name_cell`), so that its icon lines up with the rows that cannot
+   fold; the window's button reset would take the margin away. */
+.argus-app .a-td-name > .a-fold {
+  margin-right: -4px;
+}
 .a-fold:hover {
   background: var(--a-hover);
   color: var(--a-ink);
@@ -1447,9 +1499,18 @@ button.a-th:active {
   flex: none;
   color: var(--a-ink-2);
 }
-/* Category headings: 14 px names, an accent pill and a fading rule; their totals 12 px. */
+/* Category headings: a square in the group's colour, 14 px names, a count
+   pill and a rule fading out in that colour; their totals 12 px
+   (tables/cells.rs, tables/groups.rs). */
 .a-tr.a-group {
   cursor: default;
+}
+.a-group-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--group, var(--a-accent));
 }
 .a-group .a-td {
   color: var(--a-ink-3);
@@ -1480,8 +1541,8 @@ button.a-th:active {
   min-width: 22px;
   padding: 0 7px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
-  color: color-mix(in srgb, var(--a-accent) 78%, var(--a-ink));
+  background: color-mix(in srgb, var(--group, var(--a-accent)) 18%, transparent);
+  color: color-mix(in srgb, var(--group, var(--a-accent)) 78%, var(--a-ink));
   font-size: calc(11px * var(--a-text));
   font-weight: 600;
   line-height: 18px;
@@ -1490,11 +1551,20 @@ button.a-th:active {
 .a-group.is-nested .a-td-name {
   padding-left: 26px;
 }
-/* A user's heading (grouped by user): on the hover tint, its name at 14 px
-   with the process count beside it. */
+/* A user's heading (grouped by user): the user's mark in a circle of the
+   group's colour, its name at 14 px with the process count beside it. */
 .a-tr.a-user {
-  background: var(--a-hover);
   cursor: default;
+}
+.a-user-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--group) 18%, transparent);
+  color: var(--group);
 }
 .a-user .a-td {
   color: var(--a-ink-3);
@@ -1505,10 +1575,6 @@ button.a-th:active {
 }
 .a-user .a-td-name .a-fold {
   margin-right: 0;
-}
-.a-user .a-td-name > .ico {
-  flex: none;
-  color: var(--a-ink-2);
 }
 .a-user-name {
   flex: 0 1 auto;
@@ -1522,13 +1588,59 @@ button.a-th:active {
 .a-user-detail {
   flex: none;
   color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
 }
 .a-group-rule {
   flex: 1;
   min-width: 0;
   height: 1px;
   margin-left: 4px;
-  background: linear-gradient(90deg, var(--a-stroke-strong), transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--group, var(--a-accent)) 35%, transparent), transparent);
+}
+/* Each heading in its group's colour (tables/groups.rs `Tone`). */
+.a-ptable [data-tone="apps"] {
+  --group: var(--a-group-apps);
+}
+.a-ptable [data-tone="background"] {
+  --group: var(--a-group-bg);
+}
+.a-ptable [data-tone="windows"],
+.a-ptable [data-tone="system"] {
+  --group: var(--a-group-win);
+}
+.a-ptable [data-tone="user1"] {
+  --group: var(--a-group-user-1);
+}
+.a-ptable [data-tone="user2"] {
+  --group: var(--a-group-user-2);
+}
+.a-ptable [data-tone="user3"] {
+  --group: var(--a-group-user-3);
+}
+/* A heading's tint over the list; held at the top, an opaque face. */
+.a-ptable .a-tr:is(.a-group, .a-user) {
+  --a-row-tint: color-mix(in srgb, var(--group) 8%, transparent);
+  background: var(--a-row-tint);
+}
+.a-ptable .a-tr:is(.a-group, .a-user):hover {
+  background: var(--a-row-tint);
+}
+.a-ptable .a-tr[data-held] {
+  position: sticky;
+  z-index: 5;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--group) 8%, var(--a-surface));
+}
+.a-ptable .a-tr[data-lowest] {
+  box-shadow: inset 0 -1px 0 var(--a-stroke-strong);
+}
+/* Rows passing under the held headings keep their names below them. */
+.a-ptable .a-tr[data-under] > .a-col-name {
+  z-index: auto;
+}
+/* While a search shows every match, a heading cannot fold. */
+.a-ptable .a-tr.is-locked .a-fold {
+  opacity: 0.4;
 }
 .a-empty {
   display: grid;
@@ -1551,6 +1663,48 @@ button.a-th:active {
   width: min(348px,45cqw);
   min-height: 0;
   border-left: 1px solid var(--a-stroke);
+  position: relative;
+}
+/* The handle on the pane's left edge, over its separator: a grip shows under
+   the pointer, in the accent while dragged (details.rs `details_splitter`). */
+.a-details-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  z-index: 2;
+  width: 8px;
+  cursor: col-resize;
+  outline: none;
+}
+.a-details-splitter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 2px;
+  height: 32px;
+  margin-top: -16px;
+  border-radius: 1px;
+  background: var(--a-stroke-strong);
+  opacity: 0;
+}
+.a-details-splitter:hover::after,
+.a-details-splitter:focus-visible::after,
+.a-details-splitter.is-dragging::after {
+  opacity: 1;
+}
+.a-details-splitter.is-dragging::after {
+  background: var(--a-accent);
+}
+/* Below the details: ending the process. */
+.a-details-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+}
+.a-facts .is-faint {
+  color: var(--a-ink-3);
 }
 .a-details-body {
   display: flex;
@@ -1612,6 +1766,14 @@ button.a-th:active {
 .a-details-tools {
   display: flex;
   flex: none;
+  gap: 2px;
+}
+.a-details-tools.is-stack {
+  flex-direction: column;
+  align-items: flex-end;
+}
+.a-details-tools > div {
+  display: flex;
   gap: 2px;
 }
 .a-minis {
@@ -1909,7 +2071,8 @@ button.a-th:active {
   flex: none;
   flex-direction: column;
   gap: 4px;
-  width: 248px;
+  /* As wide as dragged at the line beside it (Performance.tsx), at most half the page. */
+  width: max(200px, min(var(--side, 248px), 440px, 50%));
   padding-right: 10px;
   overflow-y: auto;
   scrollbar-width: none;
@@ -1958,11 +2121,23 @@ button.a-th:active {
 .a-rail.is-dragging .a-rail-item {
   transition: transform 180ms var(--a-ease-move);
 }
+/* The dragged row rises over the list, opaque; its place stays as a tinted slot. */
 .a-rail.is-dragging .a-rail-item.is-lifted {
   z-index: 2;
-  background: var(--a-layer);
-  border-color: var(--a-stroke);
+  background: linear-gradient(var(--a-layer-strong), var(--a-layer-strong)), var(--a-window);
+  border-color: color-mix(in srgb, var(--a-accent) 55%, transparent);
+  cursor: grabbing;
   transition: none;
+}
+.a-rail-slot {
+  position: absolute;
+  top: 0;
+  right: 10px;
+  left: 0;
+  height: 58px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
+  pointer-events: none;
 }
 .a-rail.is-dragging .a-rail-mark {
   transition: none;
@@ -2007,9 +2182,25 @@ button.a-th:active {
   position: absolute;
   inset: 0;
 }
+/* The line between the list and the card: dragged, it resizes the list. */
 .a-perf-gap {
+  display: flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
   width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.a-perf-gap > i {
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--a-stroke-strong);
+  visibility: hidden;
+}
+.a-perf-gap:hover > i {
+  visibility: visible;
 }
 .a-perf-main {
   display: flex;
@@ -2022,6 +2213,8 @@ button.a-th:active {
   border-radius: 8px;
   background: var(--a-layer);
   scrollbar-gutter: stable;
+  /* The views size their charts by the card's height (`cqh`). */
+  container: perf / size;
 }
 /* What moves in (widgets.tsx slideIn) keeps its own layer for good: the
    layer dropped when a move ended, a scrolling list inside was drawn again a
@@ -2117,6 +2310,34 @@ button.a-th:active {
 .a-chart-caption > span:last-child {
   flex: none;
 }
+/* The name and top follow the frame in the document (perfParts.tsx Chart). */
+.a-chart > .a-chart-caption.is-top {
+  order: -1;
+}
+/* A card at most 640 px high takes the captions into the frames, at 11 px,
+   7 px from the sides, 4 px from the top and 3 px from the bottom: over the
+   curve, under its readout. */
+@container perf (max-height: 640px) {
+  .a-chart.is-boxed {
+    position: relative;
+  }
+  .a-chart.is-boxed > .a-chart-caption {
+    position: absolute;
+    right: 7px;
+    left: 7px;
+    z-index: 1;
+    margin: 0;
+    font-size: calc(11px * var(--a-text));
+    line-height: 1.4;
+    pointer-events: none;
+  }
+  .a-chart.is-boxed > .a-chart-caption.is-top {
+    top: 4px;
+  }
+  .a-chart.is-boxed > .a-chart-caption.is-foot {
+    bottom: 3px;
+  }
+}
 .a-chart-frame {
   --c: var(--a-cpu);
   position: relative;
@@ -2129,7 +2350,8 @@ button.a-th:active {
 }
 .a-chart.is-fill .a-chart-frame {
   flex: 1 1 0;
-  min-height: 168px;
+  /* The main charts' least height before the view scrolls (performance.rs MAIN_MIN). */
+  min-height: 120px;
 }
 .a-chart-frame .curve {
   position: absolute;
@@ -2203,7 +2425,7 @@ button.a-th:active {
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
 .a-stats {
   display: flex;
@@ -2223,15 +2445,33 @@ button.a-th:active {
 .a-stats.is-cpu .a-figures {
   flex-grow: 1;
 }
+/* Where the figures' share holds fewer than three columns, the specs go under
+   them, spread over columns of their own (Performance.tsx statsLayout). */
+.a-stats.is-stacked {
+  flex-direction: column;
+  gap: 20px;
+}
+.a-stats.is-stacked > * {
+  width: 100%;
+}
+.a-spec-columns {
+  display: grid;
+  flex: 1 1 0;
+  align-items: start;
+  gap: 0 20px;
+  min-width: 0;
+}
 .a-figures > div {
   min-width: 0;
 }
+/* A long label wraps to a second line instead of being cut off. */
 .a-figures dt {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .a-figures dd {
   display: flex;
@@ -2246,6 +2486,10 @@ button.a-th:active {
   margin-left: 2px;
   color: var(--a-ink-2);
   font-size: calc(13px * var(--a-text));
+}
+/* "12.8 GB (512 MB)": the compressed part after the memory in use. */
+.a-figures dd .a-paren {
+  margin-left: 6px;
 }
 .a-figures dd + dd {
   display: block;
@@ -2277,13 +2521,13 @@ button.a-th:active {
   display: block;
 }
 /* Columns as Performance.tsx picks them for the grid's size; rows share the
-   height left and flatten to the cards' fit height (theme.json coreFitHeight)
-   before the view scrolls. */
+   height left and flatten to the cards' least height (caption and plot,
+   --row) before the view scrolls. */
 .a-cores-grid {
   display: grid;
   flex: 1 1 0;
   grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
-  grid-auto-rows: minmax(60px, 1fr);
+  grid-auto-rows: minmax(var(--row, 60px), 1fr);
   gap: 6px;
 }
 .a-core {
@@ -2297,41 +2541,64 @@ button.a-th:active {
     opacity: 0;
   }
 }
+/* A card's caption (performance.rs core_card): type badge, number and
+   frequency at the left, load at the right; the frequency, then the whole
+   caption, are left out where the card is too small for them. */
 .a-core-head {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   height: 22px;
-  color: var(--a-ink-2);
-  font-size: calc(12px * var(--a-text));
+  padding: 0 1px 3px;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.a-core-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .a-core-head b {
   color: var(--a-ink);
+  font-size: calc(12px * var(--a-text));
   font-weight: 500;
 }
+.a-core-clock {
+  min-width: 0;
+  margin-left: 2px;
+  overflow: hidden;
+  color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  text-overflow: ellipsis;
+}
 .a-core-head strong {
-  margin-left: auto;
+  display: flex;
+  flex: none;
+  align-items: baseline;
   color: var(--a-ink);
+  font-size: calc(13px * var(--a-text));
   font-weight: 600;
 }
 .a-core-head strong small {
   margin-left: 1px;
   color: var(--a-ink-2);
-  font-size: calc(11px * var(--a-text));
+  font-size: calc(10.5px * var(--a-text));
   font-weight: 400;
 }
 .a-kind {
-  display: inline-grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--c) 22%, transparent);
-  color: color-mix(in srgb, var(--c) 70%, var(--a-ink));
-  font-size: calc(9px * var(--a-text));
+  flex: none;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  color: color-mix(in srgb, var(--c), var(--a-ink) 30%);
+  font-size: calc(10px * var(--a-text));
   font-weight: 700;
+  line-height: 15px;
+  text-align: center;
 }
 .a-core .a-chart-frame {
   flex: 1 1 0;
@@ -2343,27 +2610,53 @@ button.a-th:active {
   display: flex;
   flex: none;
   height: 28px;
-  margin-top: 16px;
+  margin-top: 14px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--a-mem) 45%, transparent);
   border-radius: 4px;
-  background: var(--a-surface);
 }
+/* A new sample eases the parts to their new shares (Performance.tsx `MemoryBar`). */
 .a-membar i {
+  flex: none;
   height: 100%;
-  transition: width 600ms var(--a-ease-move);
+  transform-origin: 0 0;
 }
-.a-membar i + i {
-  border-left: 1px solid var(--a-surface);
+/* The composition's parts, in the bar and on the legend's swatches (which
+   explain them on hover). */
+.a-membar .is-mem,
+.a-mem-legend .is-mem {
+  background: color-mix(in srgb, var(--a-mem) 55%, transparent);
 }
-.a-legend .is-mem {
-  --c: color-mix(in srgb, var(--a-mem) 62%, transparent);
+.a-membar .is-mem-mod,
+.a-mem-legend .is-mem-mod {
+  background: color-mix(in srgb, var(--a-mem) 90%, transparent);
 }
-.a-legend .is-mem-mod {
-  --c: var(--a-mem);
+.a-membar .is-mem-standby,
+.a-mem-legend .is-mem-standby {
+  background: color-mix(in srgb, var(--a-mem) 20%, transparent);
 }
-.a-legend .is-mem-standby {
-  --c: color-mix(in srgb, var(--a-mem) 22%, transparent);
+.a-mem-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 0 18px;
+  margin-top: 6px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-mem-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.a-mem-legend i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.a-mem-legend .is-hollow {
+  border: 1px solid var(--a-stroke-strong);
 }
 .a-cards {
   display: flex;
@@ -2398,24 +2691,106 @@ button.a-th:active {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.a-card-sub {
-  margin: 0 0 10px;
-  font-weight: 500;
+/* A head that ends in a control: it overhangs the title's line rather than
+   heighten the head, and takes a line of its own, at the right, where the
+   title leaves it too little room. */
+.a-card-head.has-control {
+  flex-wrap: wrap;
 }
+.a-card-control {
+  display: flex;
+  flex: 1 0 auto;
+  justify-content: flex-end;
+  margin: -6px 0;
+}
+/* The CPU's details (CpuDetails.tsx, the app's performance/telemetry.rs). */
+.a-cpu-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.a-cpu-info-label {
+  color: var(--a-ink-2);
+}
+/* Instruction sets as tags under their label. */
 .a-flags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: -4px;
 }
 .a-flags span {
-  padding: 0 6px;
+  padding: 1px 6px;
   border-radius: 4px;
-  background: var(--a-hover-strong);
+  background: color-mix(in srgb, var(--a-ink) 6%, transparent);
   color: var(--a-ink-2);
-  font-family: var(--a-mono);
   font-size: calc(11px * var(--a-text));
-  line-height: 20px;
+  line-height: 16px;
+}
+/* The temperature and power charts: 22% of the card's height, 110–220 px. */
+.a-cpu-charts .a-chart-frame {
+  height: clamp(110px, 22cqh, 220px);
+}
+.a-group-title {
+  display: block;
+  margin-bottom: 12px;
+  font-size: calc(13px * var(--a-text));
+  font-weight: 500;
+}
+/* The internal sensors' groups, in columns at least 280 px wide, each its
+   readings in columns at least 125 px wide. */
+.a-sensor-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px 28px;
+}
+.a-sensor-groups > div {
+  min-width: 0;
+}
+.a-readings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  gap: 12px 18px;
+}
+.a-readings.is-idle {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.a-idle {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+/* A compact table: 12 px, right-aligned figures under a header in the
+   secondary ink; it scrolls sideways where its columns do not fit. */
+.a-sensor-table {
+  padding-bottom: 10px;
+  overflow-x: auto;
+}
+.a-sensor-table > div {
+  display: grid;
+  min-width: 100%;
+  font-size: calc(12px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+.a-sensor-table > div > span {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--a-stroke);
+  text-align: end;
+  white-space: nowrap;
+}
+.a-sensor-table .is-first {
+  text-align: start;
+}
+.a-sensor-table .is-head {
+  color: var(--a-ink-2);
+}
+/* A limit in effect. */
+.a-sensor-table .is-alert {
+  color: var(--a-danger);
+}
+.a-head-cell small {
+  margin-left: 4px;
+  font-size: calc(10px * var(--a-text));
 }
 
 /* Disk details (DiskDetails.tsx, the app's performance/disk_details.rs): the
@@ -2543,6 +2918,19 @@ button.a-th:active {
 .a-disk-reading small {
   color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
+}
+/* A hard disk's health (disk_details/legacy.rs): its state and temperature as
+   readings, the counts it keeps under a rule. */
+.a-hdd-health {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.a-hdd-health .a-disk-readings {
+  margin-top: 0;
+}
+.a-disk-reading.is-good > b {
+  color: var(--a-net);
 }
 .a-disk-device {
   display: grid;
@@ -2681,45 +3069,95 @@ button.a-th:active {
 .a-smart-row.is-head .a-smart-name {
   color: var(--a-ink);
 }
-.a-engine-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  color: var(--a-ink);
-  font-weight: 500;
+/* The GPU's engine charts (performance/engines.rs), placed as engineGrid.ts
+   plans them, and the memory charts under them: the two share the height,
+   split at the handle between them. */
+.a-gpu-charts {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
 }
 .a-engines {
   display: grid;
   flex: 1 1 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  min-height: 150px;
 }
-.a-engines.is-rows {
-  grid-template-columns: 1fr;
-}
-.a-engines.is-focus {
-  grid-template-columns: 2fr 1fr;
-  grid-template-rows: 1fr 1fr;
-}
-.a-engines.is-focus > :first-child {
-  grid-row: 1 / 3;
-}
-.a-engines .a-chart {
+.a-engine {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
-.a-engines .a-chart-frame {
+.a-engine-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 22px;
+  padding: 0 1px 3px;
+  white-space: nowrap;
+}
+.a-engine-head > b {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  font-size: calc(13px * var(--a-text));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.a-engine-head > b small {
+  margin-left: 1px;
+  color: var(--a-ink-2);
+  font-size: calc(10.5px * var(--a-text));
+  font-weight: 400;
+}
+/* Each chart's engine, chosen from a compact drop-down. */
+.a-engine-select {
+  min-width: 0;
+}
+.a-engine-select .a-select,
+.a-engine-select .a-select:hover,
+.a-engine-select .a-select[aria-expanded="true"] {
+  gap: 2px;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: calc(12px * var(--a-text));
+  font-weight: 500;
+}
+.a-engine .a-chart-frame {
   flex: 1 1 0;
   height: auto;
-  min-height: 60px;
+  min-height: 0;
 }
 .a-engine-split {
+  position: relative;
   flex: none;
+  height: 18px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.a-engine-split > i {
+  position: absolute;
+  top: 8px;
+  left: 50%;
   width: 40px;
   height: 2px;
-  margin: 8px auto;
+  margin-left: -20px;
   border-radius: 1px;
   background: var(--a-stroke-strong);
+  opacity: 0.45;
+}
+.a-engine-split:hover > i {
+  opacity: 1;
+}
+.a-gpu-charts > .a-gpu-memory {
+  flex: 1 1 0;
+}
+.a-gpu-memory .a-chart {
+  min-height: 0;
 }
 
 /* List pages: one card, the table and its footer. */
@@ -2740,14 +3178,18 @@ button.a-th:active {
   border-radius: 8px;
   background: var(--a-layer);
 }
+/* The service and startup lists' widths are set by their contents (Pages.tsx
+   `useListColumns`); these are the app's for its own lists, until measured.
+   A column dragged to a width (--col-<key>) keeps it; the last takes the rest. */
 .a-services {
-  --cols:min(var(--col-display,var(--measure-display,228px)),26%) min(var(--col-name,var(--measure-name,136px)),17%) var(--col-pid,68px) var(--col-state,var(--measure-state,96px)) min(var(--col-start,var(--measure-start,128px)),21%) minmax(54px,1fr);
+  --cols: var(--col-display, 248px) var(--col-name, 120px) var(--col-pid, 64px) var(--col-state, 86px) var(--col-start, 124px) minmax(240px, 1fr);
 }
 .a-startup {
-  --cols:min(var(--col-name,var(--measure-name,190px)),24%) min(var(--col-publisher,var(--measure-publisher,160px)),21%) var(--col-enabled,112px) min(var(--col-location,var(--measure-location,178px)),23%) minmax(60px,1fr);
+  --cols: var(--col-name, 192px) var(--col-publisher, 152px) var(--col-enabled, 108px) var(--col-location, 184px) minmax(240px, 1fr);
 }
 .a-connections {
-  --cols: minmax(180px, 1.1fr) 72px 84px minmax(130px, 0.9fr) 88px minmax(130px, 0.9fr) 88px 96px;
+  --cols: var(--col-name, minmax(180px, 1.1fr)) var(--col-pid, 72px) var(--col-protocol, 104px) var(--col-local, minmax(130px, 0.9fr))
+    var(--col-localPort, 88px) var(--col-remote, minmax(130px, 0.9fr)) var(--col-remotePort, 88px) var(--col-state, 96px);
 }
 .a-mono {
   font-family: var(--a-mono);
@@ -2768,16 +3210,6 @@ button.a-th:active {
 }
 .a-dot.is-busy {
   background: var(--a-io);
-  animation: a-blink 600ms ease infinite alternate;
-}
-@keyframes a-blink {
-  to {
-    opacity: 0.3;
-  }
-}
-.a-hit {
-  color: var(--a-accent);
-  font-weight: 600;
 }
 .a-list-foot {
   display: flex;
@@ -3002,8 +3434,11 @@ button.a-th:active {
   border-radius: 6px;
   background: var(--a-layer);
 }
+/* The cards' glyph is 20 px (settings.rs `glyph`). */
 .a-setting > .ico {
+  flex: none;
   width: 20px;
+  height: 20px;
 }
 .a-setting-text {
   display: flex;
@@ -3033,8 +3468,103 @@ button.a-th:active {
   color: var(--a-ink);
   font-variant-numeric: tabular-nums;
 }
+/* The appearance boxes: 4.5em of the 13 px text across, the line and 12 px
+   high (settings.rs `appearance_setting`), 6 px from their unit. */
+.a-setting-controls > .a-number[inputmode="numeric"] {
+  width: calc(58.5px * var(--a-text));
+  height: calc(18.2px * var(--a-text) + 12px);
+  margin-right: -2px;
+  padding: 0 7px;
+}
 .a-unit {
+  color: var(--a-ink);
+}
+/* The history's cards (history/settings.rs): a quiet framed note beside an
+   option, the day's estimate under the options, captions before the limits,
+   the folder in ink with "（默认）" faint. */
+.h-record-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.h-record-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 4px;
   color: var(--a-ink-2);
+  font-size: calc(11px * var(--a-text));
+  white-space: nowrap;
+}
+.h-record-estimate {
+  grid-column: 2;
+  margin: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.h-limit-caption {
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-setting-text .is-error {
+  color: var(--a-danger);
+}
+.a-setting-text .h-place {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--a-ink);
+}
+.a-setting-text .h-place span {
+  margin-top: 0;
+  color: inherit;
+}
+.a-setting-text .h-place .h-place-default {
+  color: var(--a-ink-3);
+}
+/* What the history takes (history/settings.rs `history_saved_card`): the
+   summary, a 6 px bar of its parts and their legend. */
+.h-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.a-setting-text .h-saved span {
+  margin-top: 0;
+}
+.h-saved-bar {
+  display: flex;
+  width: 100%;
+  max-width: 360px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--a-stroke);
+}
+.h-saved-bar i {
+  height: 100%;
+}
+.h-saved-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.h-saved-parts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.h-saved-parts > span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--part);
 }
 .a-pill {
   display: inline-flex;
@@ -3057,6 +3587,116 @@ button.a-th:active {
 }
 .a-pill.is-ok::before {
   background: var(--a-net);
+}
+.a-pill.is-warn::before {
+  background: var(--a-io);
+}
+/* A feature card (settings.rs `feature`): the head as a setting's, its state
+   on the right; under a hairline the note and the buttons, 52 px in. */
+.a-feature {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-layer);
+}
+.a-feature-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+}
+.a-feature-head > .ico {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.a-feature-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 16px 8px 52px;
+  border-top: 1px solid var(--a-stroke);
+}
+.a-feature-foot.is-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.a-feature-note,
+.a-feature-footer {
+  flex: 1;
+  min-width: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-feature-note > span {
+  display: block;
+}
+.a-feature-controls {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.is-stacked > .a-feature-note,
+.is-stacked > .a-feature-controls {
+  width: 100%;
+}
+.a-feature-footer {
+  margin: 0;
+  padding: 0 16px 12px 52px;
+  color: var(--a-ink-3);
+}
+/* The hotkey card's drawer (settings.rs `hotkey_card`): it comes down 6 px
+   while fading in; the keys show dashed while the shortcut is off. */
+.a-hotkey {
+  overflow: hidden;
+}
+/* The card takes the keys while it records; it shows no ring for that. */
+.a-hotkey:focus,
+.a-hotkey:focus-visible {
+  outline: none;
+}
+.a-hotkey-drawer {
+  animation: demo-drawer 250ms var(--a-ease);
+}
+@keyframes demo-drawer {
+  from {
+    margin-top: -6px;
+    opacity: 0;
+  }
+}
+.a-hotkey-drawer .a-feature-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 0;
+}
+.a-hotkey-drawer .is-error {
+  color: var(--a-danger);
+}
+.a-feature-note > .a-hotkey-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-ink);
+}
+.a-hotkey-done > .ico {
+  color: var(--a-accent);
+}
+.a-hotkey-wait {
+  padding: 2px 8px;
+  border: 1px dashed var(--a-stroke-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--a-control);
+}
+.a-keys.is-off kbd {
+  border-style: dashed;
+  color: var(--a-ink-2);
 }
 .a-keys {
   display: flex;
@@ -3373,8 +4013,19 @@ button.a-th:active {
   display: grid;
   place-items: center;
   padding: 16px;
+}
+/* The dim is a layer of its own, as in the app: it fades in and out over
+   167 ms, linearly, apart from the dialog's own fade (dialogs.rs `Scrim`). */
+.a-scrim::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--a-scrim);
-  animation: a-fade 250ms var(--a-ease);
+  animation: a-fade 167ms linear;
+}
+.argus-app[data-motion-off] .a-scrim::before {
+  animation: none;
 }
 .a-dialog:focus-visible {
   outline: none;
@@ -3441,6 +4092,10 @@ button.a-th:active {
   margin: 10px 0 0;
   color: var(--a-ink-2);
 }
+/* A confirmation's text with what else to know on lines of their own (a deletion's). */
+.a-dialog-text.is-lines {
+  white-space: pre-line;
+}
 .a-dialog-foot {
   display: flex;
   flex: none;
@@ -3461,6 +4116,601 @@ button.a-th:active {
   min-width: 0;
   margin: 0;
   color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+/* "快捷键说明" (settings.rs `shortcuts_dialog`), 780 px wide. */
+.a-dialog.is-shortcuts {
+  width: min(780px, 100%);
+}
+.a-dialog.is-shortcuts > .a-dialog-body {
+  padding: 0;
+}
+.a-shortcuts-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--a-stroke);
+}
+.a-shortcuts-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--a-accent) 24%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--a-accent) 10%, transparent);
+  color: var(--a-accent);
+}
+.a-shortcuts-head > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.a-shortcuts-head p,
+.a-shortcut-card p,
+.a-shortcut-group li > span:first-child {
+  margin: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-shortcuts-body {
+  padding: 20px 24px;
+}
+.a-shortcut-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.a-shortcut-card {
+  padding: 14px 16px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 8px;
+  background: var(--a-layer);
+}
+.a-shortcut-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+.a-shortcut-card-head > .ico {
+  color: var(--a-accent);
+}
+.a-shortcut-card-head small {
+  margin-left: auto;
+  color: var(--a-ink-3);
+  font-size: calc(10px * var(--a-text));
+  font-weight: 400;
+}
+.a-shortcut-card p {
+  margin-top: 9px;
+  line-height: 1.6;
+}
+.a-shortcut-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.a-shortcut-keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.a-shortcut-keys small {
+  color: var(--a-ink-3);
+  font-size: calc(10px * var(--a-text));
+}
+.a-shortcut-keys kbd,
+.a-shortcut-gesture {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 25px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 5px;
+  color: var(--a-ink);
+  font: inherit;
+  font-size: calc(11px * var(--a-text));
+  white-space: nowrap;
+}
+.a-shortcut-keys kbd {
+  min-width: 24px;
+  padding: 0 6px;
+  border-bottom-width: 2px;
+  background: var(--a-control);
+}
+.a-shortcut-gesture {
+  flex: none;
+  padding: 0 8px;
+  border-color: var(--a-stroke);
+}
+.a-shortcuts-pages-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0 10px;
+}
+.a-shortcuts-pages-head b,
+.a-shortcut-group b {
+  font-weight: 500;
+}
+.a-shortcuts-pages {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  margin-bottom: 20px;
+}
+.a-shortcuts-pages > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 25%;
+  min-width: 0;
+  padding-right: 14px;
+}
+.a-shortcuts-pages > span > .ico {
+  flex: none;
+  color: var(--a-ink-2);
+}
+.a-shortcuts-pages > span > span:not(.a-shortcut-keys) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.a-shortcut-group {
+  margin-bottom: 8px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 8px;
+  background: var(--a-layer);
+}
+.a-shortcut-group > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: start;
+}
+.a-shortcut-group > button:hover {
+  background: var(--a-hover);
+}
+.a-shortcut-group > button > .ico:first-child {
+  color: var(--a-accent);
+}
+.a-shortcut-group > button > b {
+  flex: 1;
+}
+.a-shortcut-group > button > .ico:last-child {
+  color: var(--a-ink-2);
+}
+.a-shortcut-group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0 14px 12px;
+  list-style: none;
+}
+.a-shortcut-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.a-shortcut-group li > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.a-shortcuts-system {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-shortcuts-note {
+  margin: 12px 0 0;
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+/* The onboarding (welcome.rs `onboarding_dialog`): 580 px wide, its steps in
+   a 540 px body that scrolls, the step dots at the footer's start. */
+.a-dialog.is-onboarding {
+  width: min(580px, 100%);
+}
+.a-dialog.is-onboarding > .a-dialog-body {
+  flex: 0 1 540px;
+  padding: 28px 32px 20px;
+  scrollbar-gutter: stable;
+  overflow-x: clip;
+}
+.a-onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.a-onboarding-mark {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+.a-dialog h3.a-onboarding-title {
+  text-align: center;
+  font-size: calc(24px * var(--a-text));
+}
+.a-onboarding-body,
+.a-onboarding-heading p {
+  margin: 0;
+  color: var(--a-ink-2);
+}
+.a-onboarding-heading {
+  display: flex;
+  flex-direction: column;
+}
+.a-onboarding-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
+  color: var(--a-accent);
+}
+.a-onboarding-heading h3 {
+  margin: 12px 0 6px;
+}
+.a-onboarding-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-layer);
+}
+.a-onboarding-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.a-onboarding-row small {
+  margin-top: 2px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-onboarding-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.a-onboarding-state > .ico {
+  color: var(--a-accent);
+}
+.a-onboarding-language {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-ink-2);
+}
+.a-onboarding-note {
+  margin: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+  line-height: 1.9;
+}
+.a-onboarding-note.is-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--a-ink);
+  line-height: 1.4;
+}
+.a-onboarding-note.is-warning > .ico {
+  flex: none;
+  color: var(--a-io);
+}
+.a-onboarding-note.is-rich,
+.a-onboarding-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+}
+.a-onboarding-note.is-rich {
+  line-height: 1.6;
+}
+.a-onboarding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 6px;
+  list-style: none;
+}
+.a-onboarding-list li {
+  position: relative;
+  padding-left: 15px;
+}
+.a-onboarding-list li::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--a-accent);
+}
+.a-onboarding-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.a-onboarding-dots {
+  display: flex;
+  gap: 6px;
+  margin-right: auto;
+}
+.a-onboarding-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--a-stroke-strong);
+  transition:
+    width 167ms var(--a-ease-move),
+    background-color 167ms;
+}
+.a-onboarding-dots i.is-current {
+  width: 18px;
+  background: var(--a-accent);
+}
+/* What's new (welcome.rs `update_dialog`, `release_body`): 620 px wide; the
+   parts rise into place 60 ms apart from 16 px below, on the site's curve. */
+.a-dialog.is-whatsnew {
+  width: min(620px, 100%);
+}
+.a-dialog.is-whatsnew > .a-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.a-dialog.is-whatsnew [data-enter] {
+  animation: demo-rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--rise, 0) * 60ms);
+}
+@keyframes demo-rise {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+.a-whatsnew-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.a-whatsnew-head > img {
+  flex: none;
+}
+.a-whatsnew-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.a-whatsnew-head p,
+.a-whatsnew-empty {
+  margin: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.a-whatsnew-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--a-stroke);
+  line-height: 1.6;
+}
+.a-whatsnew-notes a {
+  color: var(--a-accent);
+  text-decoration: none;
+}
+.a-whatsnew-notes a:hover {
+  text-decoration: underline;
+}
+.a-whatsnew-notes code {
+  font-family: var(--a-mono);
+  font-size: 0.92em;
+}
+.a-whatsnew-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--a-io) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--a-io) 8%, transparent);
+  font-weight: 500;
+}
+.a-whatsnew-notice > .ico {
+  flex: none;
+  margin-top: 3px;
+  color: var(--a-io);
+}
+.a-whatsnew-intro {
+  margin: 0;
+  font-size: calc(14px * var(--a-text));
+  font-weight: 500;
+}
+.a-whatsnew-group {
+  --kind: var(--a-ink-2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.a-whatsnew-group.is-feature {
+  --kind: var(--a-net);
+}
+.a-whatsnew-group.is-fix {
+  --kind: var(--a-cpu);
+}
+.a-whatsnew-group.is-performance {
+  --kind: var(--a-io);
+}
+.a-whatsnew-group.is-breaking {
+  --kind: var(--a-gpu);
+}
+.a-whatsnew-group.is-upgrade {
+  --kind: var(--a-mem);
+}
+/* A kind's tag: its colour's dot, the heading and the number of changes. */
+.a-kind-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--kind) 13%, transparent);
+  font-size: calc(12px * var(--a-text));
+  line-height: 1;
+}
+.a-kind-tag > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--kind);
+}
+.a-kind-tag > b {
+  color: color-mix(in srgb, var(--kind) 70%, var(--a-ink));
+  font-weight: 600;
+}
+.a-kind-tag > small {
+  color: var(--a-ink-2);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+.a-whatsnew-group ul {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.a-whatsnew-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.a-whatsnew-cards li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-layer-strong);
+  transition:
+    border-color 320ms,
+    background-color 320ms;
+}
+/* Under the pointer a card takes its kind's colour, a line growing on its top edge. */
+.a-whatsnew-cards li::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 12px;
+  width: 40px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--kind);
+  opacity: 0;
+  transform: scaleX(0.3);
+  transform-origin: left center;
+  transition:
+    opacity 320ms,
+    transform 320ms;
+}
+.a-whatsnew-cards li:hover {
+  border-color: color-mix(in srgb, var(--kind) 50%, var(--a-stroke));
+  background: color-mix(in srgb, var(--kind) 7%, var(--a-layer-strong));
+}
+.a-whatsnew-cards li:hover::before {
+  opacity: 1;
+  transform: none;
+}
+.a-whatsnew-cards b {
+  font-weight: 600;
+}
+.a-whatsnew-cards li > span {
+  color: var(--a-ink-2);
+  font-size: calc(12.5px * var(--a-text));
+  line-height: 1.55;
+}
+.a-whatsnew-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.a-whatsnew-items li {
+  display: flex;
+  gap: 10px;
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: color-mix(in srgb, var(--a-ink) 65%, var(--a-ink-2));
+  transition: background-color 220ms;
+}
+.a-whatsnew-items li::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--kind);
+}
+.a-whatsnew-items li:hover {
+  background: var(--a-hover);
+  color: var(--a-ink);
+}
+.a-whatsnew-items b {
+  font-weight: 600;
+}
+.a-whatsnew-github {
+  margin-right: auto;
+  color: var(--a-ink);
+  text-decoration: none;
+}
+.a-dialog-foot.is-shortcuts {
+  justify-content: space-between;
+  padding-block: 12px;
+}
+.a-dialog-foot.is-shortcuts > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--a-ink-2);
   font-size: calc(12px * var(--a-text));
 }
 .a-task-head {
@@ -3670,10 +4920,25 @@ button.a-th:active {
   padding: 8px 10px;
   border: 1px solid var(--a-stroke);
   border-radius: 6px;
-  animation: a-settle 250ms var(--a-ease) both;
 }
-.a-lock-list li:nth-child(2) {
-  animation-delay: 50ms;
+/* A finished search rises 6 px into place as one (file_lock.rs `lock_report`). */
+.a-lock-report {
+  animation: demo-lock-report 250ms var(--a-ease);
+}
+@keyframes demo-lock-report {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+}
+/* A boxed note on what was checked. */
+.a-lock-note {
+  margin: 14px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--a-hover);
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
 }
 .a-lock-proc {
   display: flex;
@@ -3730,10 +4995,21 @@ button.a-th:active {
 .a-toast > .a-icon-btn {
   margin: -2px 0 -2px 0;
 }
-.a-toast > p {
+.a-toast > p,
+.a-toast-body {
   flex: 1;
   min-width: 0;
   margin: 0;
+}
+.a-toast-body > p {
+  margin: 0;
+}
+/* A toast's actions, under its text (dialogs.rs `toast_with`). */
+.a-toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 @keyframes a-toast {
   from {
@@ -4279,15 +5555,6 @@ button.a-th:active {
 /* The window adapts its columns and panes to the room it has, as the app does.
    The process list keeps the columns the visitor picked and scrolls sideways
    when they do not fit (Process columns, above). */
-@container argus (max-width: 999px) {
-  .a-stats {
-    flex-direction: column;
-    gap: 20px;
-  }
-  .a-stats > * {
-    width: 100%;
-  }
-}
 @container argus (max-width: 760px) {
   .a-vital:nth-child(3),
   .a-vital:nth-child(5) {
@@ -4413,7 +5680,7 @@ button.a-th:active {
 .a-titlebar .a-brand {
   font-size: calc(14px * var(--a-text));
   padding: 0;
-  gap: 8px;
+  gap: 10px;
 }
 .a-titlebar .a-brand img {
   width: 24px;
@@ -4424,10 +5691,12 @@ button.a-th:active {
   width: clamp(210px, 30%, 480px);
   max-width: calc(100% - 378px);
 }
+/* Above the dialogs' dim (z-index 30), which still darkens the bar behind
+   them: the buttons stay bright and keep working (dialogs.rs `Scrim`). */
 .a-caption {
   height: 32px;
   align-self: flex-start;
-  z-index: auto;
+  z-index: 31;
 }
 .a-caption button {
   width: 46px;
@@ -4471,70 +5740,61 @@ button.a-th:active {
   flex: none;
   width: 32px;
   padding: 0;
-  letter-spacing: 1px;
 }
+/* Sampling in the status bar (layout.rs `refresh_control`): one 20 px pill,
+   the reading with its dot and chevron, a hairline, the pause button; in the
+   accent while paused. */
 .a-refresh {
   display: flex;
   flex: none;
-  align-items: center;
-  gap: 0;
+  align-items: stretch;
+  height: 20px;
+  margin: -2px 0;
+  overflow: hidden;
   border: 1px solid var(--a-stroke);
-  border-radius: 6px;
-  background: var(--a-layer);
+  border-radius: 10px;
+  color: var(--a-ink-2);
 }
-.a-refresh .a-btn,
-.a-refresh .a-select {
-  height: 23px;
-  min-height: 0;
+.a-refresh.is-paused {
+  border-color: color-mix(in srgb, var(--a-accent) 55%, transparent);
+  color: var(--a-accent);
+}
+.a-refresh > button {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
   border: 0;
   background: transparent;
-  box-shadow: none;
-  font-size: 12px;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
 }
-.a-refresh .a-btn {
-  width: 26px;
-  padding: 0;
+.a-refresh > button:hover {
+  background: var(--a-hover);
 }
-.a-refresh .a-select::before {
-  content: "";
-  background: var(--a-cpu);
-  border-radius: 50%;
+.a-refresh > button:active {
+  background: var(--a-press);
+}
+.a-refresh > .a-refresh-rate {
+  gap: 6px;
+  padding-left: 7px;
+}
+.a-refresh > .a-refresh-pause {
+  border-left: 1px solid var(--a-stroke);
+}
+.a-refresh-dot {
+  flex: none;
   width: 6px;
   height: 6px;
-  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--a-cpu);
 }
-.a-refresh .a-listbox {
-  z-index: 40;
+.is-paused .a-refresh-dot {
+  background: var(--a-ink-3);
 }
 .a-status {
   padding-block: 3px;
   gap: 12px;
-}
-.a-sort-held {
-  color: var(--a-io);
-  font-weight: 500;
-}
-.a-ptable .a-thead.is-held {
-  box-shadow: inset 0 -2px var(--a-io);
-}
-.a-ptable .a-tr.a-group {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--a-surface);
-  color: var(--group, var(--a-accent));
-}
-.a-ptable .a-group[data-group$="background"] {
-  --group: var(--a-group-bg);
-}
-.a-ptable .a-group[data-group$="windows"] {
-  --group: var(--a-group-win);
-}
-.a-group .a-group-name {
-  color: inherit;
-}
-.a-group .a-group-rule {
-  background: color-mix(in srgb, var(--group, var(--a-accent)) 32%, transparent);
 }
 .a-table .a-header-controls {
   display: flex;
@@ -4560,18 +5820,39 @@ button.a-th:active {
   overflow: visible;
   z-index: 4;
 }
-.a-filter-select .a-select {
-  height: 21px;
-  min-width: 19px;
-  padding: 0 3px;
-  background: transparent;
+/* A list column's filter: a 22 px button at its header's end (header.rs
+   `header_filter`); the label stops short of it. A filter in force shows a
+   funnel in the accent. A column the list cannot sort by has a quiet header. */
+.a-table .a-th.has-filter {
+  padding-right: 26px;
+}
+.a-col-filter {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--a-ink-2);
+  transform: translateY(-50%);
 }
-.a-filter-select .a-select-labels {
-  display: none;
+.a-col-filter:hover {
+  background: var(--a-hover-strong);
 }
-.a-filter-select .a-listbox {
-  min-width: max-content;
+.a-col-filter:active {
+  background: var(--a-press);
+}
+.a-col-filter.is-active {
+  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
+  color: var(--a-accent);
+}
+.a-sort-button:disabled {
+  cursor: default;
 }
 .a-listbox {
   --clip-start: inset(0 0 100% 0);
@@ -4595,18 +5876,28 @@ button.a-th:active {
 .a-menu [role^="menuitem"]:disabled:hover {
   background: transparent;
 }
+/* A dialog grows from 96 % over 250 ms on WinUI's fast-out-slow-in spline
+   while fading in over the first 83 ms (dialogs/presence.rs). */
 .a-scrim .a-dialog {
-  animation: demo-dialog 0.15s var(--a-ease);
+  animation:
+    demo-dialog-grow 250ms cubic-bezier(0, 0, 0, 1),
+    demo-dialog-in 83ms linear;
 }
-@keyframes demo-dialog {
+@keyframes demo-dialog-grow {
   from {
     transform: scale(0.96);
+  }
+}
+@keyframes demo-dialog-in {
+  from {
     opacity: 0;
   }
 }
+/* Compressed memory, part of the memory in use: its colour in stripes, 2 px
+   wide with 3 px between (performance.rs memory_view). */
 .a-compressed,
-.a-legend .is-compressed::before {
-  background: repeating-linear-gradient(-45deg, var(--a-mem) 0 1px, transparent 1px 4px);
+.a-mem-legend .is-compressed {
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--a-mem) 55%, transparent) 0 2px, transparent 2px 5px);
 }
 .a-settings-inner {
   max-width: 1180px;
@@ -4648,9 +5939,16 @@ button.a-th:active {
   }
 }
 
+/* The shortcut as a keycap 7 px from the box's end (layout.rs `toolbar`). */
 .a-search kbd {
-  font-size: 11px;
+  margin-right: -5px;
+  padding: 0 5px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 3px;
   color: var(--a-ink-3);
+  font: inherit;
+  font-size: calc(11px * var(--a-text));
+  line-height: 1.4;
   white-space: nowrap;
 }
 .a-search:focus-within kbd {
@@ -4659,22 +5957,96 @@ button.a-th:active {
 .a-select-labels[hidden] {
   display: none;
 }
-.a-version {
+/* `.argus-app button` would win over a single class. */
+.a-status .a-version {
+  display: inline-flex;
+  align-items: center;
+  margin: -2px 0;
   background: transparent;
   color: var(--a-ink-2);
-  border: 0;
   cursor: pointer;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.a-leak-tag,
-.a-leak-note {
-  color: var(--a-io);
+.a-status .a-version:hover {
+  background: var(--a-hover);
+  color: var(--a-ink);
+}
+.a-status .a-version:active {
+  background: var(--a-press);
+}
+/* Leak alerts (leaks.rs): the header's mark after the process count, the
+   count of handles in amber, and the notice in the details pane. */
+.a-leak-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--a-io) 45%, transparent);
+  border-radius: 9px;
   background: color-mix(in srgb, var(--a-io) 10%, transparent);
-  border-radius: 4px;
-  padding: 1px 5px;
+  color: var(--a-io);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif;
+  font-size: calc(11px * var(--a-text));
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
 }
-.a-leak-note {
-  padding: 8px;
+.a-leak-mark:hover {
+  background: color-mix(in srgb, var(--a-io) 18%, transparent);
+}
+.a-th-total .a-leak-mark .ico {
+  color: var(--a-io);
+}
+.a-td.is-warn {
+  color: var(--a-io);
+}
+.a-leak-card {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--a-io) 35%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--a-io) 7%, transparent);
+  font-size: calc(12px * var(--a-text));
+}
+.a-leak-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.a-leak-card-head > .ico {
+  flex: none;
+  color: var(--a-io);
+}
+.a-leak-card-head > b {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(13px * var(--a-text));
+  font-weight: 500;
+}
+.a-leak-card > p {
+  margin: 6px 0 0;
+}
+.a-leak-card > .a-leak-advice {
+  margin-top: 8px;
+  color: var(--a-ink-2);
+}
+.a-leak-trend {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+}
+.a-leak-spark {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 4px;
+  color: var(--a-io);
 }
 .a-watch-buttons,
 .h-watch,
@@ -4743,76 +6115,83 @@ button.a-th:active {
 .a-sort-held {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
-  border-radius: 20px;
+  gap: 5px;
+  height: 20px;
+  margin: -2px 0;
+  padding: 0 8px;
+  border-radius: 10px;
   color: var(--a-accent);
+  font-weight: 400;
   border: 1px solid color-mix(in srgb, var(--a-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--a-accent) 8%, transparent);
 }
-.a-ptable .a-thead.is-held {
-  box-shadow: inset 0 -2px var(--a-accent);
+/* Rows held out of the sort's order: a pause mark in the accent where the arrow was. */
+.a-order-held {
+  display: inline-flex;
+  color: var(--a-accent);
 }
+.a-th-label .a-order-held .ico {
+  color: var(--a-accent);
+}
+/* The groups along the scrollbar's track (tables/groups.rs `group_marks`): a
+   line in each group's colour at the track's outer edge, the group at the
+   top of the list stronger; beside the thumb, while the list scrolls and a
+   second after, the group's name and the row the list is at in it. */
 .a-group-track {
   position: absolute;
-  right: 1px;
-  top: 68px;
-  bottom: 8px;
-  width: 5px;
+  right: 0;
+  z-index: 6;
+  width: 10px;
   pointer-events: none;
-  z-index: 4;
 }
-.a-group-track button {
+.a-group-track > i {
   position: absolute;
   right: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 3px;
-  border: 0;
-  background: var(--a-accent);
-  pointer-events: auto;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--group) 30%, transparent);
 }
-.a-group-track button[data-group$="background"] {
-  background: var(--a-group-bg);
+.a-group-track > i[data-current] {
+  background: color-mix(in srgb, var(--group) 75%, transparent);
 }
-.a-group-track button[data-group$="windows"] {
-  background: var(--a-group-win);
-}
-.a-group-track span {
-  display: none;
+.a-group-pill {
   position: absolute;
-  right: 10px;
-  top: 40%;
-  white-space: nowrap;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 12px;
   background: var(--a-flyout);
-  border: 1px solid var(--a-stroke);
-  border-radius: 4px;
-  padding: 3px 7px;
+  color: var(--a-ink);
+  font-size: calc(12px * var(--a-text));
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 180ms linear;
 }
-.a-ptable:hover .a-group-track span {
-  display: block;
+.a-group-pill[data-shown] {
+  opacity: 1;
+  transition: none;
 }
-.a-cpu-graphs:has(.a-cores-grid) {
-  min-height: clamp(140px, 30cqh, 300px);
+.a-group-pill > i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--group);
 }
-.a-core {
-  container: core / size;
-  min-height: 40px;
+.a-group-pill-place {
+  color: var(--a-ink-3);
 }
-@container core (max-width: 110px) {
-  .a-core-head > span:not(.a-kind) {
-    display: none;
-  }
-}
-@container core (max-width: 64px) or (max-height: 55px) {
-  .a-core-head {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .a-group-pill {
+    transition: none;
   }
 }
 .window:has(.argus-app:not(.is-tray) [data-pinned]) {
   z-index: 5;
-}
-.a-refresh:has([aria-pressed="true"]) .a-select::before {
-  background: var(--a-io);
 }
 .argus-app[data-motion-off] * {
   transition-duration: 0ms !important;
@@ -4823,7 +6202,8 @@ button.a-th:active {
   position: relative;
 }
 .a-services .a-list-edge,
-.a-startup .a-list-edge {
+.a-startup .a-list-edge,
+.a-connections .a-list-edge {
   position: absolute;
   right: -3px;
   top: 0;
@@ -4843,49 +6223,41 @@ button.a-th:active {
   color: var(--a-ink-3);
 }
 
+/* Leaving, it recedes to 96 % on the same spline (cut short as it goes)
+   and fades out over 100 ms; the dim outlasts it, 167 ms. */
 .a-scrim[data-closing] {
   pointer-events: none;
-  animation: demo-scrim-out 0.1s ease-in forwards;
+}
+.a-scrim[data-closing]::before {
+  animation: demo-scrim-out 167ms linear forwards;
 }
 .a-scrim[data-closing] .a-dialog {
-  animation: demo-dialog-out 0.1s ease-in forwards;
+  animation:
+    demo-dialog-shrink 167ms cubic-bezier(0, 0, 0, 1) forwards,
+    demo-dialog-out 100ms linear forwards;
 }
 @keyframes demo-scrim-out {
   to {
     opacity: 0;
   }
 }
+@keyframes demo-dialog-shrink {
+  to {
+    transform: scale(0.96);
+  }
+}
 @keyframes demo-dialog-out {
   to {
-    transform: scale(0.97);
+    opacity: 0;
   }
 }
 .a-hundred {
   flex: none;
 }
-.a-hundred circle {
-  transition:
-    r 0.55s,
-    opacity 0.35s;
-}
 
 .a-menu {
   max-height: calc(100% - 16px);
   overflow-y: auto;
-}
-.a-hundred {
-  margin-right: 8px;
-}
-.a-ptable .a-leak-indicator {
-  position: absolute;
-  left: 110px;
-  top: 8px;
-  z-index: 4;
-  padding: 1px 5px;
-  border: 0;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--a-io) 12%, var(--a-surface));
-  color: var(--a-io);
 }
 
 .h-month {
@@ -4900,30 +6272,6 @@ button.a-th:active {
   opacity: 0.35;
 }
 
-.a-ptable .a-group {
-  --row-bg: color-mix(in srgb, var(--group, var(--a-accent)) 8%, var(--a-surface));
-}
-.a-ptable .a-tr.a-group,
-.a-ptable .a-group .a-col-name {
-  background: var(--row-bg);
-}
-.a-ptable .a-group .a-group-name {
-  color: var(--a-ink);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.a-ptable .a-group .a-group-name:before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--group, var(--a-accent));
-}
-.a-ptable .a-group .a-group-count {
-  color: var(--group, var(--a-accent));
-  background: color-mix(in srgb, var(--group, var(--a-accent)) 18%, transparent);
-}
 .a-status {
   height: 32px;
   gap: 20px;
@@ -4940,16 +6288,6 @@ button.a-th:active {
 .a-privilege {
   color: var(--a-accent);
   border-color: color-mix(in srgb, var(--a-accent) 40%, transparent);
-}
-.a-refresh {
-  border-radius: 10px;
-  height: 20px;
-  background: transparent;
-}
-.a-refresh .a-select,
-.a-refresh .a-btn {
-  height: 18px;
-  min-height: 0;
 }
 .a-settings .w-setting.is-wide {
   display: grid;
@@ -5045,8 +6383,9 @@ button.a-th:active {
   border-radius: 50%;
   background: var(--a-net);
 }
+/* Paused, it is a plain button with an arrow (history/mod.rs `history_controls`). */
 .h-follow:not([aria-pressed="true"]):before {
-  background: var(--a-ink-3);
+  display: none;
 }
 
 .a-cpu-graphs {

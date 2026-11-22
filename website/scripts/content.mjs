@@ -476,6 +476,10 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
     };
   }
   await putIfChanged(assetsDir, "argus.svg", await readFile(join(root, "resources/logo.svg")));
+  // The logo's pixel masters, which the app draws below 64 px (widgets.rs
+  // `logo`): the demo window's title bar and About page use them.
+  for (const size of [24, 30, 36, 40, 42, 48])
+    await putIfChanged(assetsDir, `logo-${size}.svg`, await readFile(join(root, `resources/icons/logo-${size}.svg`)));
   // Supporters' avatars for the thanks cards on the home page (scripts/supporters.mjs).
   const avatars = join(websiteRoot, "src/data/supporters");
   for (const file of await readdir(avatars)) await putIfChanged(assetsDir, "supporters/" + file, await readFile(join(avatars, file)));
@@ -495,6 +499,12 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
   written.add(join(contentDir, "docs/meta.json"));
   await prune(join(contentDir, "docs"), written);
   const changelog = await changelogs(release, at);
+  // The released version's notes in each language that has them, read by the
+  // demo window's What's new dialog when it opens.
+  for (const [id, notes] of Object.entries(changelog)) {
+    const note = notes.find((note) => note.version === release.version);
+    if (note) await putIfChanged(assetsDir, `release-notes-${id}.json`, JSON.stringify(note));
+  }
   await putIfChanged(
     contentDir,
     "site.json",

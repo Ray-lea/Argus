@@ -1,7 +1,7 @@
 /** @jsxImportSource @/components/replica/i18n */
 "use client";
 import SectionPage from "./SectionPage";
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Segments, Select, Switch } from "./widgets";
 import { Icon, type UiIcon } from "./icons";
 import { Readings, Styles } from "./MonitorReadings";
@@ -10,12 +10,12 @@ const sections: [string, string, UiIcon][] = [
   ["托盘", "托盘", "tray"],
   ["桌面监控", "桌面监控", "computer"],
   ["任务栏监控", "任务栏监控", "gauge"],
-  ["更多组件", "更多组件", "apps"],
+  ["更多组件", "更多组件", "blocks"],
 ];
 const rowIcons: Record<string, UiIcon> = {
   托盘图标: "tray",
   悬停卡片: "pointer",
-  右键单击托盘图标: "apps",
+  右键单击托盘图标: "dashboard",
   显示方式: "panel",
   分组: "apps",
   鼠标穿透: "pointer",
@@ -23,15 +23,15 @@ const rowIcons: Record<string, UiIcon> = {
   锁定位置: "lock",
   不透明度: "eye",
   位置: "fitWidth",
-  显示器: "computer",
+  显示器: "monitorCheck",
   样式: "pulse",
   后台常驻时的刷新间隔: "timer",
-  从托盘打开: "tray",
+  从托盘打开: "genericApp",
   关闭窗口时保留在托盘: "dismiss",
   桌面监控: "computer",
   任务栏监控: "gauge",
   显示的读数: "list",
-  瞭望台: "apps",
+  瞭望台: "navTop",
 };
 const descriptions: Record<string, string> = {
   托盘图标: "走势按列显示最近几次采样的 CPU 占用，占比以点阵显示当前占用，数字显示百分比；占用达到 80% 时变为琥珀色。",
@@ -53,16 +53,18 @@ function Row({
   desc,
   children,
   wide = false,
+  icon,
 }: {
   title: string;
   desc?: string;
   children?: ReactNode;
   wide?: boolean;
+  icon?: UiIcon;
 }) {
   const description = desc ?? descriptions[title];
   return (
     <div className={"a-setting w-setting" + (wide ? " is-wide" : "")}>
-      <Icon name={rowIcons[title] ?? "apps"} size={20} />
+      <Icon name={icon ?? rowIcons[title] ?? "apps"} size={20} />
       <div className="a-setting-text">
         <div>{title}</div>
         {description && <span>{description}</span>}
@@ -75,6 +77,7 @@ export default function Components() {
   const { widgets: w, request } = useShared(),
     { section } = w;
   const opts = (list: string[]) => list.map((value) => ({ value, label: value }));
+  const [display, setDisplay] = useState("primary");
 
   return (
     <SectionPage
@@ -142,7 +145,7 @@ export default function Components() {
                     label="后台常驻时的刷新间隔"
                     value={w.slow}
                     onChange={(slow) => setWidgets({ slow })}
-                    options={[1000, 2000, 5000, 10000, 30000].map((value) => ({
+                    options={[500, 1000, 2000, 5000, 10000, 30000].map((value) => ({
                       value,
                       label: "每 " + value / 1000 + " 秒",
                     }))}
@@ -151,7 +154,7 @@ export default function Components() {
               </>
             ) : section === "更多组件" ? (
               <Row title="瞭望台" desc="在屏幕顶部以胶囊形式显示实时读数与通知。">
-                规划中
+                <span className="a-pill">规划中</span>
               </Row>
             ) : (
               <>
@@ -184,7 +187,7 @@ export default function Components() {
                   </Row>
                 )}
                 {(kind === "taskbar" || w.desktop.layout === "面板") && (
-                  <Row title="样式" wide desc={kind === "taskbar" ? "曲线、胶囊与大数字需要两行文字的高度，任务栏较矮时显示为标签。" : undefined}>
+                  <Row title="样式" wide icon={kind === "desktop" ? "theme" : "pulse"} desc={kind === "taskbar" ? "曲线、胶囊与大数字需要两行文字的高度，任务栏较矮时显示为标签。" : undefined}>
                     <Styles kind={kind} />
                   </Row>
                 )}
@@ -239,9 +242,12 @@ export default function Components() {
                     <Row title="显示器">
                       <Select
                         label="显示器"
-                        value="primary"
-                        onChange={() => {}}
-                        options={[{ value: "primary", label: "主显示器" }]}
+                        value={display}
+                        onChange={setDisplay}
+                        options={[
+                          { value: "primary", label: "主显示器" },
+                          { value: "contoso", label: "Contoso 27（1920 × 1080）" },
+                        ]}
                       />
                     </Row>
                   </>

@@ -3,20 +3,26 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
-import { Icon, ProcessIcon, type UiIcon } from "./icons";
-import Welcome from "./Welcome";
+import { Icon, Logo, ProcessIcon, type UiIcon } from "./icons";
 import SectionPage from "./SectionPage";
 import Hundred from "./Hundred";
+// Dialogs the window opens over any page, loaded with these pages.
+export { default as Welcome } from "./Welcome";
+export { default as Shortcuts } from "./Shortcuts";
+export { default as WhatsNew } from "./WhatsNew";
 import HistorySettings from "./HistorySettings";
 import { store, useShared } from "./store";
-import { machine } from "./model";
-import { copyEntries } from "./tableActions";
+import { disks, gpus, machine } from "./model";
+import { listCopy } from "./tableActions";
 import type { Motion } from "./Curve";
 import { language, translate } from "./i18n";
 import { dateLocale, isLanguage, languages, localized, preferredLanguage, rememberLanguage, type Language } from "@/lib/languages";
@@ -33,7 +39,7 @@ import {
   type StartupItem,
   type VisibilityRules,
 } from "./model";
-import { Button, scaleOf, Segments, Select, Switch } from "./widgets";
+import { Button, FeatureCard, scaleOf, Segments, Select, Switch, useIsoLayoutEffect } from "./widgets";
 
 export type ServiceFilter = "all" | "running" | "stopped";
 export type ServiceState = "running" | "stopped" | "startPending" | "stopPending";
@@ -68,11 +74,55 @@ interface Col<K extends string> {
   end?: boolean;
   className?: string;
   filter?: ReactNode;
+  /** A column the list cannot sort by (tables.rs `sortable`): its header does nothing. */
+  fixed?: boolean;
 }
-function useSort<K extends string>(initial: K) {
+// Figures and a startup entry's state sort descending first (tables.rs `descending_first`).
+function useSort<K extends string>(initial: K, downFirst: K[] = []) {
   const [state, setState] = useState<{ key: K; desc: boolean }>({ key: initial, desc: false });
-  const toggle = (key: K) => setState((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: false }));
+  const toggle = (key: K) =>
+    setState((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: downFirst.includes(key) }));
   return [state, toggle] as const;
+}
+/** Opens a menu hanging from a control (`anchor` its data-tour), or closes it on a second press. */
+export type AnchorMenu = (anchor: string, at: { x: number; y: number }, items: MenuEntry[], keyboard: boolean) => void;
+// A column's filter in its header, as a spreadsheet's (header.rs `header_filter`):
+// a button at the header's end drops the choices down; while one narrows the
+// list it shows a funnel in the accent.
+function ColumnFilter<T extends string>({
+  column,
+  anchor,
+  value,
+  choices,
+  onChange,
+  onMenu,
+}: {
+  column: string;
+  anchor: string;
+  value: T;
+  choices: [T, string][];
+  onChange: (value: T) => void;
+  onMenu: AnchorMenu;
+}) {
+  const active = value !== choices[0][0];
+  return (
+    <button
+      type="button"
+      className={"a-col-filter" + (active ? " is-active" : "")}
+      data-tour={anchor}
+      title={`按“${column}”筛选`}
+      aria-label={`按“${column}”筛选`}
+      aria-haspopup="menu"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        const box = event.currentTarget.getBoundingClientRect();
+        const items = choices.map(([choice, label]) => ({ label, checked: choice === value, run: () => onChange(choice) }));
+        onMenu(anchor, { x: box.left, y: box.bottom + 4 * scaleOf(event.currentTarget) }, items, event.detail === 0);
+      }}
+    >
+      <Icon name={active ? "filter" : "chevronDown"} size={13} />
+    </button>
+  );
 }
 function Header<K extends string>({
   cols,
@@ -98,10 +148,11 @@ function Header<K extends string>({
   return (
     <div className="a-thead" role="row">
       {cols.map((c) => (
-        <div key={c.key} role="columnheader" aria-sort={sort.key === c.key ? (sort.desc ? "descending" : "ascending") : "none"} className={"a-th a-header-controls" + (c.end ? " is-end" : "") + (c.className ? " " + c.className : "")}>
+        <div key={c.key} role="columnheader" aria-sort={sort.key === c.key ? (sort.desc ? "descending" : "ascending") : "none"} className={"a-th a-header-controls" + (c.end ? " is-end" : "") + (c.filter ? " has-filter" : "") + (c.className ? " " + c.className : "")}>
         <button
           type="button"
           className="a-sort-button"
+          disabled={c.fixed}
           onClick={() => onSort(c.key)}
         >
           <span className="a-th-label">
@@ -125,16 +176,108 @@ function sorted<T>(rows: T[], value: (row: T) => string | number, desc: boolean)
   });
 }
 
-// Measure the full collection, so a filter or search leaves the columns in place.
-function measuredColumns(fields:Record<string,[string[],number,number]>) {
-  if(typeof document==="undefined")return undefined;
-  const canvas=document.createElement("canvas").getContext("2d");
-  if(!canvas)return undefined;
-  canvas.font='13px "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",sans-serif';
-  return Object.fromEntries(Object.entries(fields).map(([id,[texts,padding,min]])=>{
-    const widths=texts.map(text=>canvas.measureText(translate(text)).width).sort((a,b)=>a-b);
-    return ["--measure-"+id, Math.ceil(Math.max(min,(widths[Math.floor((widths.length-1)*.95)]??0)+padding))+"px"];
-  })) as CSSProperties;
+// The service and startup lists size their columns as the app's
+// (widths.rs `apply_list`, `fill`), measured over the whole list as loaded,
+// so that a search or a filter leaves them in place. A name or other free
+// text takes what most rows need (`text`), labels and figures what every row
+// needs (`fit`, `labels`); the last column (`fill`) takes the rest, at least
+// its minimum. While it has more room than its longest value needs, the text
+// columns widen toward what every row needs; while it has less than its
+// share, they narrow toward their minimums.
+type Measure = (text: string, size?: number, mono?: boolean, context?: string) => number;
+interface ListColumn {
+  key: string;
+  label: string;
+  kind: "text" | "fit" | "labels" | "fill";
+  /** What each row's cell needs, its padding included. */
+  widths: (measure: Measure) => number[];
+  min: number;
+  max?: number;
+  filter?: boolean;
+}
+const CELL = 20;
+const stepped = (width: number) => Math.ceil(width / 8) * 8;
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+// What most rows need: all but the values past Tukey's fence, and at least
+// nineteen in twenty (widths.rs `typical`).
+function typicalWidth(widths: number[]) {
+  if (!widths.length) return 0;
+  const s = [...widths].sort((a, b) => a - b);
+  const at = (q: number) => s[Math.round((s.length - 1) * q)];
+  const fence = Math.max(at(0.75) + 1.5 * (at(0.75) - at(0.25)), at(0.95));
+  return Math.max(...s.filter((w) => w <= fence));
+}
+function listTracks(columns: ListColumn[], measure: Measure, room: number) {
+  const natural = columns.map((c) => {
+    // The label, room for the sort arrow, the table's inset and a filter's button.
+    const header = measure(c.label, 12) + 30 + (c.filter ? 26 : 10);
+    const widths = c.widths(measure);
+    const all = Math.max(0, ...widths);
+    const floor = Math.max(header, c.min), ceiling = Math.max(c.max ?? Infinity, header);
+    if (c.kind === "labels") return { width: Math.ceil(Math.max(header, all)) };
+    if (c.kind === "fit") return { width: stepped(clamp(all, floor, ceiling)) };
+    if (c.kind === "fill") return { width: 0, full: Math.ceil(Math.max(all, floor)) };
+    const typical = stepped(clamp(typicalWidth(widths), floor, ceiling));
+    return { width: typical, typical, full: Math.max(stepped(clamp(all, floor, ceiling)), typical) };
+  });
+  const last = columns.findIndex((c) => c.kind === "fill");
+  const widths = natural.map((n) => n.width);
+  const texts = columns.map((c, i) => i).filter((i) => columns[i].kind === "text");
+  const full = natural[last].full!, min = columns[last].min;
+  const rest = room - widths.reduce((a, b) => a + b, 0);
+  if (rest > full) {
+    const wanted = texts.reduce((a, i) => a + natural[i].full! - natural[i].typical!, 0);
+    const share = wanted > 0 ? Math.min(1, (rest - full) / wanted) : 0;
+    for (const i of texts) widths[i] = natural[i].typical! + (natural[i].full! - natural[i].typical!) * share;
+  } else {
+    const target = Math.max(Math.min(room / 3, full), min);
+    const spare = texts.reduce((a, i) => a + Math.max(0, widths[i] - columns[i].min), 0);
+    if (rest < target && spare > 0) {
+      const take = Math.min(1, (target - rest) / spare);
+      for (const i of texts) widths[i] -= Math.max(0, widths[i] - columns[i].min) * take;
+    }
+  }
+  // A column dragged to a width keeps it; the last column takes what is left.
+  return columns
+    .map((c, i) => (i === last ? `minmax(${min}px,1fr)` : `var(--col-${c.key},${Math.floor(widths[i])}px)`))
+    .join(" ");
+}
+function useListColumns(grid: RefObject<HTMLDivElement | null>, columns: ListColumn[]) {
+  const lang = language();
+  useIsoLayoutEffect(() => {
+    const el = grid.current;
+    const body = el?.querySelector<HTMLElement>(".a-tbody");
+    const label = el?.querySelector<HTMLElement>(".a-th-label");
+    const canvas = document.createElement("canvas").getContext("2d");
+    if (!el || !body || !label || !canvas) return;
+    const cache = new Map<string, number>();
+    const update = () => {
+      const style = getComputedStyle(el);
+      const scale = parseFloat(style.fontSize) / 13 || 1;
+      // In the interface's label weight, as the app measures (a hair wider than drawn).
+      const measure: Measure = (text, size = 13, mono = false, context = "") => {
+        const font = `500 ${size * scale}px ${mono ? style.getPropertyValue("--a-mono") : style.fontFamily}`;
+        const key = font + "\u0000" + context + "\u0000" + text;
+        let width = cache.get(key);
+        if (width === undefined) {
+          canvas.font = font;
+          width = Math.ceil(canvas.measureText(translate(text, context)).width);
+          cache.set(key, width);
+        }
+        return width;
+      };
+      const pad = getComputedStyle(body);
+      const room = body.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight);
+      el.style.setProperty("--cols", listTracks(columns, measure, room));
+    };
+    update();
+    // Another window size, or text size (the header's label), sizes them anew.
+    const observer = new ResizeObserver(update);
+    observer.observe(body);
+    observer.observe(label);
+    void document.fonts?.ready.then(update);
+    return () => observer.disconnect();
+  }, [columns, lang]);
 }
 type ServiceCol = "display" | "name" | "pid" | "state" | "start" | "description";
 export function Services({
@@ -146,6 +289,9 @@ export function Services({
   selected,
   onSelect,
   onMenu,
+  onFilterMenu,
+  onClear,
+  onOpen,
 }: {
   list: Service[];
   states: Map<string, ServiceState>;
@@ -155,8 +301,14 @@ export function Services({
   selected: string | null;
   onSelect: (name: string | null) => void;
   onMenu: (event: MouseEvent, service: Service) => void;
+  onFilterMenu: AnchorMenu;
+  /** Clears the search and the status filter. */
+  onClear: () => void;
+  /** Goes to a running service's process. */
+  onOpen: (pid: number) => void;
 }) {
-  const [sort, setSort] = useSort<ServiceCol>("display");
+  const [sort, setSort] = useSort<ServiceCol>("display", ["pid"]);
+  const grid = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
   const rows = sorted(
     list.filter((s) => {
@@ -176,23 +328,34 @@ export function Services({
         ? states.get(s.name) === "running"
           ? (s.pid ?? 0)
           : 0
-        : sort.key === "state"
-          ? stateText[states.get(s.name)!]
+        : // States and start types sort by their keys, as the app's do.
+          sort.key === "state"
+          ? states.get(s.name)!
           : sort.key === "start"
-            ? startLabel[s.start]
+            ? s.start
             : sort.key === "name"
               ? s.name
-              : sort.key === "description"
-                ? s.description
-                : s.display,
+              : s.display,
     sort.desc,
   );
-  const widths=useMemo(()=>measuredColumns({display:[list.map(s=>s.display),24,160],name:[list.map(s=>s.name),22,96],state:[Object.values(stateText),36,84],start:[Object.values(startLabel),24,100]}),[list]);
+  const columns = useMemo<ListColumn[]>(() => {
+    const figures = (text: string) => text.replace(/\d/g, "8");
+    return [
+      { key: "display", label: "服务", kind: "text", min: 160, max: 360, widths: (m) => list.map((s) => m(s.display) + CELL) },
+      { key: "name", label: "名称", kind: "text", min: 96, max: 280, widths: (m) => list.map((s) => m(s.name) + CELL) },
+      { key: "pid", label: "PID", kind: "fit", min: 56, max: 120, widths: (m) => list.map((s) => (s.pid ? m(figures(String(s.pid))) + CELL : 0)) },
+      // Every state and start type the app can show, the state with its dot.
+      { key: "state", label: "状态", kind: "labels", min: 0, filter: true, widths: (m) => [...Object.values(stateText), "已暂停", "正在暂停", "正在继续"].map((t) => m(t, 13, false, "service") + 14 + CELL) },
+      { key: "start", label: "启动类型", kind: "labels", min: 0, widths: (m) => [...Object.values(startLabel), "引导", "系统"].map((t) => m(t, 13, false, "service") + CELL) },
+      { key: "description", label: "描述", kind: "fill", min: 240, widths: (m) => list.map((s) => m(s.description) + CELL) },
+    ];
+  }, [list]);
+  useListColumns(grid, columns);
   const running = list.filter((s) => states.get(s.name) === "running").length;
   return (
     <div className="a-page">
       <div className="a-list-card">
-        <div className="a-table a-services" style={widths} role="grid" aria-label="服务">
+        <div className="a-table a-services" ref={grid} role="grid" aria-label="服务">
           <Header
             sort={sort}
             onSort={setSort}
@@ -204,27 +367,36 @@ export function Services({
                 key: "state",
                 label: "状态",
                 filter: (
-                  <Select
-                    className="a-filter-select"
-                    label="筛选"
+                  <ColumnFilter
+                    column="状态"
+                    anchor="filter-service-state"
                     value={filter}
                     onChange={onFilter}
-                    options={[
-                      { value: "all", label: "全部" },
-                      { value: "running", label: "正在运行" },
-                      { value: "stopped", label: "已停止" },
+                    onMenu={onFilterMenu}
+                    choices={[
+                      ["all", "全部"],
+                      ["running", "正在运行"],
+                      ["stopped", "已停止"],
                     ]}
                   />
                 ),
               },
               { key: "start", label: "启动类型" },
-              { key: "description", label: "描述", className: "a-col-wide" },
+              { key: "description", label: "描述", className: "a-col-wide", fixed: true },
             ]}
           />
           <div className="a-tbody a-scroll" role="rowgroup" tabIndex={0}>
-            {rows.length === 0 && <p className="a-empty">没有匹配的服务</p>}
+            {rows.length === 0 && (
+              <div className="a-empty">
+                <span>没有匹配的服务</span>
+                <button type="button" className="a-btn" onClick={onClear}>
+                  清除筛选
+                </button>
+              </div>
+            )}
             {rows.map((s) => {
               const state = states.get(s.name)!;
+              const pid = state === "running" ? s.pid : undefined;
               return (
                 <div
                   key={s.name}
@@ -232,6 +404,7 @@ export function Services({
                   aria-selected={selected === s.name}
                   className={"a-tr" + (selected === s.name ? " is-selected" : "")}
                   onClick={() => onSelect(selected === s.name ? null : s.name)}
+                  onDoubleClick={() => pid && onOpen(pid)}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     onSelect(s.name);
@@ -244,8 +417,9 @@ export function Services({
                   <span role="gridcell" className="a-td is-faint a-c-name">
                     <span className="a-cell-text">{s.name}</span>
                   </span>
-                  <span role="gridcell" className="a-td is-end is-faint a-c-pid">
-                    {state === "running" ? (s.pid ?? "") : ""}
+                  {/* The process the service lives in, by its image name. */}
+                  <span role="gridcell" className="a-td is-end is-faint a-c-pid" title={pid ? processes.find((p) => p.pid === pid)?.exe : undefined}>
+                    {pid ?? ""}
                   </span>
                   <span role="gridcell" className="a-td">
                     <i className={"a-dot" + (state === "running" ? " is-ok" : state.endsWith("Pending") ? " is-busy" : "")} />
@@ -270,6 +444,7 @@ export function Services({
           <span>
             {`正在运行 ${running} / 共 ${list.length} 个服务`}
           </span>
+          <span>管理多数服务需要特权服务或管理员权限。</span>
         </footer>
       </div>
     </div>
@@ -277,35 +452,72 @@ export function Services({
 }
 
 type StartupCol = "name" | "publisher" | "enabled" | "location" | "command";
+// The app's keys of the places, which the column sorts by.
+const locationKeys: Record<string, string> = {
+  "启动文件夹（所有用户）": "commonFolder",
+  "注册表（当前用户）": "hkcuRun",
+  "注册表（所有用户）": "hklmRun",
+  "注册表（所有用户，32 位）": "hklmRun32",
+  "应用包（当前用户）": "package",
+  "启动文件夹（当前用户）": "userFolder",
+};
 export function Startup({
   items,
   query,
   onToggle,
   onDelete,
   onMenu,
+  onCopy,
 }: {
   items: StartupItem[];
   query: string;
   onToggle: (name: string) => void;
   onDelete: (item: StartupItem) => void;
   onMenu: OpenMenu;
+  onCopy: (text: string, what: string) => void;
 }) {
-  const [sort, setSort] = useSort<StartupCol>("name");
+  const [sort, setSort] = useSort<StartupCol>("name", ["enabled"]);
   const [selected, setSelected] = useState<string | null>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
   const rows = sorted(
     items.filter(
-      (i) => !q || i.name.toLowerCase().includes(q) || i.publisher.toLowerCase().includes(q) || i.command.toLowerCase().includes(q),
+      (i) =>
+        !q ||
+        i.name.toLowerCase().includes(q) ||
+        (i.entry ?? "").toLowerCase().includes(q) ||
+        i.publisher.toLowerCase().includes(q) ||
+        i.command.toLowerCase().includes(q),
     ),
-    (i) => (sort.key === "enabled" ? (i.enabled ? 1 : 0) : i[sort.key]),
+    // Locations sort by their keys, as the app's do.
+    (i) => (sort.key === "enabled" ? (i.enabled ? 1 : 0) : sort.key === "location" ? (locationKeys[i.location] ?? i.location) : i[sort.key]),
     sort.desc,
   );
-  const widths=useMemo(()=>measuredColumns({name:[items.map(i=>i.name),items.some(i=>i.missing)?80:48,144],publisher:[items.map(i=>i.publisher),24,132],location:[items.map(i=>i.location),24,138]}),[items]);
+  const columns = useMemo<ListColumn[]>(
+    () => [
+      // The icon and its gap before the name, a missing file's mark after it.
+      {
+        key: "name",
+        label: "名称",
+        kind: "text",
+        min: 160,
+        max: 360,
+        widths: (m) => items.map((i) => CELL + 24 + m(i.name) + (i.missing ? 8 + m("文件不存在", 11) + 14 : 0)),
+      },
+      { key: "publisher", label: "发布者", kind: "text", min: 100, max: 280, widths: (m) => items.map((i) => m(i.publisher || "—") + CELL) },
+      // The switch and its gap before the label.
+      { key: "enabled", label: "状态", kind: "labels", min: 0, widths: (m) => ["已启用", "已禁用", "无法读取"].map((t) => m(t) + 36 + CELL) },
+      { key: "location", label: "位置", kind: "fit", min: 100, max: 280, widths: (m) => items.map((i) => m(i.location) + CELL) },
+      { key: "command", label: "命令", kind: "fill", min: 240, widths: (m) => items.map((i) => m(i.command, 12, true) + CELL) },
+    ],
+    [items],
+  );
+  useListColumns(grid, columns);
   const enabled = items.filter((i) => i.enabled).length;
   return (
     <div className="a-page">
       <div className="a-list-card">
-        <div className="a-table a-startup" style={widths} role="grid" aria-label="启动项">
+        <div className="a-table a-startup" ref={grid} role="grid" aria-label="启动项">
           <Header
             sort={sort}
             onSort={setSort}
@@ -314,7 +526,7 @@ export function Startup({
               { key: "publisher", label: "发布者", className: "a-c-publisher" },
               { key: "enabled", label: "状态" },
               { key: "location", label: "位置", className: "a-c-location" },
-              { key: "command", label: "命令", className: "a-col-wide" },
+              { key: "command", label: "命令", className: "a-col-wide", fixed: true },
             ]}
           />
           <div className="a-tbody a-scroll" role="rowgroup" tabIndex={0}>
@@ -326,22 +538,26 @@ export function Startup({
                 aria-selected={selected === item.name}
                 className={"a-tr" + (selected === item.name ? " is-selected" : "")}
                 onClick={() => setSelected(selected === item.name ? null : item.name)}
+                onDoubleClick={() => !item.blocked && onToggle(item.name)}
                 onContextMenu={(event) => {
                   event.preventDefault();
                   setSelected(item.name);
+                  // An app package's task belongs to its app, which only lets it be disabled.
+                  const packaged = item.location.includes("应用包");
                   onMenu(event, [
-                    { label: item.enabled ? "禁用" : "启用", run: () => onToggle(item.name) },
+                    { label: item.enabled ? "禁用" : "启用", disabled: !!item.blocked, run: () => onToggle(item.name) },
                     "-",
                     { label: "打开文件位置", icon: "folder", disabled: item.missing },
-                    ...copyEntries(event.target as Element,item.name,[{ label: "复制命令", run: () => void navigator.clipboard?.writeText(item.command) }]),
-                    {label:"删除", icon:"trash",danger:true,disabled:item.location.includes("应用包"),run:()=>onDelete(item)},
+                    ...listCopy(event.target as Element, [{ label: "命令", disabled: !item.command, run: () => onCopy(item.command, "命令") }], onCopy),
+                    "-",
+                    { label: "删除", icon: "trash", danger: true, disabled: packaged, detail: packaged ? "仅可禁用" : undefined, run: () => onDelete(item) },
                     "-",
                     { label: "置顶", icon: "pin" },
                     { label: "添加备注", icon: "note" },
                   ]);
                 }}
               >
-                <span role="gridcell" className="a-td" title={item.name + "\n" + item.command}>
+                <span role="gridcell" className="a-td" title={item.name + "\n" + (item.entry ?? item.name)}>
                   <ProcessIcon glyph={item.glyph} />
                   <span className={"a-cell-text" + (item.enabled ? "" : " is-faint")} style={item.enabled ? undefined : { color: "var(--a-ink-2)" }}>
                     {item.name}
@@ -355,7 +571,14 @@ export function Startup({
                 <span role="gridcell" className="a-td is-faint a-c-publisher">
                   <span className="a-cell-text">{item.publisher}</span>
                 </span>
-                <span role="gridcell" className="a-td" onClick={(event) => event.stopPropagation()}>
+                {/* A blocked switch says why over itself and its state. */}
+                <span
+                  role="gridcell"
+                  className="a-td"
+                  title={item.blocked === "managed" ? "此应用不允许手动更改该启动任务。" : item.blocked ? "暂时无法读取此启动项的状态，未进行更改。" : undefined}
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
                   <button
                     type="button"
                     role="switch"
@@ -363,11 +586,14 @@ export function Startup({
                     data-startup={item.name}
                     aria-label={(item.enabled ? "禁用 " : "启用 ") + item.name}
                     className="a-switch is-small"
+                    disabled={!!item.blocked}
                     onClick={() => onToggle(item.name)}
                   >
                     <i />
                   </button>
-                  <span style={item.enabled ? undefined : { color: "var(--a-ink-3)" }}>{item.enabled ? "已启用" : "已禁用"}</span>
+                  <span style={item.enabled ? undefined : { color: "var(--a-ink-3)" }}>
+                    {item.blocked === "unavailable" ? "无法读取" : item.enabled ? "已启用" : "已禁用"}
+                  </span>
                 </span>
                 <span role="gridcell" className="a-td is-faint a-c-location">
                   <span className="a-cell-text">{item.location}</span>
@@ -390,8 +616,9 @@ export function Startup({
   );
 }
 
-export type ConnectionFilter = "all" | "listen" | "established" | "udp";
+export type ConnectionFilter = "all" | "listen" | "established";
 type ConnectionCol = "name" | "pid" | "protocol" | "local" | "localPort" | "remote" | "remotePort" | "state";
+type Protocol = "all" | "TCP" | "TCPv6" | "UDP" | "UDPv6";
 export function Connections({
   alive,
   filter,
@@ -402,6 +629,10 @@ export function Connections({
   onShowAll,
   onOpen,
   onMenu,
+  onFilterMenu,
+  onClear,
+  onEnd,
+  onCopy,
 }: {
   alive: Process[];
   filter: ConnectionFilter;
@@ -413,11 +644,18 @@ export function Connections({
   onShowAll: () => void;
   onOpen: (pid: number) => void;
   onMenu: OpenMenu;
+  onFilterMenu: AnchorMenu;
+  /** Clears the search and the status filter (the protocol filter is the list's own). */
+  onClear: () => void;
+  /** Asks to end the process that owns a connection. */
+  onEnd: (pid: number) => void;
+  onCopy: (text: string, what: string) => void;
 }) {
-  const [sort, setSort] = useSort<ConnectionCol>("name");
-  const [protocol, setProtocol] = useState("all");
+  // The app opens the list by local port; figures sort descending first.
+  const [sort, setSort] = useSort<ConnectionCol>("localPort", ["pid", "localPort", "remotePort"]);
+  const [protocol, setProtocol] = useState<Protocol>("all");
   const [opened, setOpened] = useState<Set<string>>(new Set());
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const living = new Set(alive.map((p) => p.pid));
   const q = query.trim();
@@ -430,8 +668,8 @@ export function Connections({
       if (protocol !== "all" && c.protocol + (c.local.includes(":") ? "v6" : "") !== protocol) return false;
       if (filter === "listen" && c.state !== "listen") return false;
       if (filter === "established" && c.state !== "established") return false;
-      if (filter === "udp" && c.protocol !== "UDP") return false;
-      if (port !== null) return c.localPort === port || c.remotePort === port || String(c.pid).startsWith(q);
+      // A number is a port or a PID, matched exactly: 80 does not find 8080.
+      if (port !== null) return c.localPort === port || c.remotePort === port || c.pid === port;
       if (!q) return true;
       const needle = q.toLowerCase();
       return (
@@ -445,11 +683,11 @@ export function Connections({
     visible,
     (c) =>
       sort.key === "name"
-        ? (c.proc?.exe ?? "")
+        ? (living.has(c.pid) ? (c.proc?.exe ?? "") : "")
         : sort.key === "pid"
           ? c.pid
           : sort.key === "protocol"
-            ? c.protocol
+            ? c.protocol + (c.local.includes(":") ? "6" : "")
             : sort.key === "local"
               ? c.local
               : sort.key === "localPort"
@@ -508,102 +746,162 @@ export function Connections({
             cols={[
               { key: "name", label: "进程" },
               { key: "pid", label: "PID", end: true, className: "a-c-pid" },
-              { key: "protocol", label: "协议",filter:<Select className="a-filter-select" label="协议" value={protocol} onChange={setProtocol} options={["all","TCP","TCPv6","UDP","UDPv6"].map(value=>({value,label:value==="all"?"全部":value}))}/> },
+              {
+                key: "protocol",
+                label: "协议",
+                filter: (
+                  <ColumnFilter
+                    column="协议"
+                    anchor="filter-protocol"
+                    value={protocol}
+                    onChange={setProtocol}
+                    onMenu={onFilterMenu}
+                    choices={[["all", "全部"], ["TCP", "TCP"], ["TCPv6", "TCPv6"], ["UDP", "UDP"], ["UDPv6", "UDPv6"]]}
+                  />
+                ),
+              },
               { key: "local", label: "本地地址", className: "a-c-local" },
               { key: "localPort", label: "本地端口", end: true },
               { key: "remote", label: "远程地址", className: "a-c-remote" },
               { key: "remotePort", label: "远程端口", end: true, className: "a-c-rport" },
-              { key: "state", label: "状态",filter:<Select className="a-filter-select" label="状态" value={filter} onChange={onFilter} options={[{value:"all",label:"全部"},{value:"listen",label:"监听"},{value:"established",label:"已连接"},{value:"udp",label:"UDP"}]}/> },
+              {
+                key: "state",
+                label: "状态",
+                filter: (
+                  <ColumnFilter
+                    column="状态"
+                    anchor="filter-connection-state"
+                    value={filter}
+                    onChange={onFilter}
+                    onMenu={onFilterMenu}
+                    choices={[["all", "全部"], ["listen", "监听"], ["established", "已连接"]]}
+                  />
+                ),
+              },
             ]}
           />
           <div className="a-tbody a-scroll" role="rowgroup" tabIndex={0}>
-            {rows.length === 0 &&
-              (hidden ? (
-                <div className="a-empty">
-                  <span>当前筛选条件下没有可显示的项目。</span>
-                  <button type="button" className="a-btn" onClick={onShowAll}>
-                    显示全部并清除筛选
-                  </button>
-                </div>
-              ) : (
-                <p className="a-empty">{port !== null ? `没有匹配的连接：没有程序在使用端口 ${port}` : "没有匹配的连接"}</p>
-              ))}
+            {rows.length === 0 && (
+              <div className="a-empty">
+                <span>
+                  {hidden
+                    ? "当前筛选条件下没有可显示的项目。"
+                    : port !== null
+                      ? `没有匹配的连接：没有程序在使用端口 ${port}`
+                      : "没有匹配的连接"}
+                </span>
+                <button
+                  type="button"
+                  className="a-btn"
+                  onClick={() => {
+                    setProtocol("all");
+                    if (hidden) onShowAll();
+                    onClear();
+                  }}
+                >
+                  {hidden ? "显示全部并清除筛选" : "清除筛选"}
+                </button>
+              </div>
+            )}
             {shown.map(({ entry: c, group, count, child, pid }) => {
               const gone = !living.has(c.pid);
+              // Who owns a connection, by its description: none (PID 0), or one that has exited.
+              const owner = c.pid === 0 ? "无所属进程" : gone || !c.proc ? "已退出" : c.proc.name;
+              const end = (id: number | undefined): MenuEntry => {
+                const proc = id ? byPid.get(id) : undefined;
+                return {
+                  label: `结束 ${proc && living.has(proc.pid) ? proc.exe : "PID " + (id ?? 0)}`,
+                  icon: "end",
+                  danger: true,
+                  disabled: !id || id <= 4 || !living.has(id),
+                  run: () => id && onEnd(id),
+                };
+              };
               if (group !== undefined) {
                 const expanded = Boolean(q) || opened.has(group);
-                const name = group === "|unowned" ? "无所属进程" : group === "|exited" ? "已退出" : c.proc?.name;
+                const key = "g" + group;
                 return (
-                  <div key={group} role="row" className="a-tr" onDoubleClick={() => toggle(group)}
+                  <div key={group} role="row" aria-selected={selected === key} className={"a-tr" + (selected === key ? " is-selected" : "")}
+                    onClick={() => setSelected(selected === key ? null : key)}
+                    onDoubleClick={() => toggle(group)}
                     onContextMenu={(event) => {
                       event.preventDefault();
+                      setSelected(key);
                       onMenu(event, [
                         { label: expanded ? "折叠" : "展开", disabled: Boolean(q), run: () => toggle(group) },
-                        ...copyEntries(event.target as Element, name ?? String(c.pid)),
+                        "-",
                         { label: "转到进程", icon: "goTo", disabled: gone || !pid, run: () => pid && onOpen(pid) },
+                        end(pid),
+                        ...listCopy(event.target as Element, [], onCopy),
                       ]);
                     }}>
                     <span role="gridcell" className="a-td a-td-name" title={gone ? undefined : c.proc?.path}>
                       <button type="button" className="a-fold" aria-expanded={expanded} aria-label={expanded ? "折叠" : "展开"}
-                        disabled={Boolean(q)} onClick={() => toggle(group)} onDoubleClick={(event) => event.stopPropagation()}>
+                        disabled={Boolean(q)} onClick={(event) => { event.stopPropagation(); toggle(group); }} onDoubleClick={(event) => event.stopPropagation()}>
                         <Icon name="chevronRight" size={12} />
                       </button>
                       <ProcessIcon glyph={gone ? "app" : c.proc?.glyph ?? "app"} />
-                      <span className="a-name is-strong">{name}</span>
+                      <span className="a-name is-strong">{owner}</span>
                       <span className="a-count">{count}</span>
                     </span>
                     <span role="gridcell" className="a-td is-end is-faint a-c-pid">{pid || ""}</span>
                   </div>
                 );
               }
+              const key = "c" + c.index;
               return (
                 <div
                   key={c.index}
                   role="row"
-                  aria-selected={selected === c.index}
-                  className={"a-tr" + (selected === c.index ? " is-selected" : "")}
-                  title="双击转到对应进程"
-                  onClick={() => setSelected(selected === c.index ? null : c.index)}
+                  aria-selected={selected === key}
+                  className={"a-tr" + (selected === key ? " is-selected" : "")}
+                  onClick={() => setSelected(selected === key ? null : key)}
                   onDoubleClick={() => !gone && onOpen(c.pid)}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    setSelected(c.index);
+                    setSelected(key);
                     onMenu(event, [
                       { label: "转到进程", icon: "goTo", disabled: gone, run: () => onOpen(c.pid) },
-                      { label: `结束 ${c.proc?.name ?? "PID " + c.pid}`, icon: "end", danger: true, disabled: gone || c.pid <= 4 },
+                      end(c.pid),
                       { label: "断开此连接", icon: "dismiss", disabled: c.protocol !== "TCP" || c.state !== "established" || c.local.includes(":") },
                       "-",
-                      ...copyEntries(event.target as Element,c.proc?.exe ?? String(c.pid), [{ label: "复制本地地址", icon: "copy", run: () => void navigator.clipboard?.writeText(endpoint(c.local, c.localPort)).catch(() => {}) },
-                      { label: "复制远程地址", disabled: !c.remote, run: () => void navigator.clipboard?.writeText(endpoint(c.remote ?? "", c.remotePort)).catch(() => {}) }]),
+                      ...listCopy(
+                        event.target as Element,
+                        [
+                          { label: "本地地址", run: () => onCopy(endpoint(c.local, c.localPort), "本地地址") },
+                          { label: "远程地址", disabled: !c.remote, run: () => onCopy(endpoint(c.remote ?? "", c.remotePort), "远程地址") },
+                        ],
+                        onCopy,
+                      ),
                       "-",
                       { label: "置顶", icon: "pin" },
                       { label: "添加备注", icon: "note" },
                     ]);
                   }}
                 >
-                  <span role="gridcell" className="a-td" title={c.proc?.path} style={grouped ? { paddingLeft: child ? 26 : 6 } : undefined}>
+                  <span role="gridcell" className="a-td" title={gone ? undefined : c.proc?.path} style={grouped ? { paddingLeft: child ? 26 : 6 } : undefined}>
                     {grouped && <span className="a-fold-gap" />}
-                    <ProcessIcon glyph={c.proc?.glyph ?? "app"} />
-                    <span className="a-cell-text">{c.proc?.name ?? "PID " + c.pid}</span>
-                    {gone && <span className="a-tag">已退出</span>}
+                    <ProcessIcon glyph={gone ? "app" : c.proc?.glyph ?? "app"} />
+                    <span className="a-cell-text">{owner}</span>
                   </span>
                   <span role="gridcell" className="a-td is-end is-faint a-c-pid">
                     {c.pid}
                   </span>
-                  <span role="gridcell" className="a-td">
+                  {/* Copied, an IPv6 protocol keeps its tag, as the protocol filter names it. */}
+                  <span role="gridcell" className="a-td" data-copy={c.protocol + (c.local.includes(":") ? "v6" : "")}>
                     {c.protocol}
                     {c.local.includes(":") && <span className="a-tag">v6</span>}
                   </span>
                   <span role="gridcell" className="a-td a-mono a-c-local">
                     <span className="a-cell-text">{c.local}</span>
                   </span>
-                  <span role="gridcell" className={"a-td is-end a-mono" + (port === c.localPort ? " a-hit" : "")}>
+                  <span role="gridcell" className="a-td is-end a-mono">
                     {c.localPort}
                   </span>
                   <span role="gridcell" className="a-td is-faint a-mono a-c-remote">
                     <span className="a-cell-text">{c.remote ?? ""}</span>
                   </span>
-                  <span role="gridcell" className={"a-td is-end a-mono a-c-rport" + (port === c.remotePort ? " a-hit" : " is-faint")}>
+                  <span role="gridcell" className="a-td is-end a-mono a-c-rport is-faint">
                     {c.remotePort ?? ""}
                   </span>
                   <span role="gridcell" className="a-td">
@@ -676,7 +974,7 @@ export function VisibilityDialog({
       <div className="a-dialog-body a-scroll">
         <h3 id="a-dialog-title">编辑隐藏规则</h3>
         <p className="a-dialog-text">进程页和连接页共用以下规则，分别保存隐藏开关。</p>
-        {field("始终显示", "优先于系统进程和“额外隐藏”规则。", keep, setKeep)}
+        {field("始终显示", "优先于系统进程和“额外隐藏”规则。", keep, setKeep, "始终显示")}
         {field("额外隐藏", "仅在开启“隐藏系统进程”时生效。", hide, setHide, "额外隐藏")}
         <p className="a-rule-note">填写程序文件名，以逗号或分号分隔，不区分大小写，每项名单最多 128 个。</p>
         {invalid && (
@@ -712,8 +1010,27 @@ export type ThemeChoice = "site" | "light" | "dark";
 export type VitalsMode = "auto" | "show" | "hide";
 /** Grouping the process list by user: automatic (several users signed in), always or never. */
 export type UserGrouping = "auto" | "on" | "off";
+/** A confirmation the window shows for a page: the accept button first, then Cancel. */
+export interface Ask {
+  title: string;
+  body: string;
+  accept: string;
+  danger?: boolean;
+  run: () => void;
+}
 // The accelerating proxies the updater knows (argus-app config.rs, PROXY_PRESETS).
 const proxies = ["gh-proxy.com", "gh-proxy.org", "ghfast.top"];
+// The sampling choices while minimized or in the tray (argus-app settings.rs).
+const backgroundIntervals = [500, 1000, 2000, 5000, 10000, 30000];
+// The pages a start can open on, with their navigation icons: the card wears the chosen one's.
+const pageGlyphs: Record<string, UiIcon> = {
+  processes: "processes",
+  performance: "pulse",
+  services: "services",
+  startup: "power",
+  connections: "globe",
+  history: "history",
+};
 const sections: [string, string, UiIcon][] = [
   ["language", "语言与外观", "globe"],
   ["startup", "启动与后台", "power"],
@@ -735,7 +1052,7 @@ function Setting({
   title: string;
   desc?: ReactNode;
   /** A second line under the description. */
-  note?: string;
+  note?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -792,6 +1109,139 @@ function NumberBox({
   );
 }
 
+// "显示或隐藏 Argus" (settings.rs `hotkey_card`): its keys, Change and the
+// switch. Change opens a drawer under them that records the next combination,
+// saved once its keys are let go; Esc cancels, Backspace turns it off.
+const defaultHotkey = ["Ctrl", "Alt", "Esc"];
+const keyName = (key: string) =>
+  key === "Escape" ? "Esc" : key === " " ? "Space" : key.length === 1 ? key.toUpperCase() : key;
+function HotkeyCard({ enabled, onEnabled }: { enabled: boolean; onEnabled: (on: boolean) => void }) {
+  const card = useRef<HTMLDivElement>(null);
+  const [keys, setKeys] = useState(defaultHotkey);
+  const [recording, setRecording] = useState(false);
+  const [chord, setChord] = useState<string[]>([]);
+  const [issue, setIssue] = useState("");
+  const [done, setDone] = useState<"saved" | "off" | null>(null);
+  const pending = useRef<string[] | null>(null);
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(() => setDone(null), 1600);
+    return () => clearTimeout(id);
+  }, [done]);
+  useEffect(() => {
+    if (!recording) return;
+    const away = (event: Event) => {
+      if (!(event.target instanceof Node) || !card.current?.contains(event.target)) setRecording(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [recording]);
+  const start = () => {
+    setRecording(true);
+    setDone(null);
+    setChord([]);
+    setIssue("");
+    pending.current = null;
+    requestAnimationFrame(() => card.current?.focus({ preventScroll: true }));
+  };
+  const save = (next: string[]) => {
+    setKeys(next);
+    setRecording(false);
+    setDone("saved");
+    onEnabled(true);
+  };
+  const mods = (event: { ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }) =>
+    [event.ctrlKey && "Ctrl", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Win"].filter(Boolean) as string[];
+  const down = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!recording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const held = mods(event);
+    const modifier = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
+    if (!modifier && !held.length && event.key === "Escape") return setRecording(false);
+    if (!modifier && !held.length && event.key === "Backspace") {
+      setRecording(false);
+      setDone("off");
+      onEnabled(false);
+      return;
+    }
+    const next = modifier ? held : [...held, keyName(event.key)];
+    setChord(next);
+    if (modifier) return;
+    // A combination must hold Ctrl, Alt or Win; Shift alone would take over typing.
+    if (!held.some((m) => m !== "Shift")) {
+      setIssue("组合须包含 Ctrl、Alt 或 Win（F13–F24 及 Shift+F1–F11 除外）；其他仅含 Shift 的组合会影响所有程序中的正常输入。");
+      pending.current = null;
+    } else {
+      setIssue("");
+      pending.current = next;
+    }
+  };
+  const up = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!recording) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (mods(event).length) return;
+    if (pending.current) save(pending.current);
+    else if (chord.length && !issue) setIssue("仅由修饰键组成的组合不能用作快捷键，还需按一个普通键。");
+  };
+  const caps = (list: string[], off = false) => (
+    <span className={"a-keys" + (off ? " is-off" : "")}>
+      {list.map((key) => (
+        <kbd key={key}>{key}</kbd>
+      ))}
+    </span>
+  );
+  const open = recording || done;
+  const [savedBefore, savedAfter] = translate("已保存，快捷键现为 {keys}").split("{keys}");
+  return (
+    <div ref={card} className="a-feature a-hotkey" tabIndex={-1} onKeyDown={down} onKeyUp={up}>
+      <div className="a-feature-head">
+        <Icon name="keyboard" size={20} />
+        <div className="a-setting-text">
+          <div>显示或隐藏 Argus</div>
+          <span>在大多数程序中可用。</span>
+        </div>
+        <div className="a-setting-controls">
+          {caps(keys, !enabled)}
+          <Button disabled={recording} onClick={start}>
+            更改
+          </Button>
+          <Switch state label="显示或隐藏 Argus" checked={enabled} disabled={recording} onChange={onEnabled} />
+        </div>
+      </div>
+      {open && (
+        <div className="a-feature-foot a-hotkey-drawer">
+          <div className="a-feature-note">
+            {done === "saved" && (
+              <span className="a-hotkey-done">
+                <Icon name="check" size={14} />
+                <span translate="no">{savedBefore}</span>
+                {caps(keys)}
+                <span translate="no">{savedAfter}</span>
+              </span>
+            )}
+            {done === "off" && (
+              <span className="a-hotkey-done">
+                <Icon name="check" size={14} />
+                快捷键已停用，可用开关重新开启。
+              </span>
+            )}
+            {recording && (chord.length ? caps(chord) : <span className="a-hotkey-wait">按下新的组合键…</span>)}
+            {recording && (issue ? <span className="is-error">{issue}</span> : <span>按下组合键再松开即可保存；按 Esc 取消，按 Backspace 停用快捷键。</span>)}
+          </div>
+          {recording && (
+            <div className="a-feature-controls">
+              {keys.join("+") !== defaultHotkey.join("+") && <Button onClick={() => save(defaultHotkey)}>恢复默认</Button>}
+              <Button onClick={() => setRecording(false)}>取消</Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Settings({
   theme,
   onTheme,
@@ -818,6 +1268,8 @@ export function Settings({
   onComponents,
   onVisibility,
   onSay,
+  onAsk,
+  onWhatsNew,
 }: {
   theme: ThemeChoice;
   onTheme: (t: ThemeChoice) => void;
@@ -844,8 +1296,12 @@ export function Settings({
   onComponents: () => void;
   onVisibility: () => void;
   onSay: (text: string) => void;
+  /** A confirmation (dialogs.rs `ask`): title, text, the accept button's label. */
+  onAsk: (ask: Ask) => void;
+  onWhatsNew: () => void;
 }) {
   const { recording, leakHints, ignoreLeak } = useShared();
+  const [ruleDraft, setRuleDraft] = useState("");
   const [values, setValues] = useState({
     autostart: false,
     tray: true,
@@ -864,6 +1320,7 @@ export function Settings({
     channel: "stable",
     route: "auto",
     proxy: proxies[0],
+    taskManager: false,
   });
   const [refreshHz,setRefreshHz]=useState(60);
   useEffect(()=>{let frame=0,previous=0;const periods:number[]=[];
@@ -874,7 +1331,18 @@ export function Settings({
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
   const intervals = [500, 1000, 2000, 5000].map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }));
-  const slow = [1000, 2000, 5000, 10000, 30000].map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }));
+  const slow = backgroundIntervals.map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }));
+  // Under 5 s only after a warning (settings.rs `background_select`).
+  const minimized = (ms: number) =>
+    ms >= 5000
+      ? set("minimized", ms)
+      : onAsk({
+          title: "缩短最小化时的刷新间隔？",
+          body: `窗口最小化后，Argus 将每 ${ms / 1000} 秒采样一次全部进程与硬件数据。短于 5 秒的间隔会明显增加 CPU 占用与耗电，使用电池时更为明显。历史记录与规则在默认的 5 秒下即可正常运行。`,
+          accept: `仍然改为 ${ms / 1000} 秒`,
+          run: () => set("minimized", ms),
+        });
+  const startGlyph = pageGlyphs[values.startPage] ?? "processes";
   return (
     <SectionPage title="设置分组" entries={sections} target={section}>
         <section>
@@ -964,15 +1432,15 @@ export function Settings({
               ]}
             />
           </Setting>
-          <Setting icon="order" title="指针悬停时暂停排序"><Switch state label="指针悬停时暂停排序" checked={pauseSorting} onChange={onPauseSorting}/></Setting>
-          <Setting icon="warning" title="资源泄漏提示" desc="在进程页标出可能泄漏句柄或进程的程序。">{ignoreLeak&&<Button onClick={()=>store.set({ignoreLeak:false})}>恢复 1 个已忽略的程序</Button>}<Switch state label="资源泄漏提示" checked={leakHints} onChange={v=>store.set({leakHints:v})}/></Setting>
+          <Setting icon="order" title="指针悬停时暂停排序" desc="读数照常刷新，指针移出列表后重新排序。"><Switch state label="指针悬停时暂停排序" checked={pauseSorting} onChange={onPauseSorting}/></Setting>
+          <Setting icon="warning" title="资源泄漏提示" desc="在进程页标出可能泄漏句柄或进程的程序。">{ignoreLeak&&<Button small tone="ghost" onClick={()=>store.set({ignoreLeak:false})}>恢复 1 个已忽略的程序</Button>}<Switch state label="资源泄漏提示" checked={leakHints} onChange={v=>store.set({leakHints:v})}/></Setting>
         </section>
         <section>
           <h2>启动与后台</h2>
           <Setting icon="power" title="登录 Windows 时启动" desc="在托盘中静默启动。">
             <Switch state label="登录 Windows 时启动" checked={values.autostart} onChange={(v) => set("autostart", v)} />
           </Setting>
-          <Setting icon="processes" title="默认页面" desc="启动 Argus 后首次显示窗口时打开的页面。">
+          <Setting icon={startGlyph} title="默认页面" desc="启动 Argus 后首次显示窗口时打开的页面。">
             <Select
               label="默认页面"
               value={values.startPage}
@@ -987,23 +1455,11 @@ export function Settings({
               ]}
             />
           </Setting>
-          <Setting icon="tray" title="托盘与组件" desc="包括托盘图标、快捷面板、关闭窗口时的行为与后台常驻时的刷新间隔。"><Button onClick={onComponents}>打开组件页</Button></Setting>
+          <Setting icon="blocks" title="托盘与组件" desc="包括托盘图标、快捷面板、关闭窗口时的行为与后台常驻时的刷新间隔。"><Button onClick={onComponents}>打开组件页</Button></Setting>
         </section>
         <section>
           <h2>快捷键</h2>
-          <Setting
-            icon="keyboard"
-            title="显示或隐藏 Argus"
-            desc="在大多数程序中可用。"
-          >
-            <span className="a-keys">
-              <kbd>Ctrl</kbd>
-              <kbd>Alt</kbd>
-              <kbd>Esc</kbd>
-            </span>
-            <Button>更改</Button>
-            <Switch state label="显示或隐藏 Argus" checked={values.hotkey} onChange={(v) => set("hotkey", v)} />
-          </Setting>
+          <HotkeyCard enabled={values.hotkey} onEnabled={(v) => set("hotkey", v)} />
           <Setting icon="keyboard" title="快捷键说明">
             <Button onClick={onShortcuts}>
               查看快捷键
@@ -1012,38 +1468,88 @@ export function Settings({
         </section>
         <section>
           <h2>权限</h2>
-          <Setting icon="shield" title="管理员运行" desc="授权一次后，登录启动、快捷键及任务管理器入口将以管理员身份运行。">
-            <span className="a-pill is-ok">已授权</span>
-          </Setting>
-          <Setting
+          <FeatureCard
+            icon="shield"
+            title="管理员运行"
+            desc="授权一次后，登录启动、快捷键及任务管理器入口将以管理员身份运行。"
+            state="已授权"
+            tone="ok"
+            note={
+              <>
+                <span>当前进程：管理员权限</span>
+                <span>切换后将重新启动 Argus，并保留设置与历史记录。</span>
+              </>
+            }
+            controls={<Switch state label="允许以管理员身份运行" checked onChange={() => onSay("演示窗口不会重新启动 Argus。")} />}
+          />
+          <FeatureCard
             icon="shield"
             title="特权服务"
             desc="使以标准权限运行的 Argus 能够管理系统进程与服务，并采集需要管理员权限的数据。"
-          >
-            <span className="a-pill is-ok">{`已连接 · ${appVersion}`}</span>
-          </Setting>
+            state={`已连接 · ${appVersion}`}
+            tone="ok"
+            note="Argus 运行时自动连接服务。"
+            controls={
+              <>
+                <Button onClick={() => onSay("特权服务已就绪。")}>刷新状态</Button>
+                <Button onClick={() => onSay("演示窗口不会更改特权服务。")}>更新服务</Button>
+                <Button onClick={() => onSay("演示窗口不会更改特权服务。")}>卸载</Button>
+              </>
+            }
+          />
           <Setting
             icon="bolt"
             title="内核传感器"
             desc="需先启用特权服务。安装、更新或启动 PawnIO 驱动需要管理员授权。关闭后停止 Argus 的内核采集，保留驱动。"
+            note={<span data-i18n="sensor">已连接</span>}
           >
             <Button icon="external">PawnIO 官网</Button>
             <Switch state label="内核传感器" checked onChange={() => onSay("演示窗口不会停止内核传感器的采集。")} />
           </Setting>
-          <Setting
+          <FeatureCard
             icon="keyboard"
             title="替换系统任务管理器"
             desc="使 Ctrl+Shift+Esc 等入口打开 Argus。"
-          >
-            <span className="a-pill">使用 Windows 任务管理器</span>
-            <Button
-              icon="external"
-              title="仅本次打开 Windows 任务管理器，保留当前替换设置。"
-              onClick={() => onSay("演示窗口不会打开 Windows 任务管理器。")}
-            >
-              临时打开系统任务管理器
-            </Button>
-          </Setting>
+            state={values.taskManager ? "已替换为 Argus" : "使用 Windows 任务管理器"}
+            tone={values.taskManager ? "ok" : "off"}
+            stacked
+            note={values.taskManager ? "任务管理器入口已交给 Argus；启动失败时尝试打开原生任务管理器。" : "当前使用 Windows 任务管理器。"}
+            controls={
+              <>
+                <Button>刷新状态</Button>
+                {values.taskManager ? (
+                  <Button onClick={() => set("taskManager", false)}>恢复 Windows 任务管理器</Button>
+                ) : (
+                  <Button
+                    onClick={() =>
+                      onAsk({
+                        title: "替换系统任务管理器？",
+                        body: "Ctrl+Shift+Esc 等任务管理器入口将打开 Argus。此更改作用于整台电脑，其他账户仍打开 Windows 任务管理器。开启需要管理员授权；程序启动失败时尝试打开原生任务管理器。请保留独立恢复程序，以便界面或服务无法运行时恢复。",
+                        accept: "启用替换",
+                        run: () => set("taskManager", true),
+                      })
+                    }
+                  >
+                    启用替换
+                  </Button>
+                )}
+                <button
+                  type="button"
+                  className="a-btn a-native-taskmgr"
+                  title="仅本次打开 Windows 任务管理器，保留当前替换设置。"
+                  onClick={() => onSay("演示窗口不会打开 Windows 任务管理器。")}
+                >
+                  <Icon name="external" size={20} />
+                  临时打开系统任务管理器
+                </button>
+              </>
+            }
+            footer={
+              values.taskManager
+                ? "界面无法打开时，可运行独立恢复程序：C:\\Program Files\\Argus Privileged\\argus-taskmgr-recover.exe"
+                : undefined
+            }
+          />
         </section>
         <section>
           <h2>动画</h2>
@@ -1093,7 +1599,7 @@ export function Settings({
             title="最小化时的刷新间隔"
             desc="间隔越长，后台开销越低，但规则对新启动程序的生效最多延后一个间隔；长于 5 秒时，历史记录也随之变稀。"
           >
-            <Select label="最小化时的刷新间隔" value={values.minimized} onChange={(v) => set("minimized", v)} options={slow} />
+            <Select label="最小化时的刷新间隔" value={values.minimized} onChange={minimized} options={slow} />
           </Setting>
           <Setting icon="memory" title="隐藏时释放内存" desc="窗口最小化或隐藏到托盘达到设定时长后，释放图表图像等占用的内存，再次打开窗口时可能稍有停顿。">
             <Select
@@ -1132,9 +1638,45 @@ export function Settings({
           >
             <Switch state label="记录历史" checked={recording.enabled} onChange={(v) => store.set({recording:{...recording,enabled:v,until:v?null:Math.floor(performance.now()/1000)}})} />
           </Setting>
-          <HistorySettings/>
-          <Setting icon="storage" title="已保存的历史" desc="占用 38.6 MB，最早记录于 10/27 09:12。">
-            <Button icon="trash" onClick={() => onSay("演示窗口不会清除历史记录。")}>
+          <HistorySettings onSay={onSay} />
+          <Setting
+            icon="storage"
+            title="已保存的历史"
+            desc={
+              // What is kept, split into the system's readings, the processes and the observations.
+              <span className="h-saved">
+                <span>占用 38.6 MB，最早记录于 10-27 09:12。</span>
+                <span className="h-saved-bar">
+                  <i style={{ width: "58%", background: "var(--a-accent)" }} />
+                  <i style={{ width: "39%", background: "var(--a-mem)" }} />
+                  <i style={{ width: "3%", background: "var(--a-io)" }} />
+                </span>
+                <span className="h-saved-parts">
+                  <span style={{ "--part": "var(--a-accent)" } as CSSProperties}>
+                    <span>系统读数</span> 22.4 MB
+                  </span>
+                  <span style={{ "--part": "var(--a-mem)" } as CSSProperties}>
+                    <span data-i18n="history-part">进程</span> 15.1 MB
+                  </span>
+                  <span style={{ "--part": "var(--a-io)" } as CSSProperties}>
+                    <span>观察记录</span> 1.1 MB
+                  </span>
+                </span>
+              </span>
+            }
+          >
+            <Button
+              icon="trash"
+              onClick={() =>
+                onAsk({
+                  title: "清除历史记录？",
+                  body: "将删除全部历史记录（38.6 MB），无法恢复。",
+                  accept: "清除",
+                  danger: true,
+                  run: () => onSay("演示窗口不会清除历史记录。"),
+                })
+              }
+            >
               清除
             </Button>
           </Setting>
@@ -1146,8 +1688,16 @@ export function Settings({
             title="程序启动时自动设置优先级或效率模式"
             desc="保存后对正在运行的进程立即生效。也可在进程列表中右键单击进程，选择“添加规则”。"
           >
-            <input className="a-number" style={{ width: 190 }} placeholder="程序名，例如 chrome.exe" aria-label="新规则的程序名" />
-            <Button onClick={() => onSay("演示窗口不会保存规则。")}>添加</Button>
+            <input
+              className="a-number"
+              style={{ width: 220 }}
+              placeholder="程序名，例如 chrome.exe"
+              aria-label="新规则的程序名"
+              value={ruleDraft}
+              onChange={(event) => setRuleDraft(event.target.value)}
+            />
+            {/* Inert while empty, as the app's, without dimming. */}
+            <Button onClick={() => ruleDraft.trim() && onSay("演示窗口不会保存规则。")}>添加</Button>
           </Setting>
         </section>
         <section>
@@ -1159,7 +1709,7 @@ export function Settings({
             <Switch state label="自动检查更新" checked={values.autoUpdate} onChange={(v) => set("autoUpdate", v)} />
           </Setting>
           <Setting icon="notes" title="更新后显示更新内容" desc="关闭后仅在右下角提示已更新。">
-            <Button onClick={() => onSay("演示窗口不显示更新内容，可在官网的“更新日志”页查看。")}>查看本版本更新</Button>
+            <Button onClick={onWhatsNew}>查看本版本更新</Button>
             <Switch state label="更新后显示更新内容" checked={values.whatsNew} onChange={(v) => set("whatsNew", v)} />
           </Setting>
           <Setting icon="sparkle" title="更新通道" desc="测试版提前提供新功能，稳定性可能不及稳定版。由测试版切换到稳定版后，需等到稳定版的版本号高于当前版本时才会更新。">
@@ -1222,6 +1772,48 @@ export function Settings({
   );
 }
 
+// The issue-report text "复制诊断信息" copies (diagnostic_summary.rs): one
+// "name：value" line per fact, in the interface's language, in a code block.
+// The demo's machine and window are the ones it shows.
+function diagnostics(interval: number) {
+  const row = translate("{name}：{value}");
+  const window = document.querySelector<HTMLElement>(".argus-app .a-window");
+  const scale = devicePixelRatio;
+  const rows: [string, string][] = [
+    ["Argus 完整版本", appVersion],
+    ["Windows 版本", "Windows 11 Pro 24H2 (26100)"],
+    ["构建类型", translate("稳定版")],
+    ["安装方式", translate("安装版")],
+    ["当前运行权限", translate("管理员")],
+    ["特权服务", translate("已连接 · {version}").replace("{version}", appVersion)],
+    ["替换系统任务管理器", translate("使用 Windows 任务管理器")],
+    ["内核传感器", translate("已启用")],
+    ["快照中的传感器状态", translate("已连接", "sensor")],
+    ["快照时间（UTC）", new Date().toISOString().replace("T", " ").slice(0, 19) + " +00:00:00"],
+    ["CPU", machine.cpu],
+    ["CPU 核心 / 线程", "14 / 20"],
+    ["内存", "32.0 GB"],
+    // Each GPU with its driver, each disk with its bus as the collector names it (diagnostic_summary.rs).
+    ...gpus.flatMap((g): [string, string][] => [
+      ["GPU", g.model],
+      ["驱动版本", g.integrated ? "32.0.101.6881" : "32.0.15.8157"],
+    ]),
+    ...disks.map((d): [string, string] => ["磁盘", `${d.model} (${d.bus.toLowerCase()})`]),
+    ["当前显示器分辨率", `${Math.round(screen.width * scale)} × ${Math.round(screen.height * scale)} px`],
+    ["窗口客户区", window ? `${window.offsetWidth} × ${window.offsetHeight} px` : translate("未知")],
+    ["系统缩放", Math.round(scale * 100) + "%"],
+    ["界面缩放", "100%"],
+    ["字号", "13 px"],
+    ["界面语言", languages.find((item) => item.id === language())?.tag ?? "zh-CN"],
+    ["前台刷新间隔", interval + " ms"],
+    ["最小化时的刷新间隔", "5000 ms"],
+    ["后台常驻时的刷新间隔", "5000 ms"],
+    ["暂停采样", translate(store.get().paused ? "已启用" : "已禁用")],
+  ];
+  const lines = rows.map(([name, value]) => row.replace("{name}", translate(name)).replace("{value}", value));
+  return `${translate("诊断信息")}\n\n\`\`\`text\n${lines.join("\n")}\n\`\`\``;
+}
+
 // A link card's moving parts (about.rs `project_link`): the hover face, the
 // line along its top edge, and its arrow, muted and in the link's colour.
 // A link card (about.rs `project_link`): the mark beside the name and address,
@@ -1259,7 +1851,7 @@ function LinkCard({
       <nav className="a-link-pages">
         {pages.map(([icon, text, url]) => (
           <a key={url} className="a-btn is-ghost is-small" href={url} target="_blank" rel="noopener">
-            <Icon name={icon} size={14} />
+            <Icon name={icon} />
             {text}
           </a>
         ))}
@@ -1273,56 +1865,46 @@ function LinkCard({
 export function About({
   tick,
   interval,
-  navLeft,
-  onNav,
-  onInterval,
   onCopy,
   onQuit,
   onSay,
+  onWelcome,
+  onWhatsNew,
 }: {
   onCopy: (text: string, what: string) => void;
   tick: number;
   interval: number;
-  navLeft: boolean;
-  onNav: (v: boolean) => void;
-  onInterval: (ms: number) => void;
   onQuit: () => void;
   onSay: (text: string) => void;
+  /** The onboarding and this version's notes open as the window's dialogs. */
+  onWelcome: () => void;
+  onWhatsNew: () => void;
 }) {
-  const [welcome, setWelcome] = useState(false);
   return (
     <div className="a-page a-about a-scroll">
-      {welcome && (
-        <Welcome
-          tick={tick}
-          interval={interval}
-          navLeft={navLeft}
-          onNav={onNav}
-          onInterval={onInterval}
-          close={() => setWelcome(false)}
-        />
-      )}
       <div className="a-about-inner">
         <div className="a-about-hero">
           <Hundred tick={tick} />
           <div className="a-about-text">
             <div className="a-about-name">
               <strong>Argus</strong>
-              <small>{appVersion}</small>
+              <small>
+                {appVersion} · <span>稳定版</span>
+              </small>
             </div>
             <p>快速、现代、信息丰富的 Windows 任务管理器。</p>
             <span>正在以管理员身份运行。</span>
             <span>© 2026 Argus contributors</span>
           </div>
           <div className="a-setting-controls">
-            <Button onClick={() => onSay("演示窗口不显示更新内容，可在官网的“更新日志”页查看。")}>更新内容</Button>
+            <Button onClick={onWhatsNew}>更新内容</Button>
             <Button onClick={onQuit}>退出 Argus</Button>
           </div>
         </div>
         <div className="a-about-links">
           <LinkCard
             href="https://argustask.com/"
-            mark={<img className="a-link-mark" src="/assets/argus.svg" width="40" height="40" alt="" />}
+            mark={<Logo size={40} className="a-link-mark" />}
             title="Argus 官网"
             address="argustask.com"
             pages={[
@@ -1350,7 +1932,9 @@ export function About({
         </div>
         <h2>项目与支持</h2>
         <Setting icon="document" title="诊断信息" desc="复制当前版本、运行状态、硬件与显示设置，便于粘贴到问题报告。">
-          <Button onClick={()=>onCopy([`Argus ${appVersion} (website demo)`,"Windows 11 · x64",translate("管理员"),machine.cpu,machine.gpu,"32 GB · 1920 × 1080"].join("\n"),"诊断信息")}>复制诊断信息</Button>
+          <Button icon="copy" onClick={() => onCopy(diagnostics(interval), "诊断信息")}>
+            复制诊断信息
+          </Button>
         </Setting>
         <Setting icon="chat" title="交流与反馈" desc="加入 QQ 群 453803497，反馈问题、提出建议或交流使用心得。">
           <Button onClick={() => onCopy("453803497", "群号")}>复制群号</Button>
@@ -1361,7 +1945,7 @@ export function About({
           <Button tone="accent">加入频道</Button>
         </Setting>
         <Setting icon="sparkle" title="首次启动引导" desc="重新查看常用设置与使用提示。">
-          <Button onClick={() => setWelcome(true)}>打开引导</Button>
+          <Button onClick={onWelcome}>打开引导</Button>
         </Setting>
         <Setting
           icon="document"

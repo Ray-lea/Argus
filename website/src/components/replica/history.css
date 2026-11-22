@@ -1,445 +1,766 @@
-.a-history {
-  position: static;
-}
-.a-history-card {
-  padding: 8px 12px;
-  gap: 6px;
-}
-.h-tabs,
-.h-navigator,
-.h-axis,
-.h-lane header,
-.h-column-options {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.h-tabs {
-  flex: none;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.h-tabs > div {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  border-radius: 5px;
-  border: 1px solid var(--a-stroke);
-}
-.h-tabs > div[data-current] {
-  background: color-mix(in srgb, var(--c) 12%, transparent);
-  border-color: var(--c);
-}
-.h-tabs button,
-.h-lane header button {
-  padding: 4px 6px;
-  white-space: nowrap;
-}
-.h-tabs b {
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.h-lanes {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  overflow-y: auto;
-}
-.h-lane {
-  display: flex;
-  flex: 1 0 90px;
-  min-height: 76px;
-  flex-direction: column;
-}
-.h-lane header {
-  font-size: 12px;
-  min-height: 26px;
-}
-.h-lane header > span {
-  cursor: grab;
-}
-.h-lane header button:last-child:not(:nth-child(3)) {
-  margin-left: auto;
-}
-.h-plot-wrap {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(40px, auto) 1fr minmax(40px, auto);
-  gap: 5px;
-}
-.h-y-axis {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: end;
-  font-size: 11px;
-  color: var(--a-ink-3);
-}
-.h-y-axis.side-1 {
-  order: 2;
-  align-items: start;
-}
-.h-lane .a-history-plot {
-  width: 100%;
-  height: 100%;
-  touch-action: none;
-}
-.h-tip {
-  position: absolute;
-  top: 8px;
-  border: 1px solid var(--a-stroke);
-  border-radius: 6px;
-  background: var(--a-flyout);
-  padding: 7px 10px;
-  box-shadow: var(--a-shadow);
-  pointer-events: none;
-  font-size: 12px;
-  z-index: 2;
-}
-.h-axis {
-  justify-content: space-between;
-  margin: 0 40px;
-  font-size: 11px;
-  color: var(--a-ink-3);
-}
-.h-navigator input[type="range"] {
-  flex: 1;
-  accent-color: var(--a-accent);
-}
-.a-busy-card {
-  flex-basis: 39%;
-  min-height: 135px;
-}
-.a-busy-head {
-  padding: 6px 12px;
-  align-items: center;
-  gap: 8px;
-}
-.a-busy-head > b {
-  margin-right: auto;
-  white-space: nowrap;
-}
-.a-busy-head .a-input {
-  width: 150px;
-}
-.h-column-options {
-  padding: 4px 14px;
-}
-.h-group {
-  font-weight: 600;
-  padding: 6px 10px;
-}
-.h-choices,
-.h-range-grid {
-  display: flex;
-  gap: 12px;
-  min-height: 0;
-  align-items: stretch;
-}
-.h-choices aside,
-.h-range-grid aside {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 3px;
-}
-.h-chooser {
-  width: min(480px, 90%);
-}
-.h-chooser .a-input {
-  margin: 8px 0;
-  width: 100%;
-}
-.h-choices > div {
-  flex: 1;
-  overflow: auto;
-  max-height: 280px;
-}
-.h-choice {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--a-stroke);
-}
-.h-choice > button:first-child {
-  flex: 1;
-  display: grid;
-  text-align: left;
-  padding: 5px;
-  background: transparent;
-  border: 0;
-  color: inherit;
-}
-.h-choice small {
-  color: var(--a-ink-3);
-}
-.h-range-dialog {
-  width: max-content;
-  max-width: 94%;
-}
-.h-range-grid > div {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  min-width: 0;
-  max-height: 340px;
-  overflow: auto;
-}
-.h-range-grid label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.h-range-grid input {
-  color: inherit;
-  background: var(--a-control);
-  border: 1px solid var(--a-stroke);
-  padding: 3px;
-}
-.h-calendar {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-.h-calendar button {
-  border: 0;
-  border-radius: 3px;
-  padding: 4px;
-  background: var(--a-layer);
-  color: inherit;
-}
-.h-calendar button[aria-pressed="true"] {
-  background: var(--a-accent);
-  color: var(--a-on-accent);
-}
-.h-heat {
-  display: grid;
-}
-.h-heat > div {
-  display: flex;
-  gap: 1px;
-}
-.h-heat button {
-  width: 8px;
-  height: 3px;
-  margin: 0 0 1px;
-  background: var(--a-cpu);
-  border: 0;
-  padding: 0;
-}
-
-.h-data-gap {
-  position: absolute;
-  inset-block: 0;
-  display: grid;
-  place-items: center;
-  color: var(--a-ink-3);
-  background: repeating-linear-gradient(-45deg, var(--a-stroke) 0 1px, transparent 1px 6px), var(--a-surface);
-  pointer-events: none;
-}
-
-/* Measurements are in the app's logical pixels, before the desktop scales. */
+/* The history page (src-gpui/src/frontend/pages/history). Measurements are in
+   the app's logical pixels, before the desktop scales. */
 .a-history {
   padding: 0 22px 12px 12px;
   gap: 10px;
   overflow: auto;
 }
+.h-tabs,
+.h-navigator,
+.h-lane header {
+  display: flex;
+  align-items: center;
+}
+
+/* The reading tabs (bar.rs). */
 .h-tabs {
+  flex: none;
   height: 30px;
   min-height: 30px;
-  align-items: stretch;
   gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.h-tabs > div,
-.h-tabs > div[data-current] {
-  border: 0;
-  padding: 0 4px 0 8px;
+.h-tabs > div {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border: 1px solid transparent;
   border-radius: 6px;
+  color: var(--a-ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.h-tabs > div:not([data-current]):hover {
+  background: var(--a-hover-strong);
+}
+.h-tabs > div[data-current] {
+  color: var(--a-ink);
+  background: color-mix(in srgb, var(--c) 15%, transparent);
+}
+.h-tabs > div[data-overlaid] {
+  border: 1px dashed color-mix(in srgb, var(--c) 70%, transparent);
+}
+.h-tabs > div[data-ring] {
+  border: 1px solid color-mix(in srgb, var(--c) 60%, transparent);
 }
 .h-tabs > div > button:first-child {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  padding: 0;
+  font-size: calc(13px * var(--a-text));
 }
-.h-tabs > div > button:first-child::before,
-.h-primary i,
-.h-choice i {
-  content: "";
+.h-tabs > div > button:first-child > i {
   width: 8px;
   height: 8px;
   border-radius: 2px;
   background: var(--c);
   flex: none;
 }
-.h-tabs b {
-  min-width: 48px;
-  text-align: start;
+.h-tabs .h-slot {
+  color: var(--a-ink);
 }
 .h-tabs > div > button:last-child {
-  opacity: 0;
+  display: grid;
+  place-items: center;
   width: 18px;
+  height: 18px;
   padding: 0;
+  border-radius: 4px;
+  color: var(--a-ink-2);
+  opacity: 0;
 }
 .h-tabs > div:hover > button:last-child,
 .h-tabs > div:focus-within > button:last-child {
   opacity: 1;
 }
+.h-tabs > div > button:last-child:hover {
+  background: var(--a-hover-strong);
+}
 .h-tools {
   display: flex;
-  gap: 8px;
+  flex: none;
+  gap: 4px;
   align-items: center;
-  justify-content: flex-end;
   margin-left: auto;
   background: var(--a-window);
   position: sticky;
   right: 0;
 }
-.h-tools button,
-.h-primary,
-.h-overlay button {
+.h-tools button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--a-ink-2);
+  font-size: calc(13px * var(--a-text));
+  white-space: nowrap;
 }
-.h-tools button:hover,
-.h-lane header button:hover {
+.h-tools button:hover {
   background: var(--a-hover-strong);
-  border-radius: 4px;
+  color: var(--a-ink);
 }
+/* A value in a slot as wide as the reading's widest: right-aligned, so nothing moves. */
+.h-slot {
+  display: inline-grid;
+  justify-items: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.h-slot > span {
+  grid-area: 1 / 1;
+}
+.h-slot > span[aria-hidden] {
+  visibility: hidden;
+}
+
+/* The chart card: lanes over the time axis, and the navigator (lanes.rs). */
 .a-history .a-history-card {
   margin: 0;
   flex: 0 0 var(--chart-share, 60%);
-  min-height: 160px;
-  padding: 10px;
-  gap: 0;
+  min-height: 260px;
+  padding: 10px 10px 8px;
+  gap: 6px;
+  background: var(--a-surface);
+}
+.h-lanes {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  margin: 0 -10px;
+  padding: 0 10px;
+}
+.h-lane {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-height: 90px;
+  flex-direction: column;
 }
 .h-lane header {
-  height: 32px;
-  padding-left: 40px;
+  flex: none;
+  height: 30px;
   gap: 8px;
-  font-size: 13px;
+  padding: 0 40px;
+  border-radius: 6px;
+  font-size: calc(13px * var(--a-text));
+  white-space: nowrap;
+  overflow: hidden;
 }
-.h-lane header > span:first-child {
-  visibility: hidden;
-  width: 0;
+.h-lane[data-multi] header {
+  padding-left: 0;
 }
-.h-lane[data-multi] header > span:first-child {
-  visibility: visible;
-  width: 15px;
+.h-lane[data-active] header {
+  background: var(--a-hover);
 }
-.h-lane header .h-primary {
-  font-weight: 600;
-}
-.h-lane header b {
-  font-weight: 600;
-  color: var(--a-ink);
-}
-.h-overlay {
-  margin-left: 64px;
+.h-lane header button {
   display: inline-flex;
   align-items: center;
-  border: 1px dashed color-mix(in srgb, var(--overlay) 65%, transparent);
-  border-radius: 14px;
-  height: 24px;
-  padding: 0 4px;
+  padding: 0;
 }
-.h-overlay button,
-.h-lane header > .h-overlay button:last-child {
-  margin: 0;
-  padding: 1px 4px;
-  font-size: 12px;
+.h-grip {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  width: 40px;
+  color: var(--a-ink-3);
+  cursor: grab;
+}
+.h-lane .h-primary {
+  flex: 0 1 auto;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--a-ink);
+  font-weight: 600;
+}
+.h-lane .h-primary:hover {
+  background: var(--a-hover-strong);
+}
+.h-primary > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c);
+  flex: none;
+}
+.h-primary .ico {
+  color: var(--a-ink-3);
+}
+.h-part {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
   color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.h-part > i {
+  width: 12px;
+  height: 2px;
+  background: var(--c);
+}
+.h-part[data-second] > i {
+  opacity: 0.5;
+}
+.h-part .h-slot {
+  font-weight: 400;
+  color: var(--a-ink);
+}
+.h-peak {
+  display: inline-grid;
+  flex: none;
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+.h-peak > span {
+  grid-area: 1 / 1;
+}
+.h-peak > span[aria-hidden] {
+  visibility: hidden;
+}
+.h-overlay {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 24px;
+  padding: 0 3px 0 9px;
+  border: 1px dashed color-mix(in srgb, var(--overlay) 70%, transparent);
+  border-radius: 12px;
+  color: var(--a-ink-2);
+  font-size: calc(12.5px * var(--a-text));
+}
+.h-overlay:hover {
+  background: var(--a-hover);
+}
+.h-lane .h-overlay button:first-child {
+  gap: 6px;
+  color: inherit;
 }
 .h-overlay i {
   width: 10px;
   height: 2px;
   background: var(--overlay);
 }
+.h-overlay .h-slot {
+  color: var(--a-ink);
+}
 .h-overlay small {
   color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
 }
-.h-plot-wrap {
-  grid-template-columns: 42px minmax(0, 1fr) 42px;
+.h-lane .h-overlay button:last-child {
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  border-radius: 50%;
+  color: var(--a-ink-3);
+}
+.h-lane .h-overlay button:last-child:hover {
+  background: var(--a-hover-strong);
+}
+.h-lane .h-overlay-add,
+.h-curve-chip {
+  flex: none;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+.h-lane .h-overlay-add:hover {
+  background: var(--a-hover-strong);
+  color: var(--a-ink);
+}
+.h-curve-chip {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  margin-block: 0 4px;
+  padding: 0 2px 0 8px;
+  border: 1px solid var(--a-stroke-strong);
+  color: var(--a-ink-2);
+}
+.h-curve-chip > i {
+  width: 12px;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--a-ink) 60%, transparent) 0 4px, transparent 4px 7px);
+}
+.h-lane .h-curve-chip button {
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+.h-lane .h-curve-chip button:hover {
+  background: var(--a-hover);
+}
+.h-lane .h-remove {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--a-ink-2);
+}
+.h-lane .h-remove:hover {
+  background: var(--a-hover);
+}
+.h-divider {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 14px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.h-divider i {
+  flex: 1;
+  height: 1px;
+  margin: 0 48px;
+  background: var(--a-stroke);
+}
+.h-divider:active i {
+  background: var(--a-accent);
+}
+.h-drop {
+  position: absolute;
+  inset: 32px 48px 2px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--a-accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--a-accent) 6%, transparent);
+  pointer-events: none;
+}
+.h-drop span,
+.h-toast span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 5px;
+  background: var(--a-flyout);
+  font-size: calc(12px * var(--a-text));
+}
+.h-drop .ico {
+  color: var(--a-accent);
+}
+.h-toast {
+  position: absolute;
+  z-index: 3;
+  top: 38px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.h-toast span {
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+/* A lane's plot between its axes' labels (GUTTER 48 either side). */
+.h-plot-wrap {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  padding: 2px 0;
+}
+.h-y-axis {
+  position: relative;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.h-y-axis span {
+  position: absolute;
+  right: 6px;
+  height: 16px;
+  line-height: 16px;
+}
+.h-y-axis.side-1 {
+  color: var(--right-axis, var(--a-ink-3));
+}
+.h-y-axis.side-1 span {
+  right: auto;
+  left: 6px;
 }
 .h-lane .a-history-plot {
+  width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 0;
   background: transparent;
+  touch-action: none;
 }
-.h-lane .a-history-ticks {
-  background-image:
-    linear-gradient(var(--a-stroke) 1px, transparent 1px), linear-gradient(90deg, var(--a-stroke) 1px, transparent 1px);
-  background-size:
-    100% calc((100% - 1px) / 5),
-    10% 100%;
+.h-lane .a-history-cursor {
+  background: var(--a-ink);
+  opacity: 0.4;
 }
 .h-point {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  z-index: 2;
+  width: 9px;
+  height: 9px;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--a-window);
+  border: 2px solid var(--a-flyout);
   border-radius: 100%;
   pointer-events: none;
 }
-.h-y-axis {
+.h-raster,
+.h-nav-plot {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.h-raster canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  will-change: transform;
+}
+.h-gap-label {
+  position: absolute;
+  inset-block: 0;
+  display: grid;
+  place-items: center;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+  white-space: nowrap;
+  pointer-events: none;
+}
+.h-time-selection {
+  position: absolute;
+  inset-block: 0;
+  background: color-mix(in srgb, var(--a-accent) 12%, transparent);
+  border-inline: 1px solid color-mix(in srgb, var(--a-accent) 70%, transparent);
+  pointer-events: none;
+}
+.h-zoom-chip {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 6px;
+  background: var(--a-flyout);
+  cursor: default;
+}
+.h-zoom-chip button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: calc(12px * var(--a-text));
+  white-space: nowrap;
+}
+.h-zoom-chip button:last-child {
+  padding: 0;
+}
+.h-zoom-chip button:hover {
+  background: var(--a-hover);
+}
+.h-zoom-chip .ico {
+  color: var(--a-ink-2);
+}
+.h-pin-line {
+  position: absolute;
+  inset-block: 0;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--a-accent);
+  pointer-events: none;
+}
+.h-pin {
+  position: absolute;
+  z-index: 3;
+  top: 2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--a-accent);
+  color: var(--a-on-accent);
+  cursor: pointer;
+}
+.h-pin .ico {
+  grid-area: 1 / 1;
+}
+/* The plot sizes its own drawings to fill it (replica.css); its controls keep their icons. */
+.a-history-plot .h-zoom-chip svg,
+.a-history-plot .h-pin svg {
+  position: static;
+  width: 13px;
+  height: 13px;
+}
+.a-history-plot .h-pin svg {
+  width: 12px;
+  height: 12px;
+}
+.h-pin .ico:last-child,
+.h-pin:hover .ico:first-child {
+  opacity: 0;
+}
+.h-pin:hover .ico:last-child {
+  opacity: 1;
+}
+
+/* The tooltip by the pointer (tip.rs): fixed width, over the window. */
+.h-tip {
+  position: absolute;
+  z-index: 45;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 6px;
+  background: var(--a-flyout);
+  color: var(--a-ink);
+  font-size: calc(12px * var(--a-text));
+  line-height: 1.4;
+  pointer-events: none;
+}
+.h-tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.h-tip-head b {
+  font-weight: 500;
+}
+.h-tip-head small,
+.h-tip-sub,
+.h-tip-hint {
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+}
+.h-tip-gap {
+  color: var(--a-ink-2);
+}
+.h-tip-reading,
+.h-tip-list > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-tip-reading > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+}
+.h-tip-reading > span,
+.h-tip-list span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.h-tip-reading > span {
+  color: var(--a-ink-2);
+}
+.h-tip-reading > b {
+  flex: none;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-.h-axis {
-  height: 22px;
-  gap: 0;
-  font-size: 11px;
-  align-items: center;
-  margin: 0 47px;
-  color: var(--a-ink-3);
-  justify-content: space-around;
+.h-tip-sub {
+  display: block;
+  padding-left: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.h-tip-list,
+.h-tip-hint {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--a-stroke);
+}
+.h-tip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.h-tip-list > div {
+  min-height: 17px;
+}
+.h-tip-list > div > i {
+  width: 16px;
+  flex: none;
+}
+.h-tip-list small {
+  flex: none;
+  color: var(--a-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.h-tip-rest {
+  color: var(--a-ink-2);
+}
+
+/* The time axis under the lanes. */
+.h-axis {
+  position: relative;
+  flex: none;
+  height: 22px;
+  margin: 0 48px;
+  overflow: hidden;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+}
+.h-axis > div {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+.h-axis span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* The navigator: the range's pill, and the track with the window on it (navigator.rs). */
 .h-navigator {
   flex: none;
-  gap: 0;
-  margin-top: 4px;
-  height: 30px;
-}
-.h-navigator .a-select-wrap {
-  margin-right: 8px;
+  gap: 8px;
+  height: 32px;
 }
 .h-navigator .a-select {
-  border-radius: 16px;
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12px;
+  height: 30px;
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 15px;
+  background: var(--a-control);
+  font-size: calc(13px * var(--a-text));
 }
-.h-navigator .a-select-labels > span[hidden] {
-  display: none;
+.h-navigator .a-select:hover {
+  background: var(--a-hover-strong);
+}
+.h-track {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 15px;
+  background: var(--a-surface);
+}
+.h-track[data-paused] {
+  padding-right: 4px;
 }
 .h-nav-start,
 .h-nav-end {
-  display: grid;
-  place-items: center;
-  height: 30px;
-  border: 1px solid var(--a-stroke);
-  padding: 0 8px;
-  font-size: 11px;
+  flex: none;
   color: var(--a-ink-3);
-}
-.h-nav-start {
-  border-radius: 18px 0 0 18px;
-  border-right: 0;
-}
-.h-nav-end {
-  border-radius: 0 18px 18px 0;
-  border-left: 0;
+  font-size: calc(11px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .h-mini-nav {
-  height: 28px;
+  position: relative;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  touch-action: none;
+  cursor: pointer;
 }
-.h-nav-window {
+.h-nav-plot {
+  inset: 3px 0;
+}
+.h-nav-shade {
+  position: absolute;
+  inset-block: 0;
+  background: color-mix(in srgb, var(--a-window) 55%, transparent);
+  pointer-events: none;
+}
+.h-mini-nav .h-nav-window {
+  position: absolute;
+  inset-block: 0;
+  height: auto;
+  min-width: 4px;
+  border: 1.5px solid var(--a-accent);
+  border-radius: 5px;
   background: transparent;
-  border-color: var(--a-cpu);
+  cursor: grab;
+  touch-action: none;
 }
+.h-nav-window i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+.h-nav-window i:first-child {
+  left: -4px;
+}
+.h-nav-window i:last-child {
+  right: -4px;
+}
+.h-nav-window i::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2.5px;
+  width: 3px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 1.5px;
+  background: var(--a-accent);
+}
+.h-track-latest {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--a-accent);
+}
+.h-track-latest:hover {
+  background: var(--a-hover);
+}
+
+/* The splitter between the chart and the table. */
 .h-split {
   height: 8px;
   min-height: 8px;
@@ -455,6 +776,11 @@
   border-radius: 4px;
   background: var(--a-stroke-strong);
 }
+.h-split:active i {
+  background: var(--a-accent);
+}
+
+/* The processes of the moment or the range (table.rs). */
 .a-history .a-busy-card {
   flex: 1 0 155px;
   margin: 0;
@@ -462,39 +788,173 @@
   position: relative;
 }
 .a-busy-head {
-  padding: 8px 14px;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 14px 6px;
 }
-.a-busy-head b {
+.a-busy-head > b {
   margin-right: 0;
+  font-size: calc(14px * var(--a-text));
+  font-weight: 500;
+  white-space: nowrap;
 }
 .a-busy-head .a-input {
+  flex: 0 1 200px;
+  height: 32px;
+  min-width: 75px;
   margin-left: auto;
-  width: min(22%, 200px);
 }
-.a-busy-card .a-thead .a-th:first-child {
-  padding-left: 34px;
+.h-clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--a-ink-2);
 }
-.a-busy-card .a-tbody .a-td {
-  height: 30px;
-}
-.a-busy-card .a-td small {
-  color: var(--a-ink-3);
-  font-size: 11px;
-}
-.a-busy-card .a-tbody {
-  overflow-x: auto;
+.h-clear:hover {
+  background: var(--a-hover);
 }
 .a-busy-card .a-table {
   min-height: 0;
 }
+.a-busy-card .a-thead {
+  height: 30px;
+  padding: 0 6px;
+}
+.a-busy-card .a-thead::after {
+  left: 0;
+  right: 0;
+}
+.a-busy-card .a-th {
+  height: 30px;
+  padding: 0 8px;
+  color: var(--a-ink-2);
+  font-weight: 400;
+}
+.a-busy-card .a-th.h-name-head {
+  padding-left: 32px;
+}
+.a-busy-card .a-th[aria-sort="descending"],
+.a-busy-card .a-th[aria-sort="ascending"] {
+  color: var(--a-ink);
+  font-weight: 400;
+}
+.a-busy-card .a-tbody {
+  overflow-x: auto;
+  padding: 0;
+}
+.a-busy-card .a-tr {
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 0;
+}
+.a-busy-card .a-tr.is-selected {
+  background: var(--a-control);
+}
+.a-busy-card .a-tr.is-selected::before {
+  display: none;
+}
+.a-busy-card .a-td {
+  padding: 0 8px;
+}
+.h-name {
+  gap: 8px;
+}
+.h-fold {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 3px;
+  color: var(--a-ink-2);
+}
+button.h-fold:hover {
+  background: var(--a-hover-strong);
+}
+.h-fold[aria-expanded="true"] .ico {
+  transform: rotate(90deg);
+}
+.h-fold[data-off] {
+  opacity: 0.4;
+}
+.h-name .h-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.h-name small {
+  flex: none;
+  color: var(--a-ink-3);
+  font-size: calc(11px * var(--a-text));
+}
+.h-name small.h-publisher {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.h-instance {
+  color: var(--a-ink-2);
+}
+.h-instance .h-name {
+  padding-left: 56px;
+}
+.h-rest {
+  color: var(--a-ink-3);
+}
+.h-trend {
+  padding: 6px 8px;
+}
+.h-trend svg {
+  width: 100%;
+  height: 100%;
+}
+.a-busy-card .h-section {
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+  cursor: pointer;
+}
+.h-section .h-name > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--tone);
+}
+.h-section .h-name > b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.h-section .h-name > em {
+  flex: none;
+  min-width: 22px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--tone) 18%, transparent);
+  color: color-mix(in srgb, var(--tone) 78%, var(--a-ink));
+  font-size: calc(11px * var(--a-text));
+  font-style: normal;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
 .a-busy-note {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 4px 16px;
   padding: 8px 14px;
-  font-size: 12px;
+  border-top: 1px solid var(--a-stroke);
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
 }
 .a-busy-note b {
   font-weight: 500;
@@ -504,19 +964,93 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.h-column-options {
+.h-table-toast {
   position: absolute;
-  z-index: 4;
-  right: 8px;
-  top: 44px;
-  display: grid;
-  background: var(--a-flyout);
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
   border: 1px solid var(--a-stroke-strong);
   border-radius: 6px;
-  padding: 6px 10px;
-  max-height: 85%;
-  overflow: auto;
+  background: var(--a-flyout);
+  font-size: calc(12px * var(--a-text));
+  animation: h-toast 3s linear forwards;
 }
+@keyframes h-toast {
+  0%,
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* The process watch card (process_watch.rs). */
+.a-history .h-watch {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 8px;
+  background: var(--a-layer);
+}
+.h-watch header,
+.h-watch-row,
+.h-watch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.h-watch header b {
+  font-weight: 500;
+}
+.a-history .h-watch span,
+.h-watch small {
+  font-size: calc(12px * var(--a-text));
+}
+.h-watch header small,
+.h-watch-path,
+.h-watch-row small,
+.h-watch-note {
+  color: var(--a-ink-2);
+}
+.h-watch-legend {
+  gap: 4px 16px;
+}
+.h-watch .a-select-wrap {
+  align-self: flex-start;
+}
+.h-watch-chart {
+  position: relative;
+  height: 110px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 4px;
+  background: var(--a-surface);
+}
+.h-watch-chart svg {
+  position: absolute;
+  inset: 4px 0 18px;
+  width: 100%;
+  height: calc(100% - 22px);
+}
+.h-watch-chart small {
+  position: absolute;
+  bottom: 2px;
+  left: 6px;
+  color: var(--a-ink-3);
+}
+.h-watch-chart small:last-child {
+  left: auto;
+  right: 6px;
+}
+
+/* The reading chooser (chooser.rs). */
 .h-chooser-layer {
   position: absolute;
   inset: 0;
@@ -524,165 +1058,542 @@
 }
 .h-chooser-layer .h-chooser {
   position: absolute;
-  width: 294px;
-  max-width: calc(100% - 16px);
-  height: min(428px, calc(100% - 16px));
-  padding: 0;
-  background: var(--a-flyout);
-  box-shadow: none;
-  margin: 0;
-}
-.h-chooser .a-dialog-body {
-  padding: 0;
-  height: 100%;
   display: flex;
   flex-direction: column;
+  width: max-content;
+  max-width: calc(100% - 16px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 8px;
+  background: var(--a-flyout);
+  box-shadow: none;
+  font-size: calc(13px * var(--a-text));
+  line-height: 1.4;
 }
-.h-chooser .a-dialog-body h3 {
-  font-size: 12px;
-  font-weight: 400;
+.h-chooser-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--a-stroke);
+}
+.h-chooser-head h3 {
+  margin: 0;
   color: var(--a-ink-2);
-  padding: 10px 10px 0;
+  font-size: calc(12px * var(--a-text));
+  font-weight: 400;
 }
-.h-chooser .a-input {
+.h-chooser-head .a-input {
+  width: 100%;
   height: 32px;
-  width: calc(100% - 20px);
-  margin: 5px 10px 8px;
+  margin: 0;
 }
 .h-choices {
-  flex: 1;
-  border-top: 1px solid var(--a-stroke);
-  gap: 0;
+  display: flex;
+  min-height: 200px;
+  max-height: 352px;
 }
 .h-choices aside {
-  width: 88px;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
   border-right: 1px solid var(--a-stroke);
-  padding: 4px;
-  gap: 0;
 }
-.h-choices aside .a-btn {
-  height: 29px;
-  justify-content: space-between;
-  padding: 0 8px;
-  font-size: 12px;
-  border: 0;
-  background: transparent;
-}
-.h-choices aside .a-btn[aria-pressed="true"] {
-  background: var(--a-hover-strong);
-}
-.h-choices > div {
-  max-height: none;
-  padding: 4px;
-}
-.h-device {
-  display: block;
-  color: var(--a-ink-3);
-  padding: 7px 6px 2px;
-  font-size: 11px;
-}
-.h-choice {
-  height: 30px;
-  border: 0;
-  gap: 0;
-  border-radius: 4px;
-}
-.h-choice:hover,
-.h-choice:focus-within {
-  background: var(--a-hover-strong);
-}
-.h-choice > button:first-child {
+.h-choices aside button {
   display: flex;
   align-items: center;
   gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  color: var(--a-ink-2);
+  text-align: start;
 }
-.h-choice b {
-  font-weight: 400;
+.h-choices aside button span {
+  flex: 1;
 }
-.h-choice > .a-btn {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-  padding: 0;
+.h-choices aside button:hover {
+  background: var(--a-hover);
+}
+.h-choices aside button[aria-pressed="true"] {
+  background: var(--a-control);
+  color: var(--a-ink);
+}
+.h-choices aside button[data-empty] {
+  opacity: 0.5;
+}
+.h-choices aside small {
+  color: var(--a-ink-3);
+  font-size: calc(11.5px * var(--a-text));
+  font-variant-numeric: tabular-nums;
+}
+.h-choices > div {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  overflow-y: auto;
+  padding: 4px 4px 8px;
+}
+.h-choices > div > p {
+  padding: 12px 10px;
+  color: var(--a-ink-3);
+}
+.h-group-head {
+  display: block;
+  padding: 10px 10px 3px;
+  color: var(--a-ink-3);
+  font-size: calc(11.5px * var(--a-text));
+}
+.h-group-head[data-first] {
+  padding-top: 4px;
+}
+/* A long device name wraps rather than widening the list. */
+.h-device {
+  display: flex;
+  padding: 6px 10px 2px;
+  color: var(--a-ink-2);
+  font-weight: 500;
+}
+.h-device span {
+  width: 0;
+  flex: 1;
+}
+.h-choice {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.h-choice[data-indent] {
+  padding-left: 24px;
+}
+.h-choice:hover,
+.h-choice[data-highlight] {
+  background: var(--a-hover);
+}
+.h-choice > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+}
+.h-choice > span:nth-of-type(1) {
+  flex: 1;
+  padding-right: 8px;
+}
+.h-service {
+  display: flex;
+  color: var(--a-ink-3);
+}
+.h-check {
+  display: flex;
+  width: 16px;
+  flex: none;
+  color: var(--a-accent);
+}
+.h-choice > button {
+  display: grid;
+  place-items: center;
   width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--a-ink-2);
 }
+.h-choice > button:hover {
+  background: var(--a-hover-strong);
+}
+
+/* The custom range (picker.rs): 420 px, 720 with the overview. */
 .h-range-dialog {
   width: 420px;
+  max-width: calc(100% - 16px);
   max-height: calc(100% - 16px);
 }
-.h-range-dialog:has([data-overview]) {
-  width: min(810px, 96%);
+.h-range-dialog[data-overview] {
+  width: min(720px, calc(100% - 16px));
+}
+.h-range-dialog .a-dialog-body {
+  font-size: calc(13px * var(--a-text));
+  line-height: 1.4;
+}
+.h-range-dialog .a-dialog-body > h3 {
+  margin-bottom: 12px;
+}
+.h-range-body {
+  display: flex;
+  gap: 14px;
+}
+.h-range-left {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 12px;
+  width: 372px;
+  max-width: 100%;
 }
 .h-range-grid {
+  display: flex;
   border: 1px solid var(--a-stroke);
   border-radius: 6px;
-  gap: 0;
 }
 .h-range-grid aside {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 1px;
   width: 132px;
   padding: 4px;
-  gap: 0;
   border-right: 1px solid var(--a-stroke);
 }
 .h-range-grid aside button {
-  height: 27px;
-  border: 0;
-  box-shadow: none;
-  justify-content: start;
-  background: transparent;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: calc(12.5px * var(--a-text));
+  text-align: start;
 }
-.h-range-grid > div {
-  padding: 6px 10px;
+.h-range-grid aside button:hover,
+.h-range-grid aside button[data-on] {
+  background: var(--a-hover-strong);
+}
+.h-range-grid aside button[data-on] {
+  font-weight: 600;
+}
+.h-range-grid aside button[data-break] {
+  height: 31px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--a-stroke);
+  border-radius: 0 0 5px 5px;
+}
+.h-range-main {
+  display: flex;
   flex: 1;
-  max-height: 420px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 14px 12px;
+  font-size: calc(12.5px * var(--a-text));
+}
+.h-month {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.h-month b {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+.h-month button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--a-ink-2);
+}
+.h-month button:hover {
+  background: var(--a-hover-strong);
+}
+.h-week,
+.h-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 30px);
+  margin-top: -8px;
+}
+.h-week small {
+  display: grid;
+  place-items: center;
+  height: 20px;
+  color: var(--a-ink-3);
+  font-size: calc(11.5px * var(--a-text));
 }
 .h-calendar button {
-  font-size: 11px;
-  height: 27px;
   position: relative;
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: calc(12px * var(--a-text));
 }
-.h-calendar button:not(:disabled)::after {
-  content: "";
-  position: absolute;
-  bottom: 2px;
-  left: 20%;
-  width: 60%;
-  height: 3px;
-  background: var(--a-cpu);
-  opacity: 0.35;
+.h-calendar button:not(:disabled):not([data-end]):hover {
+  background: var(--a-hover-strong);
 }
-.h-week {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
+.h-calendar button:disabled {
+  opacity: 0.55;
   color: var(--a-ink-3);
 }
-.h-month button,
-.h-overview-toggle {
-  color: var(--a-ink-2);
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+.h-calendar button > i {
+  width: 18px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--a-stroke-strong);
 }
-.h-overview-toggle {
-  padding: 12px 4px 0;
+.h-calendar button > i > i {
+  display: block;
+  width: calc(var(--cover) * 100%);
+  height: 100%;
+  background: color-mix(in srgb, var(--a-cpu) calc(var(--tint) * 100%), transparent);
+}
+.h-calendar button[data-inside] {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--a-accent) 16%, transparent);
+}
+.h-calendar button[data-end] {
+  background: var(--a-accent);
+  color: var(--a-on-accent);
+}
+.h-calendar button[data-start] {
+  border-radius: 6px 0 0 6px;
+}
+.h-calendar button[data-last] {
+  border-radius: 0 6px 6px 0;
+}
+.h-calendar button[data-end] > i {
+  background: color-mix(in srgb, var(--a-on-accent) 35%, transparent);
+}
+.h-calendar button[data-end] > i > i {
+  background: var(--a-on-accent);
+}
+.h-calendar button[data-today]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--a-accent);
+}
+.h-calendar button[data-today][data-end]::after {
+  background: var(--a-on-accent);
+}
+.h-range-main > label {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.h-range-grid input[type="datetime-local"] {
+.h-range-main > label > span {
+  flex: none;
+  color: var(--a-ink-2);
+}
+.h-range-main > label .a-input {
+  flex: 1;
   min-width: 0;
-  width: 100%;
   height: 32px;
+}
+.h-range-main > label.h-range-follow {
+  align-items: flex-start;
+  color: var(--a-ink-2);
+}
+.h-range-follow input {
+  accent-color: var(--a-accent);
+  margin-top: 2px;
+}
+.h-range-error {
+  margin: 0;
+  color: var(--a-danger);
+  font-size: calc(12px * var(--a-text));
+}
+.h-overview-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0;
+  color: var(--a-ink-2);
+  font-size: calc(12.5px * var(--a-text));
+}
+.h-overview-toggle:hover {
+  color: var(--a-ink);
+}
+.h-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.h-overview-head,
+.h-events-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+.h-overview-head b,
+.h-events-head b {
+  font-weight: 600;
+}
+.h-overview-head small,
+.h-events-head small {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--a-ink-3);
+  font-size: calc(11.5px * var(--a-text));
+}
+.h-map-box {
+  position: relative;
+  height: 168px;
+}
+.h-map-hour {
+  position: absolute;
+  left: 0;
+  width: 30px;
+  text-align: right;
+  color: var(--a-ink-3);
+  font-size: calc(10.5px * var(--a-text));
+}
+.h-map {
+  position: absolute;
+  left: 34px;
+  right: 0;
+  top: 0;
+  height: 150px;
+  cursor: pointer;
+  touch-action: none;
+}
+.h-map > i {
+  position: absolute;
+  width: calc(100% / 30 - 1px);
+  height: calc(100% / 24 - 1px);
+  margin: 0.5px;
+}
+.h-map > b {
+  position: absolute;
+  width: calc(100% / 30);
+  border: 1px solid var(--a-accent);
+  pointer-events: none;
+}
+.h-map-box .h-map-day {
+  position: absolute;
+  top: 153px;
+  width: 44px;
+  margin-left: -22px;
+  padding: 0;
+  color: var(--a-ink-3);
+  font-size: calc(10.5px * var(--a-text));
+  text-align: center;
+  white-space: nowrap;
+}
+.h-map-box .h-map-day[data-today] {
+  color: var(--a-accent);
+}
+.h-events {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+}
+.h-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.h-filters button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 11px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
+}
+.h-filters button:hover {
+  background: var(--a-hover-strong);
+}
+.h-filters button[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--a-accent);
+  color: var(--a-on-accent);
+}
+.h-event-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.h-event-list p {
+  padding-top: 8px;
+  color: var(--a-ink-3);
+  font-size: calc(12px * var(--a-text));
+}
+.h-event {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  text-align: start;
+}
+.h-event:hover {
+  background: var(--a-hover);
+}
+.h-event-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tone) 16%, transparent);
+  color: var(--tone);
+}
+.h-event > span:last-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.h-event > span:last-child > small {
+  color: var(--a-ink-2);
+  font-size: calc(11.5px * var(--a-text));
+}
+.h-event-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-event-title b {
+  flex: 1;
+  font-size: calc(12.5px * var(--a-text));
+  font-weight: 600;
+}
+.h-event-title small {
+  color: var(--a-ink-3);
+  font-size: calc(11.5px * var(--a-text));
 }
 .h-range-dialog .a-dialog-foot .a-btn {
   min-width: 96px;
 }
-.h-range-grid label {
-  font-size: 12px;
-  white-space: nowrap;
-}
+
+/* The history settings (HistorySettings.tsx). */
 .h-record-options,
 .h-record-count {
   grid-column: 2;
@@ -705,93 +1616,15 @@
   justify-content: space-between;
 }
 @container argus (max-width: 900px) {
-  .h-tools button {
-    font-size: 12px;
-  }
-  .h-plot-wrap {
-    grid-template-columns: 32px 1fr 32px;
-  }
   .h-overlay {
-    margin-left: 8px;
+    margin-left: 0;
   }
   .a-busy-note span:last-child {
     display: none;
   }
 }
-
-.h-chooser-layer .h-chooser .a-input {
-  flex: none;
-  min-height: 32px;
-  height: 32px;
-  margin-block: 5px 8px;
-}
-.a-busy-head .a-input {
-  flex: 0 1 200px;
-  height: 32px;
-  min-width: 75px;
-}
-.a-busy-card .a-th {
-  font-weight: 400;
-}
-.a-busy-card .a-th[aria-sort="descending"],
-.a-busy-card .a-th[aria-sort="ascending"] {
-  font-weight: 500;
-}
-.h-y-axis.side-1 {
-  color: var(--right-axis, var(--a-ink-3));
-}
-.h-range-dialog .h-range-grid > div {
-  gap: 4px;
-}
-.h-calendar {
-  gap: 0 1px;
-}
-.h-range-dialog .a-dialog-body > h3 {
-  margin-bottom: 10px;
-}
-
-.h-choice[data-highlight] {
-  background: var(--a-hover-strong);
-}
-
-.h-raster,
-.h-nav-plot {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-.h-raster canvas {
-  position: absolute;
-  left: 0;
-  top: 0;
-  max-width: none;
-  will-change: transform;
-}
-.h-nav-plot {
-  inset: 3px 0;
-}
-.h-axis {
-  display: block;
-  position: relative;
-  overflow: hidden;
-}
-.h-axis > div {
-  position: absolute;
-  inset: 0;
-  will-change: transform;
-}
-.h-axis span {
-  position: absolute;
-  top: 2px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-}
-
-.h-time-selection {
-  position: absolute;
-  inset-block: 0;
-  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
-  border-inline: 1px solid var(--a-accent);
-  pointer-events: none;
+.a-busy-note .h-link {
+  padding: 0;
+  color: var(--a-accent);
+  font: inherit;
 }

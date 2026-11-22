@@ -2,7 +2,7 @@
 "use client";
 import { useRef } from "react";
 import { Icon, ProcessIcon } from "./icons";
-import type { Process } from "./model";
+import { thousands, type Process } from "./model";
 
 export interface Holder {
   proc: Process;
@@ -57,6 +57,7 @@ export default function FileLock({
   onFiles,
   onShow,
   onEnd,
+  onRestart,
   footer = true,
 }: {
   result: LockResult | null;
@@ -64,6 +65,8 @@ export default function FileLock({
   onFiles: (names: string[], folder: boolean) => void;
   onShow?: (pid: number) => void;
   onEnd: (proc: Process) => void;
+  /** The desktop's own Explorer is restarted rather than ended (file_lock.rs `locker_action`). */
+  onRestart?: () => void;
   footer?: boolean;
 }) {
   const file = useRef<HTMLInputElement>(null);
@@ -117,44 +120,58 @@ export default function FileLock({
           </>
         )}
         {!checking && result && (
-          <>
+          // The report rises into place as a whole (file_lock.rs `lock_report`).
+          <div className="a-lock-report">
             <p className="a-lock-status">
               {result.holders.length
                 ? `找到 ${result.holders.length} 个进程正在使用这些文件或文件夹。`
                 : "本次查询未发现可访问的占用进程。"}
             </p>
             <ul className="a-lock-list">
-              {result.holders.map(({ proc, handles, directory }) => (
-                <li key={proc.pid}>
-                  <ProcessIcon glyph={proc.glyph} />
-                  <span className="a-lock-proc">
-                    <span>{proc.name}</span>
-                    <small>
-                      {proc.exe} PID {proc.pid}
-                      {directory && " · 当前工作目录"}
-                    </small>
-                  </span>
-                  {proc.pid === 6120 && <span className="a-tag">资源管理器</span>}
-                  <span className="a-tag a-badge">{handles} 个句柄</span>
-                  {onShow && (
-                    <button
-                      type="button"
-                      className="a-btn is-ghost is-small is-icon"
-                      aria-label="在进程列表中查看"
-                      title="在进程列表中查看"
-                      onClick={() => onShow(proc.pid)}
-                    >
-                      <Icon name="goTo" size={14} />
-                    </button>
-                  )}
-                  <button type="button" className="a-btn is-danger is-small" onClick={() => onEnd(proc)}>
-                    <Icon name="end" size={14} />
-                    结束
-                  </button>
-                </li>
-              ))}
+              {result.holders.map(({ proc, handles }) => {
+                // The desktop's own Explorer.
+                const shell = proc.pid === 6120;
+                return (
+                  <li key={proc.pid}>
+                    <ProcessIcon glyph={proc.glyph} />
+                    <span className="a-lock-proc">
+                      <span>{proc.name}</span>
+                      <small>
+                        {proc.exe} PID {proc.pid}
+                      </small>
+                      <small translate="no">{base(result.names[0])}</small>
+                    </span>
+                    {shell && <span className="a-tag">资源管理器</span>}
+                    <span className="a-tag a-badge">{handles} 个句柄</span>
+                    {onShow && (
+                      <button
+                        type="button"
+                        className="a-btn is-ghost is-small is-icon"
+                        aria-label="在进程列表中查看"
+                        title="在进程列表中查看"
+                        onClick={() => onShow(proc.pid)}
+                      >
+                        <Icon name="goTo" size={14} />
+                      </button>
+                    )}
+                    {shell ? (
+                      <button type="button" className="a-btn is-small" onClick={onRestart}>
+                        <Icon name="restart" size={14} />
+                        重新启动
+                      </button>
+                    ) : (
+                      <button type="button" className="a-btn is-danger is-small" onClick={() => onEnd(proc)}>
+                        <Icon name="end" size={14} />
+                        结束
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
-          </>
+            {/* What was checked: run as administrator, the handles are read locally. */}
+            <p className="a-lock-note">{`已检查 ${result.folder ? 37 : result.names.length} 个文件。本地已检查 ${thousands(48213)} 个句柄。`}</p>
+          </div>
         )}
       </div>
       {footer && <p className="a-lock-foot">受保护进程的文件占用可能无法显示。</p>}

@@ -2,36 +2,73 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { Icon, ProcessIcon } from "./icons";
-import { appVersion, processes, readings, sampleAt, rate } from "./model";
+import { appVersion, machineTotals, processes, readings, sampleAt, rate } from "./model";
 import { byMetric } from "./metrics";
 import { store, useShared, setWidgets, setMonitor, type Request } from "./store";
 import { MiniCurve, MonitorFace, Styles, Readings } from "./MonitorReadings";
 import { Button } from "./widgets";
 
+// The tray icon's looks at 20 px (shell/tray_icon.rs): the window mark with the
+// recent loads cut out of it, the hundred dots with an A, or the figure over a bar.
 export function TrayGlyph({ tick, style }: { tick: number; style: string }) {
-  const value = Math.round(sampleAt(tick).cpu);
+  const load = Math.min(100, Math.round(sampleAt(tick).cpu));
+  const high = load >= 80;
   if (style === "应用图标") return <img src="/assets/argus.svg" width="20" height="20" alt="" />;
-  if (style === "数字") return <strong style={{ color: value >= 80 ? "#cd8b20" : undefined }}>{value}</strong>;
+  if (style === "数字")
+    return (
+      <svg className="w-tray-glyph" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <text x="10" y="13.4" textAnchor="middle" fontSize={load > 99 ? 10 : 13} fontWeight="600" fill={high ? "var(--tg-high)" : "currentColor"}>
+          {load}
+        </text>
+        <rect x="1" y="17" width="18" height="2" rx="1" fill="currentColor" opacity="0.22" />
+        <rect x="1" y="17" width={(18 * load) / 100} height="2" rx="1" fill={high ? "var(--tg-high)" : "var(--tg-load)"} />
+      </svg>
+    );
+  if (style === "占比")
+    return (
+      <svg className="w-tray-glyph" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        {Array.from({ length: 25 }, (_, i) => {
+          const column = i % 5,
+            row = Math.floor(i / 5),
+            rank = (4 - row) * 5 + column,
+            letter = row === 0 ? column === 2 : row === 1 ? column === 1 || column === 3 : row === 2 ? column >= 1 && column <= 3 : column === 0 || column === 4;
+          const on = rank < Math.round((load / 100) * 25);
+          return (
+            <rect
+              key={i}
+              x={1 + column * 4}
+              y={1 + row * 4}
+              width="2"
+              height="2"
+              rx=".5"
+              fill={on ? (high ? "var(--tg-high)" : "var(--tg-accent)") : "currentColor"}
+              opacity={on ? 1 : letter ? 0.42 : 0.2}
+            />
+          );
+        })}
+      </svg>
+    );
+  // 走势: five columns of three dots, lit from the bottom by the last five loads.
+  const lit = (t: number) => Math.min(3, Math.max(1, Math.round((Math.min(100, sampleAt(t).cpu) / 100) * 3)));
+  const dots = Array.from({ length: 5 }, (_, column) => ({ column, rows: lit(tick - 4 + column) }));
+  const id = "tg" + tick;
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-      {style === "走势" && <path d="M2 6h20" stroke="currentColor" strokeWidth="2" />}
-      {Array.from({ length: 25 }, (_, i) => {
-        const x = i % 5,
-          y = Math.floor(i / 5),
-          on = style === "占比" ? i < Math.round(value / 4) : y < Math.round(sampleAt(tick + x - 4).cpu / 20);
-        return (
-          <rect
-            key={i}
-            x={3 + x * 4}
-            y={20 - y * (style === "走势" ? 3 : 4)}
-            width="2.6"
-            height="2.6"
-            rx=".6"
-            fill={on && (style === "占比" || x === 4) ? (value >= 80 ? "#cd8b20" : "var(--accent)") : "currentColor"}
-            opacity={on ? 1 : 0.18}
-          />
-        );
-      })}
+    <svg className="w-tray-glyph" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <mask id={id}>
+        <rect x="1" y="1" width="18" height="18" rx="4.5" fill="white" />
+        {dots.flatMap(({ column, rows }) =>
+          Array.from({ length: rows }, (_, k) => (
+            <rect key={column + "-" + k} x={3 + column * 3} y={9 + (2 - k) * 3} width="2" height="2" rx=".5" fill="black" />
+          )),
+        )}
+        {[0, 1, 2].map((n) => (
+          <rect key={"c" + n} x={3 + n * 3} y="4" width="2" height="2" rx=".5" fill="black" />
+        ))}
+      </mask>
+      <rect x="1" y="1" width="18" height="18" rx="4.5" fill="currentColor" mask={`url(#${id})`} />
+      {Array.from({ length: dots[4].rows }, (_, k) => (
+        <rect key={k} x="15" y={9 + (2 - k) * 3} width="2" height="2" rx=".5" fill={high ? "var(--tg-high)" : "var(--tg-accent)"} />
+      ))}
     </svg>
   );
 }
@@ -50,6 +87,7 @@ export function TrayPanel({ tick, card, close }: { tick: number; card: boolean; 
     store.set({ command: { action, at: Date.now() } });
   };
   const stats = sampleAt(tick);
+  const totals = machineTotals(tick);
   const tiles = [
     ["cpu", "cpu", "CPU", "chip", stats.cpu, Math.round(stats.cpu) + "%", ""],
     [
@@ -61,8 +99,9 @@ export function TrayPanel({ tick, card, close }: { tick: number; card: boolean; 
       Math.round(stats.mem) + "%",
       (stats.mem * 0.32).toFixed(1) + " / 32.0 GB",
     ],
-    ["gpu", "gpu", "GPU", "gpu", stats.gpu, Math.round(stats.gpu) + "%", ""],
-    ["net", "wifi", "网络", "network", 0, "↓ " + rate(stats.rx), "↑ " + rate(stats.tx)],
+    // The busiest GPU, and every adapter's rates (tray.rs).
+    ["gpu", "gpu", "GPU", "gpu", totals.gpu, Math.round(totals.gpu) + "%", ""],
+    ["net", "wifi", "网络", "network", 0, "↓ " + rate(totals.rx), "↑ " + rate(totals.tx)],
   ] as const;
   if (card)
     return (
@@ -100,8 +139,13 @@ export function TrayPanel({ tick, card, close }: { tick: number; card: boolean; 
   if (w.trayMenu === "菜单")
     return (
       <div className="w-popup w-tray-popup is-menu" role="menu">
-        <Button onClick={() => command("show")}>打开 Argus</Button>
-        <Button onClick={() => command("exit")}>退出 Argus</Button>
+        <button role="menuitem" onClick={() => command("show")}>
+          显示 Argus
+        </button>
+        <hr />
+        <button role="menuitem" onClick={() => command("exit")}>
+          退出
+        </button>
       </div>
     );
   return (
@@ -188,28 +232,32 @@ export function TaskMonitor({ tick, toggle }: { tick: number; toggle: () => void
       </button>
       {panel && (
         <div className="w-popup w-task-panel" role="dialog" aria-label="任务栏监控">
-          <b>样式</b>
-          <Styles kind="taskbar" />
-          <b>显示的读数</b>
-          <Readings kind="taskbar" />
-          <div className="w-popup-actions">
-            <Button
+          <div>
+            <h4>样式</h4>
+            <Styles kind="taskbar" tick={tick} />
+            <h4>显示的读数</h4>
+            <Readings kind="taskbar" compact />
+          </div>
+          <footer>
+            <button
               onClick={() => {
                 setPanel(false);
                 widgetSettings("任务栏监控");
               }}
             >
+              <Icon name="settings" size={15} />
               组件设置…
-            </Button>
-            <Button
+            </button>
+            <button
               onClick={() => {
                 setPanel(false);
                 setMonitor("taskbar", { enabled: false });
               }}
             >
+              <Icon name="power" size={15} />
               关闭任务栏监控
-            </Button>
-          </div>
+            </button>
+          </footer>
         </div>
       )}
     </div>
@@ -285,48 +333,79 @@ export function DesktopMonitor({ tick }: { tick: number }) {
         <MonitorFace kind="desktop" tick={tick} style={d.layout === "横条" ? d.layout : d.style} />
       </div>
       {menu && (
-        <div className="w-popup">
-          <Button
+        // The monitor's menu (shell/desk.rs `menu`): open, the look in a submenu, two checks, settings and close.
+        <div className="w-popup w-desk-menu" role="menu">
+          <button
+            role="menuitem"
             onClick={() => {
               store.set({ command: { action: "show", at: Date.now() } });
               setMenu(false);
             }}
           >
             打开 Argus
-          </Button>
-          {["列表", "曲线", "仪表", "横条"].map((style) => (
-            <Button
-              key={style}
-              onClick={() => {
-                setMonitor("desktop", style === "横条" ? { layout: "横条" } : { layout: "面板", style });
-                setMenu(false);
-              }}
-            >
-              {style}
-            </Button>
-          ))}
-          <Button onClick={() => setMonitor("desktop", { locked: !d.locked })} pressed={d.locked}>
-            锁定位置
-          </Button>
-          <Button onClick={() => setMonitor("desktop", { topmost: !d.topmost })} pressed={d.topmost}>
+          </button>
+          <hr />
+          <div className="w-desk-sub">
+            <button role="menuitem" aria-haspopup="menu">
+              显示方式
+              <Icon name="chevronRight" size={14} />
+            </button>
+            <div className="w-popup w-desk-menu" role="menu">
+              {(
+                [
+                  ["列表", "列表面板"],
+                  ["曲线", "曲线面板"],
+                  ["仪表", "仪表面板"],
+                  ["-", ""],
+                  ["横条", "横条"],
+                ] as const
+              ).map(([style, name]) =>
+                style === "-" ? (
+                  <hr key="-" />
+                ) : (
+                  <button
+                    key={style}
+                    role="menuitemradio"
+                    aria-checked={style === "横条" ? d.layout === "横条" : d.layout === "面板" && d.style === style}
+                    onClick={() => {
+                      setMonitor("desktop", style === "横条" ? { layout: "横条" } : { layout: "面板", style });
+                      setMenu(false);
+                    }}
+                  >
+                    <span className="w-mark" />
+                    {name}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+          <button role="menuitemcheckbox" aria-checked={d.topmost} onClick={() => setMonitor("desktop", { topmost: !d.topmost })}>
+            <span className="w-mark">{d.topmost && <Icon name="check" size={14} />}</span>
             置顶显示
-          </Button>
-          <Button
+          </button>
+          <button role="menuitemcheckbox" aria-checked={d.locked} onClick={() => setMonitor("desktop", { locked: !d.locked })}>
+            <span className="w-mark">{d.locked && <Icon name="check" size={14} />}</span>
+            锁定位置
+          </button>
+          <hr />
+          <button
+            role="menuitem"
             onClick={() => {
               setMenu(false);
               widgetSettings("桌面监控");
             }}
           >
             组件设置…
-          </Button>
-          <Button
+          </button>
+          <button
+            role="menuitem"
             onClick={() => {
               setMenu(false);
               setMonitor("desktop", { enabled: false });
             }}
           >
             关闭桌面监控
-          </Button>
+          </button>
         </div>
       )}
     </div>
