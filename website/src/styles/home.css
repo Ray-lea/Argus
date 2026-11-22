@@ -297,12 +297,59 @@
   width: 1920px;
   height: 1032px;
 }
-/* Mica in the window's own theme: Argus can be light on a dark desktop. */
+/* The app's window surface follows its own theme on the simulated desktop. */
 .window .a-window {
   border-color: var(--a-frame);
-  background: var(--a-glass);
-  backdrop-filter: blur(60px) saturate(1.5);
+  background: var(--a-window);
   box-shadow: var(--a-frame-shadow);
+}
+/* Mica samples the desktop wallpaper. Its colour field stays fixed in desktop
+   coordinates while only the frame and its content move. Inactive windows
+   cross-fade to the theme surface, as DWMSBT_MAINWINDOW does. */
+.window .a-window {
+  isolation: isolate;
+}
+.window .a-window::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 57% 65%, var(--mica-petal), transparent 63%),
+    linear-gradient(135deg, var(--mica-wall), var(--mica-base) 50%, var(--mica-wall));
+  background-size: 1920px 1080px;
+  background-position: calc(0px - var(--wx)) calc(0px - var(--wy));
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.window .argus-app[data-active="true"] .a-window::before {
+  opacity: 1;
+}
+.window .is-max .a-window::before {
+  background-position: 0 0;
+}
+.window .argus-app {
+  --mica-base: #f6f6f6;
+  --mica-wall: color-mix(in srgb, var(--wall) 6%, var(--mica-base));
+  --mica-petal: color-mix(in srgb, var(--petal-b) 10%, var(--mica-base));
+}
+:root[data-theme="dark"] .window .argus-app:not([data-mode="light"]),
+.window .argus-app[data-mode="dark"] {
+  --mica-base: #1f2021;
+  --mica-wall: color-mix(in srgb, var(--wall) 5%, var(--mica-base));
+  --mica-petal: color-mix(in srgb, var(--petal-b) 5%, var(--mica-base));
+}
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .window .argus-app[data-active="true"] .a-window::before {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .window .a-window::before {
+    transition: none;
+  }
 }
 .window .is-max .a-window {
   box-shadow: none;
@@ -570,11 +617,19 @@
   display: none;
 }
 .stage.is-full .tour-bar {
+  right:auto;
+  width:max-content;
+  max-width:calc(40% - 16px);
+  flex-wrap:nowrap;
+  justify-content:flex-start;
   top: auto;
   bottom: calc((100cqh - 1080px * var(--k)) / 2 + (48px * var(--k) - 34px) / 2);
   left: calc((100cqw - 1920px * var(--k)) / 2 + 12px * var(--k));
   transform: none;
 }
+.stage.is-full .tour-chip {min-width:0}
+.stage.is-full .tour-text {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stage.is-full:has(.w-task-monitor.at-start) .tour-bar {bottom:calc((100cqh - 1080px * var(--k))/2 + 48px * var(--k) + 6px)}
 .stage.is-full .tb-weather {
   visibility: hidden;
 }

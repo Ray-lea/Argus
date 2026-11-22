@@ -12,6 +12,7 @@
     "mappedFile": "Argus 程序文件仍被内存映射占用。请退出相关程序，或保存工作并重启电脑后重试。",
     "diskFull": "磁盘剩余空间不足，无法写入程序文件。释放空间后可重试。",
     "copyFailed": "程序文件更新失败。可根据错误代码和诊断日志检查文件与安装目录。",
+    "folderFailed": "未能准备安装文件夹。可根据错误代码和诊断日志检查安装位置。",
     "unsafeTarget": "目标程序文件是链接或文件夹，已停止更新。请检查安装位置后重试。",
     "restartRequired": "Windows 暂时无法释放程序文件。可保存工作并重启电脑后安装。",
     "checkFailed": "Windows 未能完成程序文件检查。具体失败步骤已记录到日志。",
@@ -20,7 +21,15 @@
     "retryHint": "释放文件占用或处理上述原因后，单击“重试”继续安装；单击“取消”退出安装。",
     "errorCode": "错误代码：{code}",
     "logPath": "诊断日志：{path}",
-    "logFailed": "日志写入失败，错误代码：{code}"
+    "logFailed": "日志写入失败，错误代码：{code}",
+    "locationRisk": "无法保证只有管理员能修改安装位置“{path}”：",
+    "locationDrive": "该磁盘不保存文件权限，或不是本机的固定磁盘（例如 U 盘、网络位置或 FAT 格式的分区）。",
+    "locationParent": "其他账户可以重命名上层文件夹“{path}”或更改其权限。",
+    "locationShared": "文件夹中已有其他文件，安装程序不会更改它们的权限。",
+    "locationEffect": "安装、更新和卸载 Argus 以及安装特权服务时，会以管理员身份运行该位置的程序。其他账户可借此替换程序，获得管理员权限。",
+    "locationAdvice": "建议安装到默认位置 {default}，或磁盘根目录下的新文件夹，例如 {example}。",
+    "locationAdviceDefault": "建议安装到默认位置 {default}。",
+    "locationContinue": "仍要安装到此位置吗？"
   },
   "tray": {
     "show": "显示 Argus",
@@ -69,7 +78,7 @@
       "ipv4Only": "只能关闭 IPv4 TCP 连接"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager 无法检查目标，以下为句柄查询结果"
+      "restartManagerFailed": "未能完成文件检查，结果仅来自句柄查询"
     },
     "handles": {
       "tooMany": "一次最多查询 32 个路径，路径总长度不能超过 8 KiB",

@@ -39,6 +39,7 @@ interface Chart {
   stale: boolean;
   /** Draw on the next frame even if nothing moves. */
   dirty: boolean;
+  pixel:number;
   shown: boolean;
 }
 
@@ -66,7 +67,7 @@ const SETTLE = 500;
 const settling = (c: Chart, now: number) => c.offset * Math.max(0, 1 - (now - c.offsetAt) / c.settle);
 // Where the curve is drawn at `now`: its clock's phase, with any difference still evening out.
 const placeAt = (c: Chart, f: Frame, now: number) =>
-  f.at === null ? (c.held ?? 1) : Math.min(1 + OVERRUN, Math.max(-1, phaseAt(f, now) + settling(c, now)));
+  f.at === null ? (c.held ?? f.phase) : Math.min(1 + OVERRUN, Math.max(-1, phaseAt(f, now) + settling(c, now)));
 const moving = (c: Chart, now: number) =>
   !!c.frame && c.frame.at !== null && ((now - c.frame.at) / c.frame.interval < 1 + OVERRUN || settling(c, now) !== 0);
 const rgba = (color: number[], alpha = 1) => `rgba(${color[0]},${color[1]},${color[2]},${(color[3] ?? 1) * alpha})`;
@@ -140,9 +141,10 @@ function draw(c: Chart, now: number) {
   if (!c.image) return;
   const { ctx } = c;
   ctx.clearRect(0, 0, g.width, g.height);
-  const phase = placeAt(c, f, now);
+  let phase = placeAt(c, f, now);
   const sx = g.boxWidth / f.shown,
     sy = g.boxHeight / 100;
+  if(f.mode==="pixel")phase=Math.floor(phase*sx)/sx;
   const Y = (y: number) => g.top + y * sy;
   ctx.save();
   ctx.beginPath();
@@ -172,14 +174,19 @@ function draw(c: Chart, now: number) {
   }
 }
 
+let framePeriod=16.667,lastFrame=0,serialFrame=0;
 function frame(time: number) {
+  const gap=time-lastFrame;if(gap>3&&gap<24)framePeriod+=.08*(gap-framePeriod);lastFrame=time;serialFrame++;
   scheduled = false;
   const now = origin + time;
   let again = false;
   for (const [id, c] of charts) {
     if (!c.geometry || !c.frame) continue;
     const move = c.visible && moving(c, now);
-    if (c.dirty || move) {
+    const pixel=Math.floor(placeAt(c,c.frame,now)*c.geometry.boxWidth/c.frame.shown);
+    const due=c.frame.mode==="balanced"?serialFrame%Math.max(1,Math.floor(1000/60/framePeriod))===0:c.frame.mode==="pixel"?pixel!==c.pixel:true;
+    if (c.dirty || (move&&due)) {
+      c.pixel=pixel;
       draw(c, now);
       c.dirty = false;
       if (!c.shown) {
@@ -229,6 +236,7 @@ scope.onmessage = ({ data }) => {
       pointer: null,
       visible: true,
       dirty: true,
+      pixel:NaN,
       shown: false,
     });
     return;
@@ -249,7 +257,7 @@ scope.onmessage = ({ data }) => {
       old = c.frame,
       shift = old ? data.frame.tick - old.tick : 0;
     // Held (sampling paused), the curve stays where it is, and carries on from there.
-    if (data.frame.at === null) c.held = old && old.at !== null && shift === 0 ? placeAt(c, old, now) : (c.held ?? null);
+    if (data.frame.at === null) c.held = old && old.at !== null && shift === 0 ? placeAt(c, old, now) : data.frame.phase;
     if (old && data.frame.at !== null && shift >= 0 && shift <= 2) {
       const gap = phaseAt(data.frame, now) + shift - placeAt(c, old, now);
       c.offset = Math.abs(gap) < 1.5 ? -gap : 0;

@@ -37,12 +37,12 @@
     "title": "Delete service {name}?",
     "body": "The service {service} and its settings will be removed. This cannot be undone; the service’s program files are kept.",
     "running": "The service has not stopped yet; Windows removes it once it stops.",
-    "system": "The service runs a program in the Windows folder and may belong to Windows. Deleting it can break related features or even keep Windows from starting.",
+    "system": "The service executable is in the Windows folder. Deleting the service may disable system features or prevent Windows from starting.",
     "done": "Deleted service {name}.",
     "pending": "Service {name} is marked for deletion. Windows removes it once it stops and no other program is using it.",
     "error": {
       "accessDenied": "Access denied: service {name} could not be deleted. Turn on the privileged service in Settings, or run Argus as administrator; protected services may still be out of reach.",
-      "notFound": "Service {name} does not exist; it may have been deleted already.",
+      "notFound": "Service {name} was not found.",
       "refused": "Service {name} cannot be deleted.",
       "serviceOutdated": "Access denied: service {name} could not be deleted. The privileged service version is incompatible; update the service and try again.",
       "generic": "Could not delete service {name}: {error}"
@@ -60,7 +60,7 @@
   "noMatch": "No matching services",
   "clearFilter": "Clear filters",
   "summary": "{running} of {total} running",
-  "manageHint": "Most services can only be managed with the privileged service enabled or with Argus running as administrator.",
+  "manageHint": "Managing most services requires the privileged service or administrator rights.",
   "packaged": {
     "title": "Change startup type in the registry?",
     "body": "Windows doesn't let anyone change the startup type of “{name}”, not even administrators: the service belongs to an app package. Argus can write “{type}” to the service's registry key instead.\n\nWindows usually applies it right away; if it doesn't, the table marks it as pending until the next restart. An app update may restore the original value.",

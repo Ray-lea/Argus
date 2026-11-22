@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 /// What a connection row shows of the process that owns it.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Owner {
+    app_key: String,
     pub name: String,
     pub description: String,
     pub icon: Value,
@@ -37,6 +38,11 @@ pub(super) fn owners(processes: &[Value], connections: &[Value]) -> Owners {
             Some((
                 pid,
                 Owner {
+                    app_key: if text(p, "path").is_empty() {
+                        text(p, "name").to_lowercase()
+                    } else {
+                        model::normalized_image_path(text(p, "path"))
+                    },
                     name: text(p, "name").to_owned(),
                     description: text(p, "description").to_owned(),
                     icon: p["icon"].clone(),
@@ -63,6 +69,10 @@ pub(super) struct ListSpec {
     /// Titles and the collation order follow the interface language.
     pub locale: Locale,
     pub visibility: Option<visibility::Rules>,
+    /// Connections gather under their programs (`group_connections`), with
+    /// the programs whose connections show, by `app_key`.
+    pub grouped: bool,
+    pub opened: HashSet<String>,
 }
 
 /// How a row compares in the chosen order, computed once per row.
@@ -299,7 +309,72 @@ pub(super) fn list_rows(spec: &ListSpec, source: &[Value], owners: &Owners) -> V
     });
     let mut rows: Vec<Row> = ordered.into_iter().map(|(_, row)| row).collect();
     rows.sort_by_key(|row| !row.pinned);
+    if network && spec.grouped {
+        return group_connections(rows, spec, owners);
+    }
     rows
+}
+
+/// The key of a connection row's group heading.
+pub(super) const APP_PREFIX: &str = "c:";
+
+/// Unknown owners keep their fold state across interface languages.
+fn app_key<'a>(row: &Row, owners: &'a Owners) -> &'a str {
+    match row.raw["pid"].as_u64() {
+        Some(0) => "|unowned",
+        Some(pid) => owners.get(&pid).map_or("|exited", |owner| &owner.app_key),
+        None => "|exited",
+    }
+}
+
+/// The connection rows gathered under their programs, in the place each
+/// program's first row takes in the list's order. A program with more than
+/// one connection gets a heading that folds them; it shows them only when
+/// opened (`ListSpec::opened`), or while a search narrows the list.
+fn group_connections(rows: Vec<Row>, spec: &ListSpec, owners: &Owners) -> Vec<Row> {
+    let searching = !spec.query.trim().is_empty();
+    let mut order = Vec::new();
+    let mut groups: HashMap<&str, Vec<Row>> = HashMap::new();
+    for row in rows {
+        let app = app_key(&row, owners);
+        groups
+            .entry(app)
+            .or_insert_with(|| {
+                order.push(app);
+                Vec::new()
+            })
+            .push(row);
+    }
+    let mut grouped = Vec::new();
+    for app in order {
+        let mut members = groups.remove(app).expect("group in insertion order");
+        if members.len() == 1 {
+            grouped.append(&mut members);
+            continue;
+        }
+        let first = &members[0];
+        // One process (most programs) also gives the heading its PID, so
+        // that it can go to the process; several leave it empty.
+        let pid = &first.raw["pid"];
+        let one = members.iter().all(|row| &row.raw["pid"] == pid);
+        let raw = json!({
+            "icon": first.raw["icon"].clone(),
+            "pid": if one { pid.clone() } else { Value::Null },
+            "connectionCount": members.len(),
+        });
+        let opened = searching || spec.opened.contains(app);
+        let mut heading = Row::item(raw, format!("{APP_PREFIX}{app}"), first.title.clone());
+        heading.expandable = true;
+        heading.expanded = opened;
+        grouped.push(heading);
+        if opened {
+            for mut row in members {
+                row.depth = 1;
+                grouped.push(row);
+            }
+        }
+    }
+    grouped
 }
 
 /// The connection list's inputs, to tell whether rows built from them are current.
@@ -371,6 +446,12 @@ impl Desktop {
             marks: self.marks_of(page),
             locale: argus_core::i18n::locale(),
             visibility: self.visibility_rules(page),
+            grouped: page == "network" && self.connection_view == "apps",
+            opened: if page == "network" && self.connection_view == "apps" {
+                self.connection_folds.clone()
+            } else {
+                HashSet::new()
+            },
         }
     }
     /// The connections' owners in the current snapshot, read again only for
@@ -562,6 +643,8 @@ mod tests {
             marks,
             locale: argus_core::i18n::locale(),
             visibility: None,
+            grouped: false,
+            opened: Default::default(),
         }
     }
     fn connections() -> Vec<Value> {
@@ -718,6 +801,110 @@ mod tests {
         let rows = list_rows(&spec("localPort", false, "vpn", marks), &source, &owners);
         assert_eq!(ports(&rows), vec![(50000, Some(443))]);
     }
+    #[test]
+    fn grouped_connections_fold_under_their_programs() {
+        let source = connections();
+        let owners = owners(&processes(), &source);
+        let mut spec = spec("localPort", false, "", json!({}));
+        spec.grouped = true;
+        let shape = |rows: &[Row]| {
+            rows.iter()
+                .map(|row| {
+                    (
+                        row.key.clone(),
+                        row.depth,
+                        row.raw["connectionCount"].as_u64(),
+                        row.expanded,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        // Folded: one heading for the server's three, the browser's one as it is.
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].key, "c:server.exe");
+        assert_eq!(
+            (rows[0].depth, rows[0].raw["connectionCount"].as_u64()),
+            (0, Some(3))
+        );
+        assert!(rows[0].expandable && !rows[0].expanded);
+        assert_eq!(rows[0].title, "server.exe");
+        assert_eq!(rows[0].raw["pid"], 10);
+        assert_eq!(rows[0].raw["icon"], 1);
+        assert_eq!(rows[1].raw["pid"], 20);
+        assert!(!rows[1].expandable);
+        // Opened: its connections follow it, one step in, in the list's order.
+        spec.opened.insert("server.exe".into());
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(rows.len(), 5);
+        assert!(rows[0].expanded);
+        assert_eq!(
+            ports(&rows[1..4]),
+            [(80, None), (8080, None), (8080, Some(51000))]
+        );
+        assert!(rows[1..4].iter().all(|row| row.depth == 1));
+        assert_eq!((rows[4].raw["pid"].as_u64(), rows[4].depth), (Some(20), 0));
+        // A search opens every group with a match, folded or not.
+        spec.opened.clear();
+        spec.query = "8080".into();
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(
+            shape(&rows)[0],
+            ("c:server.exe".to_owned(), 0, Some(2), true)
+        );
+        assert_eq!(ports(&rows[1..]), [(8080, None), (8080, Some(51000))]);
+    }
+
+    #[test]
+    fn connections_separate_paths_and_group_names_without_a_path() {
+        let source = (1..=5)
+            .map(|pid| json!({"pid":pid,"localPort":pid}))
+            .collect::<Vec<_>>();
+        let processes = [
+            json!({"pid":1,"name":"App.exe","path":r"C:\Apps\App.exe"}),
+            json!({"pid":2,"name":"app.exe","path":r"\\?\C:\APPS\app.exe"}),
+            json!({"pid":3,"name":"app.exe","path":r"D:\Apps\app.exe"}),
+            json!({"pid":4,"name":"APP.exe"}),
+            json!({"pid":5,"name":"app.exe","path":""}),
+        ];
+        let mut spec = spec("localPort", false, "", Value::Null);
+        spec.grouped = true;
+        let owners = owners(&processes, &source);
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].key, r"c:c:\apps\app.exe");
+        assert_eq!(rows[0].raw["connectionCount"], 2);
+        assert_eq!(rows[1].raw["pid"], 3);
+        assert!(!rows[1].expandable);
+        assert_eq!(rows[2].key, "c:app.exe");
+        assert_eq!(rows[2].raw["connectionCount"], 2);
+    }
+
+    #[test]
+    fn a_program_with_several_processes_is_one_group_without_a_pid() {
+        let source = vec![
+            json!({"protocol":"tcp","localPort":1,"pid":10,"state":"established"}),
+            json!({"protocol":"tcp","localPort":2,"pid":11,"state":"established"}),
+            json!({"protocol":"tcp","localPort":3,"pid":99,"state":"established"}),
+            json!({"protocol":"tcp","localPort":4,"pid":98,"state":"established"}),
+        ];
+        let processes = vec![
+            json!({"pid":10,"name":"Chrome.exe","description":"Google Chrome"}),
+            json!({"pid":11,"name":"chrome.exe","description":"Google Chrome"}),
+        ];
+        let owners = owners(&processes, &source);
+        let mut spec = spec("localPort", false, "", json!({}));
+        spec.grouped = true;
+        let rows = list_rows(&spec, &source, &owners);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].key, "c:chrome.exe");
+        assert_eq!(rows[0].raw["connectionCount"], 2);
+        assert!(rows[0].raw["pid"].is_null());
+        // Connections whose processes exited gather under that title.
+        assert_eq!(rows[1].raw["connectionCount"], 2);
+        assert!(rows[1].key.starts_with("c:|"));
+    }
+
     #[test]
     fn protocol_and_state_filters_narrow_together() {
         let mut source = connections();

@@ -54,5 +54,5 @@
   "noMatch": "Keine passenden Verbindungen",
   "noMatchPort": "Keine passenden Verbindungen: Kein Programm verwendet Port {port}",
   "clearFilter": "Filter zurücksetzen",
-  "note": "Aktualisierungen alle 2 Sekunden. Doppelklicken Sie auf eine Zeile, um zu ihrem Prozess zu gelangen."
+  "note": "Doppelklick auf eine Verbindung öffnet den zugehörigen Prozess in der Liste."
 }

@@ -76,7 +76,7 @@ export const COLUMNS: ColumnDef[] = [
   col("company", "general", "text", 200, false, "公司名称", "可执行文件版本信息中的公司名称。"),
   col("version", "general", "text", 130, false, "文件版本", "可执行文件版本信息中的文件版本。"),
   col("architecture", "general", "text", 110, false, "架构", "进程运行的处理器架构。"),
-  col("elevated", "general", "bool", 90, false, "已提升", "进程是否以管理员权限（提升的令牌）运行。"),
+  col("elevated", "general", "bool", 90, false, "已提升", "进程是否以管理员权限运行。"),
   col("commandLine", "general", "text", 360, false, "命令行", "启动进程时使用的完整命令行，包括参数。"),
   col("sessionId", "general", "id", 80, false, "会话 ID", "进程所属的 Windows 会话编号。"),
   col("createTime", "general", "time", 160, false, "启动时间", "进程创建时间，以本地时间显示。"),
@@ -84,11 +84,13 @@ export const COLUMNS: ColumnDef[] = [
   col("handles", "general", "count", 86, true, "句柄", "句柄数"),
   col("suspended", "general", "bool", 90, false, "已暂停", "进程的全部线程处于暂停等待状态。"),
   col("efficiency", "general", "bool", 100, false, "效率模式", "进程的 EcoQoS 节能状态。"),
+  col("power","general","text",120,true,"电源使用情况","按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。"),
+  col("powerTrend","general","text",140,true,"电源使用情况趋势","最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。"),
   col("cpu", "cpu", "percent", 70, true, "CPU", "占全部处理器能力的百分比", "percent"),
   col("cpuTime", "cpu", "duration", 100, true, "CPU 时间", "累计用户态与内核态 CPU 时间；分组显示成员合计。"),
   col("cpuUserTime", "cpu", "duration", 115, true, "用户 CPU 时间", "进程累计使用的用户态 CPU 时间。"),
   col("cpuKernelTime", "cpu", "duration", 115, true, "内核 CPU 时间", "进程累计使用的内核态 CPU 时间。"),
-  col("basePriority", "cpu", "id", 100, false, "基本优先级", "Windows 报告的进程基本优先级，以优先级类别显示。Windows 为部分系统进程设置的介于类别之间的值以数字显示。"),
+  col("basePriority", "cpu", "id", 100, false, "基本优先级", "通常显示优先级类别，介于两类之间的基本优先级显示为数值。"),
   col("mem", "memory", "memory", 96, true, "内存", "专用工作集：进程独占的物理内存", "memory"),
   col("workingSet", "memory", "memory", 110, true, "工作集", "当前驻留的物理内存，含共享页面；分组为成员工作集之和。", "memory"),
   col("peakWorkingSet", "memory", "memory", 125, false, "工作集峰值", "单进程自启动以来的工作集峰值；展开应用分组查看各进程。"),
@@ -295,6 +297,12 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "handles": value = total((p) => p.handles); break;
     case "suspended": value = instance((p) => (p.suspended ? "是" : "否")); break;
     case "efficiency": value = instance((p) => (ctx.efficiency.has(p.pid) ? "是" : "否")); break;
+    case "power":
+    case "powerTrend": {
+      const estimate=c.key==="power" ? v.cpu*.2+v.gpu*.04+Math.min(1.5,(v.read+v.write)/(512*1024**2)) : total(p=>(p.cpu??0)*.2+(p.gpu??0)*.04+(p.disk??0)/512);
+      const level=[.1,.3,.8,2].filter(n=>estimate>=n).length;
+      return {text:["非常低","低","中","高","非常高"][level],sort:estimate};
+    }
     case "cpu": value = v.cpu; break;
     case "cpuTime": value = total((p) => p.cpuTime); break;
     case "cpuUserTime": value = total(userTime); break;
@@ -896,7 +904,7 @@ export function ColumnsDialog({
       <div className="a-dialog-body a-columns-body">
         <div className="a-columns-head">
           <h3 id="a-dialog-title">选择列</h3>
-          <p>勾选要显示的列；拖动右侧列表或表头可调整顺序。</p>
+          <p>拖动右侧列表项或表头可调整列顺序。</p>
         </div>
         <label className="a-field">
           <input

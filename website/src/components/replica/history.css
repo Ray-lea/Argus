@@ -1,0 +1,797 @@
+.a-history {
+  position: static;
+}
+.a-history-card {
+  padding: 8px 12px;
+  gap: 6px;
+}
+.h-tabs,
+.h-navigator,
+.h-axis,
+.h-lane header,
+.h-column-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.h-tabs {
+  flex: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.h-tabs > div {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 5px;
+  border: 1px solid var(--a-stroke);
+}
+.h-tabs > div[data-current] {
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+  border-color: var(--c);
+}
+.h-tabs button,
+.h-lane header button {
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+.h-tabs b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.h-lanes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.h-lane {
+  display: flex;
+  flex: 1 0 90px;
+  min-height: 76px;
+  flex-direction: column;
+}
+.h-lane header {
+  font-size: 12px;
+  min-height: 26px;
+}
+.h-lane header > span {
+  cursor: grab;
+}
+.h-lane header button:last-child:not(:nth-child(3)) {
+  margin-left: auto;
+}
+.h-plot-wrap {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(40px, auto) 1fr minmax(40px, auto);
+  gap: 5px;
+}
+.h-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: end;
+  font-size: 11px;
+  color: var(--a-ink-3);
+}
+.h-y-axis.side-1 {
+  order: 2;
+  align-items: start;
+}
+.h-lane .a-history-plot {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.h-tip {
+  position: absolute;
+  top: 8px;
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  background: var(--a-flyout);
+  padding: 7px 10px;
+  box-shadow: var(--a-shadow);
+  pointer-events: none;
+  font-size: 12px;
+  z-index: 2;
+}
+.h-axis {
+  justify-content: space-between;
+  margin: 0 40px;
+  font-size: 11px;
+  color: var(--a-ink-3);
+}
+.h-navigator input[type="range"] {
+  flex: 1;
+  accent-color: var(--a-accent);
+}
+.a-busy-card {
+  flex-basis: 39%;
+  min-height: 135px;
+}
+.a-busy-head {
+  padding: 6px 12px;
+  align-items: center;
+  gap: 8px;
+}
+.a-busy-head > b {
+  margin-right: auto;
+  white-space: nowrap;
+}
+.a-busy-head .a-input {
+  width: 150px;
+}
+.h-column-options {
+  padding: 4px 14px;
+}
+.h-group {
+  font-weight: 600;
+  padding: 6px 10px;
+}
+.h-choices,
+.h-range-grid {
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+  align-items: stretch;
+}
+.h-choices aside,
+.h-range-grid aside {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 3px;
+}
+.h-chooser {
+  width: min(480px, 90%);
+}
+.h-chooser .a-input {
+  margin: 8px 0;
+  width: 100%;
+}
+.h-choices > div {
+  flex: 1;
+  overflow: auto;
+  max-height: 280px;
+}
+.h-choice {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--a-stroke);
+}
+.h-choice > button:first-child {
+  flex: 1;
+  display: grid;
+  text-align: left;
+  padding: 5px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+.h-choice small {
+  color: var(--a-ink-3);
+}
+.h-range-dialog {
+  width: max-content;
+  max-width: 94%;
+}
+.h-range-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  max-height: 340px;
+  overflow: auto;
+}
+.h-range-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-range-grid input {
+  color: inherit;
+  background: var(--a-control);
+  border: 1px solid var(--a-stroke);
+  padding: 3px;
+}
+.h-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.h-calendar button {
+  border: 0;
+  border-radius: 3px;
+  padding: 4px;
+  background: var(--a-layer);
+  color: inherit;
+}
+.h-calendar button[aria-pressed="true"] {
+  background: var(--a-accent);
+  color: var(--a-on-accent);
+}
+.h-heat {
+  display: grid;
+}
+.h-heat > div {
+  display: flex;
+  gap: 1px;
+}
+.h-heat button {
+  width: 8px;
+  height: 3px;
+  margin: 0 0 1px;
+  background: var(--a-cpu);
+  border: 0;
+  padding: 0;
+}
+
+.h-data-gap {
+  position: absolute;
+  inset-block: 0;
+  display: grid;
+  place-items: center;
+  color: var(--a-ink-3);
+  background: repeating-linear-gradient(-45deg, var(--a-stroke) 0 1px, transparent 1px 6px), var(--a-surface);
+  pointer-events: none;
+}
+
+/* Measurements are in the app's logical pixels, before the desktop scales. */
+.a-history {
+  padding: 0 22px 12px 12px;
+  gap: 10px;
+  overflow: auto;
+}
+.h-tabs {
+  height: 30px;
+  min-height: 30px;
+  align-items: stretch;
+  gap: 4px;
+}
+.h-tabs > div,
+.h-tabs > div[data-current] {
+  border: 0;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+}
+.h-tabs > div > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-tabs > div > button:first-child::before,
+.h-primary i,
+.h-choice i {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--c);
+  flex: none;
+}
+.h-tabs b {
+  min-width: 48px;
+  text-align: start;
+}
+.h-tabs > div > button:last-child {
+  opacity: 0;
+  width: 18px;
+  padding: 0;
+}
+.h-tabs > div:hover > button:last-child,
+.h-tabs > div:focus-within > button:last-child {
+  opacity: 1;
+}
+.h-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  background: var(--a-window);
+  position: sticky;
+  right: 0;
+}
+.h-tools button,
+.h-primary,
+.h-overlay button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.h-tools button:hover,
+.h-lane header button:hover {
+  background: var(--a-hover-strong);
+  border-radius: 4px;
+}
+.a-history .a-history-card {
+  margin: 0;
+  flex: 0 0 var(--chart-share, 60%);
+  min-height: 160px;
+  padding: 10px;
+  gap: 0;
+}
+.h-lane header {
+  height: 32px;
+  padding-left: 40px;
+  gap: 8px;
+  font-size: 13px;
+}
+.h-lane header > span:first-child {
+  visibility: hidden;
+  width: 0;
+}
+.h-lane[data-multi] header > span:first-child {
+  visibility: visible;
+  width: 15px;
+}
+.h-lane header .h-primary {
+  font-weight: 600;
+}
+.h-lane header b {
+  font-weight: 600;
+  color: var(--a-ink);
+}
+.h-overlay {
+  margin-left: 64px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed color-mix(in srgb, var(--overlay) 65%, transparent);
+  border-radius: 14px;
+  height: 24px;
+  padding: 0 4px;
+}
+.h-overlay button,
+.h-lane header > .h-overlay button:last-child {
+  margin: 0;
+  padding: 1px 4px;
+  font-size: 12px;
+  color: var(--a-ink-2);
+}
+.h-overlay i {
+  width: 10px;
+  height: 2px;
+  background: var(--overlay);
+}
+.h-overlay small {
+  color: var(--a-ink-3);
+}
+.h-plot-wrap {
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 6px;
+  margin-block: 0 4px;
+}
+.h-lane .a-history-plot {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.h-lane .a-history-ticks {
+  background-image:
+    linear-gradient(var(--a-stroke) 1px, transparent 1px), linear-gradient(90deg, var(--a-stroke) 1px, transparent 1px);
+  background-size:
+    100% calc((100% - 1px) / 5),
+    10% 100%;
+}
+.h-point {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--a-window);
+  border-radius: 100%;
+  pointer-events: none;
+}
+.h-y-axis {
+  font-variant-numeric: tabular-nums;
+}
+.h-axis {
+  height: 22px;
+  gap: 0;
+  font-size: 11px;
+  align-items: center;
+  margin: 0 47px;
+  color: var(--a-ink-3);
+  justify-content: space-around;
+}
+.h-navigator {
+  flex: none;
+  gap: 0;
+  margin-top: 4px;
+  height: 30px;
+}
+.h-navigator .a-select-wrap {
+  margin-right: 8px;
+}
+.h-navigator .a-select {
+  border-radius: 16px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.h-navigator .a-select-labels > span[hidden] {
+  display: none;
+}
+.h-nav-start,
+.h-nav-end {
+  display: grid;
+  place-items: center;
+  height: 30px;
+  border: 1px solid var(--a-stroke);
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--a-ink-3);
+}
+.h-nav-start {
+  border-radius: 18px 0 0 18px;
+  border-right: 0;
+}
+.h-nav-end {
+  border-radius: 0 18px 18px 0;
+  border-left: 0;
+}
+.h-mini-nav {
+  height: 28px;
+}
+.h-nav-window {
+  background: transparent;
+  border-color: var(--a-cpu);
+}
+.h-split {
+  height: 8px;
+  min-height: 8px;
+  margin: -5px 0;
+  display: grid;
+  place-items: center;
+  cursor: row-resize;
+  touch-action: none;
+}
+.h-split i {
+  height: 3px;
+  width: 36px;
+  border-radius: 4px;
+  background: var(--a-stroke-strong);
+}
+.a-history .a-busy-card {
+  flex: 1 0 155px;
+  margin: 0;
+  min-height: 140px;
+  position: relative;
+}
+.a-busy-head {
+  padding: 8px 14px;
+  gap: 10px;
+}
+.a-busy-head b {
+  margin-right: 0;
+}
+.a-busy-head .a-input {
+  margin-left: auto;
+  width: min(22%, 200px);
+}
+.a-busy-card .a-thead .a-th:first-child {
+  padding-left: 34px;
+}
+.a-busy-card .a-tbody .a-td {
+  height: 30px;
+}
+.a-busy-card .a-td small {
+  color: var(--a-ink-3);
+  font-size: 11px;
+}
+.a-busy-card .a-tbody {
+  overflow-x: auto;
+}
+.a-busy-card .a-table {
+  min-height: 0;
+}
+.a-busy-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+.a-busy-note b {
+  font-weight: 500;
+  color: var(--a-ink);
+}
+.a-busy-note span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.h-column-options {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  top: 44px;
+  display: grid;
+  background: var(--a-flyout);
+  border: 1px solid var(--a-stroke-strong);
+  border-radius: 6px;
+  padding: 6px 10px;
+  max-height: 85%;
+  overflow: auto;
+}
+.h-chooser-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+}
+.h-chooser-layer .h-chooser {
+  position: absolute;
+  width: 294px;
+  max-width: calc(100% - 16px);
+  height: min(428px, calc(100% - 16px));
+  padding: 0;
+  background: var(--a-flyout);
+  box-shadow: none;
+  margin: 0;
+}
+.h-chooser .a-dialog-body {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.h-chooser .a-dialog-body h3 {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--a-ink-2);
+  padding: 10px 10px 0;
+}
+.h-chooser .a-input {
+  height: 32px;
+  width: calc(100% - 20px);
+  margin: 5px 10px 8px;
+}
+.h-choices {
+  flex: 1;
+  border-top: 1px solid var(--a-stroke);
+  gap: 0;
+}
+.h-choices aside {
+  width: 88px;
+  border-right: 1px solid var(--a-stroke);
+  padding: 4px;
+  gap: 0;
+}
+.h-choices aside .a-btn {
+  height: 29px;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+}
+.h-choices aside .a-btn[aria-pressed="true"] {
+  background: var(--a-hover-strong);
+}
+.h-choices > div {
+  max-height: none;
+  padding: 4px;
+}
+.h-device {
+  display: block;
+  color: var(--a-ink-3);
+  padding: 7px 6px 2px;
+  font-size: 11px;
+}
+.h-choice {
+  height: 30px;
+  border: 0;
+  gap: 0;
+  border-radius: 4px;
+}
+.h-choice:hover,
+.h-choice:focus-within {
+  background: var(--a-hover-strong);
+}
+.h-choice > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-choice b {
+  font-weight: 400;
+}
+.h-choice > .a-btn {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  width: 24px;
+}
+.h-range-dialog {
+  width: 420px;
+  max-height: calc(100% - 16px);
+}
+.h-range-dialog:has([data-overview]) {
+  width: min(810px, 96%);
+}
+.h-range-grid {
+  border: 1px solid var(--a-stroke);
+  border-radius: 6px;
+  gap: 0;
+}
+.h-range-grid aside {
+  width: 132px;
+  padding: 4px;
+  gap: 0;
+  border-right: 1px solid var(--a-stroke);
+}
+.h-range-grid aside button {
+  height: 27px;
+  border: 0;
+  box-shadow: none;
+  justify-content: start;
+  background: transparent;
+}
+.h-range-grid > div {
+  padding: 6px 10px;
+  flex: 1;
+  max-height: 420px;
+}
+.h-calendar button {
+  font-size: 11px;
+  height: 27px;
+  position: relative;
+  background: transparent;
+}
+.h-calendar button:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 20%;
+  width: 60%;
+  height: 3px;
+  background: var(--a-cpu);
+  opacity: 0.35;
+}
+.h-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  color: var(--a-ink-3);
+}
+.h-month button,
+.h-overview-toggle {
+  color: var(--a-ink-2);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.h-overview-toggle {
+  padding: 12px 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h-range-grid input[type="datetime-local"] {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+}
+.h-range-dialog .a-dialog-foot .a-btn {
+  min-width: 96px;
+}
+.h-range-grid label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.h-record-options,
+.h-record-count {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+.h-record-options label {
+  align-items: start;
+}
+.h-record-options small,
+.h-record-count small {
+  display: block;
+  color: var(--a-ink-2);
+  font-size: 12px;
+}
+.h-record-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@container argus (max-width: 900px) {
+  .h-tools button {
+    font-size: 12px;
+  }
+  .h-plot-wrap {
+    grid-template-columns: 32px 1fr 32px;
+  }
+  .h-overlay {
+    margin-left: 8px;
+  }
+  .a-busy-note span:last-child {
+    display: none;
+  }
+}
+
+.h-chooser-layer .h-chooser .a-input {
+  flex: none;
+  min-height: 32px;
+  height: 32px;
+  margin-block: 5px 8px;
+}
+.a-busy-head .a-input {
+  flex: 0 1 200px;
+  height: 32px;
+  min-width: 75px;
+}
+.a-busy-card .a-th {
+  font-weight: 400;
+}
+.a-busy-card .a-th[aria-sort="descending"],
+.a-busy-card .a-th[aria-sort="ascending"] {
+  font-weight: 500;
+}
+.h-y-axis.side-1 {
+  color: var(--right-axis, var(--a-ink-3));
+}
+.h-range-dialog .h-range-grid > div {
+  gap: 4px;
+}
+.h-calendar {
+  gap: 0 1px;
+}
+.h-range-dialog .a-dialog-body > h3 {
+  margin-bottom: 10px;
+}
+
+.h-choice[data-highlight] {
+  background: var(--a-hover-strong);
+}
+
+.h-raster,
+.h-nav-plot {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.h-raster canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  will-change: transform;
+}
+.h-nav-plot {
+  inset: 3px 0;
+}
+.h-axis {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.h-axis > div {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+.h-axis span {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.h-time-selection {
+  position: absolute;
+  inset-block: 0;
+  background: color-mix(in srgb, var(--a-accent) 14%, transparent);
+  border-inline: 1px solid var(--a-accent);
+  pointer-events: none;
+}

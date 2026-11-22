@@ -39,6 +39,7 @@ reqwest = { version = "0.13", default-features = false, features = ["native-tls"
 futures-util = "0.3"
 time = { version = "0.3", features = ["parsing", "local-offset"] }
 rfd = "0.18"
+tempfile = "3"
 
 [dev-dependencies]
 gpui_test = { package = "gpui-pre", version = "=0.3.12", features = ["test-support"] }

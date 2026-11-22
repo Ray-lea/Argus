@@ -15,6 +15,7 @@ mod icon_motion;
 mod inline;
 mod layout;
 mod leaks;
+mod list_copy;
 mod lists;
 mod menus;
 mod model;
@@ -105,6 +106,8 @@ enum Action {
     Sort(String),
     Page(String),
     View(String),
+    /// How the connection list shows ("list" or "apps").
+    ConnectionView(String),
     Select(String),
     Fold(String),
     TreeExpand(String, bool),
@@ -121,6 +124,11 @@ enum Action {
     Preference(String, Value),
     /// Text to copy and the locale key naming it in the confirmation.
     Copy(String, &'static str),
+    /// Text to copy and its name in the confirmation.
+    CopyAs(String, String),
+    /// The details of the process row with this key, as text (`details_text`).
+    CopyDetails(String),
+    ExportTableCsv,
     /// A command of the history page.
     History(pages::history::Command),
     CloseOverlay,
@@ -349,6 +357,10 @@ struct Desktop {
     sections: HashSet<String>,
     /// The folded user groups of the process list (`collapsedUsers`).
     user_folds: HashSet<String>,
+    /// How the connection list shows: "list", or "apps" gathered under
+    /// their programs, of which `connection_folds` are opened.
+    connection_view: String,
+    connection_folds: HashSet<String>,
     rows: Arc<Vec<Row>>,
     /// The process list as the automatic column widths measure it
     /// (`tables::WidthRows`).
@@ -417,6 +429,9 @@ struct Desktop {
     /// memory was given back since (`memory.releaseHidden`).
     hidden_since: Option<(Instant, bool)>,
     last_select: Option<(String, Instant)>,
+    /// A click on the selected process row that will deselect it unless a
+    /// second click makes it a double-click (`Desktop::deselect_later`).
+    deselect_due: Option<Task<()>>,
     /// The lists' column filters in force, by preference (`tables::ColumnFilter`).
     filters: HashMap<&'static str, String>,
     forms: HashMap<String, Entity<InputState>>,
@@ -543,6 +558,11 @@ impl Desktop {
                 .get::<Vec<String>>(model::USER_FOLDS, vec![])
                 .into_iter()
                 .collect(),
+            connection_view: prefs.get("connectionView", "list".into()),
+            connection_folds: prefs
+                .get::<Vec<String>>("openedConnectionApps", vec![])
+                .into_iter()
+                .collect(),
             rows: Arc::new(vec![]),
             width_rows: None,
             width_pending: false,
@@ -599,6 +619,7 @@ impl Desktop {
             last_privilege: Instant::now() - Duration::from_secs(60),
             hidden_since: None,
             last_select: None,
+            deselect_due: None,
             filters: tables::saved_filters(&prefs),
             forms: HashMap::new(),
             first_frame: false,
@@ -823,6 +844,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                         .join("preferences.json"),
                 );
                 prefs.initialize_window_motion();
+                prefs.migrate();
                 // Before the theme and the first layout: text sizes and the
                 // viewport depend on them.
                 appearance::apply_font_size(appearance::FONT_SIZE.load(&prefs));

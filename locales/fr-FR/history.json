@@ -8,8 +8,8 @@
   },
   "noRecordAt": "Aucun enregistrement à cet instant",
   "earliest": "Premier enregistrement",
-  "note": "Les mesures et les processus les plus actifs sont enregistrés toutes les 5 secondes, avec des mesures par seconde pour les 10 dernières minutes ; réduit ou dans la zone de notification, à l’intervalle de cet état s’il est plus long.",
-  "off": "L’enregistrement de l’historique est désactivé ; aucune nouvelle donnée n’est enregistrée. <link>Ouvrir les paramètres</link>",
+  "note": "L’enregistrement se fait toutes les 5 secondes en général, ou moins souvent si les mesures en arrière-plan sont plus espacées. Chaque mesure des 10 dernières minutes est conservée.",
+  "off": "L’enregistrement de l’historique est désactivé. <link>Ouvrir les paramètres</link>",
   "watch": {
     "title": "Observation du processus",
     "empty": "Choisir «Observer cette instance» dans les détails d’un seul processus pour enregistrer la mémoire hors du classement.",
@@ -17,7 +17,7 @@
     "target": "Observation de {name} (PID {pid})",
     "stop": "Arrêter l’enregistrement",
     "delete": "Supprimer l’enregistrement",
-    "note": "Cette instance uniquement ; jusqu’à 1 heure, 720 points et 1 MiB. Mesures généralement toutes les 5 secondes ; un échantillonnage plus lent peut laisser des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer arrête et efface cet enregistrement.",
+    "note": "Seule cette instance est enregistrée, pendant 1 heure au maximum. L’arrêt conserve les données. La suppression met fin à l’observation et efface l’enregistrement.",
     "metric": {
       "memory": "Jeu de travail privé",
       "commit": "Mémoire privée engagée"
@@ -45,8 +45,8 @@
     "runSummary": "{shown}/{total} lancements affichés ; {points} points enregistrés pour ce lancement",
     "earlier": "Points antérieurs",
     "latest": "Derniers points",
-    "programNote": "Les lancements actuels et futurs de ce chemin sont enregistrés séparément. Jusqu’à 7 jours, 131072 points et 9 MiB ; la première limite atteinte supprime les données les plus anciennes. Jusqu’à 512 instances simultanées. La liste affiche les 256 derniers lancements ; chaque page jusqu’à 1000 points enregistrés et des repères de lacunes. Les points antérieurs restent consultables. En général toutes les 5 secondes ; un échantillonnage plus lent laisse des lacunes. La croissance du jeu de travail ne prouve pas une fuite. Arrêter conserve les données ; Supprimer les efface. Redémarrer Argus ne reprend pas l’enregistrement.",
-    "damaged": "Certains enregistrements ont échoué au contrôle d’intégrité ; les intervalles manquants restent des lacunes.",
+    "programNote": "Chaque lancement depuis le même chemin est enregistré séparément. Les données sont conservées jusqu’à 7 jours. Les plus anciennes sont effacées plus tôt si le stockage est plein. L’arrêt conserve les données. La suppression met fin à l’observation et efface l’enregistrement. Après un redémarrage d’Argus, relancez l’observation.",
+    "damaged": "Certains enregistrements sont endommagés. Les périodes concernées restent vides.",
     "earlierRuns": "Lancements antérieurs",
     "latestRuns": "Derniers lancements",
     "waiting": "En attente d’un autre lancement",
@@ -69,9 +69,9 @@
   "now": "Maintenant",
   "live": {
     "on": "En direct",
-    "onTitle": "Affiche les dernières mesures : chaque seconde jusqu’à 6 heures, chaque minute au-delà. Cliquer pour suspendre",
+    "onTitle": "Suspendre le suivi des dernières mesures",
     "off": "Revenir au plus récent",
-    "offTitle": "Revenir aux dernières mesures et continuer la mise à jour (aussi par clic droit sur le graphique ou avec Fin)"
+    "offTitle": "Reprendre le suivi des dernières mesures (clic droit sur le graphique ou touche Fin)"
   },
   "toast": {
     "latest": "Retour au plus récent",
@@ -89,7 +89,6 @@
     "showTitle": "Afficher dans la piste active",
     "addTitle": "Ajouter une piste",
     "overlayTitle": "Superposer une deuxième mesure (axe de droite)",
-    "foot": "Cliquer pour l’afficher dans cette piste ; cliquer sur + ou la faire glisser sur le graphique pour ajouter une piste",
     "byService": "Fourni par le service privilégié"
   },
   "group": {
@@ -205,9 +204,9 @@
   },
   "unrecorded": {
     "title": "Aucun enregistrement de {name}",
-    "hint": "Cette mesure n’est pas enregistrée sur cet ordinateur ; le périphérique ou le compteur nécessaire est peut-être absent.",
+    "hint": "Le périphérique ou le compteur requis est peut-être indisponible.",
     "serviceTitle": "{name} nécessite le service privilégié",
-    "serviceHint": "Le service privilégié lit les capteurs du processeur par les modules fixes PawnIO. Une fois installé, l’enregistrement commence à la mesure suivante ; les périodes antérieures restent vides.",
+    "serviceHint": "L’enregistrement commence à la première mesure après l’activation du service. Les périodes antérieures restent vides.",
     "install": "Installer le service privilégié…"
   },
   "tip": {
@@ -248,7 +247,7 @@
     },
     "search": "Rechercher des processus",
     "emptyRange": "Aucun processus enregistré dans cette plage",
-    "netService": "Les mesures réseau par processus nécessitent le service privilégié ; Argus s’exécute avec des droits standard, la colonne « Réseau » n’a donc aucun enregistrement.",
+    "netService": "Avec des droits standard, l’enregistrement du trafic réseau par processus nécessite le service privilégié.",
     "live": "Processus les plus récents"
   },
   "column": {

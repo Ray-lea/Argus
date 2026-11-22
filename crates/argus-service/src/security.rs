@@ -244,6 +244,15 @@ pub fn directory_descriptor() -> Result<Descriptor> {
     Descriptor::new("O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)")
 }
 
+/// An installation folder outside Program Files: what Program Files hands
+/// down, without TrustedInstaller. Packaged apps (the Start menu among them)
+/// read program icons as they can in Program Files.
+pub(crate) fn installation_descriptor() -> Result<Descriptor> {
+    Descriptor::new(
+        "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)(A;OICI;FRFX;;;AC)(A;OICI;FRFX;;;S-1-15-2-2)",
+    )
+}
+
 /// The standard-permission client pins the SCM-reported process while checking
 /// the pipe PID. Grant only query/synchronize on this process, never injection
 /// or termination rights.
@@ -360,13 +369,49 @@ pub(crate) fn inspect_path_with(
     path: &Path,
     trace: &mut PathInspection,
 ) -> std::result::Result<Handle, PathError> {
-    let result = inspect_path_inner(path, trace);
+    inspect_held(path, Hold::Content, trace)
+}
+
+/// What only SYSTEM, Administrators and TrustedInstaller may do to a folder
+/// or file, beyond owning it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Hold {
+    /// A volume root: delete or rename what is in it (FILE_DELETE_CHILD), or
+    /// change its permissions or owner. Creating folders in it stays open.
+    Root,
+    /// A folder above the protected one: the same, and rename it (DELETE).
+    Parent,
+    /// The protected folder or a file in it: write to it in any way.
+    Content,
+}
+
+impl Hold {
+    fn mask(self) -> u32 {
+        // GENERIC_ALL and MAXIMUM_ALLOWED grant all of the specific rights.
+        const ANY: u32 = 0x1000_0000 | 0x0200_0000;
+        const DELETE_CHILD_DAC_OWNER: u32 = 0x40 | 0x4_0000 | 0x8_0000;
+        match self {
+            Self::Root => ANY | DELETE_CHILD_DAC_OWNER,
+            Self::Parent => ANY | DELETE_CHILD_DAC_OWNER | 0x1_0000,
+            Self::Content => 0x520d_0156,
+        }
+    }
+}
+
+/// `inspect_path_with` for what `hold` keeps from other accounts.
+pub(crate) fn inspect_held(
+    path: &Path,
+    hold: Hold,
+    trace: &mut PathInspection,
+) -> std::result::Result<Handle, PathError> {
+    let result = inspect_path_inner(path, hold.mask(), trace);
     trace.reason = result.as_ref().err().copied();
     result
 }
 
 fn inspect_path_inner(
     path: &Path,
+    write_mask: u32,
     trace: &mut PathInspection,
 ) -> std::result::Result<Handle, PathError> {
     let path = wide(&path.to_string_lossy());
@@ -410,7 +455,7 @@ fn inspect_path_inner(
     .ok()
     .map_err(win)?;
     let _sd = Descriptor(sd);
-    check_acl_with(owner, dacl, 0x520d_0156, trace)?;
+    check_acl_with(owner, dacl, write_mask, trace)?;
     Ok(handle)
 }
 
@@ -558,6 +603,67 @@ mod tests {
         );
         assert_eq!(trace.owner, "Users");
         assert_eq!(trace.stage, "owner SID validation");
+    }
+
+    #[test]
+    fn folders_above_an_installation_may_let_others_add_but_not_replace() {
+        let mask = |hold: Hold| hold.mask();
+        // A volume Windows formats: Authenticated Users may modify the root
+        // and create folders in it, but not delete or rename others' folders.
+        let root = "O:SYG:SYD:(A;;FA;;;BA)(A;OICIIO;FA;;;BA)(A;;FA;;;SY)(A;;0x1301bf;;;AU)(A;OICIIO;0x1301bf;;;AU)(A;;0x1200a9;;;BU)";
+        assert_eq!(inspect_acl_mask(root, mask(Hold::Root)), Ok(()));
+        // The same rights on a folder below the root let them rename it.
+        let below = "O:BAG:BAD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;0x1301bf;;;AU)";
+        assert_eq!(
+            inspect_acl_mask(below, mask(Hold::Parent)),
+            Err(PathError::Writable)
+        );
+        // C:\ only lets them create folders.
+        let system_root = "O:S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464G:SYD:(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;BU)(A;OICIIO;SDGXGWGR;;;AU)(A;;0x4;;;AU)";
+        for hold in [Hold::Root, Hold::Parent] {
+            assert_eq!(inspect_acl_mask(system_root, mask(hold)), Ok(()));
+        }
+        for (hold, rights) in [
+            (Hold::Root, "0x40"),
+            (Hold::Root, "WD"),
+            (Hold::Root, "WO"),
+            (Hold::Root, "GA"),
+            (Hold::Parent, "SD"),
+        ] {
+            let sddl = format!("O:SYG:SYD:(A;;FA;;;SY)(A;;{rights};;;AU)");
+            assert_eq!(
+                inspect_acl_mask(&sddl, mask(hold)),
+                Err(PathError::Writable),
+                "{hold:?} {rights}"
+            );
+        }
+        // Owning a folder above is as good as being allowed to re-permit it.
+        assert_eq!(
+            inspect_acl_mask("O:AUG:SYD:(A;;FA;;;SY)", mask(Hold::Root)),
+            Err(PathError::Owner)
+        );
+    }
+
+    #[test]
+    fn a_protected_installation_folder_passes_its_own_check() {
+        let descriptor = installation_descriptor().unwrap();
+        let mut sddl = windows::core::PWSTR::null();
+        unsafe {
+            windows::Win32::Security::Authorization::ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor.0,
+                1,
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut sddl,
+                None,
+            )
+        }
+        .unwrap();
+        let text = unsafe { sddl.to_string() }.unwrap();
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(sddl.0.cast())));
+        }
+        assert_eq!(inspect_acl_mask(&text, Hold::Content.mask()), Ok(()));
+        assert!(text.contains("S-1-15-2-1") || text.contains(";AC)"));
     }
 
     #[test]

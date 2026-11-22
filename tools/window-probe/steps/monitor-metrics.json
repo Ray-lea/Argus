@@ -1,5 +1,5 @@
 {
-  "about": "在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。最后单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。",
+  "about": "在组件页连续单击三个读数选项（间隔 60 ms），核对每次单击都生效、选项以外的画面不变，并录制单击前后的帧；随后用 `sample` 加入第二块显卡，分别勾选一块磁盘、一个网卡与非默认显卡的读数，核对保存的读数顺序与设备键。选项的测试锚点为 `<卡片>-<行>-<读数>`，如 `desktopMetrics-disk-0-diskTemperature`。单击“样式”中的曲线卡片并核对保存的样式，捕获样式卡片四张一排（深浅主题）与窄窗口中两两一排的画面；样式卡片的测试锚点为 `taskbarStyle-<样式>`。最后以 150% 内容缩放捕获读数选项，供核对“功耗”等文字的底部笔画。",
   "window": [1100, 900],
   "steps": [
     {"note":"the desktop monitor's readings on the components page"},
@@ -46,6 +46,9 @@
     {"control":{"clickAnchor":"taskbarStyle-curves"},"wait":700,"inspect":"layout","label":"style-chosen","expect":{"monitors.taskbarStyle":"curves"},"capture":"styles-chosen-dark"},
     {"control":{"theme":"light","pointerOutside":true},"wait":900,"capture":"styles-light"},
     {"probe":"size 700 760","wait":700},
-    {"control":{"wheel":{"x":350,"y":400,"lines":-200}},"wait":900,"capture":"styles-narrow-light"}
+    {"control":{"wheel":{"x":350,"y":400,"lines":-200}},"wait":900,"capture":"styles-narrow-light"},
+    {"probe":"size 1100 900","wait":700},
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900},
+    {"control":{"contentZoom":1.5},"wait":900,"capture":"metrics-150"}
   ]
 }

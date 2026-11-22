@@ -3,6 +3,7 @@ use super::*;
 mod body;
 mod cell_text;
 mod cells;
+mod export;
 mod groups;
 /// A category heading's tint and its count's, for lists drawn like the
 /// process list's groups (the history page's table).
@@ -437,6 +438,26 @@ fn entry_cell(raw: &Value, field: &Field) -> String {
     }
 }
 
+/// What copying `row`'s cell in `field` gives: its text, with what the cell
+/// draws apart from the text, such as an IPv6 connection's "v6" tag.
+fn copied_cell(row: &Row, field: &Field, bits: bool) -> String {
+    let text = display_cell(row, field, bits);
+    if field.kind == CellKind::Protocol {
+        protocol_copy(text, boolean(&row.raw, "ipv6"))
+    } else {
+        text
+    }
+}
+
+/// A protocol as copied: "TCPv6" for IPv6, as the protocol filter names it.
+fn protocol_copy(protocol: String, ipv6: bool) -> String {
+    if ipv6 && !protocol.is_empty() {
+        format!("{protocol}v6")
+    } else {
+        protocol
+    }
+}
+
 fn display_cell(row: &Row, field: &Field, bits: bool) -> String {
     if field.kind == CellKind::NetworkRate {
         row.metric(field.key)
@@ -527,6 +548,9 @@ pub(super) struct NativeTable {
     edge_fitted: Option<&'static str>,
     /// The process list's user and category groups (`groups`).
     group_view: groups::GroupView,
+    /// The column under the pointer when a row was last right-pressed,
+    /// for the menu it opens (`Desktop::open_row_menu` takes it).
+    pub(super) context_column: Option<&'static str>,
 }
 /// A column easing from one width to another.
 #[derive(Clone, Copy)]
@@ -824,6 +848,7 @@ impl NativeTable {
             resizing: None,
             edge_fitted: None,
             group_view: Default::default(),
+            context_column: None,
             page: String::new(),
             rows: Arc::new(vec![]),
             fields: vec![],
@@ -1844,7 +1869,22 @@ impl TableDelegate for NativeTable {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let content = self.td_content(row_index, column, window, cx);
-        self.gliding_cell(column, false, content)
+        let key = self.fields.get(column).map(|field| field.key);
+        // The row menu offers to copy the cell under the pointer. Rows Argus
+        // draws note it themselves (`body`); here the cell does, before the
+        // row's own right press opens the menu.
+        div()
+            .size_full()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |state, _: &MouseDownEvent, _, _| {
+                    state.delegate_mut().context_column = key;
+                }),
+            )
+            .child(self.gliding_cell(column, false, content))
     }
     fn render_tr(
         &mut self,
@@ -1891,22 +1931,22 @@ impl TableDelegate for NativeTable {
         // time passed: every completed pair folds again. A category heading
         // folds on every press instead (its select event), as the interface's
         // `onClick`: no pair folds it again.
-        let refold =
-            (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
-                let owner = self.owner.clone();
-                let key = row.key.clone();
-                move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
-                    let count = event.click_count();
-                    if count >= 4 && count.is_multiple_of(2) {
-                        let owner = owner.clone();
-                        let key = key.clone();
-                        window.defer(cx, move |window, cx| {
-                            let _ = owner
-                                .update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
-                        });
-                    }
+        let folds = matches!(self.page.as_str(), "processes" | "network");
+        let refold = (folds && row.expandable && row.section.is_none()).then(|| {
+            let owner = self.owner.clone();
+            let key = row.key.clone();
+            move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let count = event.click_count();
+                if count >= 4 && count.is_multiple_of(2) {
+                    let owner = owner.clone();
+                    let key = key.clone();
+                    window.defer(cx, move |window, cx| {
+                        let _ =
+                            owner.update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
+                    });
                 }
-            });
+            }
+        });
         let tr = div()
             .id(("native-row", index))
             .relative()
@@ -2898,6 +2938,37 @@ impl Desktop {
             .iter()
             .find(|process| process["pid"].as_u64() == Some(pid))
     }
+    /// The column a right press on a row was over, once: the menu it opens
+    /// takes it.
+    pub(in crate::frontend) fn take_context_column(&self, cx: &mut App) -> Option<&'static str> {
+        self.table
+            .as_ref()?
+            .update(cx, |state, _| state.delegate_mut().context_column.take())
+    }
+    /// The name of the current table's column `key`, and `row`'s cell in it
+    /// as the table shows it.
+    pub(in crate::frontend) fn cell_copy(
+        &self,
+        row: &Row,
+        key: &str,
+        cx: &App,
+    ) -> Option<(String, String)> {
+        let delegate = self.exportable_table(cx)?;
+        let field = delegate.fields.iter().find(|field| field.key == key)?;
+        Some((field.label.clone(), copied_cell(row, field, delegate.bits)))
+    }
+    /// Every column of the current table with `row`'s cell in it, as the
+    /// table shows them.
+    pub(in crate::frontend) fn row_cells(&self, row: &Row, cx: &App) -> Vec<(String, String)> {
+        let Some(delegate) = self.exportable_table(cx) else {
+            return Vec::new();
+        };
+        delegate
+            .fields
+            .iter()
+            .map(|field| (field.label.clone(), copied_cell(row, field, delegate.bits)))
+            .collect()
+    }
     /// Display names of the services running in each process, by PID.
     pub(in crate::frontend) fn hosted_services(&self) -> HashMap<u64, Vec<String>> {
         let mut hosted: HashMap<u64, Vec<String>> = HashMap::new();
@@ -3248,8 +3319,16 @@ pub(super) fn descending_first(page: &str, key: &str) -> bool {
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
     use super::{
-        Value, json, prefs, restore_sort, saved_filters, sort_columns, sort_preference, sortable,
+        Value, json, prefs, protocol_copy, restore_sort, saved_filters, sort_columns,
+        sort_preference, sortable,
     };
+
+    #[test]
+    fn copied_protocols_keep_the_ipv6_tag() {
+        assert_eq!(protocol_copy("TCP".into(), true), "TCPv6");
+        assert_eq!(protocol_copy("UDP".into(), false), "UDP");
+        assert_eq!(protocol_copy(String::new(), true), "");
+    }
 
     #[test]
     fn saved_orders_keep_persistent_column_ids() {

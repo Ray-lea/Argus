@@ -58,7 +58,15 @@
     "label": "More actions",
     "runTask": "Run new task…",
     "fileLock": "Find processes using a file…",
-    "fileLockDetail": "Or drop files"
+    "fileLockDetail": "Or drop files",
+    "exportCsv": "Export current page as CSV…",
+    "csvFile": "CSV files",
+    "csvSaved": "CSV file exported.",
+    "csvFailed": "Could not save the CSV file. Check that the folder is writable and the file is not in use.",
+    "csvRows": {
+      "one": "{count} row",
+      "other": "{count} rows"
+    }
   },
   "details": {
     "label": "Details pane",

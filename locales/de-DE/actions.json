@@ -142,6 +142,9 @@
   "copyWhat": {
     "path": "Pfad",
     "name": "Name",
+    "imageName": "Abbildname",
+    "commandLine": "Befehlszeile",
+    "details": "Details",
     "version": "Versionsnummer"
   }
 }

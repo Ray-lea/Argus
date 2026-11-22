@@ -5,11 +5,11 @@
     "processHint": "Oculta los componentes de Windows y los procesos de la lista adicional, excepto los de «Mostrar siempre». Solo afecta a la visualización.",
     "networkHint": "Ocultar conexiones propiedad de procesos del sistema y entradas sin proceso propietario (PID 0). Solo cambia la lista mostrada.",
     "edit": "Editar reglas de ocultación",
-    "description": "Los procesos del sistema se identifican mediante la información de componentes de Windows. Ambas páginas comparten estas reglas y guardan por separado la opción de ocultación.",
+    "description": "Procesos y Conexiones comparten estas reglas. Cada página tiene su propio interruptor.",
     "keep": "Mostrar siempre",
-    "keepHint": "Mantenga estos programas visibles, incluidos los procesos del sistema. Esta lista tiene prioridad sobre ocultaciones adicionales.",
+    "keepHint": "Tiene prioridad sobre el filtro de procesos del sistema y la lista de exclusiones adicionales.",
     "hide": "También ocultar",
-    "hideHint": "Oculte estos programas cuando la ocultación esté habilitada. Déjelo vacío para ocultar únicamente los procesos del sistema.",
+    "hideHint": "Solo se aplica al activar «Ocultar procesos del sistema».",
     "namesHint": "Ingrese nombres de ejecutables separados por comas o punto y coma, hasta 128 por lista. Los nombres no distinguen entre mayúsculas y minúsculas.",
     "invalid": "Ingrese nombres ejecutables válidos sin rutas ni comodines, hasta 128 por lista.",
     "reset": "Restaurar reglas predeterminadas",
@@ -20,12 +20,12 @@
   "countersPending": "Recopilando contadores de recursos para este proceso.",
   "refreshPending": "Actualización de datos del proceso. Mostrando la última lectura recopilada correctamente.",
   "diskUnavailable": {
-    "pending": "Aún no hay datos de disco: los procesos que acaban de aparecer tendrán lecturas en la próxima actualización.",
-    "enable": "No hay lectura de disco. Windows no proporciona estos contadores directamente, por lo que provienen del servicio privilegiado, que se puede habilitar en Configuración.",
-    "update": "No hay lectura de disco. La versión del servicio privilegiado no coincide con Argus; actualice el servicio en Configuración.",
-    "start": "No hay datos de disco: el servicio privilegiado está detenido. Puede iniciarlo en Configuración.",
-    "service": "No se pudieron obtener datos de disco del servicio privilegiado. Compruebe su estado en Configuración.",
-    "unavailable": "No hay lectura de disco. Los contadores de disco por proceso no se pueden leer en este momento."
+    "pending": "Las lecturas de disco de un proceso nuevo suelen aparecer tras la siguiente actualización.",
+    "enable": "Active el servicio privilegiado en Configuración para ver las lecturas de disco por proceso.",
+    "update": "La versión del servicio privilegiado es incompatible. Actualícelo en Configuración para ver las lecturas de disco.",
+    "start": "El servicio privilegiado está detenido. Inícielo en Configuración para ver las lecturas de disco.",
+    "service": "No se pudieron leer los datos del disco. Compruebe el servicio privilegiado en Configuración.",
+    "unavailable": "No hay lecturas de disco disponibles para este proceso."
   },
   "serviceHost": "Host de servicio: {names}",
   "webView": {
@@ -52,7 +52,7 @@
     "other": "{total} ({count} ocultos)"
   },
   "filtered": "La lista se filtra por la búsqueda.",
-  "orderHeld": "Ordenación en pausa: las filas mantienen su posición y los valores se siguen actualizando. Se vuelven a ordenar cuando el puntero sale de la lista o se cierra el menú o el cuadro de diálogo.",
+  "orderHeld": "El orden está en pausa y las lecturas siguen actualizándose. Aparte el puntero o cierre el menú o el cuadro de diálogo para reanudar la ordenación.",
   "groupIn": "{user} · {group}",
   "groupPlace": "{index} / {total}",
   "column": {
@@ -130,7 +130,7 @@
     },
     "elevated": {
       "label": "Elevado",
-      "title": "Si el proceso se ejecuta con derechos de administrador (un token elevado)."
+      "title": "Indica si el proceso se ejecuta con permisos de administrador."
     },
     "commandLine": {
       "label": "Línea de comandos",
@@ -174,7 +174,7 @@
     },
     "basePriority": {
       "label": "Prioridad básica",
-      "title": "Prioridad base del proceso indicada por Windows, mostrada como su clase de prioridad. Un valor entre clases, que Windows asigna a algunos procesos del sistema, se muestra como número."
+      "title": "Normalmente se muestra la clase de prioridad. Las prioridades base entre dos clases se muestran como números."
     },
     "workingSet": {
       "label": "Conjunto de trabajo",
@@ -325,6 +325,8 @@
     "addRule": "Añadir regla",
     "copyPid": "Copiar PID",
     "copyPidWhat": "PID",
+    "copyColumn": "Copiar «{column}»",
+    "columnWhat": "«{column}»",
     "details": "Detalles"
   },
   "tree": {
@@ -339,9 +341,9 @@
     "acpiTemperature": "Temperatura de la zona térmica ACPI"
   },
   "memoryScope": {
-    "vital": "Memoria física en uso en todo el sistema: el total menos la disponible, incluidas las páginas en uso y modificadas. Las filas de procesos muestran su propio conjunto de trabajo privado, que suma menos. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino).",
-    "header": "El porcentaje de arriba es la proporción de memoria física en uso en todo el sistema. Las filas muestran el conjunto de trabajo privado: la memoria física que usa solo ese proceso; los grupos de aplicaciones y las categorías lo suman. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino).",
-    "section": "Suma de los conjuntos de trabajo privados de los procesos de esta categoría. El uso de todo el sistema también incluye páginas compartidas, el kernel y los controladores, las tablas de páginas, la caché del sistema en uso y las páginas modificadas, por lo que supera la suma de las categorías. El desglose completo está en la guía del usuario, docs/guide/README.md (en chino)."
+    "vital": "La memoria física usada en el sistema es la total menos la disponible. Incluye la memoria en uso y la modificada.",
+    "header": "El porcentaje indica el uso de memoria física del sistema. Las filas muestran conjuntos de trabajo privados y los grupos, la suma de sus miembros.",
+    "section": "Suma de los conjuntos de trabajo privados de esta categoría. La memoria compartida y la del sistema se contabilizan aparte."
   },
   "columns": {
     "choose": "Seleccionar columnas",
@@ -357,7 +359,7 @@
     "sortAscending": "Orden ascendente",
     "sortDescending": "Orden descendente",
     "hide": "Ocultar columna {name}",
-    "description": "Marque las columnas que desea mostrar. Arrástrelas en la lista de la derecha o arrastre sus encabezados para cambiar el orden.",
+    "description": "Arrastre los elementos de la lista de la derecha o los encabezados para reordenar las columnas.",
     "networkUnavailable": "Las columnas de red seleccionadas aparecen cuando los datos de tráfico están disponibles.",
     "gpuUnavailable": "No se detectó ninguna GPU. Las columnas de GPU seleccionadas están ocultas.",
     "category": {
@@ -381,8 +383,8 @@
     "selectionSummary": "Seleccionadas: {count}",
     "virtualAliases": "memoria virtual bytes virtuales reserva de direcciones"
   },
-  "basePriorityBetween": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema; está entre {below} y {above}.",
-  "basePriorityCustom": "No es una clase de prioridad. Windows asigna esta prioridad base directamente a algunos procesos del sistema.",
+  "basePriorityBetween": "Prioridad base establecida por Windows, entre {below} y {above}.",
+  "basePriorityCustom": "Prioridad base establecida por Windows para este proceso.",
   "leak": {
     "kind": {
       "handles": "Fuga de identificadores",
@@ -390,9 +392,9 @@
       "orphans": "Proceso residual"
     },
     "mark": {
-      "one": "{count} posible fuga de recursos. Haga clic para verla.",
-      "many": "{count} posibles fugas de recursos. Haga clic para verlas.",
-      "other": "{count} posibles fugas de recursos. Haga clic para verlas."
+      "one": "{count} posible fuga de recursos",
+      "many": "{count} posibles fugas de recursos",
+      "other": "{count} posibles fugas de recursos"
     },
     "handlesExtreme": "Tiene {handles} identificadores, muchos más que un proceso habitual",
     "handlesExtremeGrowing": "Tiene {handles} identificadores, muchos más que un proceso habitual, y sumó {growth} más en {span}",

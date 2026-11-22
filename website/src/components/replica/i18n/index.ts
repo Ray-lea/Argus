@@ -95,6 +95,7 @@ const attributes = ["title", "aria-label", "placeholder", "alt", "aria-valuetext
 export function translateProps<P>(type: unknown, props: P): P {
   if (typeof type !== "string" || language() === "zh" || !props || typeof props !== "object") return props;
   const source = props as Record<string, unknown>;
+  if (source.translate === "no") return props;
   const context = typeof source["data-i18n"] === "string" ? source["data-i18n"] : "";
   let copy: Record<string, unknown> | null = null;
   const put = (key: string, value: unknown) => {

@@ -12,6 +12,7 @@
     "mappedFile": "Die Argus-Programmdatei ist noch in den Arbeitsspeicher eingeblendet. Beenden Sie die verwendenden Programme oder speichern Sie Ihre Arbeit und starten Sie den PC vor einem erneuten Versuch neu.",
     "diskFull": "Es ist nicht genügend freier Speicherplatz zum Schreiben der Programmdatei vorhanden. Geben Sie Speicherplatz frei und versuchen Sie es erneut.",
     "copyFailed": "Die Programmdatei konnte nicht aktualisiert werden. Überprüfen Sie die Dateien und das Installationsverzeichnis anhand des Fehlercodes und des Diagnoseprotokolls.",
+    "folderFailed": "Der Installationsordner konnte nicht vorbereitet werden. Überprüfen Sie den Installationsort anhand des Fehlercodes und des Diagnoseprotokolls.",
     "unsafeTarget": "Der Programmdateipfad verweist auf einen Link oder Ordner. Das Update wurde gestoppt. Überprüfen Sie den Installationsort und versuchen Sie es erneut.",
     "restartRequired": "Windows kann die Programmdatei derzeit nicht freigeben. Speichern Sie Ihre Arbeit und starten Sie den PC vor der Installation neu.",
     "checkFailed": "Windows konnte die Programmdateiprüfung nicht abschließen. Der fehlgeschlagene Schritt wurde im Protokoll aufgezeichnet.",
@@ -23,7 +24,15 @@
     "retryHint": "Geben Sie die Datei frei oder beheben Sie die oben genannte Ursache. Klicken Sie dann auf „Wiederholen“, um fortzufahren. Klicken Sie auf „Abbrechen“, um das Setup zu beenden.",
     "errorCode": "Fehlercode: {code}",
     "logPath": "Diagnoseprotokoll: {path}",
-    "logFailed": "Das Protokoll konnte nicht geschrieben werden. Fehlercode: {code}"
+    "logFailed": "Das Protokoll konnte nicht geschrieben werden. Fehlercode: {code}",
+    "locationRisk": "Es kann nicht sichergestellt werden, dass nur Administratoren den Installationsort „{path}“ ändern können:",
+    "locationDrive": "Das Laufwerk speichert keine Dateiberechtigungen oder ist kein festes Laufwerk dieses Computers (zum Beispiel ein USB-Laufwerk, ein Netzwerkspeicherort oder eine FAT-Partition).",
+    "locationParent": "Andere Konten können den übergeordneten Ordner „{path}“ umbenennen oder seine Berechtigungen ändern.",
+    "locationShared": "Der Ordner enthält bereits andere Dateien, deren Berechtigungen das Setup nicht ändert.",
+    "locationEffect": "Beim Installieren, Aktualisieren und Deinstallieren von Argus sowie beim Installieren des privilegierten Dienstes werden Programme an diesem Ort mit Administratorrechten ausgeführt. Andere Konten könnten sie dort ersetzen und so Administratorrechte erlangen.",
+    "locationAdvice": "Empfohlen wird der Standardort {default} oder ein neuer Ordner direkt im Stammverzeichnis eines Laufwerks, zum Beispiel {example}.",
+    "locationAdviceDefault": "Empfohlen wird der Standardort {default}.",
+    "locationContinue": "Trotzdem an diesem Ort installieren?"
   },
   "tray": {
     "show": "Argus anzeigen",
@@ -72,7 +81,7 @@
       "ipv4Only": "Nur IPv4 TCP Verbindungen können geschlossen werden"
     },
     "fileLock": {
-      "restartManagerFailed": "Restart Manager konnte das Ziel nicht überprüfen; die folgenden Ergebnisse stammen aus einer Handle-Suche"
+      "restartManagerFailed": "Die Dateiprüfung konnte nicht abgeschlossen werden; die Ergebnisse stammen nur aus einer Handle-Suche"
     },
     "handles": {
       "tooMany": "Es können bis zu 32 Pfade gleichzeitig überprüft werden, mit einer Gesamtlänge von maximal 8 KiB",

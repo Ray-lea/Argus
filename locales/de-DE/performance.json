@@ -254,7 +254,7 @@
     "limitHistory": "Protokolliert",
     "limitLogged": "Aufgezeichnet",
     "limitNever": "Nicht aufgezeichnet",
-    "limitHistoryHint": "Der in der Hardware gespeicherte Status kann bereits vor dem Start dieser Argus-Sitzung gesetzt worden sein.",
+    "limitHistoryHint": "Die Ereignisse können vor diesem Start von Argus liegen.",
     "columnCoreType": "Typ",
     "pCore": "P-Kern",
     "eCore": "E-Kern",
@@ -292,7 +292,7 @@
     "inUseDescription": "Speicher, der von Prozessen, Treibern oder dem Betriebssystem verwendet wird",
     "modifiedDescription": "Speicher, dessen Inhalt auf die Festplatte geschrieben werden muss, bevor er für einen anderen Zweck verwendet werden kann",
     "standbyDescription": "Speicher, der zwischengespeicherte Daten und Code enthält, der nicht aktiv verwendet wird",
-    "freeDescription": "Speicher, der derzeit nicht verwendet wird und der zuerst umgewidmet wird, wenn Prozesse, Treiber oder das Betriebssystem mehr Speicher benötigen",
+    "freeDescription": "Ungenutzter Speicher, der sofort zugewiesen werden kann",
     "compressedDescription": "Speicher, der Prozessseiten in komprimierter Form enthält; zählt zum verwendeten Speicher",
     "compressedSaving": "Komprimierter Speicher enthält schätzungsweise {stored} an Daten und spart dem System {saved} Speicher",
     "inUse": "In Verwendung",
@@ -311,7 +311,7 @@
   },
   "disk": {
     "performanceUnavailable": "Festplattenleistungsindikatoren sind vorübergehend nicht verfügbar.",
-    "volumeCounters": "Die Leistungsdaten stammen vom Volume {volumes} und beziehen sich auf dieses Volume.",
+    "volumeCounters": "Die Werte gelten nur für Volume {volumes}.",
     "volumeCountersMultiple": "Lese- und Schreibraten sowie Antwortzeit werden für die Volumes {volumes} zusammengefasst; die aktive Zeit ist nicht verfügbar.",
     "title": "Datenträger {index}",
     "titleVolumes": "Datenträger {index} ({volumes})",
@@ -340,8 +340,7 @@
     "unavailable": "Keine Datenträgerdetails.",
     "held": {
       "title": "Automatisches Lesen angehalten",
-      "reason": "Nach dem letzten Lesen der Datenträgerdetails wurde Argus nicht ordnungsgemäß beendet. Möglicherweise ist Windows abgestürzt, der Strom ausgefallen oder der Argus-Prozess wurde beendet. Damit sich das Problem nicht bei jedem Start wiederholt, wird beim Öffnen dieser Seite nicht mehr automatisch gelesen.",
-      "note": "Beim Lesen werden nur lesende Abfragen an den Speichertreiber gesendet. Läuft Argus nach einem Lesevorgang eine Zeit lang normal weiter, wird das automatische Lesen fortgesetzt. Wird Argus erneut nicht ordnungsgemäß beendet, erscheint dieser Hinweis beim nächsten Start wieder.",
+      "reason": "Argus wurde während oder kurz nach dem letzten Auslesen unerwartet beendet. Falls Windows dabei abgestürzt ist, kann ein neuer Versuch erneut einen Absturz auslösen. Das automatische Auslesen wird fortgesetzt, wenn Argus danach 2 Minuten lang normal läuft.",
       "read": "Trotzdem lesen"
     },
     "openFailed": "Dieser Datenträger konnte nicht geöffnet werden.",
@@ -386,8 +385,8 @@
       "unsupported": "Das Gerät oder der Treiber stellt keine lesbaren Informationen zum Festplattenzustand bereit.",
       "unavailable": "Informationen zum Festplattenzustand sind vorübergehend nicht verfügbar.",
       "invalidData": "Das Gerät hat ungültige Daten zum Festplattenzustand zurückgegeben.",
-      "serviceUnavailable": "Weitere SMART-Daten benötigen den privilegierten Dienst. Installieren und starten Sie ihn unter Einstellungen → Berechtigungen.",
-      "serviceOutdated": "Weitere SMART-Daten benötigen einen aktualisierten privilegierten Dienst. Aktualisieren Sie ihn unter Einstellungen → Berechtigungen.",
+      "serviceUnavailable": "Für weitere SMART-Daten den privilegierten Dienst unter Einstellungen → Berechtigungen installieren und starten.",
+      "serviceOutdated": "Für weitere SMART-Daten den privilegierten Dienst unter Einstellungen → Berechtigungen aktualisieren.",
       "smartDisabled": "SMART ist auf diesem Gerät deaktiviert."
     },
     "device": "Geräteinformationen",
@@ -528,7 +527,7 @@
     "mac": "Physikalische Adresse"
   },
   "gpu": {
-    "utilizationHint": "Die Gesamtauslastung wird anhand der am stärksten ausgelasteten Engine ermittelt und durch Prozess-Engine-Zähler sowie die NVIDIA-GPU-Kernauslastung ergänzt. Native Engine-Diagramme und Treibermesswerte können unterschiedliche Bereiche und Erfassungsintervalle abdecken.",
+    "utilizationHint": "Die Gesamtauslastung basiert auf der am stärksten ausgelasteten Engine, ergänzt um Prozess- und Treiberwerte. Die Quellen können unterschiedliche Aktivitäten und Zeiträume erfassen.",
     "utilSource": {
       "windows": "Windows-Engines",
       "process": "Prozess-Engine-Zähler",
@@ -551,12 +550,12 @@
     "vidHint": "Von der integrierten GPU angeforderte Versorgungsspannung (VID).",
     "unsliceClock": "Takt der gemeinsamen Logik",
     "unsliceClockHint": "Takt des Unslice-Bereichs der integrierten GPU. Er kann unabhängig vom Takt der Grafik-Rechenblöcke angehalten werden.",
-    "clockHint": "Kernelmesswerte werden aus dem aktuellen Multiplikator und der offiziellen nominellen Schrittweite berechnet. Gemessene Abweichungen des Basistakts sind nicht enthalten. Frequenzen werden einschließlich Null numerisch angezeigt; der minimale Betriebstakt beschreibt den unterstützten Bereich.",
+    "clockHint": "Kernelmesswerte werden aus Multiplikator und nomineller Schrittweite berechnet. Ein ruhender oder abgeschalteter Kern kann 0 MHz anzeigen. Der Mindesttakt ist eine Hardwareangabe.",
     "sharedMemoryClock": "Gemeinsam genutzter Speichertakt",
-    "sharedMemoryClockHint": "Takt des Systemspeichers, den die integrierte GPU mitbenutzt. Kernelmesswerte werden aus der Controllerkonfiguration und der nominellen Referenz berechnet, ohne gemessene Abweichungen des Basistakts. Die DDR-Übertragungsrate beträgt etwa das Doppelte dieses Werts.",
+    "sharedMemoryClockHint": "Kernelmesswerte werden aus der Konfiguration des Speichercontrollers und dem nominellen Referenztakt berechnet. Die DDR-Transferrate beträgt etwa das Doppelte dieser Frequenz.",
     "gtActivity": "GT-Aktivität",
     "mediaActivity": "Medienaktivität",
-    "activityHint": "Berechnet aus Hardware-Aktivitätszählern über das Abtastintervall. Sein Umfang unterscheidet sich von der Auslastungszeit der Windows-Engine.",
+    "activityHint": "Hardwareaktivität und Windows-Engine-Auslastung erfassen unterschiedliche Vorgänge.",
     "minCoreClock": "Min. Betriebstakt",
     "referenceClock": "Basistakt",
     "performanceLimits": "Leistungsgrenzen",
@@ -596,7 +595,7 @@
     "maxCoreClock": "Maximaler Kerntakt",
     "powerState": "Energiezustand",
     "lowPower": "Energiesparzustand",
-    "lowPowerHint": "Die GPU ist im Leerlauf und befindet sich in einem Energiesparzustand. Das Auslesen von Temperatur, Lüfter, Takt, Spannung und Leistung würde sie aufwecken und ist daher ausgesetzt. Die Werte werden wieder angezeigt, sobald die GPU verwendet wird.",
+    "lowPowerHint": "Die Werte für Temperatur, Lüfterdrehzahl, Takt, Spannung und Leistungsaufnahme werden wieder erfasst, sobald die GPU aufwacht.",
     "powerSource": "Quelle der Leistungsmessung",
     "sources": {
       "nvml": "NVIDIA NVML · Platine",
@@ -648,6 +647,6 @@
     "model": "Modell",
     "serial": "Seriennummer",
     "manufactured": "Herstellungsdatum",
-    "wornNote": "Die volle Ladekapazität ist auf {percent} % der Designkapazität gesunken, sodass eine volle Ladung nicht so lange hält wie bei einem neuen Akku."
+    "wornNote": "Die volle Ladekapazität ist auf {percent}% der Auslegungskapazität gesunken."
   }
 }

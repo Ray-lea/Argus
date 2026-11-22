@@ -324,12 +324,14 @@ pub fn application_key(p: &Value) -> String {
     if path.is_empty() || shared_host(text(p, "name")) {
         return format!("g:instance:{}", identity(p));
     }
+    format!("g:image:{}", normalized_image_path(path))
+}
+
+pub(super) fn normalized_image_path(path: &str) -> String {
     let path = path.replace('/', "\\").to_lowercase();
-    let path = path
-        .strip_prefix(r"\\?\unc\")
+    path.strip_prefix(r"\\?\unc\")
         .map(|s| format!(r"\\{s}"))
-        .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned());
-    format!("g:image:{path}")
+        .unwrap_or_else(|| path.strip_prefix(r"\\?\").unwrap_or(&path).to_owned())
 }
 /// "WebView2: <host app>" for a WebView2 process, from the app that hosts it.
 fn web_title(p: &Value) -> Option<String> {

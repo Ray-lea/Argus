@@ -830,7 +830,22 @@ impl Desktop {
                     .child(self.details_button(cx))
             }
             "services" => row.child(self.service_actions(cx)),
-            "network" => row.child(self.visibility_controls(cx)),
+            "network" => {
+                // Every connection on its own, or gathered under its program.
+                let views = [("apps", "AppsIcon"), ("list", "ListIcon")]
+                    .into_iter()
+                    .map(|(mode, glyph)| {
+                        (
+                            String::new(),
+                            Some(glyph),
+                            Action::ConnectionView(mode.into()),
+                            self.connection_view == mode,
+                        )
+                    })
+                    .collect();
+                row.child(self.segments("connection-view", views, cx))
+                    .child(self.visibility_controls(cx))
+            }
             _ => row.child(self.page_controls(compact, window, cx)),
         };
         Some(row.into_any_element())
@@ -920,6 +935,16 @@ impl Desktop {
             .icon("LockIcon")
             .detail(label("shell.more.fileLockDetail")),
         ];
+        if matches!(
+            self.page.as_str(),
+            "processes" | "services" | "startup" | "network"
+        ) {
+            items.push(
+                MenuItem::new(label("shell.more.exportCsv"), Action::ExportTableCsv)
+                    .icon("DownloadIcon")
+                    .disabled(self.exportable_table(cx).is_none()),
+            );
+        }
         if self.page == "history" {
             items.push(MenuItem::separator());
             items.extend(self.history_more_items());

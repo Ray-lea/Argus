@@ -2657,6 +2657,21 @@ impl Interactivity {
                     tab_group = self.tab_index;
                 }
 
+                // Argus patch: a transform carried in the style
+                // (`Styled::paint_transform`) moves, scales and fades the whole
+                // paint (shadows, background, border, children) about the
+                // centre of the bounds, as `Window::with_live_transform` does;
+                // layout and hitboxes stay in place.
+                let live = style.paint_transform.map(|transform| {
+                    window.invalidator.debug_assert_paint();
+                    let scale_factor = window.scale_factor();
+                    window.next_frame.scene.push_live_transform(
+                        crate::LiveTransform::new(transform.0),
+                        bounds.center().scale(scale_factor),
+                        scale_factor,
+                    );
+                });
+
                 window.with_element_opacity(style.opacity, |window| {
                     window.pending_hover_background = hover_background;
                     style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
@@ -2749,6 +2764,9 @@ impl Interactivity {
                         });
                     });
                 });
+                if live.is_some() {
+                    window.next_frame.scene.pop_transform();
+                }
 
                 ((), element_state)
             },
@@ -6340,12 +6358,18 @@ pub mod smooth_scroll {
             // what the glide wrote, the next step would take that for someone
             // else's scroll and end the glide, and a glide leaving that edge
             // would never get away from it.
-            *offset = clamp(window.pixel_snap_point(clamp(glide.value(now))));
-            glide.written = *offset;
             if glide.progress(now) >= 1. {
-                *offset = clamp(window.pixel_snap_point(to));
-                glide.written = *offset;
+                // Land exactly at a targeted edge. Snapping inward leaves a
+                // remainder that claims the next notch meant for the parent.
+                let snapped = clamp(window.pixel_snap_point(to));
+                *offset = point(
+                    if to.x == -max.x { to.x } else { snapped.x },
+                    if to.y == -max.y { to.y } else { snapped.y },
+                );
                 glides.remove(&key);
+            } else {
+                *offset = clamp(window.pixel_snap_point(clamp(glide.value(now))));
+                glide.written = *offset;
             }
             // Once more after the last step: what reads the offset while
             // rendering, before this prepaint moves it (a pinned group

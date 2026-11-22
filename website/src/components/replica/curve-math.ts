@@ -90,6 +90,7 @@ export interface Frame {
   interval: number;
   /** When the latest sample's scroll began; null while the curve rests at the end of its step. */
   at: number | null;
+  phase:number;mode:"smooth"|"balanced"|"pixel"|"step";
   tick: number;
   /** Colour of the readout dots' ring. */
   ring: number[];

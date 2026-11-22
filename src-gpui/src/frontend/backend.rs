@@ -851,17 +851,50 @@ impl Desktop {
                 self.prefs.set("view", &self.view);
                 self.rebuild_rows(false, cx);
             }
+            Action::ConnectionView(view) => {
+                self.connection_view = view;
+                self.prefs.set("connectionView", &self.connection_view);
+                if self.page == "network" {
+                    self.refresh_connections(cx);
+                }
+            }
             Action::Select(key) => {
-                if key.is_empty()
-                    || (self.page == "processes"
-                        && self.selected.get(&self.page) == Some(&key)
-                        && self.last_select.as_ref().is_some_and(|(prev, at)| {
-                            prev == &key && at.elapsed() > Duration::from_millis(300)
-                        }))
-                {
+                // A click on the selected process row deselects it; the
+                // keyboard clears `last_select` first and never does.
+                let clicked_again = self.page == "processes"
+                    && !key.is_empty()
+                    && self.selected.get(&self.page) == Some(&key)
+                    && self
+                        .last_select
+                        .as_ref()
+                        .is_some_and(|(prev, _)| prev == &key);
+                if key.is_empty() {
                     self.selected.remove(&self.page);
                     self.last_select = None;
+                    self.deselect_due = None;
+                } else if clicked_again {
+                    let double = crate::platform::double_click_time();
+                    let recent = self
+                        .last_select
+                        .as_ref()
+                        .is_some_and(|(_, at)| at.elapsed() <= double);
+                    if self.deselect_due.take().is_some() {
+                        // The second click of a double-click: the row stays
+                        // selected, and the pane does not close and reopen.
+                        self.last_select = Some((key, Instant::now()));
+                    } else if recent {
+                        // The second click of the double-click that selected it.
+                    } else if self.rows.iter().any(|row| row.key == key && row.expandable) {
+                        // A double-click unfolds this row: deselect once it
+                        // turns out to be a single click.
+                        self.last_select = Some((key, Instant::now()));
+                        self.deselect_later(double, cx);
+                    } else {
+                        self.selected.remove(&self.page);
+                        self.last_select = None;
+                    }
                 } else {
+                    self.deselect_due = None;
                     self.selected.insert(self.page.clone(), key.clone());
                     self.last_select = Some((key.clone(), Instant::now()));
                     if self.page == "processes" {
@@ -870,6 +903,23 @@ impl Desktop {
                 }
             }
             Action::Fold(key) => {
+                if self.page == "network" {
+                    // A program's connections; every match shows while searching.
+                    let Some(app) = key.strip_prefix(lists::APP_PREFIX) else {
+                        return;
+                    };
+                    if !self.query.trim().is_empty() {
+                        return;
+                    }
+                    if !self.connection_folds.remove(app) {
+                        self.connection_folds.insert(app.to_owned());
+                    }
+                    let mut opened: Vec<_> = self.connection_folds.iter().collect();
+                    opened.sort();
+                    self.prefs.set("openedConnectionApps", opened);
+                    self.refresh_connections(cx);
+                    return;
+                }
                 if let Some(group) = key.strip_prefix("u:") {
                     // While searching every match shows: headings cannot fold.
                     if !self.query.trim().is_empty() {
@@ -980,19 +1030,37 @@ impl Desktop {
                 self.open_popup(items, window, cx);
             }
             Action::Preference(key, value) => self.preference(&key, value, window, cx),
-            Action::Copy(value, what) => {
-                cx.write_to_clipboard(ClipboardItem::new_string(value));
-                self.notify_toast_for(
-                    widgets::ToastKind::Success,
-                    tr!("actions.copied", what = label(what)),
-                    1800,
-                );
+            Action::Copy(value, what) => self.copy_text(value, label(what), cx),
+            Action::CopyAs(value, what) => self.copy_text(value, what, cx),
+            Action::CopyDetails(key) => {
+                if let Some(details) = self.details_text(&key) {
+                    self.copy_text(details, label("actions.copyWhat.details"), cx);
+                }
             }
+            Action::ExportTableCsv => self.export_table_csv(window, cx),
             Action::History(command) => self.history_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }
         cx.notify();
+    }
+    /// Deselects the selected process row `after` the double-click time,
+    /// unless another click or selection cancels it (`deselect_due`).
+    fn deselect_later(&mut self, after: Duration, cx: &mut Context<Self>) {
+        let task = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(after).await;
+            let _ = this.update(cx, |this, cx| {
+                // This task is the one running: let it finish rather than cancel it.
+                let Some(task) = this.deselect_due.take() else {
+                    return;
+                };
+                task.detach();
+                this.selected.remove("processes");
+                this.last_select = None;
+                cx.notify();
+            });
+        });
+        self.deselect_due = Some(task);
     }
     pub(in crate::frontend) fn key_down(
         &mut self,
@@ -1131,7 +1199,10 @@ impl Desktop {
             cx.stop_propagation();
             return;
         }
-        if matches!(key, "left" | "right") && self.page == "processes" {
+        if matches!(key, "left" | "right")
+            && (self.page == "processes"
+                || (self.page == "network" && self.connection_view == "apps"))
+        {
             if let Some(index) = selected {
                 let row = self.rows[index].clone();
                 if row.expandable && row.expanded == (key == "left") && self.query.trim().is_empty()
@@ -1176,6 +1247,36 @@ impl Desktop {
             cx.stop_propagation();
             return;
         }
+        // Ctrl+C copies the selected row's name and Ctrl+Shift+C its
+        // details, unless text is selected: the window copies that instead.
+        // A process's details are the details pane's, another list's the
+        // columns it shows (`list_copy`).
+        if list_copy::LISTS.contains(&self.page.as_str())
+            && key == "c"
+            && m.control
+            && !m.alt
+            && !m.platform
+            && !gpui_kit::base::TextSelection::has_selection(window, cx)
+        {
+            if let Some(row) = selected
+                .and_then(|index| self.rows.get(index))
+                .filter(|row| row.section.is_none())
+            {
+                let action = if m.shift && self.page == "processes" {
+                    Action::CopyDetails(row.key.clone())
+                } else if m.shift {
+                    let Some(details) = self.cells_text(row, cx) else {
+                        return;
+                    };
+                    Action::CopyAs(details, label("actions.copyWhat.details"))
+                } else {
+                    Action::Copy(row.title.clone(), "actions.copyWhat.name")
+                };
+                self.act(action, window, cx);
+                cx.stop_propagation();
+            }
+            return;
+        }
         if self.page == "processes" && (key == "delete" || (m.alt && !m.shift && key == "e")) {
             self.open_selected_action("end", window, cx);
             if key == "delete" && m.shift {
@@ -1208,6 +1309,21 @@ impl Desktop {
             cx.stop_propagation();
             cx.notify();
         }
+    }
+    /// Puts `value` on the clipboard and confirms it by `what` it is. Fixture
+    /// input must not overwrite the user's clipboard: the text goes to
+    /// `inspectLayout.lastCopy` instead.
+    fn copy_text(&mut self, value: String, what: String, cx: &mut Context<Self>) {
+        if self.options.fixture.is_some() {
+            self.data.insert("lastCopy".into(), json!(value));
+        } else {
+            cx.write_to_clipboard(ClipboardItem::new_string(value));
+        }
+        self.notify_toast_for(
+            widgets::ToastKind::Success,
+            tr!("actions.copied", what = what),
+            1800,
+        );
     }
     /// Ctrl+F and "/": the process search, with its text selected.
     fn focus_process_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1242,6 +1358,10 @@ impl Desktop {
                         cx,
                     );
                 }
+            }
+            // A program's heading folds its connections.
+            "network" if row.expandable => {
+                self.act(Action::Fold(row.key.clone()), window, cx);
             }
             _ => {
                 if row.raw["pid"].as_u64().is_some_and(|pid| pid != 0) {

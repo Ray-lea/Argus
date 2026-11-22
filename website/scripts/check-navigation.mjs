@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Browser } from "./browser.mjs";
+import { checkDemoMotion } from "./check-demo-motion.mjs";
 import { workDir } from "./paths.mjs";
 
 const base = new URL(process.argv[2] ?? "http://127.0.0.1:4321").origin;
@@ -34,6 +35,7 @@ async function clean(page, where) {
 }
 
 try {
+  await checkDemoMotion(browser, base);
   for (const [width, height] of [
     [1440, 900],
     [768, 1024],
