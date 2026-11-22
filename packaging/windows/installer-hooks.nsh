@@ -103,7 +103,8 @@
 
     ; Last, after the helpers above may have written failure reports: remove
     ; them, the PawnIO setup lock and staging leftovers from Program Files\Argus
-    ; Sensor Setup, then the empty folder. Never blocks the uninstall.
+    ; Privileged\setup (and Argus Sensor Setup, where 0.5 and earlier kept them),
+    ; then the empty folders. Never blocks the uninstall.
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-sensor-setup-remove'
     ClearErrors
   ${EndIf}

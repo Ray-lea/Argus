@@ -237,7 +237,7 @@
     "driverInUse": "PawnIO 暫時無法停止或仍被其他程式使用，升級已停止。請結束使用硬體感測器的其他程式後重試；若仍失敗，請重新啟動 Windows 後重試。",
     "unsafeDriverPath": "PawnIO 驅動程式路徑的擁有者、權限或連結未通過安全檢查，已停止啟用。請由系統管理員檢查驅動程式檔案及其父目錄的權限。",
     "writableDriverStore": "Windows 驅動程式存放區目錄 DriverStore\\FileRepository 允許一般使用者寫入，已停止啟用 PawnIO。請由系統管理員還原此目錄的權限後重試。",
-    "unsafeSetupPath": "PawnIO 安裝暫存目錄的擁有者、權限或連結未通過安全檢查，已停止操作。請由系統管理員檢查 Program Files\\Argus Sensor Setup 及其父目錄的權限。",
+    "unsafeSetupPath": "PawnIO 安裝暫存目錄的擁有者、權限或連結未通過安全檢查，已停止操作。請由系統管理員檢查 Program Files\\Argus Privileged\\setup 及其父目錄的權限。",
     "notReady": "PawnIO 尚未正常執行，核心感測器保持關閉。請檢查驅動程式狀態或系統提示後重試。",
     "deviceDisabled": "PawnIO 裝置已在 Windows 中停用，核心感測器保持關閉。請在裝置管理員中啟用 PawnIO 後重試。",
     "cancelled": "已取消系統管理員授權，核心感測器保持關閉。",

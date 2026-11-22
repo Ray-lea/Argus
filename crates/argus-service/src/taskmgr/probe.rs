@@ -14,6 +14,10 @@ use std::time::Duration;
 
 /// Names the test program of a self-test that is not cleaned up yet.
 pub const RECORD: &str = "taskmgr-probe.txt";
+/// The test program, a copy of the launcher. Argus 0.5 and earlier gave each
+/// one a name of its own, `ArgusTaskmgrProbe-<GUID>.exe`, which a record left
+/// by an interrupted self-test may still name.
+pub const PROGRAM: &str = "argus-taskmgr-probe.exe";
 
 /// What the self-test touches. Registry mutations only clean up old probes.
 pub trait Probe {
@@ -39,10 +43,7 @@ pub trait Probe {
 /// self-test's error stays the main one and the cleanup's is added to it.
 pub fn run(probe: &mut impl Probe) -> std::result::Result<(), Box<Failure>> {
     cleanup(probe, Step::ProbeLeftover)?;
-    let name = format!(
-        "ArgusTaskmgrProbe-{}.exe",
-        super::id().map_err(|e| Failure::new(Step::ProbeFiles, e))?
-    );
+    let name = PROGRAM.to_owned();
     match probe.exists(&name) {
         Ok(false) => {}
         Ok(true) => return Err(failed(Step::ProbeFiles, tr!("taskManager.probeNameTaken"))),
@@ -163,6 +164,12 @@ fn refused(
 }
 
 fn valid(name: &str) -> bool {
+    name == PROGRAM || legacy(name)
+}
+
+/// The names Argus 0.5 and earlier gave the test program. Their self-tests
+/// also created an IFEO entry of that name, which `cleanup` still removes.
+fn legacy(name: &str) -> bool {
     name.strip_prefix("ArgusTaskmgrProbe-")
         .and_then(|s| s.strip_suffix(".exe"))
         .is_some_and(|s| s.len() == 36 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
@@ -376,6 +383,29 @@ mod tests {
         assert_eq!(m.starts, [false, true]);
         assert!(m.registry_calls.is_empty());
         assert!(!m.left_anything());
+    }
+
+    #[test]
+    fn the_test_program_has_a_fixed_name_and_an_earlier_one_is_still_cleaned_up() {
+        // A self-test cut short leaves its record and program behind.
+        let mut m = Memory {
+            normal_exit: 13,
+            refuse_files: true,
+            ..Default::default()
+        };
+        run(&mut m).unwrap_err();
+        assert_eq!(m.record.as_deref(), Some(PROGRAM));
+        assert_eq!(m.program.as_deref(), Some(PROGRAM));
+        m.refuse_files = false;
+        cleanup(&mut m, Step::ProbeLeftover).unwrap();
+        assert!(!m.left_anything());
+
+        // Argus 0.5 and earlier: a name of its own, and an IFEO entry.
+        let mut m = Memory::legacy();
+        assert!(valid(m.record.as_deref().unwrap()));
+        run(&mut m).unwrap();
+        assert!(!m.left_anything());
+        assert!(!valid("argus-taskmgr-probe.old.exe") && !valid("ArgusTaskmgrProbe-x.exe"));
     }
 
     #[test]

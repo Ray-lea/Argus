@@ -30,6 +30,10 @@ use windows::core::PCWSTR;
 
 pub const LAUNCHER: &str = "argus-taskmgr-launcher.exe";
 pub const RECOVER: &str = "argus-taskmgr-recover.exe";
+/// The interface copy the replacement starts. Argus 0.5 and earlier gave each
+/// copy a name of its own (`legacy_image`), which a record may still name.
+pub const INTERFACE: &str = "argus-taskmgr-ui.exe";
+const INTERFACE_STEM: &str = "argus-taskmgr-ui";
 const RECOVERY_TEXT: &str = "taskmgr-recovery.txt";
 const MANAGE: &str = "--argus-taskmgr-manage";
 pub type Assets = (&'static [u8], &'static [u8]);
@@ -49,10 +53,22 @@ pub fn id() -> Result<String> {
     .trim_matches(['{', '}'])
     .to_ascii_lowercase())
 }
+/// What a recovery record may name: `INTERFACE`, or a copy of Argus 0.5 or
+/// earlier.
 fn valid_image(name: &str) -> bool {
-    name.strip_prefix("argus-taskmgr-ui-")
+    name.eq_ignore_ascii_case(INTERFACE) || legacy_image(name)
+}
+/// `argus-taskmgr-ui-<GUID>.exe`, as Argus 0.5 and earlier named its copies.
+fn legacy_image(name: &str) -> bool {
+    name.to_ascii_lowercase()
+        .strip_prefix("argus-taskmgr-ui-")
         .and_then(|s| s.strip_suffix(".exe"))
         .is_some_and(|s| s.len() == 36 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
+}
+/// Whether `name` is an interface copy's: one a record may name, or the name
+/// a replaced copy keeps while it still runs.
+pub fn is_interface_name(name: &str) -> bool {
+    valid_image(name) || crate::layout::is_aside(INTERFACE_STEM, name)
 }
 /// Whether `path` is one of the replacement's interface copies in this
 /// build's protected folder. An Argus opened by the replacement runs one, and
@@ -63,7 +79,7 @@ pub fn is_interface_copy(path: &Path) -> bool {
     };
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(valid_image)
+        .is_some_and(is_interface_name)
         && path.parent().is_some_and(|parent| {
             parent
                 .to_string_lossy()
@@ -509,8 +525,8 @@ pub fn status() -> Result<Status> {
         }
         Err(error) => return Err(error),
     };
-    if let Some(journal) = journal {
-        status.state = journal_state(&journal, &live);
+    if let Some(journal) = &journal {
+        status.state = journal_state(journal, &live);
         if matches!(status.state, "enabled" | "recoveryNeeded") {
             status.detail = if status.state == "enabled" {
                 status.older = older_interface(&machine.dir, &journal.image);
@@ -540,11 +556,15 @@ pub fn status() -> Result<Status> {
         status.conflict(tr!("taskManager.status.conflict"), &ours);
     } else if !installed {
         // Without the authorization record: removed, or registered still
-        // and damaged, which the service's own state says.
+        // and damaged, which the service's own state says. The folder may
+        // also be there for administrator startup or the sensor driver's
+        // setup alone, holding nothing of a replacement.
         status.detail = if crate::install::is_registered() {
             tr!("taskManager.status.serviceDamaged")
-        } else {
+        } else if journal.is_some() || machine.dir.join(LAUNCHER).exists() {
             tr!("taskManager.status.serviceRemoved")
+        } else {
+            tr!("taskManager.status.needsService")
         };
     } else if cfg!(debug_assertions) {
         status.detail = tr!("taskManager.status.devBuild");
@@ -659,8 +679,15 @@ fn held_by_other(live: &Observation, ours: &Value) -> bool {
 trait Files {
     /// Whether `name` holds exactly `bytes`.
     fn holds(&mut self, name: &str, bytes: &[u8]) -> bool;
-    /// Writes `name` in full beside the old one, then replaces it.
+    /// Writes `name` in full beside the old one, then replaces it. A running
+    /// program cannot be replaced so.
     fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()>;
+    /// `put` for a program that may be running: the file `name` named stays
+    /// under the aside name returned (`layout::swap_in`).
+    fn swap_in(&mut self, name: &str, bytes: &[u8]) -> Result<Option<String>>;
+    /// Gives the file `aside` names its name `name` back.
+    fn swap_back(&mut self, aside: &str, name: &str) -> Result<()>;
+    /// Deletes `name`, unless it is the last name of a running program.
     fn remove(&mut self, name: &str);
 }
 
@@ -673,6 +700,17 @@ impl Files for Folder<'_> {
     fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
         registry::atomic_file(self.0, name, bytes)
     }
+    fn swap_in(&mut self, name: &str, bytes: &[u8]) -> Result<Option<String>> {
+        let swapped = registry::swap_file(self.0, name, bytes)?;
+        Ok(swapped
+            .aside
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|aside| aside.to_string_lossy().into_owned()))
+    }
+    fn swap_back(&mut self, aside: &str, name: &str) -> Result<()> {
+        crate::layout::rename(&self.0.join(aside), &self.0.join(name)).map_err(util::message)
+    }
     fn remove(&mut self, name: &str) {
         let _ = fs::remove_file(self.0.join(name));
     }
@@ -680,9 +718,9 @@ impl Files for Folder<'_> {
 
 /// Brings an enabled replacement to this build without turning it off, before
 /// an update of the service (`install::run_helper`, which holds install.lock):
-/// the interface as a new copy the record then names, since a running copy
-/// cannot be replaced, and the launcher, recovery program and instructions in
-/// place. taskmgr.exe's entry names the launcher and stays as it is, and the
+/// the interface copy, the launcher, recovery program and instructions in
+/// place. A copy that is running keeps another name until it exits; a record
+/// that names a copy of Argus 0.5 or earlier names `INTERFACE` from then on. taskmgr.exe's entry names the launcher and stays as it is, and the
 /// launcher does not need the service, so the service can change under it.
 /// False when the replacement is not whole (off, half way or overwritten by
 /// someone else): nothing changed, and the caller restores as before.
@@ -738,10 +776,11 @@ fn journal_state(journal: &Journal, live: &Observation) -> &'static str {
     }
 }
 
-/// The order of `follow_update`: the new interface copy first, under a name of
-/// its own; then the launcher and recovery program; then the record. A failure
-/// before the record names the new copy deletes it, so the record and the copy
-/// it names stay as they were. False, touching nothing, when not `whole`.
+/// The order of `follow_update`: the interface copy first, at `INTERFACE`;
+/// then the launcher and recovery program; then the record, when it named a
+/// copy of an earlier version. A failure on the way puts back the copy the
+/// record names, so the record and that copy stay as they were. False,
+/// touching nothing, when not `whole`.
 fn follow(
     store: &mut impl Store,
     files: &mut impl Files,
@@ -752,12 +791,13 @@ fn follow(
     if !whole(journal, &store.observe()?) {
         return Ok(false);
     }
-    let image = if files.holds(&journal.image, interface) {
+    // Otherwise the record names a copy of Argus 0.5 or earlier, under a name
+    // of its own: it stays as it is until the record moves on.
+    let in_place = journal.image.eq_ignore_ascii_case(INTERFACE);
+    let swapped = if in_place && files.holds(INTERFACE, interface) {
         None
     } else {
-        let image = format!("argus-taskmgr-ui-{}.exe", id()?);
-        files.put(&image, interface)?;
-        Some(image)
+        Some(files.swap_in(INTERFACE, interface)?)
     };
     let result: Result<()> = (|| {
         for (name, bytes) in [(LAUNCHER, launcher), (RECOVER, recover)] {
@@ -765,9 +805,9 @@ fn follow(
                 files.put(name, bytes)?;
             }
         }
-        if let Some(image) = &image {
+        if !in_place {
             let next = Journal {
-                image: image.clone(),
+                image: INTERFACE.into(),
                 ..journal.clone()
             };
             store.save(&next)?;
@@ -775,8 +815,21 @@ fn follow(
         }
         Ok(())
     })();
-    if let (Err(_), Some(image)) = (&result, &image) {
-        files.remove(image);
+    match (&result, swapped) {
+        // The copy the record names comes back.
+        (Err(_), Some(Some(aside))) if in_place => {
+            let _ = files.swap_back(&aside, INTERFACE);
+        }
+        // Nothing names the new copy, nor what it replaced.
+        (Err(_), Some(aside)) => {
+            files.remove(INTERFACE);
+            if let Some(aside) = aside {
+                files.remove(&aside);
+            }
+        }
+        // The replaced copy goes, unless it still runs: a later sweep then.
+        (Ok(()), Some(Some(aside))) => files.remove(&aside),
+        _ => {}
     }
     result?;
     let text = recovery_text();
@@ -846,8 +899,8 @@ fn remove_images(dir: &Path, keep: Option<&str>) {
     for entry in entries.flatten() {
         let name = entry.file_name();
         if let Some(name) = name.to_str()
-            && valid_image(name)
-            && keep != Some(name)
+            && is_interface_name(name)
+            && !keep.is_some_and(|keep| keep.eq_ignore_ascii_case(name))
         {
             let _ = fs::remove_file(entry.path());
         }
@@ -915,12 +968,11 @@ fn enable(
     })()
     .map_err(prepare)?;
     probe::run(&mut probe::System::new(&machine.dir))?;
-    let image = format!("argus-taskmgr-ui-{}.exe", id().map_err(check)?);
-    let result = finish_enable(&mut machine, &image, owner, caller, created);
+    let result = finish_enable(&mut machine, INTERFACE, owner, caller, created);
     if result.is_err() {
         // No active record names it. If its readiness check still runs it,
         // the next sweep deletes it.
-        let _ = fs::remove_file(machine.dir.join(&image));
+        let _ = fs::remove_file(machine.dir.join(INTERFACE));
     }
     result
 }
@@ -946,7 +998,9 @@ fn finish_enable(
         // GUI executable, not adjacent user-writable sidecar files.
         let source = fs::read(std::env::current_exe().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
-        registry::atomic_file(&machine.dir, image, &source)?;
+        // A copy from a replacement restored since may still run: it keeps
+        // another name until it exits, which a later sweep deletes.
+        registry::swap_file(&machine.dir, image, &source)?.release();
         registry::atomic_file(&machine.dir, RECOVERY_TEXT, recovery_text().as_bytes())
     })()
     .map_err(prepare)?;
@@ -1488,11 +1542,15 @@ mod tests {
             RECOVER,
             registry::JOURNAL,
             "argus-taskmgr-ui-x.exe",
+            "argus-taskmgr-ui.exe.tmp",
         ];
+        let replaced = ["argus-taskmgr-ui.old.exe", "argus-taskmgr-ui.old-2.exe"];
         for name in [&old, &kept, &running]
             .into_iter()
             .map(String::as_str)
             .chain(others)
+            .chain(replaced)
+            .chain([INTERFACE])
         {
             fs::write(dir.join(name), b"x").unwrap();
         }
@@ -1504,12 +1562,19 @@ mod tests {
             .unwrap();
         remove_images(&dir, Some(&kept));
         drop(busy);
-        assert!(!dir.join(&old).exists());
+        assert!(!dir.join(&old).exists() && !dir.join(INTERFACE).exists());
+        assert!(replaced.iter().all(|name| !dir.join(name).exists()));
         assert!(dir.join(&kept).exists() && dir.join(&running).exists());
         assert!(others.iter().all(|name| dir.join(name).exists()));
+
+        // The fixed name is kept as the record names it, in any case.
+        fs::write(dir.join(INTERFACE), b"x").unwrap();
+        remove_images(&dir, Some("ARGUS-TASKMGR-UI.EXE"));
+        assert!(dir.join(INTERFACE).exists() && !dir.join(&kept).exists());
         fs::remove_dir_all(dir).unwrap();
     }
 
+    /// A record of Argus 0.5 or earlier: its copy has a name of its own.
     fn journal(phase: Phase) -> Journal {
         Journal {
             version: 1,
@@ -1524,20 +1589,36 @@ mod tests {
     #[test]
     fn interface_copies_are_named_ones_in_the_protected_folder() {
         let dir = crate::install::directory().unwrap();
-        let copy = format!("argus-taskmgr-ui-{}.exe", id().unwrap());
-        assert!(is_interface_copy(&dir.join(&copy)));
-        // Paths read back from Windows may differ in case.
-        let upper = dir.to_string_lossy().to_uppercase();
-        assert!(is_interface_copy(&Path::new(&upper).join(&copy)));
+        let legacy = format!("argus-taskmgr-ui-{}.exe", id().unwrap());
+        for copy in [
+            INTERFACE,
+            legacy.as_str(),
+            "argus-taskmgr-ui.old.exe",
+            "argus-taskmgr-ui.old-3.exe",
+        ] {
+            assert!(is_interface_copy(&dir.join(copy)), "{copy}");
+            // Paths read back from Windows may differ in case.
+            let upper = dir.to_string_lossy().to_uppercase();
+            assert!(
+                is_interface_copy(&Path::new(&upper).join(copy.to_uppercase())),
+                "{copy}"
+            );
+            assert!(
+                !is_interface_copy(&Path::new(r"C:\Program Files\Argus").join(copy)),
+                "{copy}"
+            );
+            assert!(!is_interface_copy(&dir.join("sub").join(copy)), "{copy}");
+        }
         assert!(!is_interface_copy(&dir.join(LAUNCHER)));
+        assert!(!is_interface_copy(&dir.join(probe::PROGRAM)));
         assert!(!is_interface_copy(
             &dir.join("argus-taskmgr-ui-not-a-guid.exe")
         ));
         assert!(!is_interface_copy(&dir.join("argus.exe")));
-        assert!(!is_interface_copy(
-            &Path::new(r"C:\Program Files\Argus").join(&copy)
-        ));
-        assert!(!is_interface_copy(&dir.join("sub").join(&copy)));
+        // Only the fixed name and an earlier version's copy are what a
+        // record may name; a replaced copy is not.
+        assert!(valid_image(INTERFACE) && valid_image(&legacy));
+        assert!(!valid_image("argus-taskmgr-ui.old.exe"));
     }
 
     #[test]
@@ -1647,35 +1728,90 @@ mod tests {
         }
     }
 
-    /// The protected folder in memory. A busy file cannot be replaced, as a
-    /// running program cannot.
+    /// The protected folder in memory. Files are numbered so that two names
+    /// can name one, as a hard link does. The last name of a running
+    /// program's file can be neither replaced nor deleted; another can.
     #[derive(Clone, Default, PartialEq, Debug)]
     struct Disk {
-        files: std::collections::BTreeMap<String, Vec<u8>>,
-        busy: Option<&'static str>,
+        names: std::collections::BTreeMap<String, u32>,
+        contents: std::collections::BTreeMap<u32, Vec<u8>>,
+        running: std::collections::BTreeSet<u32>,
+        next: u32,
+    }
+
+    impl Disk {
+        fn insert(&mut self, name: &str, bytes: &[u8]) {
+            self.next += 1;
+            self.contents.insert(self.next, bytes.into());
+            self.names.insert(name.into(), self.next);
+        }
+        fn read(&self, name: &str) -> Option<&[u8]> {
+            Some(&self.contents[self.names.get(name)?])
+        }
+        /// Starts the program `name` names.
+        fn run(&mut self, name: &str) {
+            self.running.insert(self.names[name]);
+        }
+        fn names(&self) -> Vec<&str> {
+            self.names.keys().map(String::as_str).collect()
+        }
+        /// Whether the name may go: not the last one of a running program.
+        fn may_unlink(&self, name: &str) -> bool {
+            let Some(file) = self.names.get(name) else {
+                return true;
+            };
+            !self.running.contains(file) || self.names.values().filter(|f| *f == file).count() > 1
+        }
     }
 
     impl Files for Disk {
         fn holds(&mut self, name: &str, bytes: &[u8]) -> bool {
-            self.files.get(name).is_some_and(|old| old == bytes)
+            self.read(name) == Some(bytes)
         }
         fn put(&mut self, name: &str, bytes: &[u8]) -> Result<()> {
-            if self.busy == Some(name) {
+            if !self.may_unlink(name) {
                 return Err("in use".into());
             }
-            self.files.insert(name.into(), bytes.into());
+            self.insert(name, bytes);
+            Ok(())
+        }
+        fn swap_in(&mut self, name: &str, bytes: &[u8]) -> Result<Option<String>> {
+            let Some(&file) = self.names.get(name) else {
+                self.insert(name, bytes);
+                return Ok(None);
+            };
+            let stem = name.strip_suffix(".exe").unwrap();
+            let aside = (1..=9)
+                .map(|nth| crate::layout::aside(stem, nth))
+                .find(|aside| self.may_unlink(aside))
+                .ok_or("every aside name runs")?;
+            self.names.insert(aside.clone(), file);
+            self.insert(name, bytes);
+            Ok(Some(aside))
+        }
+        fn swap_back(&mut self, aside: &str, name: &str) -> Result<()> {
+            if !self.may_unlink(name) {
+                return Err("in use".into());
+            }
+            let file = self.names.remove(aside).ok_or("no such file")?;
+            self.names.insert(name.into(), file);
             Ok(())
         }
         fn remove(&mut self, name: &str) {
-            self.files.remove(name);
+            if self.may_unlink(name) {
+                self.names.remove(name);
+            }
         }
     }
 
     const NEW: Assets = (b"launcher 2", b"recover 2");
 
-    /// A replacement enabled by the last build.
-    fn enabled() -> (Record, Disk, Journal) {
-        let j = journal(Phase::Active);
+    /// A replacement enabled by the last build, whose record names `image`.
+    fn enabled_with(image: &str) -> (Record, Disk, Journal) {
+        let j = Journal {
+            image: image.into(),
+            ..journal(Phase::Active)
+        };
         let record = Record {
             live: Observation {
                 debugger: Some(j.replacement.clone()),
@@ -1691,19 +1827,24 @@ mod tests {
             (RECOVER, b"recover 1"),
             (RECOVERY_TEXT, b"text 1"),
         ] {
-            disk.files.insert(name.into(), bytes.into());
+            disk.insert(name, bytes);
         }
         (record, disk, j)
     }
 
+    /// A replacement enabled by Argus 0.5 or earlier: its copy has a name of
+    /// its own.
+    fn enabled() -> (Record, Disk, Journal) {
+        enabled_with(&journal(Phase::Active).image)
+    }
+
     #[test]
-    fn an_enabled_replacement_follows_a_new_build() {
+    fn an_enabled_replacement_of_an_earlier_version_moves_to_the_fixed_name() {
         let (mut record, mut disk, mut j) = enabled();
         let (old, entry) = (j.clone(), record.live.clone());
         assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
-        // A new copy the record names; the old one waits for the sweep.
-        assert_ne!(j.image, old.image);
-        assert!(valid_image(&j.image));
+        // The record names the fixed copy; the old one waits for the sweep.
+        assert_eq!(j.image, INTERFACE);
         assert_eq!(record.saved.as_ref().map(|s| &s.image), Some(&j.image));
         // Nothing else in the record changes.
         let json = |j: &Journal| serde_json::to_value(j).unwrap();
@@ -1712,16 +1853,41 @@ mod tests {
             ..j.clone()
         };
         assert_eq!(json(&renamed), json(&old));
-        assert_eq!(disk.files[&j.image], b"ui 2");
-        assert_eq!(disk.files[&old.image], b"ui 1");
-        assert_eq!(disk.files[LAUNCHER], NEW.0);
-        assert_eq!(disk.files[RECOVER], NEW.1);
-        assert_eq!(disk.files[RECOVERY_TEXT], recovery_text().as_bytes());
+        assert_eq!(disk.read(INTERFACE), Some(b"ui 2".as_slice()));
+        assert_eq!(disk.read(&old.image), Some(b"ui 1".as_slice()));
+        assert_eq!(disk.read(LAUNCHER), Some(NEW.0));
+        assert_eq!(disk.read(RECOVER), Some(NEW.1));
+        assert_eq!(disk.read(RECOVERY_TEXT), Some(recovery_text().as_bytes()));
         assert_eq!(record.live, entry);
         // Already this build: nothing is written again.
         let before = (disk.clone(), j.clone());
         assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
         assert_eq!((&disk, &j.image), (&before.0, &before.1.image));
+    }
+
+    #[test]
+    fn an_enabled_replacement_follows_a_new_build_in_place() {
+        let (mut record, mut disk, mut j) = enabled_with(INTERFACE);
+        let saved = serde_json::to_value(&record.saved).unwrap();
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
+        assert_eq!(j.image, INTERFACE);
+        // The record already names the copy: it is not written again.
+        assert_eq!(serde_json::to_value(&record.saved).unwrap(), saved);
+        assert_eq!(disk.read(INTERFACE), Some(b"ui 2".as_slice()));
+        assert_eq!(disk.read(LAUNCHER), Some(NEW.0));
+        // The replaced copy is gone with nothing running it.
+        assert_eq!(disk.names(), [LAUNCHER, RECOVER, INTERFACE, RECOVERY_TEXT]);
+
+        // An Argus the replacement opened still runs: its file stays under
+        // another name until it exits, and the copy in place is the new one.
+        let (mut record, mut disk, mut j) = enabled_with(INTERFACE);
+        disk.run(INTERFACE);
+        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap());
+        assert_eq!(disk.read(INTERFACE), Some(b"ui 2".as_slice()));
+        assert_eq!(
+            disk.read("argus-taskmgr-ui.old.exe"),
+            Some(b"ui 1".as_slice())
+        );
     }
 
     #[test]
@@ -1731,58 +1897,75 @@ mod tests {
             debugger: Some(Value::string("procexp64.exe")),
             filtered: false,
         };
-        for (phase, live) in [
-            (Phase::Restored, Some(clean.clone())),
-            (Phase::Restored, None),
-            (Phase::Prepared, None),
-            (Phase::Restoring, None),
-            (Phase::Active, Some(foreign)),
-            (Phase::Active, Some(clean)),
-            (Phase::Active, None),
-        ] {
-            let (mut record, mut disk, mut j) = enabled();
-            j.phase = phase;
-            match live {
-                Some(live) => record.live = live,
-                // Argus's value; filtered as well when the record is on.
-                None => record.live.filtered = phase == Phase::Active,
+        for image in [journal(Phase::Active).image, INTERFACE.into()] {
+            for (phase, live) in [
+                (Phase::Restored, Some(clean.clone())),
+                (Phase::Restored, None),
+                (Phase::Prepared, None),
+                (Phase::Restoring, None),
+                (Phase::Active, Some(foreign.clone())),
+                (Phase::Active, Some(clean.clone())),
+                (Phase::Active, None),
+            ] {
+                let (mut record, mut disk, mut j) = enabled_with(&image);
+                j.phase = phase;
+                match live {
+                    Some(live) => record.live = live,
+                    // Argus's value; filtered as well when the record is on.
+                    None => record.live.filtered = phase == Phase::Active,
+                }
+                let before = (disk.clone(), j.image.clone(), record.saved.clone());
+                assert!(
+                    !follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap(),
+                    "{phase:?}"
+                );
+                assert_eq!((&disk, &j.image), (&before.0, &before.1), "{phase:?}");
+                assert_eq!(
+                    record.saved.map(|s| s.image),
+                    before.2.map(|s| s.image),
+                    "{phase:?}"
+                );
             }
-            let before = (disk.clone(), j.image.clone(), record.saved.clone());
-            assert!(
-                !follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).unwrap(),
-                "{phase:?}"
-            );
-            assert_eq!((&disk, &j.image), (&before.0, &before.1), "{phase:?}");
-            assert_eq!(
-                record.saved.map(|s| s.image),
-                before.2.map(|s| s.image),
-                "{phase:?}"
-            );
         }
     }
 
     #[test]
     fn a_failed_follow_keeps_the_record_and_the_copy_it_names() {
-        // The launcher is running: the new copy goes, the record stays.
-        let (mut record, mut disk, mut j) = enabled();
-        disk.busy = Some(LAUNCHER);
-        let before = (disk.files.clone(), j.clone(), record.saved.clone());
-        assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).is_err());
-        assert_eq!(disk.files, before.0);
-        assert_eq!(j.image, before.1.image);
-        assert_eq!(record.saved.map(|s| s.image), before.2.map(|s| s.image));
-        // The record cannot be saved: the new copy goes too.
+        for (image, running) in [
+            (journal(Phase::Active).image, false),
+            (INTERFACE.to_owned(), false),
+            // An Argus the replacement opened runs the copy meanwhile.
+            (INTERFACE.to_owned(), true),
+        ] {
+            // The launcher is running: the record and the copy it names stay.
+            let (mut record, mut disk, mut j) = enabled_with(&image);
+            disk.run(LAUNCHER);
+            if running {
+                disk.run(&image);
+            }
+            let names: Vec<String> = disk.names().iter().map(|name| name.to_string()).collect();
+            let before = (j.clone(), record.saved.clone());
+            assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).is_err());
+            assert_eq!(disk.names(), names, "{image}");
+            assert_eq!(disk.read(&image), Some(b"ui 1".as_slice()), "{image}");
+            assert_eq!(disk.read(LAUNCHER), Some(b"launcher 1".as_slice()));
+            assert_eq!(j.image, before.0.image);
+            assert_eq!(record.saved.map(|s| s.image), before.1.map(|s| s.image));
+        }
+
+        // The record cannot be saved: the new copy goes, the old one stays named.
         let (mut record, mut disk, mut j) = enabled();
         record.fail_save = true;
         let old = j.image.clone();
         assert!(follow(&mut record, &mut disk, &mut j, b"ui 2", NEW).is_err());
         assert_eq!(j.image, old);
         assert!(
-            disk.files
-                .keys()
-                .filter(|name| valid_image(name))
-                .eq([&old])
+            disk.names()
+                .into_iter()
+                .filter(|name| is_interface_name(name))
+                .eq([old.as_str()])
         );
+        assert_eq!(disk.read(&old), Some(b"ui 1".as_slice()));
     }
 
     #[test]

@@ -130,6 +130,8 @@ Comet Lake S/H 核显的温度、频率、VID、GT／媒体活动率及限制状
 
 卡巴斯基的 `HEUR:Trojan.Multi.Ifeodeb.a` 可能将此功能写入的 `taskmgr.exe:Debugger` 配置判为木马并清除。卡巴斯基将 [Ifeodeb](https://threats.kaspersky.com/en/threat/Trojan.Multi.Ifeodeb/) 定义为 Windows 系统程序的非标准调试配置检测。申诉时按[官方误报流程](https://support.kaspersky.com/kaspersky-for-windows/21.27/troubleshooting/other/1870)提供检测对象、检测名、产品与病毒库版本、Argus 版本及启用步骤。若记录中的对象是注册表项，应一并说明其用于用户主动启用的任务管理器替换。排查期间可保留 Windows 任务管理器入口，使用 Argus 的常驻快捷键打开窗口。
 
+Argus 以管理员或 SYSTEM 身份运行的程序都位于 `C:\Program Files\Argus Privileged`，文件名固定，不随更新或自检变化：`argus-service.exe`（特权服务）、`argus-taskmgr-launcher.exe`（启动器）、`argus-taskmgr-ui.exe`（替换打开的界面）、`argus-taskmgr-probe.exe`（开启替换时的自检），以及管理员运行的 `runtime\<应用标识>\<账户 SID>\argus-admin.exe`。可按这些路径或整个文件夹加入安全软件的信任列表。上述 `taskmgr.exe:Debugger` 检测针对的是注册表值本身，信任 Argus 的程序或文件夹不能消除这类提示，只能申诉或在安全软件中允许该项配置。
+
 安装特权服务或执行替换自检时，也可能出现 `PDM:Trojan.Win32.Generic`（包括 `.nblk` 变体）行为检测，维护助手会被终止，相关文件和快捷方式可能被移除。维护助手未留下错误报告时，Argus 显示实际退出码，诊断日志也保留该值；应将发生时间与安全软件事件对应核查。PDM 误报复核按上述官方流程另附 GSI 系统报告。任务管理器替换尚未写入时，当前仍使用 Windows 原生入口。
 
 “恢复 Windows 任务管理器”优先通过特权服务还原，服务不可用时请求管理员授权。界面无法运行时，使用卡片底部给出的路径中的 `argus-taskmgr-recover.exe`；它不依赖 Argus 界面或后台服务。独立恢复程序也损坏时，参照其同目录的 `taskmgr-recovery.txt`，核对归属后只还原 Debugger 值，不删除整个键。

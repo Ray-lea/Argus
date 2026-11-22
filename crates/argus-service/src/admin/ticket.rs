@@ -164,7 +164,7 @@ fn prepare_inner(id: &str, args: &[String], elevated: bool) -> Result<Prepared> 
         None
     } else {
         security::allow_process_query(&sid)?;
-        let dir = directory(id, &sid)?;
+        let dir = located(id, &sid)?;
         let image = read_launch(&dir)
             .map(|r| dir.join(r.image))
             .unwrap_or(std::env::current_exe().map_err(io)?);

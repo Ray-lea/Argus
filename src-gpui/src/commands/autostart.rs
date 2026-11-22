@@ -80,16 +80,12 @@ fn approve(name: &str) {
     }
 }
 
-/// `argus-taskmgr-ui-<GUID>.exe`, as the replacement names its copies.
+/// `argus-taskmgr-ui.exe`, as the replacement names its copy (Argus 0.5 and
+/// earlier: `argus-taskmgr-ui-<GUID>.exe`), or the name a replaced copy keeps.
 pub fn is_interface_copy(path: &Path) -> bool {
-    path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n.to_ascii_lowercase()
-            .strip_prefix("argus-taskmgr-ui-")
-            .and_then(|s| s.strip_suffix(".exe"))
-            .is_some_and(|id| {
-                id.len() == 36 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
-            })
-    })
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(argus_service::taskmgr::is_interface_name)
 }
 
 /// The program and the arguments of a `Run` command: quoted, or unquoted up
@@ -285,9 +281,17 @@ mod tests {
 
     #[test]
     fn interface_copies_are_told_by_name() {
-        let copy = r"C:\Program Files\Argus Privileged\argus-taskmgr-ui-d0a67540-30bd-4012-a790-1e6626c98fd5.exe";
-        assert!(is_interface_copy(Path::new(copy)));
-        assert!(is_interface_copy(Path::new(&copy.to_ascii_uppercase())));
+        for copy in [
+            r"C:\Program Files\Argus Privileged\argus-taskmgr-ui.exe",
+            r"C:\Program Files\Argus Privileged\argus-taskmgr-ui.old-2.exe",
+            r"C:\Program Files\Argus Privileged\argus-taskmgr-ui-d0a67540-30bd-4012-a790-1e6626c98fd5.exe",
+        ] {
+            assert!(is_interface_copy(Path::new(copy)), "{copy}");
+            assert!(
+                is_interface_copy(Path::new(&copy.to_ascii_uppercase())),
+                "{copy}"
+            );
+        }
         assert!(!is_interface_copy(Path::new(
             r"C:\Program Files\Argus\argus.exe"
         )));

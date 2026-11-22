@@ -41,7 +41,6 @@ pub(crate) const MANAGE_ARG: &str = "--argus-sensor-driver-manage";
 pub(crate) const CLEANUP_ARG: &str = "--argus-sensor-setup-remove";
 /// Under Program Files: this setup's lock and staging folders, and the
 /// failure reports of every elevated helper (`diagnostics`).
-pub(crate) const SETUP_DIR: &str = "Argus Sensor Setup";
 const SETUP_LOCK: &str = "install.lock";
 const INSTALLER: &str = "PawnIO_setup.exe";
 const LEGACY_INSTALLER: &str = "PawnIO_legacy_setup.exe";
@@ -969,7 +968,10 @@ pub(crate) fn run_helper() -> Result<()> {
         &programs,
         protect_setup_path(&programs),
     )?;
-    let root = programs.join(SETUP_DIR);
+    // The protected folder, which the setup may make before the service does.
+    let base = crate::layout::root()?;
+    let _base = util::file_stage("PawnIO setup parent", &base, protected_dir(&base))?;
+    let root = crate::layout::setup()?;
     let pin = util::file_stage("PawnIO setup directory", &root, protected_dir(&root))?;
     let lock = util::file_stage(
         "PawnIO setup lock",
@@ -988,30 +990,57 @@ pub(crate) fn run_helper() -> Result<()> {
     });
     drop(lock);
     drop(pin);
+    drop(_base);
     release_setup_folder(&root);
     result
 }
 
-/// Leaves no folder behind once a setup is over. Another Argus that took the
-/// lock meanwhile, a staging folder an interrupted setup left or a report the
-/// host has yet to read keeps it; the uninstaller removes those.
+/// Leaves no folder behind once a setup is over, nor the protected folder
+/// when the setup alone made it. Another Argus that took the lock meanwhile,
+/// a staging folder an interrupted setup left or a report the host has yet to
+/// read keeps it; the uninstaller removes those.
 fn release_setup_folder(root: &Path) {
     if let Ok(Some(directory)) = crate::cleanup::Directory::open(root)
         && directory.remove_file(SETUP_LOCK).is_ok()
+        && directory.remove_empty().is_ok()
     {
-        let _ = directory.remove_empty();
+        remove_empty_parent(root);
+    }
+}
+
+fn remove_empty_parent(root: &Path) {
+    if let Some(parent) = root.parent()
+        && let Ok(Some(parent)) = crate::cleanup::Directory::open(parent)
+    {
+        let _ = parent.remove_empty();
     }
 }
 
 /// For the uninstaller, after every other helper: once Argus is gone nothing
 /// reads the failure reports or an interrupted setup's staging folder. Removes
-/// those and the lock by name, then the folder if empty; unknown files stay,
-/// and a setup still running in another session keeps everything.
+/// those and the lock by name, then the folder if empty, here and where Argus
+/// 0.5 and earlier kept them, then the protected folder if nothing else is
+/// left in it; unknown files stay, and a setup still running in another
+/// session keeps everything.
 pub(crate) fn remove_setup_folder() -> Result<()> {
     if !argus_core::privilege::is_elevated() {
         return Err(5);
     }
-    remove_setup_folder_in(&program_files()?.join(SETUP_DIR))
+    let setup = crate::layout::setup()?;
+    let result = remove_setup_folder_in(&setup);
+    remove_empty_parent(&setup);
+    result.and(retire_legacy_setup())
+}
+
+/// Removes what the setups of Argus 0.5 and earlier left in
+/// `Program Files\Argus Sensor Setup`, as `remove_setup_folder` does: this
+/// version keeps it in the protected folder. An installer's maintenance and
+/// the uninstaller run it.
+pub(crate) fn retire_legacy_setup() -> Result<()> {
+    if !argus_core::privilege::is_elevated() {
+        return Err(5);
+    }
+    remove_setup_folder_in(&crate::layout::legacy_setup()?)
 }
 
 fn remove_setup_folder_in(root: &Path) -> Result<()> {

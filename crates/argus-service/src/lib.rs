@@ -10,6 +10,7 @@ pub mod driver;
 pub mod folder;
 mod handles;
 mod install;
+mod layout;
 mod network;
 mod pipe;
 mod protocol;

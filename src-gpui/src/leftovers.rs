@@ -23,10 +23,10 @@ pub fn is_close_arg(arg: &str) -> bool {
 /// Closes verified task manager interface copies and administrator copies
 /// during installation or removal.
 pub fn close_copies(identifier: &str) {
+    // A copy an update replaced while it ran is listed under its new name.
     let copies: Vec<(u32, i64)> = process::find_by(|name| {
-        name.get(..17)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("argus-taskmgr-ui-"))
-            || name.to_ascii_lowercase().starts_with("argus-admin-")
+        let name = name.to_ascii_lowercase();
+        name.starts_with("argus-taskmgr-ui") || name.starts_with("argus-admin")
     })
     .into_iter()
     .filter(|p| {

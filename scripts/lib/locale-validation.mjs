@@ -24,7 +24,7 @@ export function textErrors(source, text, context = {}) {
 }
 
 export function technicalLiterals(source) {
-  const fixed = ["before.debugger", "Program Files\\Argus Sensor Setup",
+  const fixed = ["before.debugger", "Program Files\\Argus Privileged\\setup",
     "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\taskmgr.exe"];
   return new Set([
     ...fixed.filter(value => source.includes(value)),
