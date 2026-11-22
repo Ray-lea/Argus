@@ -40,7 +40,7 @@ const skipped = (node) =>
   attr(node, "hidden") !== undefined ||
   attr(node, "data-markdown") === "skip";
 
-const escape = (text) => text.replace(/([\\`*<])/g, "\\$1");
+const escape = (text, tableCell) => text.replace(tableCell ? /([\\`*<|])/g : /([\\`*<])/g, "\\$1");
 const collapse = (text) => text.replace(/[ \t\r\n\f]+/g, " ");
 const wordEnd = /[\p{Script=Latin}\p{Script=Cyrillic}\p{N}.,;:!?)\]`*·]$/u;
 const wordStart = /^[\p{Script=Latin}\p{Script=Cyrillic}\p{N}[`*(]/u;
@@ -68,6 +68,10 @@ function converter(pageUrl, lang) {
       return href;
     }
   };
+  const destination = (href, tableCell) => {
+    const url = absolute(href);
+    return tableCell ? url.replace(/([\\|])/g, "\\$1") : url;
+  };
   // Chinese and Japanese pages separate a label from its text with a full-width colon.
   const labelSeparator = /^(?:zh|ja)\b/.test(lang) ? "：" : ": ";
 
@@ -91,20 +95,20 @@ function converter(pageUrl, lang) {
     }
     return out;
   }
-  const part = (node) => [inline(node), Boolean(node.tagName)];
+  const part = (node, tableCell) => [inline(node, tableCell), Boolean(node.tagName)];
 
-  function inline(node) {
-    if (node.nodeName === "#text") return escape(collapse(node.value));
+  function inline(node, tableCell = false) {
+    if (node.nodeName === "#text") return escape(collapse(node.value), tableCell);
     if (!node.tagName || skipped(node)) return "";
-    const inner = () => joined((node.childNodes ?? []).map(part));
+    const inner = () => joined((node.childNodes ?? []).map((child) => part(child, tableCell)));
     switch (node.tagName) {
       case "br":
         return "\n";
       case "a": {
-        const text = inner().trim() || attr(node, "aria-label") || "";
+        const text = inner().trim() || escape(attr(node, "aria-label") ?? "", tableCell);
         const href = attr(node, "href");
         if (!text) return "";
-        return href ? `[${text}](${absolute(href)})` : text;
+        return href ? `[${text}](${destination(href, tableCell)})` : text;
       }
       case "b":
       case "strong":
@@ -114,14 +118,21 @@ function converter(pageUrl, lang) {
         return wrap(inner(), "*");
       case "code":
       case "kbd": {
-        const code = collapse(textOf(node));
+        let code = collapse(textOf(node));
         if (!code.trim()) return "";
+        if (tableCell && code.includes("\\|")) {
+          // GFM parsers disagree on backslashes before a pipe in a code span.
+          // In inline HTML, character references keep all ASCII punctuation literal.
+          const literal = code.replace(/[!-/:-@\[-`{-~]/g, (c) => `&#${c.charCodeAt(0)};`);
+          return `<code>${literal}</code>`;
+        }
+        if (tableCell) code = code.split("|").join("\\|");
         const fence = code.includes("`") ? "``" : "`";
         return fence + (fence === "``" ? " " + code + " " : code) + fence;
       }
       case "img": {
         const alt = attr(node, "alt");
-        return alt ? `![${escape(alt)}](${absolute(attr(node, "src") ?? "")})` : "";
+        return alt ? `![${escape(alt, tableCell)}](${destination(attr(node, "src") ?? "", tableCell)})` : "";
       }
       default:
         // Block elements inside a heading or a table cell keep their text on one line.
@@ -226,7 +237,7 @@ function converter(pageUrl, lang) {
       .map((row) =>
         row.childNodes
           .filter((cell) => ["td", "th"].includes(cell.tagName) && !skipped(cell))
-          .map((cell) => line(inline(cell).replace(/\n/g, " ")).replace(/\|/g, "\\|")),
+          .map((cell) => line(inline(cell, true).replace(/\n/g, " "))),
       )
       .filter((cells) => cells.length);
     if (!rows.length) return [];
