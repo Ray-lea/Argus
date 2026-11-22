@@ -1,5 +1,5 @@
 {
-  "about": "新版本提示与更新说明对话框：通知中的入口、更新说明的滚动与关闭、测量期间关闭对话框后页面仍可操作，以及随后打开的“运行新任务”表单。",
+  "about": "检查新版本通知、更新说明的滚动与关闭、测量期间关闭后的页面操作，以及运行新任务表单。用 150% 系统缩放与 101%、112% 软件缩放的合成比例，核对更新日志和快捷键说明的正文滚动位置 dialog.scrollY。",
   "window": [1240, 900],
   "steps": [
     {"note":"The update notice uses the normal action handler, with fixture data."},
@@ -15,6 +15,15 @@
     {"control":{"mouse":{"type":"down","x":402,"y":72}},"wait":20},
     {"control":{"mouse":{"type":"up","x":402,"y":72}},"wait":300,"inspect":"layout","label":"page-responsive","expect":{"page":"settings","dialog":null}},
     {"control":{"dialog":"task"},"wait":400,"inspect":"layout","label":"form-visible","expect":{"dialog.kind":"task","dialog.ready":true}},
-    {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"form-closed","expect":{"dialog":null}}
+    {"control":{"keys":["escape"]},"wait":350,"inspect":"layout","label":"form-closed","expect":{"dialog":null}},
+    {"probe":"size 1496 1035","control":{"contentZoom":1.515},"wait":600},
+    {"control":{"dialog":"whatsnew"},"wait":900,"inspect":"layout","label":"fractional-notes-open","expect":{"dialog.ready":true,"dialog.scrollY":0}},
+    {"control":{"wheel":{"x":350,"y":180,"lines":-4}},"wait":500,"inspect":"layout","label":"fractional-notes-scrolled","expect":{"dialog.kind":"whatsnew"},"expectNot":{"dialog.scrollY":0}},
+    {"control":{"wheel":{"x":350,"y":180,"lines":600}},"wait":650,"inspect":"layout","label":"fractional-notes-top","expect":{"dialog.scrollY":0}},
+    {"control":{"keys":["escape"]},"wait":350},
+    {"control":{"contentZoom":1.68},"wait":500},
+    {"control":{"dialog":"shortcuts"},"wait":800,"inspect":"layout","label":"fractional-shortcuts-open","expect":{"dialog.ready":true,"dialog.scrollY":0}},
+    {"control":{"wheel":{"x":350,"y":180,"lines":-4}},"wait":500,"inspect":"layout","label":"fractional-shortcuts-scrolled","expect":{"dialog.kind":"shortcuts"},"expectNot":{"dialog.scrollY":0}},
+    {"control":{"wheel":{"x":350,"y":180,"lines":600}},"wait":650,"inspect":"layout","label":"fractional-shortcuts-top","expect":{"dialog.scrollY":0}}
   ]
 }

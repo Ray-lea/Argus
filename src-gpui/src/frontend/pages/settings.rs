@@ -1920,13 +1920,13 @@ impl Desktop {
             .items_center()
             .gap(px(6.))
             .child(
-                // `width: 4.5em; padding: 5px 7px` with a 1 px stroke; its
-                // height is the 1.4 line height of the text plus those.
+                // Three digits scale with the font. The spin button, frame
+                // padding and borders, and the editor's caret margin are fixed.
                 div()
                     .id(SharedString::from(format!("setting-{id}-input")))
                     .group(group.clone())
                     .relative()
-                    .w(theme::font(13. * 4.5))
+                    .w(theme::font(13. * 2.25) + px(15. + 16. + 10.))
                     .h(theme::font(13.) * 1.4 + px(12.))
                     .px(px(7.))
                     .flex()

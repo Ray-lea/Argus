@@ -29,7 +29,6 @@ mod frame_tests {
             to: px(0.),
             since: now,
             clip: None,
-            body_height: px(0.),
             scroll: ScrollHandle::new(),
         }
     }
@@ -141,7 +140,6 @@ pub(super) struct DialogFrame {
     /// height leaves it. `None` once its content is taller than the dialog
     /// can grow and the height has settled; then the body scrolls.
     clip: Option<Pixels>,
-    body_height: Pixels,
     scroll: ScrollHandle,
 }
 
@@ -968,19 +966,13 @@ impl Desktop {
     /// easing toward, never makes it scroll.
     pub(in crate::frontend) fn dialog_body(&self, id: u64) -> Stateful<Div> {
         let parts = self.ui.dialog_parts.clone();
-        let (height, clipping, scroll) = self
+        let (clip, scrollable, scroll) = self
             .ui
             .dialog_frames
             .borrow()
             .get(&id)
-            .map(|frame| {
-                (
-                    Some(frame.clip.unwrap_or(frame.body_height)),
-                    frame.clip.is_some(),
-                    frame.scroll.clone(),
-                )
-            })
-            .unwrap_or((None, true, ScrollHandle::new()));
+            .map(|frame| (frame.clip, frame.clip.is_none(), frame.scroll.clone()))
+            .unwrap_or_else(|| (None, false, ScrollHandle::new()));
         let measured_scroll = scroll.clone();
         div()
             .on_children_prepainted(move |_, window, cx| {
@@ -998,24 +990,18 @@ impl Desktop {
             .id(("dialog-body", id))
             .relative()
             .track_scroll(&scroll)
-            .when_some(height, |d, height| d.h(height))
-            .when(clipping, |d| d.overflow_hidden())
-            .when(!clipping, |d| d.overflow_y_scroll())
-            // Bound the inner native viewport so the component's outer scroller
-            // stays at rest and wheel notches use the shared GPUI glide. A body
-            // held to its content (clipped 1 px short) has nothing to scroll:
-            // it shows no bar. The first child stays the bar's place either way:
-            // the measurement above skips it.
-            .map(|d| {
-                if clipping {
-                    d.child(div().absolute().size_0())
-                } else {
-                    d.child(scrollbar::scrollbar(
-                        format!("dialog-{id}-scrollbar"),
-                        &scroll,
-                        self.palette.dark,
-                    ))
-                }
+            .when_some(clip, |d, height| d.h(height))
+            // Fill the actual space between the snapped border and footer.
+            // An independently rounded height can overflow the component's
+            // outer scroller by one device pixel, which captures the wheel.
+            .when(scrollable, |d| d.absolute().inset_0().overflow_y_scroll())
+            .when(!scrollable, |d| d.overflow_hidden())
+            // The measurement above skips the first child in both cases.
+            .child(if scrollable {
+                scrollbar::scrollbar(format!("dialog-{id}-scrollbar"), &scroll, self.palette.dark)
+                    .into_any_element()
+            } else {
+                div().absolute().size_0().into_any_element()
             })
     }
 
@@ -1041,7 +1027,7 @@ impl Desktop {
             "settled":frame.is_some_and(|frame| frame.height(Instant::now(), theme::motion_duration()) == frame.to),
             "centered":frame.is_some_and(|frame| (f32::from(frame.top+frame.to/2.-frame.viewport/2.)).abs()<0.5),
             "top":frame.map(|frame|f32::from(frame.top)),"height":frame.map(|frame|f32::from(frame.to)),
-            "scrollY":frame.map(|frame|f32::from(-frame.scroll.offset().y))})
+            "scrollY":frame.map(|frame|f32::from(frame.scroll.offset().y).abs())})
     }
 
     /// The common dialog surface: width, colours, no close button, and its
@@ -1101,7 +1087,6 @@ impl Desktop {
                     to: natural,
                     since: now,
                     clip: None,
-                    body_height: px(0.),
                     scroll: ScrollHandle::new(),
                 });
                 let centered = self
@@ -1129,7 +1114,6 @@ impl Desktop {
                 // the body's empty bottom padding, not worth a scrollbar.
                 frame.clip = (easing || natural <= cap + px(OVERFLOW_TOLERANCE))
                     .then(|| (height - footer - px(3.)).max(px(0.)));
-                frame.body_height = (height - footer - px(2.)).max(px(0.));
                 if let Some(ms) = scrollbar::trace_ms() {
                     println!(
                         "{}",

@@ -1,7 +1,6 @@
 //! Wheel glides of the vendored GPUI (`smooth_scroll` in its div.rs) at a
 //! fractional scale factor, where a scroller's far edge can lie between
-//! device pixels: each glide step lands on whole device pixels, and the step
-//! next to such an edge snaps past it.
+//! device pixels and snapping can fall on either side of the limit.
 use gpui_test::{
     AppContext, Context, InteractiveElement, IntoElement, Modifiers, ParentElement, Render,
     ScrollDelta, ScrollEvent, ScrollHandle, ScrollSource, StatefulInteractiveElement, Styled,
@@ -9,10 +8,10 @@ use gpui_test::{
     uniform_list,
 };
 
-/// A 50 px box over 254 device pixels of content at 1.5x: it scrolls by
-/// 119.333…, which the scroll max rounds to 119.33, between device pixels.
+/// A 50 px box with content specified in device pixels at 1.5x.
 struct Tall {
     scroll: ScrollHandle,
+    content_pixels: f32,
 }
 impl Render for Tall {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -23,7 +22,7 @@ impl Render for Tall {
                 .w(px(100.))
                 .overflow_y_scroll()
                 .track_scroll(&self.scroll)
-                .child(div().w_full().h(px(254. / 1.5))),
+                .child(div().w_full().h(px(self.content_pixels / 1.5))),
         )
     }
 }
@@ -34,7 +33,10 @@ fn a_wheel_glide_leaves_a_bottom_edge_between_device_pixels() {
     let scroll = ScrollHandle::new();
     let window = cx.add_window({
         let scroll = scroll.clone();
-        |_, _| Tall { scroll }
+        |_, _| Tall {
+            scroll,
+            content_pixels: 254.,
+        }
     });
     let frame = |cx: &mut TestAppContext| {
         cx.update_window(window.into(), |_, window, cx| {
@@ -78,6 +80,36 @@ fn a_wheel_glide_leaves_a_bottom_edge_between_device_pixels() {
         "the glide up from the bottom stopped at {:?}, not near {target:?}",
         scroll.offset().y
     );
+}
+
+#[test]
+fn a_glide_reaches_the_edge_even_when_snapping_would_stop_short() {
+    let mut cx = TestAppContext::single();
+    let scroll = ScrollHandle::new();
+    let window = cx.add_window({
+        let scroll = scroll.clone();
+        |_, _| Tall {
+            scroll,
+            content_pixels: 253.,
+        }
+    });
+    cx.update_window(window.into(), |_, window, cx| {
+        window.set_scale_factor(1.5);
+        window.refresh();
+        window.draw(cx).clear(cx);
+        let end = -scroll.max_offset().y;
+        assert!(window.pixel_snap(end) > end);
+        assert!(scroll.scroll_by_lines(point(0., -30.)));
+        window.refresh();
+        window.draw(cx).clear(cx);
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        window.refresh();
+        window.draw(cx).clear(cx);
+        assert_eq!(scroll.offset().y, end);
+        // The next notch can now go to the surrounding scroller.
+        assert!(!scroll.scroll_by_lines(point(0., -3.)));
+    })
+    .unwrap();
 }
 
 #[test]

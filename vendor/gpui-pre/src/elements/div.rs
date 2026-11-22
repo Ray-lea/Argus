@@ -6358,12 +6358,18 @@ pub mod smooth_scroll {
             // what the glide wrote, the next step would take that for someone
             // else's scroll and end the glide, and a glide leaving that edge
             // would never get away from it.
-            *offset = clamp(window.pixel_snap_point(clamp(glide.value(now))));
-            glide.written = *offset;
             if glide.progress(now) >= 1. {
-                *offset = clamp(window.pixel_snap_point(to));
-                glide.written = *offset;
+                // Land exactly at a targeted edge. Snapping inward leaves a
+                // remainder that claims the next notch meant for the parent.
+                let snapped = clamp(window.pixel_snap_point(to));
+                *offset = point(
+                    if to.x == -max.x { to.x } else { snapped.x },
+                    if to.y == -max.y { to.y } else { snapped.y },
+                );
                 glides.remove(&key);
+            } else {
+                *offset = clamp(window.pixel_snap_point(clamp(glide.value(now))));
+                glide.written = *offset;
             }
             // Once more after the last step: what reads the offset while
             // rendering, before this prepaint moves it (a pinned group
