@@ -804,11 +804,12 @@ impl Desktop {
         for (index, (name, glyph, action, _)) in choices.into_iter().enumerate() {
             let chosen = index == selected;
             let icon_only = name.is_empty();
-            let accessible = if icon_only && let Action::View(mode) = &action {
-                label(&format!("shell.viewMode.{mode}.label"))
-            } else {
-                name.clone()
-            };
+            let accessible =
+                if icon_only && let Action::View(mode) | Action::ConnectionView(mode) = &action {
+                    label(&format!("shell.viewMode.{mode}.label"))
+                } else {
+                    name.clone()
+                };
             let color = if chosen { p.ink } else { p.muted };
             let hover = p.hover;
             let ink = p.ink;

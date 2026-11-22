@@ -349,6 +349,7 @@ type ConnectionCol = "name" | "pid" | "protocol" | "local" | "localPort" | "remo
 export function Connections({
   alive,
   filter,
+  grouped,
   query,
   hidden,
   onShowAll,
@@ -357,6 +358,7 @@ export function Connections({
 }: {
   alive: Process[];
   filter: ConnectionFilter;
+  grouped: boolean;
   query: string;
   /** While system processes are hidden: whether a process is one of them. */
   hidden?: (proc: Process) => boolean;
@@ -365,6 +367,7 @@ export function Connections({
   onMenu: OpenMenu;
 }) {
   const [sort, setSort] = useSort<ConnectionCol>("name");
+  const [opened, setOpened] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<number | null>(null);
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const living = new Set(alive.map((p) => p.pid));
@@ -409,6 +412,39 @@ export function Connections({
     sort.desc,
   );
   const listen = connections.filter((c) => c.state === "listen").length;
+  type Entry = (typeof rows)[number];
+  const groups = new Map<string, Entry[]>();
+  const shown: { entry: Entry; group?: string; count?: number; child?: boolean; pid?: number }[] = [];
+  if (grouped) {
+    for (const entry of rows) {
+      const key = entry.pid === 0 ? "|unowned" : !living.has(entry.pid) || !entry.proc ? "|exited"
+        : (entry.proc.path || entry.proc.exe).toLowerCase();
+      const group = groups.get(key);
+      if (group) group.push(entry);
+      else groups.set(key, [entry]);
+    }
+    for (const [group, members] of groups) {
+      const first = members[0];
+      if (members.length === 1) {
+        shown.push({ entry: first });
+        continue;
+      }
+      const pid = members.every((entry) => entry.pid === first.pid) ? first.pid : undefined;
+      shown.push({ entry: first, group, count: members.length, pid });
+      if (q || opened.has(group)) shown.push(...members.map((entry) => ({ entry, child: true })));
+    }
+  } else {
+    for (const entry of rows) shown.push({ entry });
+  }
+  const toggle = (group: string) => {
+    if (q) return;
+    setOpened((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
   const established = connections.filter((c) => c.state === "established").length;
   const udp = connections.filter((c) => c.protocol === "UDP").length;
   const endpoint = (address: string, p?: number) => (address.includes(":") ? `[${address}]:${p}` : `${address}:${p}`);
@@ -442,8 +478,33 @@ export function Connections({
               ) : (
                 <p className="a-empty">{port !== null ? `没有匹配的连接：没有程序在使用端口 ${port}` : "没有匹配的连接"}</p>
               ))}
-            {rows.map((c) => {
+            {shown.map(({ entry: c, group, count, child, pid }) => {
               const gone = !living.has(c.pid);
+              if (group !== undefined) {
+                const expanded = Boolean(q) || opened.has(group);
+                const name = group === "|unowned" ? "无所属进程" : group === "|exited" ? "已退出" : c.proc?.name;
+                return (
+                  <div key={group} role="row" className="a-tr" onDoubleClick={() => toggle(group)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      onMenu(event, [
+                        { label: expanded ? "折叠" : "展开", disabled: Boolean(q), run: () => toggle(group) },
+                        { label: "转到进程", icon: "goTo", disabled: gone || !pid, run: () => pid && onOpen(pid) },
+                      ]);
+                    }}>
+                    <span role="gridcell" className="a-td a-td-name" title={gone ? undefined : c.proc?.path}>
+                      <button type="button" className="a-fold" aria-expanded={expanded} aria-label={expanded ? "折叠" : "展开"}
+                        disabled={Boolean(q)} onClick={() => toggle(group)} onDoubleClick={(event) => event.stopPropagation()}>
+                        <Icon name="chevronRight" size={12} />
+                      </button>
+                      <ProcessIcon glyph={gone ? "app" : c.proc?.glyph ?? "app"} />
+                      <span className="a-name is-strong">{name}</span>
+                      <span className="a-count">{count}</span>
+                    </span>
+                    <span role="gridcell" className="a-td is-end is-faint a-c-pid">{pid || ""}</span>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={c.index}
@@ -469,7 +530,8 @@ export function Connections({
                     ]);
                   }}
                 >
-                  <span role="gridcell" className="a-td" title={c.proc?.path}>
+                  <span role="gridcell" className="a-td" title={c.proc?.path} style={grouped ? { paddingLeft: child ? 26 : 6 } : undefined}>
+                    {grouped && <span className="a-fold-gap" />}
                     <ProcessIcon glyph={c.proc?.glyph ?? "app"} />
                     <span className="a-cell-text">{c.proc?.exe ?? "PID " + c.pid}</span>
                     {gone && <span className="a-tag">已退出</span>}

@@ -830,6 +830,13 @@ impl Desktop {
                 self.prefs.set("view", &self.view);
                 self.rebuild_rows(false, cx);
             }
+            Action::ConnectionView(view) => {
+                self.connection_view = view;
+                self.prefs.set("connectionView", &self.connection_view);
+                if self.page == "network" {
+                    self.refresh_connections(cx);
+                }
+            }
             Action::Select(key) => {
                 // A click on the selected process row deselects it; the
                 // keyboard clears `last_select` first and never does.
@@ -875,6 +882,23 @@ impl Desktop {
                 }
             }
             Action::Fold(key) => {
+                if self.page == "network" {
+                    // A program's connections; every match shows while searching.
+                    let Some(app) = key.strip_prefix(lists::APP_PREFIX) else {
+                        return;
+                    };
+                    if !self.query.trim().is_empty() {
+                        return;
+                    }
+                    if !self.connection_folds.remove(app) {
+                        self.connection_folds.insert(app.to_owned());
+                    }
+                    let mut opened: Vec<_> = self.connection_folds.iter().collect();
+                    opened.sort();
+                    self.prefs.set("openedConnectionApps", opened);
+                    self.refresh_connections(cx);
+                    return;
+                }
                 if let Some(group) = key.strip_prefix("u:") {
                     // While searching every match shows: headings cannot fold.
                     if !self.query.trim().is_empty() {
@@ -1154,7 +1178,10 @@ impl Desktop {
             cx.stop_propagation();
             return;
         }
-        if matches!(key, "left" | "right") && self.page == "processes" {
+        if matches!(key, "left" | "right")
+            && (self.page == "processes"
+                || (self.page == "network" && self.connection_view == "apps"))
+        {
             if let Some(index) = selected {
                 let row = self.rows[index].clone();
                 if row.expandable && row.expanded == (key == "left") && self.query.trim().is_empty()
@@ -1310,6 +1337,10 @@ impl Desktop {
                         cx,
                     );
                 }
+            }
+            // A program's heading folds its connections.
+            "network" if row.expandable => {
+                self.act(Action::Fold(row.key.clone()), window, cx);
             }
             _ => {
                 if row.raw["pid"].as_u64().is_some_and(|pid| pid != 0) {

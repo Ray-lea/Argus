@@ -1226,7 +1226,8 @@ impl Desktop {
             "network" => self.connection_menu(row),
             _ => vec![],
         };
-        if self.page != "processes" {
+        // A program's heading has no mark of its own: its connections do.
+        if self.page != "processes" && !(self.page == "network" && row.expandable) {
             items.extend(self.mark_menu(row));
         }
         items
@@ -1595,23 +1596,43 @@ impl Desktop {
         };
         let closable = text(raw, "protocol") == "tcp" && !v6 && text(raw, "state") == "established";
         let remote = raw["remoteAddress"].as_str();
+        let reveal = MenuItem::new(
+            label("common.goToProcess"),
+            Action::Preference("revealProcess".into(), raw.clone()),
+        )
+        .icon("GoToIcon")
+        .disabled(process.is_none());
+        let end = MenuItem::new(
+            tr!("connections.menu.end", name = name),
+            Action::Dialog(
+                "end".into(),
+                json!({"members":process.into_iter().collect::<Vec<_>>(),"name":name}),
+            ),
+        )
+        .icon("EndIcon")
+        .danger()
+        .disabled(pid <= 4 || process.is_none());
+        // A program's heading: its PID is there when one process owns them all.
+        if row.expandable {
+            return vec![
+                MenuItem::new(
+                    label(if row.expanded {
+                        "common.collapse"
+                    } else {
+                        "common.expand"
+                    }),
+                    Action::Fold(row.key.clone()),
+                )
+                // Every match shows while searching: headings cannot fold.
+                .disabled(!self.query.trim().is_empty()),
+                MenuItem::separator(),
+                reveal,
+                end,
+            ];
+        }
         vec![
-            MenuItem::new(
-                label("common.goToProcess"),
-                Action::Preference("revealProcess".into(), raw.clone()),
-            )
-            .icon("GoToIcon")
-            .disabled(process.is_none()),
-            MenuItem::new(
-                tr!("connections.menu.end", name = name),
-                Action::Dialog(
-                    "end".into(),
-                    json!({"members":process.into_iter().collect::<Vec<_>>(),"name":name}),
-                ),
-            )
-            .icon("EndIcon")
-            .danger()
-            .disabled(pid <= 4 || process.is_none()),
+            reveal,
+            end,
             MenuItem::new(
                 label("connections.menu.close"),
                 Action::Invoke("close_connection".into(), raw.clone()),

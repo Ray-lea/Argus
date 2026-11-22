@@ -264,6 +264,7 @@ export default function Replica({
   const [queries, setQueries] = useState<Partial<Record<Page, string>>>({});
   const [serviceFilter, setServiceFilter] = useState<ServiceFilter>("all");
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("all");
+  const [connectionView, setConnectionView] = useState<"apps" | "list">("list");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1h");
   const [historyAt, setHistoryAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -969,6 +970,17 @@ export default function Replica({
     ) : page === "connections" ? (
       <>
         <Segments
+          key="connection-view"
+          label="视图"
+          value={connectionView}
+          onChange={setConnectionView}
+          iconsOnly
+          items={[
+            { value: "apps", label: "按应用", icon: "apps" },
+            { value: "list", label: "列表", icon: "list" },
+          ]}
+        />
+        <Segments
           key="connections"
           label="筛选"
           value={connectionFilter}
@@ -1316,6 +1328,7 @@ export default function Replica({
                   <Connections
                     alive={alive}
                     filter={connectionFilter}
+                    grouped={connectionView === "apps"}
                     query={queries.connections ?? ""}
                     hidden={hideSystem.connections ? hides : undefined}
                     onShowAll={() => showAll("connections")}

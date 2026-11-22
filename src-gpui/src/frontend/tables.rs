@@ -1910,22 +1910,22 @@ impl TableDelegate for NativeTable {
         // time passed: every completed pair folds again. A category heading
         // folds on every press instead (its select event), as the interface's
         // `onClick`: no pair folds it again.
-        let refold =
-            (self.page == "processes" && row.expandable && row.section.is_none()).then(|| {
-                let owner = self.owner.clone();
-                let key = row.key.clone();
-                move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
-                    let count = event.click_count();
-                    if count >= 4 && count.is_multiple_of(2) {
-                        let owner = owner.clone();
-                        let key = key.clone();
-                        window.defer(cx, move |window, cx| {
-                            let _ = owner
-                                .update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
-                        });
-                    }
+        let folds = matches!(self.page.as_str(), "processes" | "network");
+        let refold = (folds && row.expandable && row.section.is_none()).then(|| {
+            let owner = self.owner.clone();
+            let key = row.key.clone();
+            move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
+                let count = event.click_count();
+                if count >= 4 && count.is_multiple_of(2) {
+                    let owner = owner.clone();
+                    let key = key.clone();
+                    window.defer(cx, move |window, cx| {
+                        let _ =
+                            owner.update(cx, |this, cx| this.act(Action::Fold(key), window, cx));
+                    });
                 }
-            });
+            }
+        });
         let tr = div()
             .id(("native-row", index))
             .relative()

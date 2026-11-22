@@ -106,6 +106,8 @@ enum Action {
     Sort(String),
     Page(String),
     View(String),
+    /// How the connection list shows ("list" or "apps").
+    ConnectionView(String),
     Select(String),
     Fold(String),
     TreeExpand(String, bool),
@@ -355,6 +357,10 @@ struct Desktop {
     sections: HashSet<String>,
     /// The folded user groups of the process list (`collapsedUsers`).
     user_folds: HashSet<String>,
+    /// How the connection list shows: "list", or "apps" gathered under
+    /// their programs, of which `connection_folds` are opened.
+    connection_view: String,
+    connection_folds: HashSet<String>,
     rows: Arc<Vec<Row>>,
     /// The process list as the automatic column widths measure it
     /// (`tables::WidthRows`).
@@ -550,6 +556,11 @@ impl Desktop {
                 .collect(),
             user_folds: prefs
                 .get::<Vec<String>>(model::USER_FOLDS, vec![])
+                .into_iter()
+                .collect(),
+            connection_view: prefs.get("connectionView", "list".into()),
+            connection_folds: prefs
+                .get::<Vec<String>>("openedConnectionApps", vec![])
                 .into_iter()
                 .collect(),
             rows: Arc::new(vec![]),

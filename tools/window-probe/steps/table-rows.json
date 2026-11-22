@@ -1,5 +1,5 @@
 {
-  "about": "表格的行由 Argus 自行绘制与由组件库绘制（`ARGUS_TABLE_ROWS=component`）两条路径的逐像素对照：`run.parity` 让步骤套件用同一程序各运行一次并比较全部截图。覆盖进程页的应用、列表与进程树视图，选中行与右键菜单所在的行，滚动后固定的分组标题与列表底部，按名称与 CPU 排序，详情窗格，搜索，浅色主题，11 与 20 px 字号，125% 与 150% 界面缩放下的纵向和横向滚动，1.37 倍内容缩放，窄窗口的横向滚动，以及服务页与启动页。界面动画关闭；每次截图前指针移出窗口，滚轮之后先单独移出指针再改变布局，否则缩放变化后可能留下一行过时的悬停底色。改动行或单元格的结构、样式之后运行；两条路径之一的截图不同即失败。",
+  "about": "表格的行由 Argus 自行绘制与由组件库绘制（`ARGUS_TABLE_ROWS=component`）两条路径的逐像素对照：`run.parity` 让步骤套件用同一程序各运行一次并比较全部截图。覆盖进程页的应用、列表与进程树视图，选中行与右键菜单所在的行，滚动后固定的分组标题与列表底部，按名称与 CPU 排序，详情窗格，搜索，浅色主题，11 与 20 px 字号，125% 与 150% 界面缩放下的纵向和横向滚动，1.37 倍内容缩放，窄窗口的横向滚动，以及服务页、启动页和连接页的分组、搜索与列表。界面动画关闭；每次截图前指针移出窗口，滚轮之后先单独移出指针再改变布局，否则缩放变化后可能留下一行过时的悬停底色。改动行或单元格的结构、样式之后运行；两条路径之一的截图不同即失败。",
   "window": [1240, 800],
   "run": { "parity": { "ARGUS_TABLE_ROWS": "component" } },
   "steps": [
@@ -42,6 +42,9 @@
     {"control":{"selectRow":3,"pointerOutside":true},"wait":800,"capture":"services-selected"},
     {"control":{"page":"startup","pointerOutside":true},"wait":1000,"capture":"startup"},
     {"control":{"theme":"light"},"wait":1400,"capture":"startup-light"},
-    {"control":{"page":"services","pointerOutside":true},"wait":1000,"capture":"services-light"}
+    {"control":{"page":"services","pointerOutside":true},"wait":1000,"capture":"services-light"},
+    {"control":{"page":"network","connectionView":"apps","pointerOutside":true},"wait":1300,"inspect":"layout","label":"connection-apps","expect":{"processTree.visibleRows":6,"processTree.visibleChildren":0},"capture":"connection-apps"},
+    {"control":{"query":"Google Chrome","pointerOutside":true},"wait":900,"inspect":"layout","label":"connection-search","expect":{"processTree.expandedParents":1,"processTree.visibleChildren":9},"capture":"connection-search"},
+    {"control":{"query":"","connectionView":"list","pointerOutside":true},"wait":1000,"inspect":"layout","label":"connection-list","expect":{"processTree.visibleRows":30,"processTree.visibleChildren":0},"capture":"connection-list"}
   ]
 }

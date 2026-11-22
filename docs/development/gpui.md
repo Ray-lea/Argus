@@ -77,6 +77,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `page` | 切换页面：`processes`、`performance`、`services`、`startup`、`network`、`history`、`components`、`settings`、`about` |
 | `theme`、`language` | 经设置命令切换主题、界面语言；模拟快照下同样执行，只改变测试实例自身的设置 |
 | `view` | 进程页的视图：`apps`、`tree`、`list` |
+| `connectionView` | 连接页的视图：`apps`（按应用）或 `list`（列表） |
 | `device`、`deviceKind` | 选中性能页的设备并切到性能页。`device` 为设备标识（`cpu`、`memory`、`gpu:<标识>`、`disk:<编号>`、`nic:<标识>`、`npu:<标识>`）；`deviceKind` 为 `cpu`、`memory`、`gpu`、`npu`、`disk` 或 `network`，取快照中该类的第一个设备 |
 | `cpuMode` | `overall`、`logical`：CPU 概览的整体与多核视图；`details`：CPU 详情页 |
 | `details`、`detailsWidth` | 详情窗格：`"auto"` 为自动，`"closed"` 或 `false` 为关闭，其他值为打开；`detailsWidth` 设置其宽度，如同拖动边缘 |

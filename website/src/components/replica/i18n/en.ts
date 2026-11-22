@@ -155,6 +155,7 @@ export const exact: Record<string, string> = {
   "复制本地地址": "Copy local address",
   "复制远程地址": "Copy remote address",
   "已退出": "Exited",
+  "无所属进程": "No owning process",
   "双击连接可转到对应进程。": "Double-click a connection to go to its process.",
   "内存": "Memory",
   "磁盘": "Disk",

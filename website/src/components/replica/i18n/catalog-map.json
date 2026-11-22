@@ -123,6 +123,7 @@
   "复制本地地址": "connections.json:menu.copyLocal",
   "复制远程地址": "connections.json:menu.copyRemote",
   "已退出": "connections.json:exited",
+  "无所属进程": "connections.json:unowned",
   "双击连接可转到对应进程。": "connections.json:note",
   "内存": "common.json:resource.memory",
   "磁盘": "common.json:resource.disk",

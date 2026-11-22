@@ -1011,6 +1011,8 @@ impl Desktop {
                 .map(|row| {
                     let count = if row.section.is_some() {
                         row.raw["entryCount"].clone()
+                    } else if self.page == "network" && row.expandable {
+                        row.raw["connectionCount"].clone()
                     } else {
                         json!(row.members.len())
                     };
@@ -1101,6 +1103,9 @@ impl Desktop {
         }
         if let Some(view) = control["view"].as_str() {
             self.act(Action::View(view.into()), window, cx);
+        }
+        if let Some(view) = control["connectionView"].as_str() {
+            self.act(Action::ConnectionView(view.into()), window, cx);
         }
         if let Some(device) = control["device"].as_str() {
             self.act(Action::Device(device.into()), window, cx);
