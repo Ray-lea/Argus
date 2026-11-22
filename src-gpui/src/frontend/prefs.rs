@@ -6,6 +6,10 @@
 //! is drained before the application quits (`flush`). Each write's outcome
 //! goes back to the interface (`outcomes`), which says when saving starts to
 //! fail.
+//!
+//! A preference is saved only when chosen, so one never chosen follows a
+//! changed default with no migration. Saved values that have to change with
+//! an update go through `MIGRATIONS`, once per profile.
 use serde_json::Value;
 use smol::channel::{Receiver, Sender};
 use std::{
@@ -14,6 +18,23 @@ use std::{
     sync::{OnceLock, mpsc},
     time::Duration,
 };
+
+/// How many of `MIGRATIONS` have run on this profile.
+const MIGRATED: &str = "migrations";
+
+/// Steps that bring preferences an earlier version saved up to date, in
+/// order; each runs once per profile, and the count that ran is saved
+/// (`MIGRATED`), so a value chosen afterwards stays. They are for saved
+/// values that must change as well: a choice that lost its meaning, or a
+/// value an earlier version saved but never restored. Only append: a step's
+/// place is its number.
+const MIGRATIONS: [fn(&mut Prefs); 1] = [
+    // Releases up to 0.5.0 saved the history range a click picked but always
+    // opened the page at an hour. The page restores what is saved now, which
+    // would open it at whatever was clicked last back then.
+    |prefs| prefs.remove("historyRange"),
+];
+
 pub struct Prefs {
     path: PathBuf,
     values: BTreeMap<String, Value>,
@@ -48,6 +69,17 @@ impl Prefs {
             self.set("motion.window", self.get::<Option<bool>>("motion.ui", None));
         }
     }
+    /// Runs the steps of `MIGRATIONS` this profile has not run yet.
+    pub fn migrate(&mut self) {
+        let done = self.get::<usize>(MIGRATED, 0);
+        if done >= MIGRATIONS.len() {
+            return;
+        }
+        for step in &MIGRATIONS[done..] {
+            step(self);
+        }
+        self.set(MIGRATED, MIGRATIONS.len());
+    }
     pub fn set(&mut self, key: &str, value: impl serde::Serialize) {
         let Ok(value) = serde_json::to_value(value) else {
             return;
@@ -57,6 +89,15 @@ impl Prefs {
             return;
         }
         self.values.insert(key.into(), value.clone());
+        self.write(key, Some(value));
+    }
+    /// Forgets a preference: it reads as its default again.
+    pub fn remove(&mut self, key: &str) {
+        if self.values.remove(key).is_some() {
+            self.write(key, None);
+        }
+    }
+    fn write(&self, key: &str, value: Option<Value>) {
         let _ = writer().send(Job::Set(
             self.path.clone(),
             key.into(),
@@ -79,14 +120,15 @@ impl Prefs {
 }
 
 enum Job {
-    Set(PathBuf, String, Value, Sender<bool>),
+    /// A value to store, or none to remove the key.
+    Set(PathBuf, String, Option<Value>, Sender<bool>),
     Flush(mpsc::SyncSender<()>),
 }
 
 /// A file's pending changes and who to tell how writing them went.
 struct Batch {
     path: PathBuf,
-    entries: Vec<(String, Value)>,
+    entries: Vec<(String, Option<Value>)>,
     reports: Vec<Sender<bool>>,
 }
 
@@ -126,7 +168,7 @@ fn writer() -> &'static mpsc::Sender<Job> {
                         }
                     }
                     for file in files {
-                        let result = argus_app::preferences::set_many(&file.path, file.entries);
+                        let result = argus_app::preferences::apply(&file.path, file.entries);
                         if let Err(error) = &result {
                             log::warn!(
                                 "native preferences write failed: {}",
@@ -209,6 +251,55 @@ mod tests {
         restored.set("motion.window", true);
         assert_eq!(restored.get::<Option<bool>>("motion.ui", None), Some(false));
         flush(Duration::from_secs(2));
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_range_left_by_an_earlier_release_reads_as_the_default_once() {
+        let file = path("migrate-range");
+        std::fs::write(
+            &file,
+            br#"{"values":{"historyRange":"7d","netUnit":"bits"},"window":{"rect":[0,0,900,700],"maximized":false}}"#,
+        )
+        .unwrap();
+        let mut prefs = Prefs::load(file.clone());
+        prefs.migrate();
+        assert_eq!(prefs.get::<String>("historyRange", "5m".into()), "5m");
+        flush(Duration::from_secs(2));
+        let saved = argus_app::preferences::load(&file).unwrap();
+        assert!(!saved.contains_key("historyRange"));
+        assert_eq!(saved[MIGRATED], MIGRATIONS.len());
+        // A range picked afterwards stays across restarts.
+        prefs.set("historyRange", "3d");
+        flush(Duration::from_secs(2));
+        let mut restored = Prefs::load(file.clone());
+        restored.migrate();
+        assert_eq!(restored.get::<String>("historyRange", "5m".into()), "3d");
+        assert_eq!(restored.get::<String>("netUnit", String::new()), "bits");
+        assert_eq!(restored.get::<usize>(MIGRATED, 0), MIGRATIONS.len());
+        assert!(argus_app::preferences::window(&file).is_some());
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_new_profile_runs_no_step_after_its_first_start() {
+        let file = path("migrate-new");
+        let _ = std::fs::remove_file(&file);
+        let mut prefs = Prefs::load(file.clone());
+        prefs.migrate();
+        prefs.set("historyRange", "1h");
+        flush(Duration::from_secs(2));
+        let mut restored = Prefs::load(file.clone());
+        restored.migrate();
+        assert_eq!(restored.get::<String>("historyRange", "5m".into()), "1h");
+        // A count from a newer version that has more steps runs none here.
+        restored.set(MIGRATED, MIGRATIONS.len() + 3);
+        restored.set("historyRange", "7d");
+        flush(Duration::from_secs(2));
+        let mut newer = Prefs::load(file.clone());
+        newer.migrate();
+        assert_eq!(newer.get::<String>("historyRange", "5m".into()), "7d");
+        assert_eq!(newer.get::<usize>(MIGRATED, 0), MIGRATIONS.len() + 3);
         std::fs::remove_file(file).unwrap();
     }
 

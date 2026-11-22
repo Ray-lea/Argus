@@ -100,10 +100,29 @@ pub fn valid_key(key: &str) -> bool {
 /// Stores several preferences with one atomic replacement, in order: a later
 /// entry for the same key wins.
 pub fn set_many(path: &Path, entries: Vec<(String, Value)>) -> io::Result<()> {
+    apply(
+        path,
+        entries
+            .into_iter()
+            .map(|(key, value)| (key, Some(value)))
+            .collect(),
+    )
+}
+/// Stores and removes preferences with one atomic replacement, in order: a
+/// later entry for the same key wins, and `None` removes the key, so that it
+/// reads as its default again.
+pub fn apply(path: &Path, entries: Vec<(String, Option<Value>)>) -> io::Result<()> {
     if entries.iter().any(|(key, _)| !valid_key(key)) {
         return Err(io::Error::other("invalid preference key"));
     }
-    update(path, |values, _| values.extend(entries))
+    update(path, |values, _| {
+        for (key, value) in entries {
+            match value {
+                Some(value) => values.insert(key, value),
+                None => values.remove(&key),
+            };
+        }
+    })
 }
 /// Saves the window placement, keeping the values.
 pub fn save_window(path: &Path, placement: WindowPlacement) -> io::Result<()> {
@@ -135,6 +154,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(load(&file).unwrap()["navPosition"], "side");
+        fs::remove_file(file).unwrap();
+    }
+    #[test]
+    fn removed_preferences_leave_the_others() {
+        let file = path("remove");
+        let _ = fs::remove_file(&file);
+        set(&file, "navPosition".into(), "side".into()).unwrap();
+        set(&file, "historyRange".into(), "7d".into()).unwrap();
+        apply(
+            &file,
+            vec![
+                ("historyRange".into(), None),
+                ("missing".into(), None),
+                ("view".into(), Some("list".into())),
+            ],
+        )
+        .unwrap();
+        let values = load(&file).unwrap();
+        assert!(!values.contains_key("historyRange") && !values.contains_key("missing"));
+        assert_eq!(
+            (&values["navPosition"], &values["view"]),
+            (&"side".into(), &"list".into())
+        );
         fs::remove_file(file).unwrap();
     }
     #[test]

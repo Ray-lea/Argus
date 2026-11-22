@@ -844,6 +844,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                         .join("preferences.json"),
                 );
                 prefs.initialize_window_motion();
+                prefs.migrate();
                 // Before the theme and the first layout: text sizes and the
                 // viewport depend on them.
                 appearance::apply_font_size(appearance::FONT_SIZE.load(&prefs));
