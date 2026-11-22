@@ -3,12 +3,13 @@
 
 mod packaged;
 
-use std::path::Path;
+use std::{io::ErrorKind, os::windows::fs::OpenOptionsExt, path::Path};
 
 use serde::Serialize;
 use windows::Win32::Foundation::{
     ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, FILETIME, MAX_PATH, WIN32_ERROR,
 };
+use windows::Win32::Storage::FileSystem::{DELETE, FILE_FLAG_OPEN_REPARSE_POINT};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, IPersistFile,
     STGM_READ,
@@ -508,6 +509,20 @@ fn remove_file(folder: &Path, name: &str, recycle: bool) -> Result<(), ActionErr
     if !path.is_file() {
         return Err(ActionError::NotFound);
     }
+    // Check the caller's delete access on the directory entry itself before
+    // handing it to the Shell. Release the handle before the recycle operation.
+    if let Err(error) = std::fs::File::options()
+        .access_mode(DELETE.0)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
+        .open(&path)
+    {
+        crate::diagnostics::file_failure("startup open for deletion", &path, &error);
+        return Err(match error.kind() {
+            ErrorKind::PermissionDenied => ActionError::AccessDenied,
+            ErrorKind::NotFound => ActionError::NotFound,
+            _ => ActionError::Os(error.to_string()),
+        });
+    }
     // The paths, each ended by a NUL, and the list by another.
     let mut from = wide(&path.to_string_lossy());
     from.push(0);
@@ -727,10 +742,11 @@ mod tests {
                 .expect("icacls");
             assert!(status.success());
         }
-        assert!(matches!(
-            remove_file(&folder.0, "Locked.lnk", true),
-            Err(ActionError::AccessDenied)
-        ));
+        let result = remove_file(&folder.0, "Locked.lnk", true);
+        assert!(
+            matches!(result, Err(ActionError::AccessDenied)),
+            "{result:?}"
+        );
         assert!(folder.0.join("Locked.lnk").exists());
     }
 
