@@ -11,6 +11,7 @@
   "ArgusLocation": "インストール先：{installDir}",
   "ArgusChange": "変更",
   "ArgusChooseFolder": "Argus のインストール先を選択",
+  "ArgusProgramFilesNote": "セキュリティ上の理由から、特権サービス、「管理者として実行」、カーネル センサーのファイルは引き続き {programFiles} に保存されます。これらの機能を有効にしたときにのみ作成されます。",
   "ArgusInstalling": "Argus をインストール中…",
   "ArgusUpdating": "Argus を更新中…",
   "ArgusInstalled": "Argus をインストールしました",
