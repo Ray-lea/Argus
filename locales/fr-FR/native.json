@@ -12,6 +12,7 @@
     "mappedFile": "Le fichier programme d’Argus est toujours mappé en mémoire. Quittez les programmes qui l’utilisent ou enregistrez votre travail et redémarrez le PC avant de réessayer.",
     "diskFull": "Il n’y a pas assez d’espace disque libre pour écrire le fichier programme. Libérez de l’espace et réessayez.",
     "copyFailed": "Le fichier programme n’a pas pu être mis à jour. Vérifiez les fichiers et le répertoire d’installation à l’aide du code d’erreur et du journal de diagnostic.",
+    "folderFailed": "Le dossier d’installation n’a pas pu être préparé. Vérifiez l’emplacement d’installation à l’aide du code d’erreur et du journal de diagnostic.",
     "unsafeTarget": "Le chemin du fichier programme pointe vers un lien ou un dossier. La mise à jour a été arrêtée. Vérifiez l’emplacement d’installation et réessayez.",
     "restartRequired": "Windows ne peut pas libérer le fichier programme pour le moment. Enregistrez votre travail et redémarrez le PC avant l’installation.",
     "checkFailed": "Windows n’a pas pu terminer la vérification du fichier programme. L’étape ayant échoué a été enregistrée dans le journal.",
@@ -24,7 +25,15 @@
     "retryHint": "Libérez le fichier ou résolvez la cause ci-dessus, puis cliquez sur Réessayer pour continuer. Cliquez sur Annuler pour quitter l’installation.",
     "errorCode": "Code d’erreur : {code}",
     "logPath": "Journal de diagnostic : {path}",
-    "logFailed": "Le journal n’a pas pu être écrit. Code d’erreur : {code}"
+    "logFailed": "Le journal n’a pas pu être écrit. Code d’erreur : {code}",
+    "locationRisk": "Impossible de garantir que seuls les administrateurs peuvent modifier l’emplacement d’installation « {path} » :",
+    "locationDrive": "Le lecteur ne conserve pas les autorisations de fichiers ou n’est pas un lecteur fixe de cet ordinateur (par exemple une clé USB, un emplacement réseau ou une partition FAT).",
+    "locationParent": "D’autres comptes peuvent renommer le dossier parent « {path} » ou modifier ses autorisations.",
+    "locationShared": "Le dossier contient déjà d’autres fichiers, dont le programme d’installation ne modifie pas les autorisations.",
+    "locationEffect": "L’installation, la mise à jour et la désinstallation d’Argus, ainsi que l’installation du service privilégié, exécutent des programmes de cet emplacement en tant qu’administrateur. D’autres comptes pourraient les y remplacer pour obtenir des droits d’administrateur.",
+    "locationAdvice": "Il est recommandé d’installer Argus à l’emplacement par défaut, {default}, ou dans un nouveau dossier à la racine d’un lecteur, par exemple {example}.",
+    "locationAdviceDefault": "Il est recommandé d’installer Argus à l’emplacement par défaut, {default}.",
+    "locationContinue": "Installer quand même à cet emplacement ?"
   },
   "tray": {
     "show": "Afficher Argus",

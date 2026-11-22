@@ -12,6 +12,7 @@
     "mappedFile": "The Argus program file is still memory-mapped. Exit the program using it, or save your work and restart the PC before retrying.",
     "diskFull": "There is not enough free disk space to write the program file. Free up space and retry.",
     "copyFailed": "The program file could not be updated. Check the files and installation directory using the error code and diagnostic log.",
+    "folderFailed": "The installation folder could not be prepared. Check the install location using the error code and diagnostic log.",
     "unsafeTarget": "The program file path points to a link or folder. The update was stopped. Check the installation location and retry.",
     "restartRequired": "Windows cannot release the program file at this time. Save your work and restart the PC before installing.",
     "checkFailed": "Windows could not complete the program file check. The failed step was recorded in the log.",
@@ -23,7 +24,15 @@
     "retryHint": "Release the file or resolve the cause above, then click Retry to continue. Click Cancel to exit setup.",
     "errorCode": "Error code: {code}",
     "logPath": "Diagnostic log: {path}",
-    "logFailed": "The log could not be written. Error code: {code}"
+    "logFailed": "The log could not be written. Error code: {code}",
+    "locationRisk": "Setup cannot make sure that only administrators can change the install location “{path}”:",
+    "locationDrive": "The drive does not keep file permissions or is not a fixed drive of this computer (for example, a USB drive, a network location or a FAT partition).",
+    "locationParent": "Other accounts can rename the parent folder “{path}” or change its permissions.",
+    "locationShared": "The folder already contains other files, and Setup does not change their permissions.",
+    "locationEffect": "Installing, updating and uninstalling Argus, and installing the privileged service, run programs from this location as an administrator. Other accounts could replace them there to gain administrator rights.",
+    "locationAdvice": "Installing to the default location, {default}, or to a new folder in the root of a drive, such as {example}, is recommended.",
+    "locationAdviceDefault": "Installing to the default location, {default}, is recommended.",
+    "locationContinue": "Install to this location anyway?"
   },
   "tray": {
     "show": "Show Argus",

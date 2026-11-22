@@ -1,6 +1,11 @@
 //! Installer executable replacement. A file's lockers
 //! are not necessarily Argus: only verified instances of the installed image
 //! are registered for shutdown. Other processes are reported, never stopped.
+//!
+//! Outside Program Files the installation folder is first made as hard for
+//! other accounts to change as Program Files (`argus_service::folder`):
+//! elevated steps of the installer and uninstaller run what it holds. Before
+//! a new installation there, the install page says what stands in the way.
 
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
@@ -39,13 +44,17 @@ use windows::Win32::System::Threading::{
     QueryFullProcessImageNameW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    IDRETRY, MB_ICONWARNING, MB_RETRYCANCEL, MessageBoxW,
+    IDRETRY, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_RETRYCANCEL, MB_YESNO, MessageBoxW,
 };
 use windows::core::{PCWSTR, PWSTR};
+
+use argus_service::folder::{Assessment, Contents, Place};
 
 use crate::tasks::{Handle, token_buffer, wide};
 
 const ARG: &str = "--argus-installer-copy";
+/// `--argus-installer-folder <folder> <window> <LANGID>`, from the install page.
+const FOLDER_ARG: &str = "--argus-installer-folder";
 const MAX_LOCKERS: usize = 4096;
 
 fn native_code(code: u32) -> String {
@@ -695,6 +704,10 @@ fn message(blocked: &Blocked, log: &Journal) -> String {
         tr!("installer.occupied")
     } else {
         match blocked.failure {
+            Some(Failure {
+                stage: "install folder",
+                ..
+            }) => tr!("installer.folderFailed"),
             Some(Failure { code: 32 | 33, .. }) => tr!("installer.unknownLocker"),
             Some(Failure { code: 1224, .. }) => tr!("installer.mappedFile"),
             Some(Failure {
@@ -755,10 +768,170 @@ fn message(blocked: &Blocked, log: &Journal) -> String {
     text
 }
 
+/// The assessment of the installation folder, for the log.
+fn summary(found: &Assessment) -> String {
+    let parent = found.parent.as_ref().map_or_else(
+        || "none".into(),
+        |exposed| format!("{}; {}", diagnostics::path(&exposed.path), exposed.detail),
+    );
+    format!(
+        "install folder: place={:?}; contents={:?}; exposed_parent={parent}; detail={}",
+        found.place,
+        found.contents,
+        found.detail.as_deref().unwrap_or("none")
+    )
+}
+
+/// Before anything is written there: creates the installation folder, or
+/// replaces or keeps it, as `argus_service::folder::prepare` decides.
+fn secure_folder(target: &Path, log: &mut Journal) -> Result<(), Blocked> {
+    let Some(dir) = target.parent() else {
+        return Ok(());
+    };
+    match argus_service::folder::prepare(dir, &mut |note| log.event(note)) {
+        Ok(found) => {
+            log.event(summary(&found));
+            Ok(())
+        }
+        Err(failure) => {
+            log.result(failure.stage, failure.code);
+            Err(Blocked {
+                failure: Some(Failure {
+                    stage: "install folder",
+                    code: failure.code,
+                }),
+                lockers: Vec::new(),
+            })
+        }
+    }
+}
+
+/// What the install page says about a folder `assess` did not find protected.
+fn location_warning(dir: &Path, found: &Assessment) -> String {
+    let mut text = tr!("installer.locationRisk", path = dir.display());
+    let mut reasons = Vec::new();
+    if matches!(found.place, Place::Unsupported(_)) {
+        reasons.push(tr!("installer.locationDrive"));
+    }
+    if let Some(exposed) = &found.parent {
+        reasons.push(tr!(
+            "installer.locationParent",
+            path = exposed.path.display()
+        ));
+    }
+    if found.contents == Contents::Shared {
+        reasons.push(tr!("installer.locationShared"));
+    }
+    for reason in reasons {
+        text.push_str("\n• ");
+        text.push_str(&reason);
+    }
+    text.push_str("\n\n");
+    text.push_str(&tr!("installer.locationEffect"));
+    let default = argus_service::folder::program_files()
+        .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"))
+        .join("Argus");
+    // The same name directly below this drive's root, unless that is it.
+    let example = dir
+        .to_str()
+        .and_then(|path| path.get(..2))
+        .filter(|drive| drive.ends_with(':') && found.root_protected())
+        .map(|drive| PathBuf::from(format!(r"{drive}\Argus")))
+        .filter(|example| !example.as_os_str().eq_ignore_ascii_case(dir.as_os_str()));
+    text.push_str("\n\n");
+    text.push_str(&match example {
+        Some(example) => tr!(
+            "installer.locationAdvice",
+            default = default.display(),
+            example = example.display()
+        ),
+        None => tr!(
+            "installer.locationAdviceDefault",
+            default = default.display()
+        ),
+    });
+    text.push_str("\n\n");
+    text.push_str(&tr!("installer.locationContinue"));
+    text
+}
+
+/// The owner window NSIS passes as a number, signed or not.
+fn window(value: &OsString) -> Option<usize> {
+    let value = value.to_str()?;
+    value.parse::<usize>().ok().or_else(|| {
+        value
+            .parse::<i32>()
+            .ok()
+            .map(|value| value as isize as usize)
+    })
+}
+
+fn language(value: &OsString) -> Option<argus_core::i18n::Locale> {
+    value
+        .to_str()
+        .and_then(|id| id.parse::<u16>().ok())
+        .and_then(argus_core::i18n::Locale::from_langid)
+}
+
+/// A new installation outside Program Files: when the folder cannot be
+/// protected, says why and asks. 0 installs there; 1223 goes back to the page.
+/// A failed check never holds up the installation.
+fn folder_mode(args: &[OsString]) -> i32 {
+    if args.len() != 4 {
+        return 87;
+    }
+    let dir = PathBuf::from(&args[1]);
+    let (Some(parent), Some(language)) = (window(&args[2]), language(&args[3])) else {
+        return 87;
+    };
+    if !dir.is_absolute() {
+        return 87;
+    }
+    argus_core::i18n::set_locale(language);
+    let mut log = Journal::new();
+    log.event(format!(
+        "install folder check: version={}; folder={}",
+        env!("CARGO_PKG_VERSION"),
+        diagnostics::path(&dir)
+    ));
+    let found = match argus_service::folder::assess(&dir) {
+        Ok(found) => found,
+        Err(failure) => {
+            log.result(failure.stage, failure.code);
+            return 0;
+        }
+    };
+    log.event(summary(&found));
+    if found.protected() {
+        return 0;
+    }
+    let text = wide(&location_warning(&dir, &found));
+    drop(found);
+    let title = wide(&tr!("installer.title"));
+    let answer = unsafe {
+        MessageBoxW(
+            Some(HWND(parent as *mut _)),
+            PCWSTR(text.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
+        )
+    };
+    if answer == IDYES {
+        log.event("result=install here");
+        0
+    } else {
+        log.event("result=choose another folder");
+        1223
+    }
+}
+
 /// Called by the new executable extracted to NSIS's private plugin directory,
 /// before single-instance handling, native window or privileged-service setup.
 pub fn run_mode() -> Option<i32> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == FOLDER_ARG) {
+        return Some(folder_mode(&args));
+    }
     if args.first().is_none_or(|arg| arg != ARG) {
         return None;
     }
@@ -766,21 +939,7 @@ pub fn run_mode() -> Option<i32> {
         return Some(87);
     }
     let target = PathBuf::from(&args[1]);
-    let Some(parent) = args[2].to_str().and_then(|value| {
-        value.parse::<usize>().ok().or_else(|| {
-            value
-                .parse::<i32>()
-                .ok()
-                .map(|value| value as isize as usize)
-        })
-    }) else {
-        return Some(87);
-    };
-    let Some(language) = args[3]
-        .to_str()
-        .and_then(|id| id.parse::<u16>().ok())
-        .and_then(argus_core::i18n::Locale::from_langid)
-    else {
+    let (Some(parent), Some(language)) = (window(&args[2]), language(&args[3])) else {
         return Some(87);
     };
     let silent = match args[4].to_str() {
@@ -812,7 +971,12 @@ pub fn run_mode() -> Option<i32> {
         diagnostics::path(&target)
     ));
     loop {
-        match prepare(&target, &mut log).and_then(|()| copy_main(&source, &target, &mut log)) {
+        // Argus instances running from the folder end first: replacing the
+        // folder moves it aside, which a running program can prevent.
+        match prepare(&target, &mut log)
+            .and_then(|()| secure_folder(&target, &mut log))
+            .and_then(|()| copy_main(&source, &target, &mut log))
+        {
             Ok(()) => {
                 log.event("result=copied");
                 return Some(0);

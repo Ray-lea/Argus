@@ -7,6 +7,7 @@ mod cleanup;
 mod diagnostics;
 mod disk;
 pub mod driver;
+pub mod folder;
 mod handles;
 mod install;
 mod network;

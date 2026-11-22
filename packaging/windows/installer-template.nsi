@@ -288,20 +288,17 @@ FunctionEnd
 
 
 Section Install
-  SetOutPath $INSTDIR
-
-  !ifmacrodef NSIS_HOOK_PREINSTALL
-    !insertmacro NSIS_HOOK_PREINSTALL
-  !endif
-
-  ; Argus: diagnose file holders and retry before modifying installed files.
+  ; Argus: before anything creates or writes $INSTDIR. The helper makes a
+  ; folder outside Program Files as only administrators may change it (or an
+  ; earlier installation's folder so), then copies the executable, diagnosing
+  ; file holders with retry. It runs from $PLUGINSDIR, the working folder too:
+  ; a process whose working folder is $INSTDIR keeps it from being replaced.
   !insertmacro ARGUS_TEXT $2 ArgusPreparing
   DetailPrint "$2"
   SetDetailsPrint none
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   File "/oname=argus-installer.exe" "${MAINBINARYSRCPATH}"
-  SetOutPath "$INSTDIR"
   StrCpy $1 "interactive"
   IfSilent 0 +2
     StrCpy $1 "silent"
@@ -329,6 +326,11 @@ Section Install
     ${EndIf}
 
   ; Argus: the installer helper has copied the executable, with retry and native error logging.
+  SetOutPath $INSTDIR
+
+  !ifmacrodef NSIS_HOOK_PREINSTALL
+    !insertmacro NSIS_HOOK_PREINSTALL
+  !endif
 
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"

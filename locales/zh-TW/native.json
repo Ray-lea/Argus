@@ -12,6 +12,7 @@
     "mappedFile": "Argus 程式檔案仍被記憶體對應鎖定。請結束相關程式，或儲存工作並重新啟動電腦後重試。",
     "diskFull": "磁碟剩餘空間不足，無法寫入程式檔案。釋放空間後可重試。",
     "copyFailed": "程式檔案更新失敗。可根據錯誤碼和診斷記錄檔檢查檔案與安裝目錄。",
+    "folderFailed": "無法準備安裝資料夾。可根據錯誤碼和診斷記錄檔檢查安裝位置。",
     "unsafeTarget": "目標程式檔案為連結或資料夾，已停止更新。請檢查安裝位置後重試。",
     "restartRequired": "Windows 暫時無法釋放程式檔案。可儲存工作並重新啟動電腦後安裝。",
     "checkFailed": "Windows 未能完成程式檔案檢查。具體失敗步驟已記錄至記錄檔。",
@@ -20,7 +21,15 @@
     "retryHint": "解除檔案鎖定或排除上述原因後，按一下「重試」繼續安裝；按一下「取消」結束安裝。",
     "errorCode": "錯誤碼：{code}",
     "logPath": "診斷記錄檔：{path}",
-    "logFailed": "記錄檔寫入失敗，錯誤碼：{code}"
+    "logFailed": "記錄檔寫入失敗，錯誤碼：{code}",
+    "locationRisk": "無法確保只有系統管理員能修改安裝位置「{path}」：",
+    "locationDrive": "該磁碟不保存檔案權限，或不是本機的固定磁碟（例如 USB 隨身碟、網路位置或 FAT 格式的磁碟分割）。",
+    "locationParent": "其他帳戶可以重新命名上層資料夾「{path}」或變更其權限。",
+    "locationShared": "資料夾中已有其他檔案，安裝程式不會變更它們的權限。",
+    "locationEffect": "安裝、更新和解除安裝 Argus 以及安裝特殊權限服務時，會以系統管理員身分執行該位置的程式。其他帳戶可藉此替換程式，取得系統管理員權限。",
+    "locationAdvice": "建議安裝到預設位置 {default}，或磁碟根目錄下的新資料夾，例如 {example}。",
+    "locationAdviceDefault": "建議安裝到預設位置 {default}。",
+    "locationContinue": "仍要安裝到此位置嗎？"
   },
   "tray": {
     "show": "顯示 Argus",
