@@ -12,6 +12,7 @@
     "mappedFile": "El archivo del programa Argus sigue asignado en memoria. Cierre los programas que lo utilizan o guarde su trabajo y reinicie el equipo antes de volver a intentarlo.",
     "diskFull": "No hay suficiente espacio libre en el disco para escribir el archivo del programa. Libere espacio y vuelva a intentarlo.",
     "copyFailed": "No se pudo actualizar el archivo del programa. Verifique los archivos y el directorio de instalación utilizando el código de error y el registro de diagnóstico.",
+    "folderFailed": "No se pudo preparar la carpeta de instalación. Verifique la ubicación de instalación utilizando el código de error y el registro de diagnóstico.",
     "unsafeTarget": "La ruta del archivo del programa apunta a un enlace o carpeta. La actualización fue detenida. Verifique la ubicación de instalación y vuelva a intentarlo.",
     "restartRequired": "Windows no puede liberar el archivo del programa en este momento. Guarde su trabajo y reinicie el PC antes de instalarlo.",
     "checkFailed": "Windows no pudo completar la verificación del archivo del programa. El paso fallido quedó registrado en el registro.",
@@ -24,7 +25,15 @@
     "retryHint": "Libere el archivo o resuelva la causa anterior, luego haga clic en Reintentar para continuar. Haga clic en Cancelar para salir de la configuración.",
     "errorCode": "Código de error: {code}",
     "logPath": "Registro de diagnóstico: {path}",
-    "logFailed": "No se pudo escribir el registro. Código de error: {code}"
+    "logFailed": "No se pudo escribir el registro. Código de error: {code}",
+    "locationRisk": "No se puede garantizar que solo los administradores puedan modificar la ubicación de instalación «{path}»:",
+    "locationDrive": "La unidad no conserva permisos de archivo o no es una unidad fija de este equipo (por ejemplo, una unidad USB, una ubicación de red o una partición FAT).",
+    "locationParent": "Otras cuentas pueden cambiar el nombre de la carpeta superior «{path}» o modificar sus permisos.",
+    "locationShared": "La carpeta ya contiene otros archivos, y el programa de instalación no modifica sus permisos.",
+    "locationEffect": "La instalación, la actualización y la desinstalación de Argus, así como la instalación del servicio privilegiado, ejecutan programas de esta ubicación como administrador. Otras cuentas podrían reemplazarlos para obtener permisos de administrador.",
+    "locationAdvice": "Se recomienda instalar en la ubicación predeterminada, {default}, o en una carpeta nueva en la raíz de una unidad, como {example}.",
+    "locationAdviceDefault": "Se recomienda instalar en la ubicación predeterminada, {default}.",
+    "locationContinue": "¿Instalar en esta ubicación de todos modos?"
   },
   "tray": {
     "show": "Mostrar Argus",

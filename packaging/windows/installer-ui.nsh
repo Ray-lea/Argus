@@ -693,6 +693,13 @@ FunctionEnd
 Function ArgusPageMainLeave
   ; A newer version blocks the button; Enter must not get past it either.
   ${IfThen} $ArgusCompare = -1 ${|} Abort ${|}
+  ; A new installation: when the folder cannot be kept to administrators
+  ; (outside Program Files), the helper says why and asks; 1223 stays here
+  ; to change the location. A helper that does not run holds nothing up.
+  ${If} $ArgusCompare = 2
+    ExecWait '"$PLUGINSDIR\argus-version.exe" --argus-installer-folder "$INSTDIR" $HWNDPARENT $LANGUAGE' $0
+    ${IfThen} $0 = 1223 ${|} Abort ${|}
+  ${EndIf}
 FunctionEnd
 
 Function ArgusChangeLocation
