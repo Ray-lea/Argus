@@ -3,6 +3,9 @@
 //! replacement entry point remains available. The Universal CRT stays dynamic
 //! because Windows supplies it. Adapted from tauri-build's static_vcruntime
 //! implementation (ChrisDenton/static_vcruntime); this is source attribution.
+//!
+//! The programs also load the system DLLs they import from System32 only,
+//! never from their own folder.
 
 use std::path::Path;
 
@@ -26,6 +29,12 @@ pub fn configure() {
     for lib in ["libcmt.lib", "libvcruntime.lib", "ucrt.lib"] {
         println!("cargo:rustc-link-arg=/DEFAULTLIB:{lib}");
     }
+    // LOAD_LIBRARY_SEARCH_SYSTEM32 for the imports the loader resolves before
+    // any code runs (version.dll, dwmapi.dll, dxgi.dll and others outside
+    // KnownDLLs). Elevated steps run argus.exe from wherever it was put,
+    // a portable copy in Downloads or an install folder others could write
+    // to: a DLL of the same name beside it would otherwise run elevated.
+    println!("cargo:rustc-link-arg=/DEPENDENTLOADFLAG:0x800");
 }
 
 /// Rust always asks for msvcrt.lib; an empty one in the search path stands in.
