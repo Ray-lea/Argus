@@ -102,7 +102,17 @@ pub fn run_mode() -> Option<i32> {
 /// installed; the uninstaller asks the user what to do otherwise.
 fn remove_for_uninstall() -> i32 {
     match status() {
-        Ok(s) if s.state == "notInstalled" => 0,
+        // Nothing registered, though files may be left: another program (a
+        // security product, say) deleted the registration. They go without a
+        // question, and never hold up the uninstall: the uninstaller already
+        // runs elevated, and a removal deletes only by name.
+        Ok(s) if s.state == "notInstalled" => {
+            let _ = crate::util::stage(
+                "privileged service leftover removal",
+                install::run_helper("uninstall", ""),
+            );
+            0
+        }
         _ => match manage("uninstall") {
             // Deleted, with its files: a registration that another program's
             // handle still keeps goes when that closes.

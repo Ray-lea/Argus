@@ -72,6 +72,15 @@
       Abort
     ${EndIf}
 
+    ; No service registered, though another program (a security product, say)
+    ; may have deleted the registration and left its files: those go without a
+    ; question. --argus-service-remove does only that then, and returns 0.
+    ClearErrors
+    ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
+    ${If} ${Errors}
+      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-remove'
+    ${EndIf}
+
     !insertmacro ARGUS_TEXT $2 ArgusRemoveService
     ClearErrors
     ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"

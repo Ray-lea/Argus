@@ -948,10 +948,23 @@ fn remove_runtime_files(dir: &Path) -> Result<()> {
         let file = file.map_err(io)?;
         if file.file_name().to_str().is_some_and(runtime_file) {
             // Never recurse into an unexpected directory or follow a link.
-            directory.remove_file(&file.file_name().to_string_lossy())?;
+            remove_retrying(&directory, &file.file_name().to_string_lossy())?;
         }
     }
     Ok(())
+}
+/// A copy the uninstaller has just ended can hold its file a moment longer
+/// (refused with 5 or 32): retried for up to two seconds.
+fn remove_retrying(directory: &crate::cleanup::Directory, name: &str) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match directory.remove_file(name) {
+            Err(5 | 32) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            result => return result,
+        }
+    }
 }
 
 #[cfg(test)]
