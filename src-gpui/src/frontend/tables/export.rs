@@ -1,5 +1,5 @@
 //! CSV snapshots of the rows and columns currently presented by a table.
-use super::{CellKind, Desktop, Field, NativeTable, Row, display_cell, label, widgets::ToastKind};
+use super::{CellKind, Desktop, Field, NativeTable, Row, copied_cell, label, widgets::ToastKind};
 use gpui_kit::{App, Context, Window};
 use std::{
     io::{self, BufWriter, Write},
@@ -22,7 +22,9 @@ impl CsvTable {
             write_record(
                 out,
                 self.fields.iter().map(|field| {
-                    let mut value = display_cell(row, field, self.bits);
+                    // As copied: the protocol keeps its IPv6 tag ("TCPv6"), which
+                    // the table shows as a separate mark.
+                    let mut value = copied_cell(row, field, self.bits);
                     // Names, descriptions and command lines are external text. Keep a
                     // spreadsheet from executing a formula when it opens the export.
                     if matches!(
@@ -204,6 +206,43 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(path).unwrap(),
             "\u{feff}command,name\r\n"
+        );
+    }
+
+    #[test]
+    fn exported_protocols_keep_the_ipv6_tag() {
+        let table = CsvTable {
+            fields: vec![Field {
+                key: "protocol",
+                kind: CellKind::Protocol,
+                label: "protocol".into(),
+                track: Track::Fixed(80.),
+                end: false,
+            }],
+            rows: Arc::new(vec![
+                Row::item(
+                    json!({"protocol":"tcp","ipv6":false}),
+                    "1".into(),
+                    "a".into(),
+                ),
+                Row::item(
+                    json!({"protocol":"tcp","ipv6":true}),
+                    "2".into(),
+                    "b".into(),
+                ),
+                Row::item(
+                    json!({"protocol":"udp","ipv6":true}),
+                    "3".into(),
+                    "c".into(),
+                ),
+            ]),
+            bits: false,
+        };
+        let mut out = Vec::new();
+        table.write_to(&mut out).unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "\u{feff}protocol\r\nTCP\r\nTCPv6\r\nUDPv6\r\n"
         );
     }
 }
