@@ -908,12 +908,30 @@ pub fn watch_process(
 }
 
 /// One observed run's readings over a window, for the observation page's
-/// lanes and navigator (`argus_core::watch::SeriesQuery`).
+/// lanes and navigator (`argus_core::watch::SeriesQuery`). Takes the same
+/// flat arguments as `history_points` plus the run, so that the generated
+/// adapter reads them as the page sends them.
+#[allow(clippy::too_many_arguments)]
 pub fn watch_points(
     state: State<'_, AppState>,
     dir: State<'_, HistoryDir>,
-    query: argus_core::watch::SeriesQuery,
+    pid: u32,
+    create_time: i64,
+    from: i64,
+    to: i64,
+    bucket: i64,
+    origin: i64,
+    keys: Vec<String>,
 ) -> Result<history::HistorySeries, String> {
+    let query = argus_core::watch::SeriesQuery {
+        pid,
+        create_time,
+        from,
+        to,
+        bucket,
+        origin,
+        keys,
+    };
     let path = dir.read();
     let (tx, rx) = std::sync::mpsc::channel();
     state

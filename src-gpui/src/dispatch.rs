@@ -344,8 +344,13 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         "watch_points" => crate::commands::watch_points(
             host.state(),
             host.state(),
-            serde_json::from_value(args.clone())
-                .map_err(|_| serde_json::json!(argus_core::tr!("app.invalidRequest")))?,
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<i64>(&args, "from")?,
+            argument::<i64>(&args, "to")?,
+            argument::<i64>(&args, "bucket")?,
+            argument::<i64>(&args, "origin")?,
+            argument::<Vec<String>>(&args, "keys")?,
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
