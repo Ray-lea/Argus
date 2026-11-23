@@ -95,12 +95,73 @@ pub(super) struct Picker {
 type DerivedKey = (i64, usize, i64, &'static str);
 
 /// The answer by day: hours recorded and the mean CPU, by local midnight; and
-/// the map's 30 × 24 hours, oldest first, with the days they start.
+/// the actual local hours of the last 30 days, oldest first.
 #[derive(Default)]
 struct Derived {
     days: HashMap<i64, (u32, f64)>,
     starts: Vec<i64>,
-    cells: Vec<Option<f64>>,
+    cells: Vec<HeatHour>,
+}
+
+#[derive(Clone, Copy)]
+struct HeatHour {
+    day: usize,
+    from: i64,
+    to: i64,
+    // Vertical coordinates on the local 00:00–24:00 axis.
+    top: f32,
+    bottom: f32,
+    value: Option<f64>,
+}
+
+fn day_hours(day: usize, start: i64, end: i64, wall: impl Fn(i64) -> (u8, u8)) -> Vec<HeatHour> {
+    let mut cells = Vec::new();
+    let mut from = start;
+    while from < end {
+        let (hour, minute) = if end - start == DAY {
+            (((from - start) / HOUR) as u8, 0)
+        } else {
+            wall(from)
+        };
+        let to = (from + HOUR - i64::from(minute) * MINUTE).min(end);
+        let top = f32::from(hour) + f32::from(minute) / 60.;
+        cells.push(HeatHour {
+            day,
+            from,
+            to,
+            top,
+            bottom: f32::from(hour) + 1.,
+            value: None,
+        });
+        from = to;
+    }
+    // Split the repeated clock hour between its occurrences. A skipped hour
+    // has no cell, so it can neither show a reading nor accept a click.
+    for group in cells.chunk_by_mut(|a, b| a.bottom == b.bottom) {
+        if group.len() == 1 {
+            continue;
+        }
+        let top = group[0].top;
+        let first = group[0].from;
+        let elapsed = (group.last().unwrap().to - first) as f32;
+        for cell in group {
+            cell.top = top + (cell.from - first) as f32 / elapsed;
+            cell.bottom = top + (cell.to - first) as f32 / elapsed;
+        }
+    }
+    cells
+}
+
+fn heat_hit(cells: &[HeatHour], day: usize, hour: f32) -> Option<usize> {
+    let i = cells.partition_point(|c| c.day < day || (c.day == day && c.bottom <= hour));
+    cells
+        .get(i)
+        .filter(|c| c.day == day && hour >= c.top)
+        .map(|_| i)
+}
+
+fn heat_range(cells: &[HeatHour], a: usize, b: usize) -> Option<(i64, i64)> {
+    Some((cells.get(a.min(b))?.from, cells.get(a.max(b))?.to))
 }
 
 /// The local date of `ts`.
@@ -108,20 +169,33 @@ fn date_of(ts: i64) -> Option<time::Date> {
     local(ts).map(|t| t.date())
 }
 
-/// Local midnight of `date`, at the offset in force then.
+/// The first instant of a local date. Some time zones skip or repeat midnight.
 fn midnight(date: time::Date) -> i64 {
-    let at = |offset: time::UtcOffset| {
-        time::PrimitiveDateTime::new(date, time::Time::MIDNIGHT)
-            .assume_offset(offset)
-            .unix_timestamp()
-            * 1000
+    midnight_with(date, local)
+}
+
+fn midnight_with(date: time::Date, clock: impl Fn(i64) -> Option<time::OffsetDateTime>) -> i64 {
+    let utc = date.midnight().assume_utc().unix_timestamp();
+    let offset = clock(utc * 1000).map_or(0, |t| t.offset().whole_seconds());
+    let candidate = utc - i64::from(offset);
+    let reached = |sec: i64| clock(sec * 1000).map_or(sec >= utc, |t| t.date() >= date);
+    let (mut lo, mut hi) = if reached(candidate) {
+        if !reached(candidate - 1) {
+            return candidate * 1000;
+        }
+        (utc - 86_400, candidate)
+    } else {
+        (candidate, utc + 86_400)
     };
-    let guess = at(time::UtcOffset::UTC);
-    let offset = local(guess).map_or(time::UtcOffset::UTC, |t| t.offset());
-    let first = at(offset);
-    // A change of offset between the two is the day's own.
-    let offset = local(first).map_or(offset, |t| t.offset());
-    at(offset)
+    while hi - lo > 1 {
+        let mid = lo + (hi - lo) / 2;
+        if reached(mid) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi * 1000
 }
 
 pub(super) fn day_start(ts: i64) -> i64 {
@@ -389,7 +463,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(follow) = self.history.picker.as_ref().map(|p| p.follow) else {
+        let Some(picker) = self.history.picker.as_ref() else {
             return;
         };
         let text = |key: &str| {
@@ -401,11 +475,20 @@ impl Desktop {
         };
         let now = self.history_now();
         let first = self.history.first;
-        let from = parse_local(&text("historyFrom"));
+        let follow = picker.follow;
+        let endpoint = |key, ts| {
+            let value = text(key);
+            if format_local(ts) == value {
+                Some(ts)
+            } else {
+                parse_local(&value)
+            }
+        };
+        let from = endpoint("historyFrom", picker.from);
         let to = if follow {
             Some(now)
         } else {
-            parse_local(&text("historyTo"))
+            endpoint("historyTo", picker.to)
         };
         let error = match (from, to) {
             (Some(a), Some(b)) if b <= a => Some(label("history.picker.error.order")),
@@ -490,7 +573,14 @@ impl Desktop {
         };
         let mut days: HashMap<i64, (u32, f64)> = HashMap::new();
         let map_from = starts.len().saturating_sub(OVERVIEW_DAYS);
-        let mut cells = vec![None; OVERVIEW_DAYS * 24];
+        let mut cells = Vec::new();
+        for (day, &start) in starts[map_from..].iter().enumerate() {
+            if let Some(end) = date_of(start).and_then(|d| d.next_day()).map(midnight) {
+                cells.extend(day_hours(day, start, end, |ts| {
+                    local(ts).map_or((0, 0), |t| (t.hour(), t.minute()))
+                }));
+            }
+        }
         for (i, ts) in points.ts.iter().enumerate() {
             let Some((index, start)) = day_of(*ts) else {
                 continue;
@@ -503,7 +593,6 @@ impl Desktop {
             if index < map_from {
                 continue;
             }
-            let hour = ((ts - start) / HOUR).clamp(0, 23) as usize;
             let value = match heat {
                 "mem" => points
                     .value("memUsed", Part::Mean, i)
@@ -515,8 +604,9 @@ impl Desktop {
                 "net" => points.value("netReceive", Part::Mean, i),
                 _ => points.value("cpu", Part::Mean, i),
             };
-            if let Some(cell) = cells.get_mut((index - map_from) * 24 + hour) {
-                *cell = value.or(*cell);
+            let pos = cells.partition_point(|c| c.to <= *ts);
+            if let Some(cell) = cells.get_mut(pos).filter(|c| c.from <= *ts) {
+                cell.value = value.or(cell.value);
             }
         }
         for entry in days.values_mut() {
@@ -908,7 +998,8 @@ impl Desktop {
             let is_end = end_day == Some(date);
             let ends = inside && (is_start || is_end);
             let is_today = today == Some(date);
-            let coverage = (hours as f32 / 24.).min(1.);
+            let next = date.next_day().map_or(at + DAY, midnight);
+            let coverage = (hours as f32 * HOUR as f32 / (next - at).max(1) as f32).min(1.);
             let tint = 0.35 + 0.65 * (cpu as f32 / 30.).min(1.);
             let text_color = if ends {
                 p.on_accent
@@ -977,7 +1068,6 @@ impl Desktop {
                     .when(!ends, |d| d.hover(move |s| s.bg(p.hover_strong)))
                     .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                     .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                        let next = date.next_day().map_or(at + DAY, midnight);
                         // A double click shows that day at once.
                         if event.click_count() >= 2 {
                             this.history_picker_set(at, next, window, cx);
@@ -1041,13 +1131,15 @@ impl Desktop {
             .and_then(|picker| {
                 let (_, derived) = picker.derived.as_ref()?;
                 let cell = picker.hover?;
-                let start = derived.starts.get(cell / 24)? + (cell % 24) as i64 * HOUR;
-                let value = derived.cells.get(cell).copied().flatten();
+                let hour = derived.cells.get(cell)?;
+                let start = hour.from;
+                let value = hour.value;
+                let split = hour.top.fract() != 0. || hour.bottom.fract() != 0.;
                 Some(format!(
                     "{} {}–{} · {}",
                     month_day(start),
-                    clock(start, false),
-                    clock(start + HOUR, false),
+                    with_offset(clock(start, false), start, split),
+                    with_offset(clock(hour.to, false), hour.to, split),
                     value.map_or_else(|| label("history.picker.noRecord"), |v| heat_text(heat, v))
                 ))
             })
@@ -1096,17 +1188,10 @@ impl Desktop {
         let derived = picker.derived.as_ref().map(|(_, d)| d);
         let starts = derived.map(|d| d.starts.clone()).unwrap_or_default();
         let cells = derived.map(|d| d.cells.clone()).unwrap_or_default();
-        let (from, to) = match picker.drag {
-            Some((a, b)) => {
-                let (lo, hi) = (a.min(b), a.max(b));
-                let at = |cell: usize| starts.get(cell / 24).map(|s| s + (cell % 24) as i64 * HOUR);
-                (
-                    at(lo).unwrap_or(picker.from),
-                    at(hi).map_or(picker.to, |t| t + HOUR),
-                )
-            }
-            None => (picker.from, picker.to),
-        };
+        let (from, to) = picker
+            .drag
+            .and_then(|(a, b)| heat_range(&cells, a, b))
+            .unwrap_or((picker.from, picker.to));
         let color = match heat {
             "gpu" => p.gpu,
             "mem" => p.memory,
@@ -1125,9 +1210,9 @@ impl Desktop {
         };
         let (low, high) = cells
             .iter()
-            .flatten()
+            .filter_map(|c| c.value)
             .fold((f64::MAX, f64::MIN), |(lo, hi), v| {
-                (lo.min(scale(*v)), hi.max(scale(*v)))
+                (lo.min(scale(v)), hi.max(scale(v)))
             });
         let low = if matches!(heat, "cpu" | "gpu" | "mem" | "net") {
             0.
@@ -1138,7 +1223,6 @@ impl Desktop {
         let stroke = p.stroke;
         let accent = p.accent;
         let days = starts.len();
-        let paint_starts = starts.clone();
         let canvas = canvas(
             move |bounds, _, _| bounds_cell.set(bounds),
             move |bounds, _, window, _| {
@@ -1147,24 +1231,23 @@ impl Desktop {
                 }
                 let w = f32::from(bounds.size.width) / days as f32;
                 let h = f32::from(bounds.size.height) / 24.;
-                for (cell, value) in cells.iter().enumerate() {
-                    let (day, hour) = (cell / 24, cell % 24);
-                    let Some(start) = paint_starts.get(day).map(|s| s + hour as i64 * HOUR) else {
-                        continue;
-                    };
-                    if start >= now {
+                for cell in &cells {
+                    if cell.from >= now {
                         continue;
                     }
                     let rect = Bounds::new(
                         point(
-                            bounds.origin.x + px(day as f32 * w + 0.5),
-                            bounds.origin.y + px(hour as f32 * h + 0.5),
+                            bounds.origin.x + px(cell.day as f32 * w + 0.5),
+                            bounds.origin.y + px(cell.top * h + 0.5),
                         ),
-                        size(px((w - 1.).max(1.)), px((h - 1.).max(1.))),
+                        size(
+                            px((w - 1.).max(1.)),
+                            px(((cell.bottom - cell.top) * h - 1.).max(1.)),
+                        ),
                     );
-                    let shade = match value {
+                    let shade = match cell.value {
                         Some(v) => {
-                            let f = ((scale(*v) - low) / span).clamp(0., 1.) as f32;
+                            let f = ((scale(v) - low) / span).clamp(0., 1.) as f32;
                             color.opacity(0.1 + 0.9 * f)
                         }
                         None => stroke.opacity(0.35),
@@ -1172,14 +1255,20 @@ impl Desktop {
                     window.paint_quad(gpui_kit::fill(rect, shade));
                 }
                 // The range, outlined day by day.
-                for (day, start) in paint_starts.iter().enumerate() {
-                    let end = start + DAY;
-                    let (a, b) = (from.max(*start), to.min(end));
-                    if b <= a {
+                for column in cells.chunk_by(|a, b| a.day == b.day) {
+                    let selected = &column[column.partition_point(|c| c.to <= from)
+                        ..column.partition_point(|c| c.from < to)];
+                    let (Some(first), Some(last)) = (selected.first(), selected.last()) else {
                         continue;
-                    }
-                    let top = (a - start) as f32 / DAY as f32 * f32::from(bounds.size.height);
-                    let bottom = (b - start) as f32 / DAY as f32 * f32::from(bounds.size.height);
+                    };
+                    let y = |cell: &HeatHour, ts: i64| {
+                        let progress = (ts.clamp(cell.from, cell.to) - cell.from) as f32
+                            / (cell.to - cell.from) as f32;
+                        (cell.top + (cell.bottom - cell.top) * progress) * h
+                    };
+                    let day = first.day;
+                    let top = y(first, from);
+                    let bottom = y(last, to);
                     let rect = Bounds::new(
                         point(
                             bounds.origin.x + px(day as f32 * w),
@@ -1242,15 +1331,15 @@ impl Desktop {
         let at = |this: &Self, position: Point<Pixels>| -> Option<usize> {
             let picker = this.history.picker.as_ref()?;
             let bounds = picker.map.get();
-            let days = picker.derived.as_ref()?.1.starts.len();
+            let derived = &picker.derived.as_ref()?.1;
+            let days = derived.starts.len();
             if days == 0 || !bounds.contains(&position) {
                 return None;
             }
             let x = f32::from(position.x - bounds.origin.x) / f32::from(bounds.size.width);
             let y = f32::from(position.y - bounds.origin.y) / f32::from(bounds.size.height);
             let day = ((x * days as f32) as usize).min(days - 1);
-            let hour = ((y * 24.) as usize).min(23);
-            Some(day * 24 + hour)
+            heat_hit(&derived.cells, day, y * 24.)
         };
         div()
             .relative()
@@ -1309,16 +1398,12 @@ impl Desktop {
                             let Some((a, b)) = picker.drag.take() else {
                                 return;
                             };
-                            let starts = picker
+                            if let Some((from, to)) = picker
                                 .derived
                                 .as_ref()
-                                .map(|(_, d)| d.starts.clone())
-                                .unwrap_or_default();
-                            let at = |cell: usize| {
-                                starts.get(cell / 24).map(|s| s + (cell % 24) as i64 * HOUR)
-                            };
-                            if let (Some(from), Some(to)) = (at(a.min(b)), at(a.max(b))) {
-                                this.history_picker_set(from, to + HOUR, window, cx);
+                                .and_then(|(_, d)| heat_range(&d.cells, a, b))
+                            {
+                                this.history_picker_set(from, to, window, cx);
                             }
                         }),
                     ),
@@ -1578,7 +1663,79 @@ fn heat_text(heat: &str, value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_local, parse_local, shift_month};
+    use super::{HOUR, day_hours, format_local, heat_hit, heat_range, parse_local, shift_month};
+
+    #[test]
+    fn heatmap_hours_share_reading_paint_and_hit_boundaries() {
+        for count in [23, 24, 25] {
+            let start = 8 * HOUR;
+            let end = start + count * HOUR;
+            let cells = day_hours(0, start, end, |ts| {
+                let i = (ts - start) / HOUR;
+                (
+                    (match count {
+                        23 if i >= 2 => i + 1,
+                        25 if i >= 2 => i - 1,
+                        _ => i,
+                    }) as u8,
+                    0,
+                )
+            });
+            assert_eq!(cells.len(), count as usize);
+            for (i, cell) in cells.iter().enumerate() {
+                let ts = cell.from + HOUR / 2;
+                assert_eq!(cells.partition_point(|c| c.to <= ts), i);
+                assert_eq!(heat_hit(&cells, 0, (cell.top + cell.bottom) / 2.), Some(i));
+                assert_eq!(heat_range(&cells, i, i), Some((cell.from, cell.to)));
+            }
+            assert_eq!(cells.last().unwrap().top, 23.);
+            assert_eq!(heat_range(&cells, cells.len() - 1, 0), Some((start, end)));
+            if count == 23 {
+                assert_eq!(heat_hit(&cells, 0, 2.5), None);
+            }
+            if count == 25 {
+                assert_eq!(heat_hit(&cells, 0, 1.25), Some(1));
+                assert_eq!(heat_hit(&cells, 0, 1.75), Some(2));
+            }
+        }
+    }
+
+    #[test]
+    fn heatmap_begins_at_the_first_instant_when_midnight_skips_or_repeats() {
+        let date = time::Date::from_calendar_date(2026, time::Month::March, 8).unwrap();
+        let switch = date.midnight().assume_utc().unix_timestamp() * 1000;
+        for (before, after, expected_hours, first_hour) in [(0, 1, 23, 1), (1, 0, 25, 0)] {
+            let clock = |ts: i64| {
+                let offset =
+                    time::UtcOffset::from_hms(if ts < switch { before } else { after }, 0, 0)
+                        .ok()?;
+                Some(
+                    time::OffsetDateTime::from_unix_timestamp(ts.div_euclid(1000))
+                        .ok()?
+                        .to_offset(offset),
+                )
+            };
+            let start = super::midnight_with(date, clock);
+            let end = super::midnight_with(date.next_day().unwrap(), clock);
+            assert_eq!(
+                clock(start - 1).unwrap().date(),
+                date.previous_day().unwrap()
+            );
+            assert_eq!(clock(start).unwrap().date(), date);
+            assert_eq!(clock(start).unwrap().hour(), first_hour);
+            let cells = day_hours(0, start, end, |ts| {
+                let t = clock(ts).unwrap();
+                (t.hour(), t.minute())
+            });
+            assert_eq!(cells.len(), expected_hours);
+            assert_eq!(heat_range(&cells, 0, cells.len() - 1), Some((start, end)));
+            if expected_hours == 23 {
+                assert_eq!(heat_hit(&cells, 0, 0.5), None);
+            } else {
+                assert_eq!(heat_hit(&cells, 0, 0.75), Some(1));
+            }
+        }
+    }
 
     #[test]
     fn months_shift_across_years() {
