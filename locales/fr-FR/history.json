@@ -219,6 +219,7 @@
   },
   "tip": {
     "second": "Mesure par seconde",
+    "every": "Mesure toutes les {seconds} s",
     "frame": "Enregistrement de 5 secondes",
     "average": "Moyenne",
     "hint": "Cliquer pour épingler · Clic droit pour le plus récent · Échap pour effacer",

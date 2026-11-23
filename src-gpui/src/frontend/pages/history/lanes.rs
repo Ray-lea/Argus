@@ -4,7 +4,7 @@
 use super::axes::{Axes, AxisEase, Eased, Mark, crossfade_marks, marks};
 use super::bar::ReadingMenu;
 use super::readings::Reading;
-use super::series::{BANDED, FRAME, Part, Points, STEP_CORNER, tick_step, ticks};
+use super::series::{BANDED, Part, Points, STEP_CORNER, tick_step, ticks};
 use super::state::{Drag, Drop, Glide, Hover, Lane};
 use super::transition::OverlayFade;
 use super::*;
@@ -1964,7 +1964,8 @@ impl Desktop {
             } else if reading.shows_peak() {
                 let small = theme::font(12.);
                 let peak = points.zip(read_index).and_then(|(points, index)| {
-                    (points.span[index] > FRAME)
+                    points
+                        .aggregated(index)
                         .then(|| reading.peak_value(points, index))
                         .flatten()
                 });

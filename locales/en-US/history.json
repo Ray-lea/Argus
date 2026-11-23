@@ -217,6 +217,7 @@
   },
   "tip": {
     "second": "Per-second reading",
+    "every": "Reading every {seconds} s",
     "frame": "5-second record",
     "average": "Average",
     "hint": "Click to pin · Right-click for the latest · Esc to clear",

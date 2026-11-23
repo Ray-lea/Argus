@@ -211,6 +211,7 @@
   },
   "tip": {
     "second": "每秒讀數",
+    "every": "每 {seconds} 秒讀數",
     "frame": "5 秒記錄",
     "average": "平均值",
     "hint": "按一下可固定 · 按滑鼠右鍵回到最新 · Esc 清除",

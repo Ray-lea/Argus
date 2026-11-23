@@ -2816,6 +2816,12 @@ pub struct HistorySeries {
     pub bucket: i64,
     pub ts: Vec<i64>,
     pub span: Vec<i64>,
+    /// Whether each point is one sample of the last ten minutes, asked for
+    /// at one-second buckets: its `span` is the time since the sample
+    /// before, a frame or more at a background cadence of 5 s or longer,
+    /// yet it averages nothing. Empty while no point is one.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sample: Vec<bool>,
     pub frame: Vec<i64>,
     pub series: BTreeMap<String, Column>,
     pub peak: Vec<i64>,
@@ -2852,6 +2858,8 @@ impl Band {
 struct Bucket {
     ts: i64,
     span: i64,
+    /// One sample, not a frame or an aggregate (`HistorySeries::sample`).
+    sample: bool,
     frame: i64,
     peak: i64,
     max: f64,
@@ -2862,6 +2870,7 @@ impl Bucket {
         Self {
             ts,
             span,
+            sample: false,
             frame: 0,
             peak: 0,
             max: f64::NEG_INFINITY,
@@ -2887,6 +2896,10 @@ impl Bucket {
         }
         out.ts.push(self.ts);
         out.span.push(self.span);
+        if self.sample || !out.sample.is_empty() {
+            out.sample.resize(out.ts.len() - 1, false);
+            out.sample.push(self.sample);
+        }
         out.frame.push(self.frame);
         out.peak.push(self.peak);
         for (b, col) in self.bands.into_iter().zip(out.series.values_mut()) {
@@ -3159,7 +3172,7 @@ pub fn series(
             0
         };
         let get = |i| s.values.get(i).copied().unwrap_or(f64::NAN);
-        bucket_at(
+        let bin = bucket_at(
             &mut acc,
             &mut out,
             if raw {
@@ -3169,8 +3182,9 @@ pub fn series(
             },
             if raw { s.span } else { bucket },
             keys.len(),
-        )
-        .update(frame, get(peak), ids.iter().map(|&j| get(j)));
+        );
+        bin.sample = raw;
+        bin.update(frame, get(peak), ids.iter().map(|&j| get(j)));
     }
     if let Some(b) = acc {
         b.emit(&mut out);
@@ -4948,6 +4962,8 @@ mod tests {
             ]
         );
         assert_eq!(&a.span[..5], &[5000, 5000, 5000, 5000, 1000]);
+        // Recorded frames before the cut, the samples themselves after it.
+        assert_eq!(&a.sample[..5], &[false, false, false, false, true]);
         assert_eq!(
             &a.series["cpu"].mean[..5],
             &[Some(2.), Some(7.), Some(12.), Some(17.), Some(20.)]
@@ -4955,6 +4971,7 @@ mod tests {
         assert_eq!(a.ts[5], base + 21000);
         let a = series(&dir, base + 31_400, base + 59_999, 10_000, base, &keys);
         let b = series(&dir, base + 38_000, base + 59_999, 10_000, base, &keys);
+        assert!(a.sample.is_empty());
         assert_eq!(a.ts, b.ts);
         assert_eq!(a.series["cpu"].mean, b.series["cpu"].mean);
         assert_eq!(a.series["cpu"].low[0], Some(30.));
@@ -4968,6 +4985,28 @@ mod tests {
                 .ts
                 .is_empty()
         );
+        drop(rec);
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn samples_a_background_cadence_apart_stay_samples() {
+        let dir = temp_dir("slow-samples");
+        let base = 20_737 * DAY_MS;
+        let mut rec = HistoryRecorder::new(dir.clone());
+        // Minimized at 5 s: the sampler wakes a little early or late.
+        let mut at = base;
+        for (i, step) in [0, 5003, 4998, 5003, 4998].into_iter().enumerate() {
+            at += step;
+            rec.record(&snapshot(at, i as f32, vec![]));
+        }
+        let keys = ["cpu".into()];
+        // Each spans the time since the one before, a frame or more, and
+        // stays one sample rather than reading as an average.
+        let raw = series(&dir, base, at + 999, 1000, base, &keys);
+        assert_eq!(raw.span, vec![1000, 5003, 4998, 5003, 4998]);
+        assert_eq!(raw.sample, vec![true; 5]);
+        let frames = series(&dir, base, at + 4999, 5000, base, &keys);
+        assert!(frames.sample.is_empty());
         drop(rec);
         fs::remove_dir_all(dir).unwrap();
     }

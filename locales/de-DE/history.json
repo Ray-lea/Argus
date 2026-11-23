@@ -217,6 +217,7 @@
   },
   "tip": {
     "second": "Sekundenwert",
+    "every": "Wert alle {seconds} s",
     "frame": "5-Sekunden-Aufzeichnung",
     "average": "Mittelwert",
     "hint": "Klicken zum Fixieren · Rechtsklick zu den neuesten · Esc zum Löschen",

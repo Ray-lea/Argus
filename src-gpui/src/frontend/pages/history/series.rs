@@ -147,6 +147,9 @@ pub(super) struct Points {
     pub(super) ts: Vec<i64>,
     /// How long each point covers.
     pub(super) span: Vec<i64>,
+    /// Whether each point is one sample (`HistorySeries::sample`): its span
+    /// is the time since the sample before, however long.
+    pub(super) sample: Vec<bool>,
     /// A recorded frame inside each point, whose processes can be shown (0: none yet).
     pub(super) frame: Vec<i64>,
     /// The frame with the highest CPU sample, per point.
@@ -195,6 +198,11 @@ impl Points {
             .unwrap_or(FRAME)
             .max(1);
         span.resize(n, bucket.max(SECOND));
+        let mut sample: Vec<bool> = answer["sample"]
+            .as_array()
+            .map(|list| list.iter().map(|v| v.as_bool() == Some(true)).collect())
+            .unwrap_or_default();
+        sample.resize(n, false);
         let mut frame = times(&answer["frame"]);
         frame.resize(n, 0);
         let mut peak = answer["peak"]
@@ -261,6 +269,7 @@ impl Points {
                 .unwrap_or_else(|| ts.last().copied().unwrap_or(from)),
             ts,
             span,
+            sample,
             frame,
             peak,
             columns,
@@ -291,6 +300,7 @@ impl Points {
         let keep = self.ts.partition_point(|at| *at < start);
         self.ts.truncate(keep);
         self.span.truncate(keep);
+        self.sample.truncate(keep);
         self.frame.truncate(keep);
         self.peak.truncate(keep);
         for column in self.columns.values_mut() {
@@ -318,6 +328,7 @@ impl Points {
         }
         self.ts.extend_from_slice(&newer.ts);
         self.span.extend_from_slice(&newer.span);
+        self.sample.extend_from_slice(&newer.sample);
         self.frame.extend_from_slice(&newer.frame);
         self.peak.extend_from_slice(&newer.peak);
         self.gaps.retain(|gap| gap.to <= start);
@@ -390,6 +401,7 @@ impl Points {
             to: coarse.to.max(fine.to),
             ts: picks.iter().map(|(p, i)| p.ts[*i]).collect(),
             span: picks.iter().map(|(p, i)| p.span[*i]).collect(),
+            sample: picks.iter().map(|(p, i)| p.single(*i)).collect(),
             frame: picks
                 .iter()
                 .map(|(p, i)| p.frame.get(*i).copied().unwrap_or(0))
@@ -427,6 +439,7 @@ impl Points {
         let mut out = self.clone();
         out.ts.truncate(keep);
         out.span.truncate(keep);
+        out.sample.truncate(keep);
         out.frame.truncate(keep);
         out.peak.truncate(keep);
         for column in out.columns.values_mut() {
@@ -473,6 +486,7 @@ impl Points {
         }
         self.ts.drain(..drop);
         self.span.drain(..drop);
+        self.sample.drain(..drop.min(self.sample.len()));
         self.frame.drain(..drop);
         self.peak.drain(..drop);
         for column in self.columns.values_mut() {
@@ -498,9 +512,17 @@ impl Points {
     }
 
     /// Whether point `i` aggregates several records (placed at its middle)
-    /// rather than being one sample or frame (placed at its start).
-    fn aggregated(&self, i: usize) -> bool {
-        self.span[i] > FRAME
+    /// rather than being one sample or frame (placed at its start). A
+    /// sample a background cadence of 5 s or more after the one before spans
+    /// a frame or more, and is still one sample.
+    pub(super) fn aggregated(&self, i: usize) -> bool {
+        self.span[i] > FRAME && !self.single(i)
+    }
+
+    /// Whether point `i` is one sample of the last minutes, spanning the
+    /// time since the sample before.
+    pub(super) fn single(&self, i: usize) -> bool {
+        self.sample.get(i).copied().unwrap_or(false)
     }
 
     /// The moment point `i` stands for, to tell whether it is in a window (the
@@ -1015,6 +1037,37 @@ mod tests {
         // The newest across its own span, no further.
         assert_eq!(points.index_at(10_999), Some(2));
         assert_eq!(points.index_at(11_000), None);
+    }
+
+    #[test]
+    fn samples_a_background_cadence_apart_are_no_averages() {
+        // A recorded frame, then samples taken minimized at 5 s, waking a
+        // little early or late: each spans the time since the one before.
+        let answer = json!({"bucket": SECOND, "ts": [0, FRAME, 2 * FRAME + 3, 3 * FRAME + 1],
+            "span": [FRAME, FRAME, FRAME + 3, FRAME - 2], "sample": [false, true, true, true],
+            "series": {"cpu": {"mean": [1, 2, 3, 4]}}, "settled": 4 * FRAME});
+        let points = Points::parse(&answer, &args(0, MINUTE, SECOND));
+        for i in 0..4 {
+            assert!(!points.aggregated(i));
+            assert_eq!(points.x_time(i, MINUTE), points.ts[i]);
+        }
+        assert!(!points.single(0) && points.single(2));
+        // A newer answer and a coarser one keep each point's kind in place.
+        let mut merged = points.clone();
+        merged.merge(Points::parse(
+            &json!({"bucket": SECOND, "ts": [3 * FRAME + 1, 4 * FRAME], "span": [FRAME - 2, FRAME + 5],
+                "sample": [true, true], "series": {"cpu": {"mean": [4, 5]}}, "settled": 5 * FRAME}),
+            &args(3 * FRAME, MINUTE, SECOND),
+        ));
+        assert_eq!(merged.sample, vec![false, true, true, true, true]);
+        let coarse = Points::parse(
+            &json!({"bucket": MINUTE, "ts": [-MINUTE], "span": [MINUTE],
+                "series": {"cpu": {"mean": [1]}}, "settled": 0}),
+            &args(-MINUTE, MINUTE, MINUTE),
+        );
+        let spliced = points.spliced(&coarse);
+        assert_eq!(spliced.sample, vec![false, false, true, true, true]);
+        assert!(spliced.aggregated(0) && !spliced.aggregated(3));
     }
 
     #[test]

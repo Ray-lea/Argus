@@ -219,6 +219,7 @@
   },
   "tip": {
     "second": "Lectura por segundo",
+    "every": "Lectura cada {seconds} s",
     "frame": "Registro de 5 segundos",
     "average": "Promedio",
     "hint": "Clic para fijar · Clic derecho para lo último · Esc para borrar",

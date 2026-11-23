@@ -28,6 +28,22 @@ pub(super) enum TipList {
     Nothing,
 }
 
+/// The sampling cadence a sample `span` after the one before it shows, to
+/// the half second, so that a sampler waking a little early or late reads
+/// as its cadence: 1 s, or a background one of 5 s.
+fn cadence_ms(span: i64) -> u64 {
+    ((span as f64 / 500.).round() as u64).max(1) * 500
+}
+
+/// What the tooltip calls one sample: a per-second reading, or one taken
+/// every so many seconds (minimized or in the tray, say).
+fn sample_kind(span: i64) -> String {
+    match cadence_ms(span) {
+        1000 => label("history.tip.second"),
+        ms => tr!("history.tip.every", seconds = crate::regional::seconds(ms)),
+    }
+}
+
 impl Desktop {
     /// The trend column follows the topmost lane's reading.
     /// The process value that goes with a lane's reading (the tooltip ranks by it).
@@ -103,8 +119,9 @@ impl Desktop {
             return;
         }
         // The programs' processes are counted in each frame: a bucket shows
-        // those of a frame inside it.
-        let frame_of = point.1 <= FRAME || list == TipList::Programs;
+        // those of a frame inside it. A sample shows its frame's, however
+        // long ago the sample before it was.
+        let frame_of = point.1 <= FRAME || points.single(index) || list == TipList::Programs;
         let frame = points.frame[index];
         if self.options.fixture.is_some() {
             // A fixture holds one frame and one range table.
@@ -197,7 +214,9 @@ impl Desktop {
             Some(index) => {
                 let start = points.ts[index];
                 let length = points.span[index];
-                let (time, kind) = if length <= FRAME {
+                let (time, kind) = if points.single(index) {
+                    (moment_label(start, true), Some(sample_kind(length)))
+                } else if length <= FRAME {
                     (
                         moment_label(start, true),
                         Some(label(if length < FRAME {
@@ -273,7 +292,7 @@ impl Desktop {
                                 .into_any_element(),
                         );
                     }
-                    if length > FRAME
+                    if points.aggregated(index)
                         && let Some(peak) = reading.peak_value(points, index)
                     {
                         rows.push(
@@ -471,5 +490,26 @@ impl Desktop {
             .with_priority(1)
             .into_any_element(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cadence_ms;
+
+    #[test]
+    fn a_sample_reads_as_its_cadence_however_early_or_late() {
+        for (span, cadence) in [
+            (1002, 1000),
+            (1180, 1000),
+            (520, 500),
+            (100, 500),
+            (4998, 5000),
+            (5003, 5000),
+            (10_004, 10_000),
+            (30_010, 30_000),
+        ] {
+            assert_eq!(cadence_ms(span), cadence, "{span} ms");
+        }
     }
 }
