@@ -4,7 +4,7 @@
 
 Modifications visibles par les utilisateurs dans chaque version d’Argus. Les numéros de version suivent la [gestion sémantique de version](https://semver.org/lang/fr/). Ce fichier est traduit du [journal des modifications en chinois simplifié](zh-CN.md), auquel il correspond entrée par entrée.
 
-## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-22
+## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-23
 
 Argus v0.6.0 adopte une nouvelle icône de graphique matriciel de performances et repense la fenêtre principale, avec une barre de titre épurée, des barres de page et d’état réorganisées ainsi qu’un bouton pour épingler au premier plan. La nouvelle page « Composants » affiche les mesures du système en temps réel dans la zone de notification, sur le bureau et dans la barre des tâches ; la page Historique refondue prend en charge les courbes multipistes, les événements de ressources et l’observation de processus sur plusieurs exécutions. Processus ajoute les alertes de fuites de ressources et les colonnes de consommation d’énergie, Processus, Services, Démarrage et Connexions prennent en charge la copie de contenu et l’export CSV, les services et entrées de démarrage peuvent être supprimés, Performances ajoute le suivi des NPU, et la prise en charge tactile ainsi qu’un réglage d’accélération matérielle sont disponibles. Cette version réduit aussi nettement le coût du défilement et du redessin, corrige un écran bleu à l’ouverture des détails du disque sur certains systèmes Intel RST VMD et évite de réveiller les GPU dédiés hors tension ainsi que les disques durs arrêtés.
 

@@ -4,7 +4,7 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This file is translated from the [Simplified Chinese changelog](zh-CN.md), entry for entry.
 
-## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-22
+## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-23
 
 Argus v0.6.0 introduces a new dot-matrix performance chart app icon and a redesigned main window, with a streamlined title bar, reorganized page and status bars, and an Always on top button. The new “Components” page shows live system readings in the tray, on the desktop and on the taskbar; the redesigned History page supports multi-lane charts, resource events and cross-run process observation. Processes adds resource leak alerts and power usage columns, Processes, Services, Startup and Connections support copying cells and CSV export, services and startup entries can be deleted, Performance adds NPU monitoring, and touch input and a hardware acceleration switch are now available. This release also reduces scrolling and redraw overhead, fixes a blue screen when opening disk details on some Intel RST VMD systems, and avoids waking powered-off discrete GPUs and spun-down hard disks.
 

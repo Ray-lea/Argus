@@ -4,7 +4,7 @@
 
 Für Benutzer sichtbare Änderungen der einzelnen Argus-Versionen. Die Versionsnummern folgen der [semantischen Versionierung](https://semver.org/lang/de/). Diese Datei ist eine Übersetzung des [vereinfachten chinesischen Änderungsprotokolls](zh-CN.md) und entspricht ihm Eintrag für Eintrag.
 
-## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-22
+## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-23
 
 Argus v0.6.0 führt ein neues Punktraster-Leistungsdiagramm als App-Symbol ein und gestaltet das Hauptfenster neu, mit verschlankter Titelleiste, neu geordneter Seiten- und Statusleiste sowie einer Schaltfläche für „Immer im Vordergrund“. Die neue Seite „Komponenten“ zeigt Live-Messwerte im Infobereich, auf dem Desktop und in der Taskleiste; der neu gestaltete Verlauf bietet mehrspurige Kurven, Ressourcenereignisse und Prozessbeobachtung über mehrere Starts hinweg. Die Prozessliste ergänzt Hinweise auf Ressourcenlecks und Energieverbrauchsspalten, die Seiten für Prozesse, Dienste, Autostart und Verbindungen unterstützen das Kopieren von Inhalten und CSV-Export, Dienste und Autostarteinträge lassen sich löschen, die Leistungsseite zeigt nun NPUs, und Touchbedienung sowie ein Schalter für die Hardwarebeschleunigung stehen bereit. Zudem sinkt der Aufwand beim Scrollen und Neuzeichnen deutlich, ein Bluescreen beim Öffnen der Datenträgerdetails auf einigen Intel-RST-VMD-Systemen ist behoben, und abgeschaltete dedizierte GPUs sowie angehaltene Festplatten werden nicht mehr ungewollt geweckt.
 

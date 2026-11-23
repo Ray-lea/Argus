@@ -4,7 +4,7 @@
 
 Cambios visibles para el usuario en cada versión de Argus. La numeración sigue el [versionado semántico](https://semver.org/lang/es/). Este archivo es una traducción del [registro de cambios en chino simplificado](zh-CN.md), con correspondencia entrada por entrada.
 
-## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-22
+## [0.6.0](https://github.com/Ray-lea/Argus/compare/v0.5.0...v0.6.0) - 2026-11-23
 
 Argus v0.6.0 estrena un icono de gráfico de rendimiento de matriz de puntos y rediseña la interfaz de la ventana principal con una barra de título simplificada, barras de página y de estado reorganizadas y un botón para mantenerla siempre visible. La nueva página «Componentes» muestra lecturas del sistema en tiempo real en la bandeja, el escritorio y la barra de tareas; la página Historial rediseñada ofrece gráficos multipista, eventos de recursos y observación de procesos entre ejecuciones. Procesos añade avisos de fugas de recursos y columnas de consumo de energía, las páginas Procesos, Servicios, Inicio y Conexiones admiten copia de contenido y exportación a CSV, los servicios y entradas de inicio pueden eliminarse, Rendimiento incorpora supervisión de NPU y se suman el manejo táctil y un interruptor de aceleración por hardware. Esta versión también reduce notablemente el coste de desplazamiento y redibujado, corrige un pantallazo azul al abrir los detalles del disco en algunos sistemas Intel RST VMD y evita despertar GPU dedicadas apagadas y discos duros detenidos.
 
