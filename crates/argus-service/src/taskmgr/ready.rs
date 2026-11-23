@@ -1,3 +1,5 @@
+mod foreground;
+
 use super::{launch, state::Result};
 use crate::{
     security,
@@ -176,6 +178,10 @@ fn complete_with(request: Request, expected: &std::path::Path) -> Result<Complet
     let ready = open("ready", "interface handshake: OpenEventW ready")?;
     let commit = open("commit", "interface handshake: OpenEventW commit")?;
     let done = open("done", "interface handshake: OpenEventW done")?;
+    // Hold the connection through commit. Older launchers have only the events.
+    let _foreground = (!request.probe)
+        .then(|| foreground::connect(&request.id))
+        .flatten();
     checked(
         "interface handshake: SetEvent ready",
         unsafe { SetEvent(ready.0) }.map_err(|e| e.to_string()),
@@ -259,6 +265,7 @@ pub fn activate(image: &std::path::Path, owner: &str, probe: bool) -> Result<()>
         let commit = event("commit")?;
         phase = "CreateEventW done";
         let done = event("done")?;
+        let foreground = (!probe).then(|| foreground::listen(&id, &sd)).flatten();
         let parent = unsafe { GetCurrentProcess() };
         phase = "create interface process";
         child = Some(launch::standard_spawn(
@@ -282,6 +289,9 @@ pub fn activate(image: &std::path::Path, owner: &str, probe: bool) -> Result<()>
             }
         }
         phase = "SetEvent commit";
+        if let Some(pipe) = foreground.as_ref() {
+            foreground::grant(pipe);
+        }
         unsafe { SetEvent(commit.0) }.map_err(|e| e.to_string())?;
         phase = "wait for interface completion";
         if unsafe { WaitForSingleObject(done.0, 2000) } != WAIT_OBJECT_0 {
@@ -390,21 +400,29 @@ mod tests {
     fn ready_fixture() {
         let value = std::env::var("ARGUS_READY_FIXTURE").unwrap();
         let parts: Vec<_> = value.split('|').collect();
+        let probe = parts[3] == "probe";
         let request = Request {
             id: parts[0].into(),
             pid: parts[1].parse().unwrap(),
             created: parts[2].parse().unwrap(),
-            probe: true,
+            probe,
         };
         let expected =
             std::path::PathBuf::from(std::env::var_os("ARGUS_READY_FIXTURE_LAUNCHER").unwrap());
         let completion = complete_with(request, &expected).unwrap();
-        assert!(!completion.should_show());
+        assert_eq!(completion.should_show(), !probe);
         completion.acknowledge();
     }
 
     #[test]
     fn readiness_handshake_requires_commit() {
+        handshake("probe", true);
+        handshake("show", true);
+        // A launcher from before foreground handoff uses just the three events.
+        handshake("show", false);
+    }
+
+    fn handshake(mode: &str, with_pipe: bool) {
         let id = super::super::id().unwrap();
         let sd = security::pipe_descriptor(&security::current_sid().unwrap()).unwrap();
         let create = |suffix| {
@@ -423,6 +441,7 @@ mod tests {
         let ready = create("ready");
         let commit = create("commit");
         let done = create("done");
+        let foreground = with_pipe.then(|| foreground::listen(&id, &sd).unwrap());
         // A Cargo target directory may be a junction. Use the parent's reported
         // image name, not the child's launch spelling of the same executable.
         let mut image = [0u16; 32768];
@@ -449,7 +468,7 @@ mod tests {
             .env(
                 "ARGUS_READY_FIXTURE",
                 format!(
-                    "{id}|{}|{}",
+                    "{id}|{}|{}|{mode}",
                     std::process::id(),
                     launch::identity(unsafe { GetCurrentProcess() }).unwrap()
                 ),
@@ -459,6 +478,7 @@ mod tests {
             .unwrap();
         let arrived = unsafe { WaitForSingleObject(ready.0, 5000) };
         let premature = unsafe { WaitForSingleObject(done.0, 0) };
+        let recipient = foreground.as_ref().and_then(foreground::client);
         unsafe {
             SetEvent(commit.0).unwrap();
         }
@@ -471,5 +491,9 @@ mod tests {
         assert_ne!(premature, WAIT_OBJECT_0);
         assert_eq!(completed, WAIT_OBJECT_0);
         assert!(exit.success());
+        assert_eq!(
+            recipient,
+            (with_pipe && mode == "show").then_some(child.id())
+        );
     }
 }
