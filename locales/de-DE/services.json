@@ -14,7 +14,8 @@
     "manual": "Manuell",
     "disabled": "Deaktiviert",
     "boot": "Start",
-    "system": "System"
+    "system": "System",
+    "pending": "{type} nach Neustart"
   },
   "filter": {
     "all": "Alle",
@@ -44,7 +45,8 @@
       "notFound": "Dienst {name} wurde nicht gefunden.",
       "refused": "Dienst {name} kann nicht gelöscht werden.",
       "serviceOutdated": "Zugriff verweigert: Dienst {name} konnte nicht gelöscht werden. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
-      "generic": "Dienst {name} konnte nicht gelöscht werden: {error}"
+      "generic": "Dienst {name} konnte nicht gelöscht werden: {error}",
+      "accessDeniedPrivileged": "Windows hat das Löschen des Dienstes „{name}“ abgelehnt. Möglicherweise schützt Windows oder eine Sicherheitssoftware diesen Dienst."
     }
   },
   "copied": {
@@ -59,5 +61,18 @@
   "noMatch": "Keine passenden Dienste",
   "clearFilter": "Filter zurücksetzen",
   "summary": "{running} von {total} Diensten werden ausgeführt",
-  "manageHint": "Zum Verwalten der meisten Dienste sind der privilegierte Dienst oder Administratorrechte erforderlich."
+  "manageHint": "Zum Verwalten der meisten Dienste sind der privilegierte Dienst oder Administratorrechte erforderlich.",
+  "packaged": {
+    "title": "Starttyp in der Registrierung ändern?",
+    "body": "Windows hat die Änderung des Starttyps für den Paketdienst „{name}“ abgelehnt. Argus kann „{type}“ im Registrierungsschlüssel des Dienstes speichern.\n\nDie Dienstliste zeigt an, wenn ein Windows-Neustart erforderlich ist. Ein App-Update kann den vorherigen Starttyp wiederherstellen.",
+    "confirm": "In Registrierung schreiben",
+    "done": "Starttyp in die Registrierung geschrieben."
+  },
+  "error": {
+    "accessDenied": "Keine Berechtigung zum Ändern des Dienstes „{name}“. Aktivieren Sie den privilegierten Dienst in den Einstellungen oder führen Sie Argus als Administrator aus.",
+    "notFound": "Dienst {name} wurde nicht gefunden.",
+    "refused": "Argus kann den Dienst {name} nicht ändern.",
+    "serviceOutdated": "Dienst {name} konnte nicht geändert werden: Zugriff verweigert. Die Version des privilegierten Dienstes ist nicht kompatibel; aktualisieren Sie den Dienst und versuchen Sie es erneut.",
+    "accessDeniedPrivileged": "Windows hat die Änderung am Dienst „{name}“ abgelehnt. Möglicherweise schützt Windows oder eine Sicherheitssoftware diesen Dienst."
+  }
 }

@@ -166,7 +166,12 @@ impl CellSpec {
                 spec.hint_area = HintArea::Text;
             }
             CellKind::StartType => {
-                spec.color = match text(&row.raw, "startType") {
+                // A start type pending a restart shows as what it will be.
+                let start = match text(&row.raw, "pendingStartType") {
+                    "" => text(&row.raw, "startType"),
+                    pending => pending,
+                };
+                spec.color = match start {
                     "manual" => Some(p.faint),
                     "disabled" => Some(p.io),
                     _ => None,

@@ -14,7 +14,8 @@
     "manual": "Manual",
     "disabled": "Disabled",
     "boot": "Boot",
-    "system": "System"
+    "system": "System",
+    "pending": "{type} after restart"
   },
   "filter": {
     "all": "All",
@@ -44,7 +45,8 @@
       "notFound": "Service {name} was not found.",
       "refused": "Service {name} cannot be deleted.",
       "serviceOutdated": "Access denied: service {name} could not be deleted. The privileged service version is incompatible; update the service and try again.",
-      "generic": "Could not delete service {name}: {error}"
+      "generic": "Could not delete service {name}: {error}",
+      "accessDeniedPrivileged": "Windows denied the request to delete service “{name}”. Windows or security software may protect this service."
     }
   },
   "copied": {
@@ -59,5 +61,18 @@
   "noMatch": "No matching services",
   "clearFilter": "Clear filters",
   "summary": "{running} of {total} running",
-  "manageHint": "Managing most services requires the privileged service or administrator rights."
+  "manageHint": "Managing most services requires the privileged service or administrator rights.",
+  "packaged": {
+    "title": "Change startup type in the registry?",
+    "body": "Windows denied the startup type change for the packaged service “{name}”. Argus can save “{type}” in the service’s registry key.\n\nThe services list shows when a Windows restart is needed. An app update may restore the previous startup type.",
+    "confirm": "Write to registry",
+    "done": "Startup type written to the registry."
+  },
+  "error": {
+    "accessDenied": "Permission denied for service “{name}”. Enable the privileged service in Settings or run Argus as administrator.",
+    "notFound": "Service {name} wasn't found.",
+    "refused": "Argus can't change service {name}.",
+    "serviceOutdated": "Couldn't change service {name}: access denied. The privileged service version is incompatible; update the service and try again.",
+    "accessDeniedPrivileged": "Windows denied the change to service “{name}”. Windows or security software may protect this service."
+  }
 }

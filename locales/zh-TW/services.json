@@ -14,7 +14,8 @@
     "manual": "手動",
     "disabled": "已停用",
     "boot": "開機",
-    "system": "系統"
+    "system": "系統",
+    "pending": "{type}（重新啟動後）"
   },
   "filter": {
     "all": "全部",
@@ -44,7 +45,8 @@
       "notFound": "找不到服務 {name}。",
       "refused": "無法刪除服務 {name}。",
       "serviceOutdated": "沒有權限刪除服務 {name}。特殊權限服務版本不相容，請更新服務後重試。",
-      "generic": "無法刪除服務 {name}：{error}"
+      "generic": "無法刪除服務 {name}：{error}",
+      "accessDeniedPrivileged": "Windows 拒絕刪除服務「{name}」。該服務可能受到系統或安全性軟體保護。"
     }
   },
   "copied": {
@@ -59,5 +61,18 @@
   "noMatch": "沒有相符的服務",
   "clearFilter": "清除篩選",
   "summary": "執行中 {running} / 共 {total} 個服務",
-  "manageHint": "管理大多數服務需要特殊權限服務或系統管理員權限。"
+  "manageHint": "管理大多數服務需要特殊權限服務或系統管理員權限。",
+  "packaged": {
+    "title": "透過登錄更改啟動類型？",
+    "body": "Windows 拒絕變更應用程式套件服務「{name}」的啟動類型。可將「{type}」寫入該服務的登錄機碼。\n\n若須重新啟動 Windows 才能生效，服務清單會加以標示。更新應用程式後，啟動類型可能會還原。",
+    "confirm": "寫入登錄",
+    "done": "啟動類型已寫入登錄。"
+  },
+  "error": {
+    "accessDenied": "權限不足，無法變更服務「{name}」。可在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus。",
+    "notFound": "找不到服務 {name}。",
+    "refused": "Argus 無法變更服務 {name}。",
+    "serviceOutdated": "無法變更服務 {name}：存取遭拒。特權服務版本不相容，請更新服務後再試一次。",
+    "accessDeniedPrivileged": "Windows 拒絕變更服務「{name}」。該服務可能受到系統或安全性軟體保護。"
+  }
 }

@@ -189,20 +189,41 @@ fn privileged<T>(
         Operation::ControlService { .. } => ("control Windows service", operation),
         Operation::ServiceStartType { .. } => ("set service start type", operation),
         Operation::DeleteService { .. } => ("delete Windows service", operation),
+        Operation::ServiceStartTypeRegistry { .. } => {
+            ("set packaged service start type in registry", operation)
+        }
         Operation::CloseConnection { .. } => ("close TCP connection", operation),
         _ => ("privileged operation", operation),
     };
+    // A service change tells a denial with administrator rights in hand from
+    // one without: the route taken says which, not the UI's last status read.
+    let service = matches!(
+        operation.1,
+        Operation::ControlService { .. }
+            | Operation::DeleteService { .. }
+            | Operation::ServiceStartType { .. }
+            | Operation::ServiceStartTypeRegistry { .. }
+    );
     if state.elevated {
-        return action_result(operation.0, "local elevated", local());
+        return action_result(operation.0, "local elevated", guarded(service, local()));
     }
     let routed = argus_service::route(operation.1).map_err(ActionError::Os);
     let routed = action_result(operation.0, "service routing", routed)?;
-    let source = match &routed {
-        Routed::Absent => "local fallback (no service)",
-        Routed::Outdated => "local fallback (incompatible service)",
-        Routed::Replied(_) => "privileged service",
+    let (source, with_rights) = match &routed {
+        Routed::Absent => ("local fallback (no service)", false),
+        Routed::Outdated => ("local fallback (incompatible service)", false),
+        Routed::Replied(_) => ("privileged service", true),
     };
-    action_result(operation.0, source, settle(routed, replied, local))
+    let result = settle(routed, replied, local);
+    action_result(operation.0, source, guarded(service && with_rights, result))
+}
+
+/// A denial with administrator rights in hand: the target guards itself.
+fn guarded<T>(with_rights: bool, result: Result<T, ActionError>) -> Result<T, ActionError> {
+    result.map_err(|e| match e {
+        ActionError::AccessDenied if with_rights => ActionError::AccessDeniedPrivileged,
+        e => e,
+    })
 }
 
 fn action_result<T>(
@@ -1345,6 +1366,30 @@ pub fn delete_service(
     })
 }
 
+/// Writes the start type of a packaged service to the registry, after the SCM
+/// refused it and the user agreed.
+pub fn set_service_start_type_registry(
+    state: State<'_, AppState>,
+    name: String,
+    start_type: StartType,
+) -> Result<(), ActionError> {
+    let operation = Operation::ServiceStartTypeRegistry {
+        name: name.clone(),
+        start_type,
+    };
+    operation.validate()?;
+    privileged(
+        &state,
+        operation,
+        |reply| {
+            done(reply)?;
+            state.services.invalidate(&name);
+            Some(())
+        },
+        || state.services.set_start_type_in_registry(&name, start_type),
+    )
+}
+
 /// Opens the Windows Services console, for what Argus does not cover.
 pub fn open_services_console() -> Result<(), String> {
     std::process::Command::new("mmc.exe")
@@ -1734,6 +1779,24 @@ mod tests {
             Err(ActionError::NotFound)
         ));
         assert!(matches!(settle(Routed::Outdated, done, || Ok(())), Ok(())));
+    }
+
+    #[test]
+    fn only_a_denial_with_administrator_rights_says_so() {
+        assert!(matches!(
+            guarded(true, denied()),
+            Err(ActionError::AccessDeniedPrivileged)
+        ));
+        // Acting with its own rights, Argus may still lack them.
+        assert!(matches!(
+            guarded(false, denied()),
+            Err(ActionError::AccessDenied)
+        ));
+        assert!(matches!(
+            guarded(true, Err::<(), _>(ActionError::NotFound)),
+            Err(ActionError::NotFound)
+        ));
+        assert!(matches!(guarded(true, Ok(())), Ok(())));
     }
 
     #[test]

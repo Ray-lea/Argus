@@ -1398,7 +1398,7 @@ impl Desktop {
         let control = |action: &str| {
             Action::Invoke(
                 "control_service".into(),
-                json!({"name":name,"action":action}),
+                json!({"name":name,"action":action,"display":text(raw, "displayName")}),
             )
         };
         // The binary is the first token of the image path, quoted or not.
@@ -1408,7 +1408,12 @@ impl Desktop {
             .and_then(|rest| rest.split('"').next())
             .or_else(|| command.split_whitespace().next())
             .filter(|binary| !binary.is_empty());
-        let current = text(raw, "startType");
+        // A start type written for the next boot is the one the user chose.
+        let current = match text(raw, "pendingStartType") {
+            "" => text(raw, "startType"),
+            pending => pending,
+        };
+        let registry_allowed = boolean(raw, "registryStartTypeAllowed");
         let mut items = vec![
             MenuItem::new(label("common.start"), control("start"))
                 .icon("PlayIcon")
@@ -1435,7 +1440,12 @@ impl Desktop {
                     ),
                     Action::Invoke(
                         "set_service_start_type".into(),
-                        json!({"name":name,"startType":start_type}),
+                        json!({
+                            "name":name,
+                            "startType":start_type,
+                            "registryStartTypeAllowed":registry_allowed,
+                            "display":text(raw, "displayName"),
+                        }),
                     ),
                 )
                 .checked(current == start_type),

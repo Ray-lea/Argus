@@ -40,6 +40,11 @@ pub enum ActionError {
     /// service speaks another protocol and refused it: updating the service
     /// lets it act again. Only the host reports it; the service never sends it.
     ServiceOutdated,
+    /// Denied although Argus acted with administrator rights (elevated, or
+    /// through the privileged service): the target guards itself, so advising
+    /// those rights is no help. Only the host reports it, for service
+    /// changes; the service never sends it.
+    AccessDeniedPrivileged,
     /// Resuming could not be confirmed: every thread is still suspended
     /// (another tool suspended the process more than once, so it needs
     /// another resume), or the thread states could not be read.
@@ -68,6 +73,7 @@ impl ActionError {
             Self::CriticalityUnknown => "process criticality could not be checked".into(),
             Self::Refused => "operation refused by policy".into(),
             Self::ServiceOutdated => "privileged service protocol incompatible".into(),
+            Self::AccessDeniedPrivileged => "access denied with administrator rights".into(),
             Self::StillSuspended => "threads remain suspended or unreadable after resume".into(),
             Self::Os(message) => crate::diagnostics::failure(message),
         }
@@ -961,6 +967,10 @@ mod tests {
         assert_eq!(
             json(ActionError::ServiceOutdated),
             r#"{"kind":"serviceOutdated"}"#
+        );
+        assert_eq!(
+            json(ActionError::AccessDeniedPrivileged),
+            r#"{"kind":"accessDeniedPrivileged"}"#
         );
         assert_eq!(
             json(ActionError::StillSuspended),

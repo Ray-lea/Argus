@@ -2,6 +2,7 @@ use super::*;
 mod file_lock;
 mod presence;
 mod process_actions;
+mod service_actions;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::WindowExt;
 use gpui_kit::component::dialog::{Dialog, DialogEntrance};
@@ -1810,6 +1811,10 @@ impl Desktop {
             | "set_service_start_type"
             | "set_startup_enabled"
             | "close_connection" => self.poll_page(window, cx),
+            "set_service_start_type_registry" => {
+                self.notify_toast(ToastKind::Success, label("services.packaged.done"));
+                self.poll_page(window, cx);
+            }
             _ => self.settings_completed(command, value, window, cx),
         }
     }
@@ -1868,6 +1873,16 @@ impl Desktop {
             "kill_process" if boolean(args, "locker") => {
                 self.ui.errors.remove("lockerEnd");
                 self.notify_toast(ToastKind::Error, message);
+            }
+            // A packaged service's security descriptor keeps the SCM from
+            // changing it even for administrators: offer its registry value,
+            // which takes the same rights. The host says whether it acted with
+            // them (`accessDeniedPrivileged`); without them the usual guidance shows.
+            "set_service_start_type"
+                if boolean(args, "registryStartTypeAllowed")
+                    && text(error, "kind") == "accessDeniedPrivileged" =>
+            {
+                self.offer_registry_start_type(args, window, cx);
             }
             _ => {
                 if !self.settings_failed(command, args, error, &message, window, cx) {
