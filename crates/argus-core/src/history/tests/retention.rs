@@ -43,7 +43,7 @@ fn limits_evict_whole_oldest_days_and_protect_writer_and_today() {
         )
         .unwrap();
         assert_eq!(days(&dir), expected);
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), expected.len() * 5 + 2);
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), expected.len() * 5 + 3);
         maintenance::maintain_at(
             &dir,
             options(None, Some(0), HistoryDetail::Full),
@@ -55,6 +55,48 @@ fn limits_evict_whole_oldest_days_and_protect_writer_and_today() {
         assert_eq!(days(&dir), vec![DAY]);
         fs::remove_dir_all(dir).unwrap();
     }
+}
+
+#[test]
+fn custom_storage_preserves_unowned_sidecars() {
+    let root = temp_dir("directory-ownership");
+    let default = root.join("default");
+    let picked = root.join("shared");
+    fs::create_dir(&picked).unwrap();
+    let day = maintenance::today();
+    let foreign = [
+        day_path(&picked, day - 40).with_extension("idx"),
+        day_path(&picked, day).with_extension("proc"),
+    ];
+    for p in &foreign {
+        fs::write(p, [0, 8, 255, 3]).unwrap();
+    }
+    let actual = select_directory(&default, &default, Some(&picked)).unwrap();
+    assert_eq!(actual, picked.join("Argus History"));
+    assert_eq!(prepare_directory(&default, Some(&picked)).unwrap(), actual);
+    let owned_old = day_path(&actual, day - 40).with_extension("idx");
+    fs::write(&owned_old, b"expired").unwrap();
+    for path in [&picked, &actual] {
+        let mut rec = HistoryRecorder::start(path.clone());
+        rec.record(&snapshot(day * DAY_MS, 1., vec![]));
+        drop(rec);
+        maintain(path, HistoryOptions::default(), day).unwrap();
+    }
+    assert!(!owned_old.exists());
+    assert!(clear(&picked).is_err());
+    assert!(move_records(&picked, &actual, || Ok(())).is_err());
+    assert!(day_path(&actual, day).is_file());
+    for p in foreign {
+        assert_eq!(fs::read(p).unwrap(), [0, 8, 255, 3]);
+    }
+    let empty = root.join("empty");
+    assert_eq!(prepare_directory(&default, Some(&empty)).unwrap(), empty);
+    fs::write(empty.join("notes"), b"keep").unwrap();
+    assert_eq!(prepare_directory(&default, Some(&empty)).unwrap(), empty);
+    fs::create_dir(&default).unwrap();
+    fs::write(default.join("old"), b"keep").unwrap();
+    assert_eq!(prepare_directory(&default, None).unwrap(), default);
+    fs::remove_dir_all(root).unwrap();
 }
 
 fn sample_day(dir: &Path, day: i64) {
@@ -184,7 +226,8 @@ fn move_validates_and_rolls_back_collisions_and_failed_settings_writes() {
         assert!(validate_directory(&old, &bad).is_err());
     }
     assert!(!old.join("child").exists());
-    validate_directory(&old, &new).unwrap();
+    prepare_directory(&old, None).unwrap();
+    select_directory(&old, &old, Some(&new)).unwrap();
     let files = [
         "2026-01-01.hist",
         "2026-01-01.idx",
@@ -205,14 +248,199 @@ fn move_validates_and_rolls_back_collisions_and_failed_settings_writes() {
     for name in files {
         assert_eq!(fs::read(old.join(name)).unwrap(), name.as_bytes());
     }
-    assert_eq!(fs::read_dir(&new).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(&new).unwrap().count(), 1);
     move_records(&old, &new, || Ok(())).unwrap();
     for name in files {
         assert_eq!(fs::read(new.join(name)).unwrap(), name.as_bytes());
     }
-    assert_eq!(fs::read_dir(&old).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(&old).unwrap().count(), 2);
     fs::remove_dir_all(new).unwrap();
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn recovery_discards_only_unpublished_partial_copies() {
+    let dest = temp_dir("incomplete-copy");
+    sample_day(&dest, DAY - 1);
+    let kept = day_path(&dest, DAY - 1);
+    let before = fs::read(&kept).unwrap();
+    let stage = dest.join(".argus-history-copy");
+    prepare_directory(&stage, None).unwrap();
+    fs::write(day_path(&stage, DAY), b"partial").unwrap();
+    prepare_directory(&dest, None).unwrap();
+    assert!(!stage.exists());
+    assert!(!day_path(&dest, DAY).exists());
+    assert_eq!(fs::read(kept).unwrap(), before);
+    fs::remove_dir_all(dest).unwrap();
+}
+
+fn volume_id(path: &Path) -> u32 {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{Foundation::HANDLE, Storage::FileSystem::GetFileInformationByHandle};
+    let marker = owned_directory(path).unwrap();
+    let mut info = Default::default();
+    unsafe { GetFileInformationByHandle(HANDLE(marker.as_raw_handle()), &mut info) }.unwrap();
+    info.dwVolumeSerialNumber
+}
+
+fn interrupt_after_primary(tag: &str, destination_root: &Path, same_volume: bool) {
+    let source = temp_dir(tag);
+    let dest = destination_root.join(format!("{tag}-dest-{}", std::process::id()));
+    prepare_directory(&dest, None).unwrap();
+    assert_eq!(volume_id(&source) == volume_id(&dest), same_volume);
+    let day = maintenance::today();
+    sample_day(&source, day);
+    sample_day(&dest, day - 1);
+    let existing = day_path(&dest, day - 1);
+    let existing_bytes = fs::read(&existing).unwrap();
+    let ts = day * DAY_MS + FRAME_MS;
+    let expected = serde_json::to_value(frame(&source, ts).unwrap()).unwrap();
+    let primary = day_path(&source, day);
+    let processes = fs::read(primary.with_extension("proc")).unwrap();
+    use std::os::windows::process::CommandExt;
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
+        .args([
+            "--exact",
+            "history::tests::retention::migration_exit_child",
+            "--ignored",
+        ])
+        .env("ARGUS_MOVE_TEST_SOURCE", &source)
+        .env("ARGUS_MOVE_TEST_DEST", &dest)
+        .env("ARGUS_MOVE_TEST_PRIMARY", primary.file_name().unwrap())
+        .status()
+        .unwrap();
+    assert_eq!(status.code(), Some(86));
+    assert!(day_path(&dest, day).is_file());
+    assert!(!day_path(&dest, day).with_extension("proc").exists());
+    assert_eq!(fs::read(primary.with_extension("proc")).unwrap(), processes);
+    // The saved setting still selects the source. The destination finishes
+    // publication when next opened, even with the original source offline.
+    for path in [&source, &dest] {
+        prepare_directory(path, None).unwrap();
+        drop(HistoryRecorder::start(path.clone()));
+        assert_eq!(
+            serde_json::to_value(frame(path, ts).unwrap()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            fs::read(day_path(path, day).with_extension("proc")).unwrap(),
+            processes
+        );
+    }
+    assert_eq!(fs::read(&existing).unwrap(), existing_bytes);
+    fs::remove_dir_all(source).unwrap();
+    fs::remove_dir_all(dest).unwrap();
+}
+
+#[test]
+#[ignore = "child process for the migration interruption tests"]
+fn migration_exit_child() {
+    let Some(source) = std::env::var_os("ARGUS_MOVE_TEST_SOURCE").map(PathBuf::from) else {
+        return;
+    };
+    let dest = PathBuf::from(std::env::var_os("ARGUS_MOVE_TEST_DEST").unwrap());
+    let primary = std::env::var_os("ARGUS_MOVE_TEST_PRIMARY").unwrap();
+    migration::move_with(
+        &source,
+        &dest,
+        || Ok(()),
+        |name| {
+            if name == primary {
+                std::process::exit(86);
+            }
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn interrupted_move_on_same_volume() {
+    interrupt_after_primary("interrupted-same", &std::env::temp_dir(), true);
+}
+
+#[test]
+#[ignore = "requires ARGUS_HISTORY_TEST_SECOND_VOLUME on a second writable volume"]
+fn interrupted_move_across_volumes() {
+    let second = PathBuf::from(std::env::var_os("ARGUS_HISTORY_TEST_SECOND_VOLUME").unwrap());
+    interrupt_after_primary("interrupted-cross", &second, false);
+}
+
+#[test]
+fn rollback_during_recording_and_after_restart_keeps_sorted_frames() {
+    let dir = temp_dir("rollback-clock");
+    let write = |samples: &[i64]| {
+        let mut rec = HistoryRecorder::new(dir.clone());
+        for &n in samples {
+            rec.record(&snapshot(
+                BASE + n * FRAME_MS,
+                n as f32,
+                vec![proc(1, "p", 1., 4096)],
+            ));
+        }
+    };
+    write(&[3, 4, 2, 5]);
+    write(&[1, 2, 3, 4, 5, 6]);
+    let idx = index(&day_path(&dir, DAY)).unwrap();
+    assert!(!idx.disordered);
+    assert_eq!(
+        idx.frames
+            .iter()
+            .map(|f| i64::from(f.0))
+            .collect::<Vec<_>>(),
+        [3, 4, 5, 6].map(|n| n * FRAME_MS)
+    );
+    assert_eq!(
+        frame(&dir, BASE + 4 * FRAME_MS).unwrap().system["cpu"],
+        Some(4.)
+    );
+    minute::merge(&dir, DAY, 20).unwrap();
+    assert_eq!(frame(&dir, BASE).unwrap().system["cpu"], Some(4.5));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn legacy_disordered_day_queries_and_merges_past_the_overlap() {
+    let dir = temp_dir("rollback-existing");
+    sample_day(&dir, DAY);
+    let path = day_path(&dir, DAY);
+    let mut bytes = fs::read(&path).unwrap();
+    let mut frames = Vec::new();
+    packets(&bytes, 5, |at, tag, _| {
+        if tag == FRAME {
+            frames.push(at + 5);
+        }
+        true
+    });
+    bytes[frames[12]..frames[12] + 8].copy_from_slice(&(BASE + 2 * FRAME_MS).to_le_bytes());
+    fs::write(&path, bytes).unwrap();
+    fs::remove_file(path.with_extension("idx")).unwrap();
+    let mut cp = Checkpoints::open(path.with_extension("idx"), &fs::read(&path).unwrap()).unwrap();
+    cp.commit().unwrap();
+    drop(cp);
+    let idx = index(&path).unwrap();
+    assert!(idx.disordered);
+    assert_eq!(idx.frames.len(), 23);
+    let query = series(
+        &dir,
+        BASE + 11 * FRAME_MS,
+        BASE + 14 * FRAME_MS,
+        1000,
+        BASE,
+        &["cpu".into()],
+    );
+    assert_eq!(query.ts, [11, 13, 14].map(|n| BASE + n * FRAME_MS));
+    assert_eq!(
+        table(&dir, BASE, BASE + 2 * 60_000, "cpu", 1).recorded,
+        23 * FRAME_MS
+    );
+    assert_eq!(
+        frame(&dir, BASE + 13 * FRAME_MS).unwrap().system["cpu"],
+        Some(1.)
+    );
+    minute::merge(&dir, DAY, 20).unwrap();
+    assert_eq!(frame(&dir, BASE + 60_000).unwrap().system["cpu"], Some(6.));
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

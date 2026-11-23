@@ -269,7 +269,24 @@ pub fn run() -> anyhow::Result<()> {
     let local_data = host.path().app_local_data_dir()?;
     let saved = host.state::<SettingsStore>().get();
     let default = local_data.join("history");
-    let history = saved.history_dir.clone().unwrap_or_else(|| default.clone());
+    let configured = saved.history_dir.as_deref().unwrap_or(&default);
+    let history =
+        match argus_core::history::prepare_directory(&default, saved.history_dir.as_deref()) {
+            Ok(actual) => {
+                if actual != configured
+                    && let Err(e) = host
+                        .state::<SettingsStore>()
+                        .update(|s| s.history_dir = Some(actual.clone()))
+                {
+                    argus_core::diagnostics::file_failure("history save directory", &actual, &e);
+                }
+                actual
+            }
+            Err(e) => {
+                argus_core::diagnostics::file_failure("history prepare directory", configured, &e);
+                configured.to_owned()
+            }
+        };
     let record_history =
         !options.test || std::env::var_os("ARGUS_TEST_HISTORY").is_some_and(|v| v == "1");
     // Before the interface restores a disk's details page and reads for it.

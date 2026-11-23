@@ -92,7 +92,7 @@ fn replay(root: &Path, mut snapshots: Vec<Snapshot>, merge_day: bool) -> io::Res
         }
     }
     let dir = root.join("month");
-    fs::create_dir(&dir)?;
+    history::prepare_directory(&dir, None)?;
     std::thread::scope(|scope| -> io::Result<()> {
         let mut jobs = Vec::new();
         for lane in 0..4.min(day_count) {
@@ -101,7 +101,7 @@ fn replay(root: &Path, mut snapshots: Vec<Snapshot>, merge_day: bool) -> io::Res
             jobs.push(scope.spawn(move || -> io::Result<()> {
                 for day in (lane..day_count).step_by(4) {
                     let work = dir.join(format!("day-{day}"));
-                    fs::create_dir(&work)?;
+                    history::prepare_directory(&work, None)?;
                     let mut rec = HistoryRecorder::new(work.clone());
                     for i in 0..DAY / FRAME_MS {
                         let n = samples.len();
@@ -113,9 +113,11 @@ fn replay(root: &Path, mut snapshots: Vec<Snapshot>, merge_day: bool) -> io::Res
                     drop(rec);
                     for file in fs::read_dir(&work)? {
                         let file = file?;
-                        fs::rename(file.path(), dir.join(file.file_name()))?;
+                        if file.file_name() != ".argus-history" {
+                            fs::rename(file.path(), dir.join(file.file_name()))?;
+                        }
                     }
-                    fs::remove_dir(work)?;
+                    fs::remove_dir_all(work)?;
                 }
                 Ok(())
             }));
@@ -225,7 +227,7 @@ fn main() -> io::Result<()> {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("argus-history-{}-{stamp}", std::process::id()));
     fs::create_dir(&root)?;
-    let dir = root.join("live");
+    let dir = history::prepare_directory(&root.join("live"), None)?;
     let mut collector = Collector::new(MetaStore::new());
     let mut rec = HistoryRecorder::new(dir.clone());
     let mut times = Vec::new();

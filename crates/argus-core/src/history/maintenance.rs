@@ -10,7 +10,10 @@ pub(super) static PUBLICATION: std::sync::RwLock<()> = std::sync::RwLock::new(()
 // DELETE_ON_CLOSE releases the cross-instance lease on normal exit or a killed
 // worker. Exclusive sharing prevents another build from removing its scratch
 // primary between flush and publication.
-pub(super) fn directory_lease(dir: &Path) -> io::Result<fs::File> {
+pub(super) fn directory_lease(dir: &Path) -> io::Result<(fs::File, fs::File)> {
+    Ok((owned_directory(dir)?, lock_directory(dir)?))
+}
+fn lock_directory(dir: &Path) -> io::Result<fs::File> {
     use std::os::windows::fs::OpenOptionsExt;
     use windows::Win32::Storage::FileSystem::FILE_FLAG_DELETE_ON_CLOSE;
     let path = dir.join(".argus-history-maintenance.lock");
@@ -46,7 +49,7 @@ pub fn maintain_until(
 ) -> io::Result<()> {
     maintain_at(dir, options, today(), active, cancelled)
 }
-pub(super) fn maintain_at(
+pub fn maintain_at(
     dir: &Path,
     options: HistoryOptions,
     today: i64,
@@ -59,6 +62,13 @@ pub(super) fn maintain_at(
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     };
+    if let Err(e) = crate::watch::WatchRecorder::prune_saved(dir) {
+        crate::diagnostics::file_failure(
+            "observation retention",
+            &dir.join(crate::watch::FILE_NAME),
+            &e,
+        );
+    }
     let age = match options.detail {
         HistoryDetail::Full => None,
         HistoryDetail::Minute7 => Some(7),
@@ -153,50 +163,6 @@ pub(super) fn remove_sidecars(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-// Resolve existing junctions even when the destination itself does not exist.
-fn resolved(path: &Path) -> io::Result<PathBuf> {
-    if !path.is_absolute() {
-        return Err(invalid());
-    }
-    let absolute = std::path::absolute(path)?;
-    let mut missing = Vec::new();
-    let mut base = absolute.as_path();
-    let mut real = loop {
-        match base.canonicalize() {
-            Ok(real) => break real,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                missing.push(base.file_name().ok_or_else(invalid)?);
-                base = base.parent().ok_or_else(invalid)?;
-            }
-            Err(e) => return Err(e),
-        }
-    };
-    for part in missing.iter().rev() {
-        real.push(part);
-    }
-    Ok(real)
-}
-pub fn validate_directory(current: &Path, destination: &Path) -> io::Result<()> {
-    let resolve = |p: &Path| -> io::Result<PathBuf> {
-        Ok(PathBuf::from(
-            resolved(p)?.to_str().ok_or_else(invalid)?.to_lowercase(),
-        ))
-    };
-    let a = resolve(current)?;
-    let b = resolve(destination)?;
-    if a.starts_with(&b) || b.starts_with(&a) {
-        return Err(invalid());
-    }
-    fs::create_dir_all(destination)?;
-    let id = unsafe { windows::Win32::System::Com::CoCreateGuid() }.map_err(io::Error::other)?;
-    let probe = destination.join(format!(".argus-write-{id:?}"));
-    let mut file = fs::File::create_new(&probe)?;
-    let result = file.write_all(b"Argus").and_then(|()| file.sync_all());
-    drop(file);
-    let cleanup = fs::remove_file(probe);
-    result.and(cleanup)
-}
-
 pub(super) fn rename_file(
     source: &Path,
     destination: &Path,
@@ -211,88 +177,4 @@ pub(super) fn rename_file(
     let a = wide(source);
     let b = wide(destination);
     unsafe { MoveFileExW(PCWSTR(a.as_ptr()), PCWSTR(b.as_ptr()), flags) }
-}
-fn transfer(source: &Path, destination: &Path) -> io::Result<()> {
-    // No REPLACE_EXISTING or COPY_ALLOWED: a collision never overwrites data,
-    // and a cross-volume move goes through the verified copy below.
-    let renamed = rename_file(source, destination, MOVE_FILE_FLAGS(0));
-    if let Err(err) = renamed {
-        if err.code()
-            != windows::core::HRESULT::from_win32(
-                windows::Win32::Foundation::ERROR_NOT_SAME_DEVICE.0,
-            )
-        {
-            return Err(err.into());
-        }
-    } else {
-        return Ok(());
-    }
-
-    let mut input = fs::File::open(source)?;
-    let size = input.metadata()?.len();
-    let mut out = fs::File::create_new(destination)?;
-    let copied = (|| {
-        if io::copy(&mut input, &mut out)? != size || out.metadata()?.len() != size {
-            return Err(invalid());
-        }
-        out.sync_all()
-    })();
-    drop((out, input));
-    let result = copied.and_then(|()| fs::remove_file(source));
-    if result.is_err() {
-        remove_if_exists(destination)?;
-    }
-    result
-}
-
-/// The caller has closed both recorder handles. Include the settings write
-/// in the transaction so a persistence failure also restores the old files.
-pub fn move_records<T>(
-    source: &Path,
-    destination: &Path,
-    save: impl FnOnce() -> io::Result<T>,
-) -> io::Result<T> {
-    let _source_lease = if source.try_exists()? {
-        Some(directory_lease(source)?)
-    } else {
-        None
-    };
-    let _destination_lease = directory_lease(destination)?;
-    let mut moved = Vec::new();
-    let result = (|| {
-        let mut names = Vec::new();
-        match fs::read_dir(source) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
-            entries => {
-                for entry in entries? {
-                    let entry = entry?;
-                    let name = entry.file_name();
-                    if owned_day(&name).is_some() || name.to_str() == Some(crate::watch::FILE_NAME)
-                    {
-                        if !entry.file_type()?.is_file() {
-                            return Err(invalid());
-                        }
-                        names.push(name);
-                    }
-                }
-            }
-        }
-        names.sort();
-        for name in names {
-            transfer(&source.join(&name), &destination.join(&name))?;
-            moved.push(name);
-        }
-        save()
-    })();
-    if result.is_err() {
-        for name in moved.into_iter().rev() {
-            let original = source.join(&name);
-            if let Err(e) = transfer(&destination.join(&name), &original) {
-                crate::diagnostics::file_failure("history move rollback", &original, &e);
-            }
-        }
-    }
-    forget(source);
-    forget(destination);
-    result
 }

@@ -97,8 +97,13 @@ mod events;
 pub use events::{HistoryEvent, HistoryEvents, HistoryTop, ResourceKind, events};
 mod options;
 pub use options::*;
+mod directory;
+pub(crate) use directory::owned_directory;
+pub use directory::{prepare_directory, select_directory, validate_directory};
 mod maintenance;
-pub use maintenance::{maintain, maintain_until, move_records, validate_directory};
+pub use maintenance::{maintain, maintain_at, maintain_until};
+mod migration;
+pub use migration::move_records;
 mod minute;
 use minute::{MINUTE_MAGIC, MINUTE_MS, MINUTE_VERSION, Minute};
 
@@ -271,9 +276,11 @@ struct Window {
 }
 
 struct DayFile {
+    recorded_until: Option<i64>,
     day: i64,
     out: BufWriter<File>,
     writer: DayWriter,
+    _owner: fs::File,
 }
 
 pub struct HistoryRecorder {
@@ -344,6 +351,14 @@ impl HistoryRecorder {
         if self.stopped || !(-719_528..2_932_897).contains(&s.timestamp.div_euclid(DAY_MS)) {
             return;
         }
+        if self
+            .live
+            .samples
+            .back()
+            .is_some_and(|prev| s.timestamp < prev.ts)
+        {
+            return;
+        }
         let changed = self.pending_recording.take();
         if let Some(recording) = changed {
             self.window.interval = s
@@ -376,6 +391,14 @@ impl HistoryRecorder {
                 &day_path(&self.dir, slot.div_euclid(DAY_MS)),
                 &error,
             );
+        }
+        if self
+            .file
+            .as_ref()
+            .and_then(|file| file.recorded_until)
+            .is_some_and(|end| s.timestamp < end)
+        {
+            return;
         }
         if self
             .live
@@ -526,7 +549,6 @@ impl HistoryRecorder {
             self.measurement.save(&self.dir, old.day);
             self.measurement = Measurement::default();
         }
-        fs::create_dir_all(&self.dir)?;
         let mut file = open_day(&self.dir, day)?;
         forget(&self.dir);
         file.marker(1, ts, boot, awake)?;
@@ -556,7 +578,8 @@ impl HistoryRecorder {
         }
         let w = std::mem::take(&mut self.window);
         match self.write(&w) {
-            Ok(()) => {
+            Ok(false) => (),
+            Ok(true) => {
                 self.live.frames.push_back(w.start);
                 self.live.previous = Some(Stamp {
                     ts: w.start,
@@ -621,9 +644,12 @@ impl HistoryRecorder {
         self.live = Live::default();
         self.file = None;
     }
-    fn write(&mut self, w: &Window) -> io::Result<()> {
+    fn write(&mut self, w: &Window) -> io::Result<bool> {
         self.open(w.start, w.boot, w.awake)?;
         let file = self.file.as_mut().ok_or_else(invalid)?;
+        if file.recorded_until.is_some_and(|end| w.start < end) {
+            return Ok(false);
+        }
         let picked = select(
             w.procs.values().filter(|p| p.measured).collect(),
             self.recording.processes,
@@ -650,9 +676,10 @@ impl HistoryRecorder {
             &picked,
             self.recording.groups,
         )?;
+        file.recorded_until = Some(w.start + w.span());
         self.measurement.add(self.recording, size);
         self.live.measurement = self.measurement;
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -1966,6 +1993,7 @@ struct Index {
     version: u8,
     valid: usize,
     limited: bool,
+    disordered: bool,
     catalog: Catalog,
     ids: Vec<Identity>,
     /// Program names by id (`PROGRAM`).
@@ -2106,7 +2134,9 @@ impl Index {
                 self.masks.push((self.frames.len(), p.to_vec()));
             }
             SYSTEM_ROLL => {
-                if let Some(r) = RollRef::parse(p, self) {
+                if !self.disordered
+                    && let Some(r) = RollRef::parse(p, self)
+                {
                     self.summaries.push(r);
                 }
             }
@@ -2158,6 +2188,13 @@ impl Index {
                     return None;
                 }
                 self.proc_end = end;
+                // Keep physical offsets for the following records, but expose
+                // the first pass through a repeated wall-clock interval.
+                if self.last.is_some_and(|s| f.ts <= s.ts) {
+                    self.disordered = true;
+                    self.summaries.clear();
+                    return Some(());
+                }
                 self.stamp(
                     Stamp {
                         ts: f.ts,
@@ -2192,6 +2229,7 @@ fn open_writable(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
+    let owner = owned_directory(dir)?;
     let path = day_path(dir, day);
     let mut file = open_writable(&path)?;
     let mut bytes = read_bounded(&mut file)?;
@@ -2273,6 +2311,8 @@ fn open_day(dir: &Path, day: i64) -> io::Result<DayFile> {
     file.set_len(idx.valid as u64)?;
     file.seek(SeekFrom::End(0))?;
     Ok(DayFile {
+        _owner: owner,
+        recorded_until: idx.last.map(|s| s.ts + s.span),
         out: BufWriter::new(file),
         writer,
         day,
@@ -3538,7 +3578,8 @@ impl Roll {
         let first = i64::from_le_bytes(field(p, 0)?);
         let end = i64::from_le_bytes(field(p, 8)?);
         let recorded = i64::from_le_bytes(field(p, 16)?);
-        if first.div_euclid(DAY_MS) != idx.day
+        if idx.disordered
+            || first.div_euclid(DAY_MS) != idx.day
             || end <= first
             || first.div_euclid(PROCESS_ROLL_MS) != (end - 1).div_euclid(PROCESS_ROLL_MS)
             || !(1..=end.checked_sub(first)?).contains(&recorded)
@@ -4215,6 +4256,10 @@ impl Index {
         ) else {
             return false;
         };
+        // Fall back to the primary scan, which can omit individual repeated frames.
+        if self.last.is_some_and(|s| first.ts <= s.ts) {
+            return false;
+        }
         let base = self.valid;
         let width =
             5 + FRAME_PREFIX + self.catalog.bytes + if counted { 5 + PROGRAMS_LEN } else { 0 };
@@ -4288,6 +4333,7 @@ mod tests {
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("argus-history-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
+        prepare_directory(&dir, None).unwrap();
         dir
     }
 

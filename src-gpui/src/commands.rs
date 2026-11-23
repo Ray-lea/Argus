@@ -1036,14 +1036,16 @@ pub fn history_move(
             .map_err(|_| tr!("history.error.save"))?;
         return Ok(settings_view(&app));
     }
-    history::validate_directory(&current, &destination).map_err(|e| {
-        argus_core::diagnostics::file_failure("history validate directory", &destination, &e);
-        tr!("history.error.directory")
-    })?;
+    let destination = history::select_directory(&current, &location.default, requested.as_deref())
+        .map_err(|e| {
+            argus_core::diagnostics::file_failure("history validate directory", &destination, &e);
+            tr!("history.error.directory")
+        })?;
     let state = app.state::<AppState>();
     if location.recording_allowed {
         pause_history(&state, &current, &saved)?;
     }
+    let requested = requested.map(|_| destination.clone());
     let mut save_failed = false;
     let save = || {
         store
@@ -1526,7 +1528,7 @@ mod tests {
         let base = 1_800_000_000_000i64;
         let dir =
             std::env::temp_dir().join(format!("argus-history-dispatch-{}", std::process::id()));
-        std::fs::create_dir(&dir).unwrap();
+        history::prepare_directory(&dir, None).unwrap();
         let host = Host::new("dev.argus.taskmanager.test.history-dispatch".into());
         host.manage(HistoryDir {
             path: std::sync::RwLock::new(dir.clone()),
@@ -1640,7 +1642,7 @@ mod tests {
         ));
         let default = root.join("default");
         let other = root.join("other");
-        std::fs::create_dir_all(&default).unwrap();
+        history::prepare_directory(&default, None).unwrap();
         let store = SettingsStore::load(root.join("settings.json"));
         let host = Host::new("dev.argus.taskmanager.test.history-options".into());
         let meta = argus_core::MetaStore::new();
@@ -1703,7 +1705,7 @@ mod tests {
             "watch_process",
             json!({"action":{"op":"start","pid":std::process::id(),"createTime":created,"name":"test"}}),
         );
-        std::fs::create_dir_all(&other).unwrap();
+        history::prepare_directory(&default, Some(&other)).unwrap();
         let existing = std::fs::read_dir(&default)
             .unwrap()
             .flatten()
@@ -1734,7 +1736,7 @@ mod tests {
             1
         );
         assert!(other.join("program-watch.v1.bin").is_file());
-        assert_eq!(std::fs::read_dir(&default).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(&default).unwrap().count(), 1);
         let range = ask("history_range", json!({}));
         let frame = ask("history_frame", json!({"ts":range[1]}));
         assert!(frame["system"].get("cpuKernel").is_none());
@@ -1766,6 +1768,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(!expired.exists());
+        let shared = root.join("shared");
+        std::fs::create_dir(&shared).unwrap();
+        std::fs::write(shared.join("notes"), b"keep").unwrap();
+        let view = ask("history_move", json!({"dir":shared,"moveRecords":false}));
+        let actual = shared.join("Argus History");
+        assert_eq!(view["historyDir"], json!(actual));
+        assert_eq!(ask("history_usage", json!({}))["dir"], json!(actual));
+        assert_eq!(
+            SettingsStore::load(root.join("settings.json"))
+                .get()
+                .history_dir,
+            Some(actual)
+        );
         host.state::<AppState>().sampler.shutdown();
         std::fs::remove_dir_all(root).unwrap();
     }

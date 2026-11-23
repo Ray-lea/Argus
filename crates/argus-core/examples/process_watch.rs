@@ -146,7 +146,7 @@ fn main() {
         _ => {}
     }
     let dir = std::env::temp_dir().join(format!("argus-watch-real-{}", std::process::id()));
-    fs::create_dir(&dir).unwrap();
+    argus_core::history::prepare_directory(&dir, None).unwrap();
     let mut target = Helper::spawn("memory-helper");
     let mut competitor = Helper::spawn("competitor");
     let pid = target.child.id();

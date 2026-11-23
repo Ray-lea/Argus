@@ -230,6 +230,7 @@ pub enum WatchError {
 }
 
 pub struct WatchRecorder {
+    _owner: fs::File,
     dir: PathBuf,
     watch: Option<program::ProgramWatch>,
 }
@@ -237,13 +238,19 @@ pub struct WatchRecorder {
 impl WatchRecorder {
     pub fn suspend(mut self) -> impl FnOnce(PathBuf) -> Result<Self, WatchError> {
         let watch = self.watch.take().map(program::ProgramWatch::suspend);
+        drop(self);
         move |dir| {
-            if let Some(resume) = watch {
-                self.watch = Some(resume(&dir)?);
-            }
-            self.dir = dir;
-            Ok(self)
+            let owner = crate::history::owned_directory(&dir).map_err(|_| WatchError::Storage)?;
+            Ok(Self {
+                watch: watch.map(|resume| resume(&dir)).transpose()?,
+                dir,
+                _owner: owner,
+            })
         }
+    }
+
+    pub(crate) fn prune_saved(dir: &std::path::Path) -> std::io::Result<()> {
+        store::Store::prune_saved(&dir.join(FILE_NAME), now_ms())
     }
 
     pub fn storage_bytes(dir: &std::path::Path) -> u64 {
@@ -251,14 +258,12 @@ impl WatchRecorder {
     }
 
     pub fn delete_saved(dir: &std::path::Path) -> Result<(), WatchError> {
-        match fs::remove_file(dir.join(FILE_NAME)) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(_) => Err(WatchError::Storage),
-        }
+        let _owner = crate::history::owned_directory(dir).map_err(|_| WatchError::Storage)?;
+        store::Store::delete_saved(&dir.join(FILE_NAME))
     }
 
     pub fn open(dir: PathBuf) -> Result<Self, WatchError> {
+        let _owner = crate::history::owned_directory(&dir).map_err(|_| WatchError::Storage)?;
         let watch = if dir
             .join(FILE_NAME)
             .try_exists()
@@ -268,7 +273,7 @@ impl WatchRecorder {
         } else {
             None
         };
-        Ok(Self { dir, watch })
+        Ok(Self { dir, watch, _owner })
     }
 
     pub fn view(&self) -> Option<WatchView> {
@@ -410,6 +415,7 @@ mod tests {
     fn observes_below_top_and_never_attaches_to_a_replacement() {
         let dir = folder("identity");
         let _ = fs::remove_dir_all(&dir);
+        crate::history::prepare_directory(&dir, None).unwrap();
         let mut rec = WatchRecorder::open(dir.clone()).unwrap();
         rec.action(own_start()).unwrap();
         assert!(
@@ -436,6 +442,7 @@ mod tests {
         assert_eq!(rec.view().unwrap().points[1].state, WatchState::Gap);
         assert_eq!(rec.view().unwrap().points[1].memory, None);
         rec.action(WatchAction::Stop).unwrap();
+        drop(rec);
         let mut reopened = WatchRecorder::open(dir.clone()).unwrap();
         assert_eq!(reopened.view().unwrap().state, WatchState::Stopped);
         assert!(matches!(
@@ -445,13 +452,15 @@ mod tests {
         reopened.action(WatchAction::Delete).unwrap();
         assert!(!dir.join(FILE_NAME).exists());
         assert!(reopened.view().is_none());
-        fs::remove_dir(dir).unwrap();
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn samples_between_disk_writes_survive_a_folder_move_and_expire_after_stop() {
         let dir = folder("recent-cadence");
         let _ = fs::remove_dir_all(&dir);
+        crate::history::prepare_directory(&dir, None).unwrap();
         let mut rec = WatchRecorder::open(dir.clone()).unwrap();
         rec.action(own_start()).unwrap();
         let view = rec.view().unwrap();
@@ -509,6 +518,7 @@ mod tests {
     fn restart_is_interrupted_and_invalid_store_can_be_deleted() {
         let dir = folder("restart");
         let _ = fs::remove_dir_all(&dir);
+        crate::history::prepare_directory(&dir, None).unwrap();
         let mut rec = WatchRecorder::open(dir.clone()).unwrap();
         rec.action(own_start()).unwrap();
         let snapshot = sample(&rec.view().unwrap());
@@ -530,14 +540,14 @@ mod tests {
         ));
         WatchRecorder::delete_saved(&dir).unwrap();
         assert!(!dir.join(FILE_NAME).exists());
-        fs::remove_dir(dir).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn observation_without_program_identity_stays_valid_and_keeps_exited_state() {
         let dir = folder("no-program");
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir(&dir).unwrap();
+        crate::history::prepare_directory(&dir, None).unwrap();
         let mut store = store::Store::create(
             &dir.join(FILE_NAME),
             store::Metadata {
@@ -573,7 +583,8 @@ mod tests {
         assert!(view.program.is_none());
         assert_eq!(view.state, WatchState::Exited);
         assert_eq!(view.points.len(), 2);
+        drop(recorder);
         WatchRecorder::delete_saved(&dir).unwrap();
-        fs::remove_dir(dir).unwrap();
+        fs::remove_dir_all(dir).unwrap();
     }
 }

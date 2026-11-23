@@ -5,6 +5,7 @@ use std::{
     collections::VecDeque,
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
+    os::windows::fs::OpenOptionsExt,
     path::Path,
 };
 
@@ -177,6 +178,9 @@ impl Entry {
     }
 }
 
+// Opening a saved store also prunes it. Let an in-process observer wait for
+// that short-lived writer; an already open observer prunes its own records.
+static OPEN: std::sync::Mutex<()> = std::sync::Mutex::new(());
 impl Store {
     pub fn create(path: &Path, meta: Metadata) -> Result<Self, WatchError> {
         let encoded = serde_json::to_vec(&meta).map_err(|_| WatchError::Invalid)?;
@@ -193,6 +197,7 @@ impl Store {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
+            .share_mode(1)
             .create_new(true)
             .open(path)
             .map_err(|_| WatchError::Storage)?;
@@ -219,11 +224,42 @@ impl Store {
     }
 
     pub fn open(path: &Path, now: i64) -> Result<Self, WatchError> {
-        let mut file = OpenOptions::new()
+        let _guard = OPEN.lock().unwrap_or_else(|e| e.into_inner());
+        let file = Self::open_writer(path).map_err(|_| WatchError::Storage)?;
+        Self::read(file, now)
+    }
+
+    fn open_writer(path: &Path) -> std::io::Result<File> {
+        OpenOptions::new()
             .read(true)
             .write(true)
+            .share_mode(1)
             .open(path)
-            .map_err(|_| WatchError::Storage)?;
+    }
+
+    pub(super) fn delete_saved(path: &Path) -> Result<(), WatchError> {
+        let _guard = OPEN.lock().unwrap_or_else(|e| e.into_inner());
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err(WatchError::Storage),
+        }
+    }
+
+    pub(super) fn prune_saved(path: &Path, now: i64) -> std::io::Result<()> {
+        let _guard = OPEN.lock().unwrap_or_else(|e| e.into_inner());
+        match Self::open_writer(path) {
+            Ok(file) => Self::read(file, now)
+                .map(drop)
+                .map_err(|_| std::io::ErrorKind::InvalidData.into()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound || e.raw_os_error() == Some(32) => {
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn read(mut file: File, now: i64) -> Result<Self, WatchError> {
         let size = file.metadata().map_err(|_| WatchError::Storage)?.len();
         if !(HEADER..=MAX_BYTES).contains(&size) {
             return Err(WatchError::Invalid);
@@ -460,6 +496,29 @@ mod tests {
         assert!(!store.damaged);
         drop(store);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn maintenance_prunes_only_expired_slots_without_opening_a_view() {
+        let dir = path("background");
+        crate::history::prepare_directory(&dir, None).unwrap();
+        let file = dir.join(FILE_NAME);
+        let now = super::super::now_ms();
+        let mut store = Store::create(&file, meta()).unwrap();
+        store
+            .push(17, 100, point(now - RETENTION_MS - 60_000, 12345))
+            .unwrap();
+        store.push(18, 200, point(now - 120_000, 23456)).unwrap();
+        let before = std::fs::read(&file).unwrap();
+        let run = || crate::history::maintain(&dir, Default::default(), i64::MIN).unwrap();
+        run();
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+        drop(store);
+        run();
+        let mut expected = before;
+        expected[HEADER as usize..(HEADER + RECORD) as usize].fill(0);
+        assert_eq!(std::fs::read(file).unwrap(), expected);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

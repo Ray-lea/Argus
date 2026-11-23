@@ -95,11 +95,13 @@ fn maintenance_due(previous: Option<(i64, Instant)>, day: i64, now: Instant) -> 
     })
 }
 enum MaintenanceJob {
-    Run(PathBuf, history::HistoryOptions, i64, u64),
+    Run(PathBuf, history::HistoryOptions, i64, i64, u64),
     Barrier(Sender<()>),
 }
 struct Maintenance {
     tx: Sender<MaintenanceJob>,
+    dir: Option<PathBuf>,
+    last: Option<(i64, Instant)>,
     generation: Arc<std::sync::atomic::AtomicU64>,
 }
 impl Maintenance {
@@ -123,12 +125,12 @@ impl Maintenance {
                 }
                 while let Ok(job) = rx.recv() {
                     match job {
-                        MaintenanceJob::Run(path, options, day, version) => {
+                        MaintenanceJob::Run(path, options, today, active, version) => {
                             let cancelled =
                                 || current.load(std::sync::atomic::Ordering::Acquire) != version;
                             if !cancelled()
                                 && let Err(e) =
-                                    history::maintain_until(&path, options, day, cancelled)
+                                    history::maintain_at(&path, options, today, active, cancelled)
                             {
                                 argus_core::diagnostics::file_failure(
                                     "history maintenance",
@@ -146,16 +148,40 @@ impl Maintenance {
         {
             argus_core::diagnostics::warn("history worker", argus_core::diagnostics::io(&e));
         }
-        Self { tx, generation }
+        Self {
+            tx,
+            generation,
+            dir: None,
+            last: None,
+        }
     }
-    fn run(&self, dir: PathBuf, options: history::HistoryOptions, day: i64) {
+    fn tick(
+        &mut self,
+        options: history::HistoryOptions,
+        ts: i64,
+        now: Instant,
+        recorder: Option<&HistoryRecorder>,
+    ) {
+        let today = ts.div_euclid(86_400_000);
+        let Some(dir) = &self.dir else { return };
+        if !maintenance_due(self.last, today, now) {
+            return;
+        }
+        self.last = Some((today, now));
+        let active = recorder
+            .and_then(HistoryRecorder::active_day)
+            .unwrap_or(i64::MIN);
         let generation = self
             .generation
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel)
             .wrapping_add(1);
-        let _ = self
-            .tx
-            .send(MaintenanceJob::Run(dir, options, day, generation));
+        let _ = self.tx.send(MaintenanceJob::Run(
+            dir.clone(),
+            options,
+            today,
+            active,
+            generation,
+        ));
     }
     fn barrier(&self, reply: Sender<()>) {
         self.generation
@@ -308,9 +334,8 @@ impl Sampler {
                 let mut history: Option<HistoryRecorder> = None;
                 let mut watch: Option<WatchRecorder> = None;
                 let mut suspended_watch = None;
-                let maintenance = Maintenance::start();
+                let mut maintenance = Maintenance::start();
                 let mut history_options = history::HistoryOptions::default();
-                let mut last_maintenance: Option<(i64, Instant)> = None;
                 let mut interval = DEFAULT_INTERVAL;
                 let mut minimized = BACKGROUND_INTERVAL;
                 let mut tray = BACKGROUND_INTERVAL;
@@ -368,18 +393,19 @@ impl Sampler {
                             if let Some(rec) = &mut history {
                                 rec.configure(options.recording);
                             }
-                            let day = history
-                                .as_ref()
-                                .and_then(HistoryRecorder::active_day)
-                                .unwrap_or(i64::MIN);
-                            maintenance.run(dir, options, day);
-                            last_maintenance = Some((day, Instant::now()));
+                            maintenance.dir = Some(dir);
+                            maintenance.last = None;
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as i64;
+                            maintenance.tick(options, ts, Instant::now(), history.as_ref());
                             continue;
                         }
                         Ok(Control::PauseHistory(reply)) => {
                             drop(history.take());
                             suspended_watch = watch.take().map(WatchRecorder::suspend);
-                            last_maintenance = None;
+                            maintenance.dir = None;
                             maintenance.barrier(reply);
                             continue;
                         }
@@ -490,13 +516,8 @@ impl Sampler {
                     rules.observe(&snapshot.processes);
                     if let Some(recorder) = &mut history {
                         recorder.record(&snapshot);
-                        if let Some(day) = recorder.active_day()
-                            && maintenance_due(last_maintenance, day, Instant::now())
-                        {
-                            maintenance.run(recorder.directory().into(), history_options, day);
-                            last_maintenance = Some((day, Instant::now()));
-                        }
                     }
+                    maintenance.tick(history_options, snapshot.timestamp, now, history.as_ref());
                     if let Some(recorder) = &mut watch
                         && recorder.record_at_interval(&snapshot, stale_after).is_err()
                     {
@@ -596,6 +617,28 @@ mod tests {
             start + Duration::from_secs(3600)
         ));
         assert!(maintenance_due(previous, 101, start));
+    }
+
+    #[test]
+    fn disabled_recorder_expires_history_at_midnight() {
+        let dir =
+            std::env::temp_dir().join(format!("argus-disabled-retention-{}", std::process::id()));
+        history::prepare_directory(&dir, None).unwrap();
+        let past = dir.join("1970-01-02.hist");
+        std::fs::write(&past, b"old").unwrap();
+        let mut m = Maintenance::start();
+        m.dir = Some(dir.clone());
+        let mut options = history::HistoryOptions::default();
+        options.limit.days = Some(7);
+        let start = Instant::now();
+        for (ts, exists) in [(8 * 86_400_000 - 1, true), (8 * 86_400_000, false)] {
+            m.tick(options, ts, start, None);
+            let (tx, rx) = mpsc::channel();
+            m.tx.send(MaintenanceJob::Barrier(tx)).unwrap();
+            rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_eq!(past.exists(), exists);
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
