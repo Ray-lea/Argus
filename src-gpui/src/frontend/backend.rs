@@ -153,15 +153,14 @@ impl Desktop {
                 if pending.command == "watch_process" {
                     self.data.remove("watchError");
                     self.data.insert("processWatch".into(), value.clone());
-                    if matches!(
-                        pending.args["action"]["op"].as_str(),
-                        Some("start" | "selectRun" | "delete" | "page")
-                    ) {
-                        self.watch_ui.clear_cursor();
+                    // The lanes draw the run the answer names.
+                    self.watch_sync_run();
+                    if self.page == "history" && self.history_page == "watch" {
+                        self.load_history(window, cx);
                     }
                 }
                 if pending.command == "watch_process" && pending.args["action"]["op"] == "start" {
-                    self.history_page = "watch".into();
+                    self.set_history_page("watch");
                     self.act(Action::Page("history".into()), window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {
@@ -1020,7 +1019,6 @@ impl Desktop {
             }
             Action::ExportTableCsv => self.export_table_csv(window, cx),
             Action::History(command) => self.history_command(command, window, cx),
-            Action::Watch(command) => self.watch_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
         }

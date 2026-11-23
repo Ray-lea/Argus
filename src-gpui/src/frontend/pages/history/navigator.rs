@@ -22,7 +22,8 @@ impl Desktop {
                 None => duration_label(length),
             },
             Range::All => label("history.range.all"),
-            Range::Fixed(..) => label("history.range.custom"),
+            Range::Today => label("history.picker.today"),
+            Range::Since(_) | Range::Fixed(..) => label("history.range.custom"),
         }
     }
 
@@ -37,7 +38,6 @@ impl Desktop {
         let now = self.history_now();
         // The range as drawn: easing with the window on a range switch.
         let (start, stop) = self.history.extent_shown();
-        let easing = (start, stop) != (self.history.extent.0 as f64, self.history.extent.1 as f64);
         let (a, b) = (start.floor() as i64, stop.ceil() as i64);
         let length = (b - a).max(1);
         let follow = self.history.follow;
@@ -155,20 +155,17 @@ impl Desktop {
                             points,
                             (a, b),
                             (start, stop),
-                            (
-                                self.history
-                                    .flow_origin
-                                    .filter(|_| !easing)
-                                    .map_or(start, |(_, navigator)| navigator),
-                                None,
-                            ),
+                            self.history
+                                .flow_windows
+                                .map_or((start, None), |(_, nav)| nav.raster()),
                         );
-                        if self.history.flow_origin.is_some() && !easing {
+                        if let Some((_, nav)) = self.history.flow_windows {
                             // The plot fills the box: its bounds are the box's.
                             let bounds = Rc::new(Cell::new(Bounds::default()));
                             self.history.glides.push(Glide {
                                 plot: curve.clone(),
                                 bounds: bounds.clone(),
+                                start: nav.start,
                             });
                             track = track.child(
                                 canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})
@@ -256,7 +253,9 @@ impl Desktop {
                 }),
             );
         let left = edge_label(a, length, now);
-        let right = if follow {
+        // An observed run that ended ends at its last record, not now.
+        let ended = self.history.run.is_some_and(|run| !run.live);
+        let right = if follow && !ended {
             label("history.now")
         } else {
             edge_label(b, length, now)
@@ -331,7 +330,7 @@ impl Desktop {
         drawn: (f64, Option<f64>),
     ) -> charts::TimePlot {
         let key = navigator_key(reading, points);
-        let end = self.history_clock();
+        let end = self.history_curve_end(points);
         let top = points.highest(&key, Part::Mean, a, b, end).unwrap_or(0.);
         let (low, high) = match reading.axis {
             readings::Axis::Percent => (0., series::nice_top(top, true).max(10.)),
@@ -427,10 +426,13 @@ impl Desktop {
         let span = b - a;
         match mode {
             Brush::Start if self.history.follow => {
-                self.history.set_span(
-                    (b - t.min(b - narrowest)).max(narrowest),
-                    std::time::Duration::ZERO,
-                );
+                let length = self.history.length();
+                let span = if f == 0. {
+                    length
+                } else {
+                    (b - t).clamp(narrowest.min(length), length)
+                };
+                self.history.set_span(span, std::time::Duration::ZERO);
             }
             Brush::Start => {
                 self.history.extent = extent;
@@ -465,6 +467,8 @@ fn navigator_key(reading: &readings::Reading, points: &Points) -> String {
 /// The ranges the pill's drop-down offers, and "Custom…" opening the dialog
 /// for any other.
 const QUICK: [&str; 5] = ["5m", "3h", "1d", "3d", "custom"];
+/// The observation's: one run's records, all of it the longest.
+const WATCH_QUICK: [&str; 5] = ["5m", "1h", "3h", "1d", "all"];
 /// The pill's anchor, and its drop-down's `OpenSelect::id`.
 pub(super) const RANGES: &str = "history-range";
 /// The cache keys of the ranges read ahead while the drop-down is open,
@@ -472,6 +476,15 @@ pub(super) const RANGES: &str = "history-range";
 pub(super) const AHEAD: &str = "historyAhead.";
 
 impl Desktop {
+    /// The drop-down's ranges for the page's source.
+    fn history_quick(&self) -> &'static [&'static str] {
+        if self.history.source == super::state::Source::Watch {
+            &WATCH_QUICK
+        } else {
+            &QUICK
+        }
+    }
+
     /// The range in force among the drop-down's, else "Custom…" (another
     /// length, all of it, today, yesterday or ends of its own).
     fn history_quick_current(&self) -> usize {
@@ -480,10 +493,11 @@ impl Desktop {
             .range
             .id()
             .filter(|_| self.history.range_name.is_none());
-        QUICK
+        let quick = self.history_quick();
+        quick
             .iter()
-            .position(|quick| Some(*quick) == id)
-            .unwrap_or(QUICK.len() - 1)
+            .position(|q| Some(*q) == id)
+            .unwrap_or(quick.len() - 1)
     }
 
     /// Whether the pill's drop-down is open.
@@ -511,7 +525,8 @@ impl Desktop {
         if self.history_ranges_open() {
             self.close_select();
         } else {
-            let options = QUICK
+            let quick = self.history_quick();
+            let options = quick
                 .iter()
                 .map(|id| match *id {
                     "custom" => label("history.range.customMenu"),
@@ -522,7 +537,7 @@ impl Desktop {
                 RANGES,
                 options,
                 Some(self.history_quick_current()),
-                Some(QUICK.len() - 1),
+                Some(quick.len() - 1),
                 Rc::new(Self::history_choose_range),
             );
             self.history_read_ahead(window, cx);
@@ -535,7 +550,7 @@ impl Desktop {
     /// chosen zooms in with its points at once: what each would ask for,
     /// unless kept already.
     fn history_read_ahead(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.options.fixture.is_some() {
+        if self.options.fixture.is_some() || self.history.source != super::state::Source::System {
             return;
         }
         let width = self.history_plot_width(window);
@@ -568,7 +583,7 @@ impl Desktop {
     }
 
     fn history_choose_range(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        match QUICK.get(index) {
+        match self.history_quick().get(index) {
             Some(&"custom") => self.history_command(Command::Picker, window, cx),
             Some(id) => self.history_command(Command::Range(id), window, cx),
             None => {}

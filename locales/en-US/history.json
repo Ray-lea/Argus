@@ -12,18 +12,15 @@
   "off": "History recording is off. <link>Open Settings</link>",
   "watch": {
     "title": "Process observation",
-    "empty": "Choose “Watch process” from a process’s context menu or details to record memory even below the top list.",
+    "empty": "Choose “Watch process” from a process’s context menu or details to keep recording the program’s memory, CPU, GPU, disk and network readings, even below the top list.",
     "openProcesses": "Go to Processes",
     "start": "Watch process",
-    "target": "Watching {name} (PID {pid})",
     "stop": "Stop recording",
     "delete": "Delete recording",
     "note": "Each launch from the same path is recorded separately. Data is kept for up to 7 days. Older data is cleared sooner if storage fills up. Stopping keeps the data. Deleting ends observation and erases the recording. Start observation again after restarting Argus.",
     "metric": {
       "memory": "Private working set",
-      "commit": "Private commit",
-      "runs": "Recorded launches",
-      "points": "Launch samples"
+      "commit": "Private commit"
     },
     "state": {
       "recording": "Recording",
@@ -42,23 +39,21 @@
       "storage": "The recording could not be read or written. Recording has stopped.",
       "invalid": "The recording is damaged or uses an unsupported format. It can be deleted."
     },
-    "chooseRun": "Choose a launch",
-    "launches": "Launches",
-    "run": "{started} · PID {pid} · {state}",
     "runSummary": "Showing {shown}/{total} launches; {points} saved points in this launch",
-    "earlier": "Earlier points",
-    "latest": "Latest points",
     "damaged": "Some records are damaged. The affected intervals are blank.",
     "earlierRuns": "Earlier launches",
     "latestRuns": "Latest launches",
     "waiting": "Waiting for another launch",
     "liveCount": "{count} running",
-    "peak": "Peak {value}",
-    "waitingFirst": "Waiting for the first sample…",
-    "pointCount": "{count} pts",
-    "tabTitle": "Click to show in the active lane; right-click to overlay on it",
     "unconfirmed": "Could not confirm {count} same-named instances; retrying once per minute.",
-    "events": "Status events"
+    "column": {
+      "pid": "PID",
+      "started": "Started",
+      "last": "Last record",
+      "duration": "Duration",
+      "points": "Records",
+      "state": "Status"
+    }
   },
   "instanceUnavailable": "The recorded instance of {name} (PID {pid}) has exited or its identity cannot be confirmed.",
   "range": {
@@ -175,7 +170,8 @@
     "notRunning": "Argus not running",
     "off": "Recording off",
     "unknown": "No records",
-    "tip": "No records: {reason}"
+    "tip": "No records: {reason}",
+    "missing": "No valid sample"
   },
   "duration": {
     "seconds": {

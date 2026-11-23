@@ -341,6 +341,14 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "watch_points" => crate::commands::watch_points(
+            host.state(),
+            host.state(),
+            serde_json::from_value(args.clone())
+                .map_err(|_| serde_json::json!(argus_core::tr!("app.invalidRequest")))?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "set_history_enabled" => crate::commands::set_history_enabled(
             host.clone(),
             host.state(),

@@ -12,18 +12,15 @@
   "off": "Die Verlaufsaufzeichnung ist ausgeschaltet. <link>Einstellungen öffnen</link>",
   "watch": {
     "title": "Prozessbeobachtung",
-    "empty": "Im Kontextmenü oder in den Details eines Prozesses „Prozess beobachten“ wählen, um Speicher auch unterhalb der Spitzenliste aufzuzeichnen.",
+    "empty": "Im Kontextmenü oder in den Details eines Prozesses „Prozess beobachten“ wählen, um Speicher, CPU, GPU, Datenträger und Netzwerk des Programms fortlaufend aufzuzeichnen, auch unterhalb der Spitzenliste.",
     "openProcesses": "Zu den Prozessen",
     "start": "Prozess beobachten",
-    "target": "Beobachtung: {name} (PID {pid})",
     "stop": "Aufzeichnung stoppen",
     "delete": "Aufzeichnung löschen",
     "note": "Jeder Start vom selben Pfad wird separat aufgezeichnet. Die Daten bleiben bis zu 7 Tage erhalten. Bei Erreichen des Speicherlimits werden die ältesten Daten früher gelöscht. Stoppen behält die Daten bei. Löschen beendet die Beobachtung und entfernt die Aufzeichnung. Nach einem Neustart von Argus die Beobachtung erneut starten.",
     "metric": {
       "memory": "Privater Arbeitssatz",
-      "commit": "Privat zugesicherter Speicher",
-      "runs": "Aufgezeichnete Starts",
-      "points": "Messpunkte des Starts"
+      "commit": "Privat zugesicherter Speicher"
     },
     "state": {
       "recording": "Aufzeichnung läuft",
@@ -42,23 +39,21 @@
       "storage": "Die Aufzeichnung konnte nicht gelesen oder geschrieben werden. Sie wurde gestoppt.",
       "invalid": "Die Aufzeichnung ist beschädigt oder das Format wird nicht unterstützt. Sie kann gelöscht werden."
     },
-    "chooseRun": "Start auswählen",
-    "launches": "Starts",
-    "run": "{started} · PID {pid} · {state}",
     "runSummary": "{shown}/{total} Starts angezeigt; {points} gespeicherte Punkte in diesem Start",
-    "earlier": "Frühere Punkte",
-    "latest": "Neueste Punkte",
     "damaged": "Einige Einträge sind beschädigt. Die betroffenen Zeiträume bleiben leer.",
     "earlierRuns": "Frühere Starts",
     "latestRuns": "Neueste Starts",
     "waiting": "Warten auf einen weiteren Start",
     "liveCount": "{count} aktiv",
-    "peak": "Spitze {value}",
-    "waitingFirst": "Warten auf den ersten Messpunkt…",
-    "pointCount": "{count} Pkt.",
-    "tabTitle": "Klicken zum Anzeigen in der aktiven Spur; Rechtsklick zum Überlagern",
     "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute.",
-    "events": "Statusereignisse"
+    "column": {
+      "pid": "PID",
+      "started": "Gestartet",
+      "last": "Letzte Aufzeichnung",
+      "duration": "Dauer",
+      "points": "Datensätze",
+      "state": "Status"
+    }
   },
   "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden.",
   "range": {
@@ -175,7 +170,8 @@
     "notRunning": "Argus lief nicht",
     "off": "Aufzeichnung aus",
     "unknown": "Keine Aufzeichnungen",
-    "tip": "Keine Aufzeichnungen: {reason}"
+    "tip": "Keine Aufzeichnungen: {reason}",
+    "missing": "Keine gültige Messung"
   },
   "duration": {
     "seconds": {

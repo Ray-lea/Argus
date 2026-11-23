@@ -4,7 +4,6 @@
 //! change. Clicked, a tab shows its reading in the active lane; its + adds a
 //! lane; dragged onto a lane it overlays it there, between lanes it adds one.
 use super::lanes::slot_width;
-use super::readings::tab_ids;
 use super::state::Drag;
 use super::*;
 
@@ -46,7 +45,7 @@ impl Desktop {
             .read(cx)
             .clone();
         let mut row = div().flex().flex_none().items_center().gap(px(4.));
-        let ids = tab_ids(&self.history.readings);
+        let ids = self.history_tab_ids();
         let tabs_shown = ids
             .iter()
             .filter_map(|id| self.history_reading(id))

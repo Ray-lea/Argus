@@ -2,6 +2,7 @@
 use super::{
     SAMPLE_MS, WatchError, WatchPoint, WatchRun, WatchState, WatchView,
     identity::Instance,
+    series::RecentRun,
     store::{self, Metadata, Store},
 };
 use crate::{Snapshot, util::OwnedHandle};
@@ -23,6 +24,7 @@ const PREVIEW_RUNS: usize = 256;
 pub(super) struct ProgramWatch {
     store: Store,
     handles: HashMap<Key, OwnedHandle>,
+    recent: HashMap<Key, RecentRun>,
     seen: HashSet<Key>,
     unconfirmed: HashMap<Key, Instant>,
     selected: Option<Key>,
@@ -44,6 +46,7 @@ impl ProgramWatch {
         Ok(Self {
             store,
             handles: HashMap::from([((pid, created), instance.into_handle())]),
+            recent: HashMap::new(),
             seen: HashSet::from([(pid, created)]),
             unconfirmed: HashMap::new(),
             selected: Some((pid, created)),
@@ -62,6 +65,7 @@ impl ProgramWatch {
         let Self {
             store,
             handles,
+            recent,
             seen,
             unconfirmed,
             selected,
@@ -77,6 +81,7 @@ impl ProgramWatch {
             Ok(Self {
                 store: Store::open(&dir.join(store::FILE_NAME), super::now_ms())?,
                 handles,
+                recent,
                 seen,
                 unconfirmed,
                 selected,
@@ -101,6 +106,7 @@ impl ProgramWatch {
         Ok(Self {
             store,
             handles: HashMap::new(),
+            recent: HashMap::new(),
             seen: HashSet::new(),
             unconfirmed: HashMap::new(),
             selected: None,
@@ -154,7 +160,12 @@ impl ProgramWatch {
     }
 
     fn terminal(&mut self, key: Key, state: WatchState, ts: i64) -> Result<(), WatchError> {
-        self.store.push(key.0, key.1, WatchPoint::marker(ts, state))
+        let point = WatchPoint::marker(ts, state);
+        self.store.push(key.0, key.1, point.clone())?;
+        if let Some(recent) = self.recent.get_mut(&key) {
+            recent.push(point, 0);
+        }
+        Ok(())
     }
 
     pub fn stop(&mut self, state: WatchState, ts: i64) -> Result<(), WatchError> {
@@ -176,11 +187,21 @@ impl ProgramWatch {
         self.store.flush()
     }
 
-    pub fn record(&mut self, snapshot: &Snapshot) -> Result<(), WatchError> {
+    #[cfg(test)]
+    fn record(&mut self, snapshot: &Snapshot) -> Result<(), WatchError> {
+        self.record_at_interval(snapshot, Duration::from_secs(1))
+    }
+
+    pub fn record_at_interval(
+        &mut self,
+        snapshot: &Snapshot,
+        cadence: Duration,
+    ) -> Result<(), WatchError> {
+        self.recent.retain(|_, run| run.prune(snapshot.timestamp));
         if !self.active {
             return self.store.prune(snapshot.timestamp);
         }
-        let result = self.sample(snapshot);
+        let result = self.sample(snapshot, cadence);
         if result.is_err() {
             self.handles.clear();
             self.unconfirmed.clear();
@@ -190,7 +211,7 @@ impl ProgramWatch {
         result
     }
 
-    fn sample(&mut self, snapshot: &Snapshot) -> Result<(), WatchError> {
+    fn sample(&mut self, snapshot: &Snapshot, cadence: Duration) -> Result<(), WatchError> {
         if self.last_ts.is_some_and(|ts| snapshot.timestamp < ts) {
             return self.stop(WatchState::Interrupted, self.last_ts.unwrap());
         }
@@ -265,14 +286,14 @@ impl ProgramWatch {
             self.state = ended_state.unwrap_or(WatchState::Exited);
             return self.store.flush();
         }
-        if self
+        let save = self
             .last
-            .is_some_and(|last| last.elapsed() < Duration::from_millis(SAMPLE_MS as u64))
-        {
-            return Ok(());
-        }
+            .is_none_or(|last| last.elapsed() >= Duration::from_millis(SAMPLE_MS as u64));
+        let expected = cadence.as_millis().clamp(1, 60_000) as i64;
+        let elapsed = self.last_ts.map(|ts| snapshot.timestamp.saturating_sub(ts));
+        let interrupted = elapsed.is_some_and(|dt| dt > (expected + SAMPLE_MS).max(2 * SAMPLE_MS));
         if let Some(previous) = self.last_ts
-            && snapshot.timestamp.saturating_sub(previous) > SAMPLE_MS * 2
+            && interrupted
         {
             // New launches start at their first sample; an earlier gap belongs to older runs.
             let keys: Vec<_> = self
@@ -282,16 +303,23 @@ impl ProgramWatch {
                 .copied()
                 .collect();
             // Terminal records may already have this snapshot's timestamp; keep sequence time monotonic.
-            let gap_ts = self.store.entries.back().map_or(previous + SAMPLE_MS, |e| {
-                e.point.ts.max(previous + SAMPLE_MS)
-            });
+            let gap_start = previous.saturating_add(expected);
+            let gap_ts = self
+                .store
+                .entries
+                .back()
+                .map_or(gap_start, |e| e.point.ts.max(gap_start));
             for key in keys {
                 self.terminal(key, WatchState::Gap, gap_ts)?;
             }
         }
+        let span = elapsed
+            .filter(|dt| *dt > 0 && !interrupted)
+            .unwrap_or(expected);
         let rows: HashMap<_, _> = snapshot
             .processes
             .iter()
+            .filter(|p| self.handles.contains_key(&(p.pid, p.create_time)))
             .map(|p| ((p.pid, p.create_time), p))
             .collect();
         let net_enabled = snapshot.process_network;
@@ -320,13 +348,45 @@ impl ProgramWatch {
                 },
                 None => WatchPoint::marker(snapshot.timestamp, WatchState::Gap),
             };
-            self.store.push(key.0, key.1, point)?;
+            // The first sample of a short-lived instance also survives a restart.
+            if save || !self.recent.contains_key(key) {
+                self.store.push(key.0, key.1, point.clone())?;
+            }
+            self.recent.entry(*key).or_default().push(point, span);
         }
-        self.store.prune(snapshot.timestamp)?;
-        self.store.flush()?;
-        self.last = Some(Instant::now());
+        if save {
+            self.store.prune(snapshot.timestamp)?;
+            self.store.flush()?;
+            self.last = Some(Instant::now());
+        }
         self.last_ts = Some(snapshot.timestamp);
         Ok(())
+    }
+
+    /// One run's readings over a window (`SeriesQuery`), from its records.
+    pub fn series(&self, query: &super::SeriesQuery) -> crate::history::HistorySeries {
+        let key = (query.pid, query.create_time);
+        super::series::series(
+            |from| {
+                let entries = &self.store.entries;
+                let at = entries.partition_point(|e| e.point.ts < from);
+                // Two earlier readings give both the cadence at the left edge
+                // and the start of a gap crossing it. Markers between them stay.
+                let start = entries
+                    .range(..at)
+                    .enumerate()
+                    .rev()
+                    .filter(|(_, e)| (e.pid, e.created) == key && e.point.has_any_metric())
+                    .nth(1)
+                    .map_or(0, |(i, _)| i);
+                entries
+                    .range(start..)
+                    .filter(move |e| (e.pid, e.created) == key)
+                    .map(|e| &e.point)
+            },
+            self.recent.get(&key),
+            query,
+        )
     }
 
     pub fn view(&self) -> WatchView {
@@ -351,7 +411,7 @@ impl ProgramWatch {
             };
         }
         for key in self.handles.keys() {
-            runs.entry(*key).or_insert(WatchRun {
+            let run = runs.entry(*key).or_insert(WatchRun {
                 pid: key.0,
                 create_time: key.1,
                 first_ts: 0,
@@ -359,6 +419,10 @@ impl ProgramWatch {
                 points: 0,
                 state: WatchState::Recording,
             });
+            if let Some(latest) = self.recent.get(key).and_then(RecentRun::latest) {
+                run.last_ts = latest.ts;
+                run.state = latest.state;
+            }
         }
         let key = self
             .selected
@@ -393,7 +457,7 @@ impl ProgramWatch {
         let mut points: Vec<WatchPoint> = Vec::new();
         for entry in entries {
             if let Some(previous) = points.last()
-                && entry.point.ts.saturating_sub(previous.ts) > SAMPLE_MS * 2
+                && entry.point.ts.saturating_sub(previous.ts) > super::series::MAX_SPACING_MS
                 && previous.memory.is_some()
             {
                 points.push(WatchPoint::marker(previous.ts + SAMPLE_MS, WatchState::Gap));

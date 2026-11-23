@@ -886,6 +886,23 @@ pub fn watch_process(
     })
 }
 
+/// One observed run's readings over a window, for the observation page's
+/// lanes and navigator (`argus_core::watch::SeriesQuery`).
+pub fn watch_points(
+    state: State<'_, AppState>,
+    dir: State<'_, HistoryDir>,
+    query: argus_core::watch::SeriesQuery,
+) -> Result<history::HistorySeries, String> {
+    let path = dir.read();
+    let (tx, rx) = std::sync::mpsc::channel();
+    state
+        .sampler
+        .send(Control::WatchSeries(path.clone(), query, tx));
+    rx.recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| tr!("history.watch.error.unavailable"))?
+        .map_err(|_| tr!("history.watch.error.missing"))
+}
+
 /// Starts or stops recording; what is already recorded stays until it expires.
 pub fn set_history_enabled(
     app: crate::native_runtime::Host,

@@ -215,8 +215,12 @@ impl Desktop {
                 let start = points.ts[index];
                 let length = points.span[index];
                 let (time, kind) = if points.single(index) {
-                    (moment_label(start, true), Some(sample_kind(length)))
-                } else if length <= FRAME {
+                    let cadence = self.history.run.is_none_or(|run| start != run.first);
+                    (
+                        moment_label(start, true),
+                        cadence.then(|| sample_kind(length)),
+                    )
+                } else if length <= FRAME && self.history.source == Source::System {
                     (
                         moment_label(start, true),
                         Some(label(if length < FRAME {

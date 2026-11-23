@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use crate::channel::Channel;
 use argus_core::history::{self, HistoryRecorder};
 use argus_core::power::PowerTracker;
-use argus_core::watch::{WatchAction, WatchError, WatchRecorder, WatchView};
+use argus_core::watch::{SeriesQuery, WatchAction, WatchError, WatchRecorder, WatchView};
 use argus_core::{Collector, Snapshot};
 use argus_service::{DiskClient, NetworkClient, RuleRunner, SensorClient};
 
@@ -80,6 +80,12 @@ pub enum Control {
         PathBuf,
         WatchAction,
         Sender<Result<Option<WatchView>, WatchError>>,
+    ),
+    /// One observed run's readings over a window, for the observation page.
+    WatchSeries(
+        PathBuf,
+        SeriesQuery,
+        Sender<Result<history::HistorySeries, WatchError>>,
     ),
 }
 
@@ -423,6 +429,19 @@ impl Sampler {
                             let _ = reply.send(result);
                             continue;
                         }
+                        Ok(Control::WatchSeries(dir, query, reply)) => {
+                            // A saved observation is read as `Watch` reads it,
+                            // unless it waits to resume after a folder move.
+                            if watch.is_none() && suspended_watch.is_none() {
+                                watch = WatchRecorder::open(dir).ok();
+                            }
+                            let result =
+                                watch.as_ref().map_or(Err(WatchError::Missing), |recorder| {
+                                    recorder.series(&query)
+                                });
+                            let _ = reply.send(result);
+                            continue;
+                        }
                         Ok(Control::ClearHistory(dir, reply)) => {
                             let observed = match &mut watch {
                                 Some(recorder) => recorder.action(WatchAction::Delete).map(|_| ()),
@@ -479,7 +498,7 @@ impl Sampler {
                         }
                     }
                     if let Some(recorder) = &mut watch
-                        && recorder.record(&snapshot).is_err()
+                        && recorder.record_at_interval(&snapshot, stale_after).is_err()
                     {
                         argus_core::diagnostics::warn(
                             "process observation",

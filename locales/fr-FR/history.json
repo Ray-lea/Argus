@@ -12,18 +12,15 @@
   "off": "L’enregistrement de l’historique est désactivé. <link>Ouvrir les paramètres</link>",
   "watch": {
     "title": "Observation du processus",
-    "empty": "Choisir «Observer le processus» dans le menu contextuel ou les détails d’un processus pour enregistrer la mémoire hors du classement.",
+    "empty": "Choisir «Observer le processus» dans le menu contextuel ou les détails d’un processus pour enregistrer en continu la mémoire, le CPU, le GPU, le disque et le réseau du programme, même hors du classement.",
     "openProcesses": "Aller aux processus",
     "start": "Observer le processus",
-    "target": "Observation de {name} (PID {pid})",
     "stop": "Arrêter l’enregistrement",
     "delete": "Supprimer l’enregistrement",
     "note": "Chaque lancement depuis le même chemin est enregistré séparément. Les données sont conservées jusqu’à 7 jours. Les plus anciennes sont effacées plus tôt si le stockage est plein. L’arrêt conserve les données. La suppression met fin à l’observation et efface l’enregistrement. Après un redémarrage d’Argus, relancez l’observation.",
     "metric": {
       "memory": "Jeu de travail privé",
-      "commit": "Mémoire privée engagée",
-      "runs": "Lancements enregistrés",
-      "points": "Mesures du lancement"
+      "commit": "Mémoire privée engagée"
     },
     "state": {
       "recording": "Enregistrement en cours",
@@ -42,23 +39,21 @@
       "storage": "Impossible de lire ou d’écrire l’enregistrement. Il est arrêté.",
       "invalid": "L’enregistrement est endommagé ou son format n’est pas pris en charge. Il peut être supprimé."
     },
-    "chooseRun": "Choisir un lancement",
-    "launches": "Lancements",
-    "run": "{started} · PID {pid} · {state}",
     "runSummary": "{shown}/{total} lancements affichés ; {points} points enregistrés pour ce lancement",
-    "earlier": "Points antérieurs",
-    "latest": "Derniers points",
     "damaged": "Certains enregistrements sont endommagés. Les périodes concernées restent vides.",
     "earlierRuns": "Lancements antérieurs",
     "latestRuns": "Derniers lancements",
     "waiting": "En attente d’un autre lancement",
     "liveCount": "{count} en cours",
-    "peak": "Pic {value}",
-    "waitingFirst": "En attente de la première mesure…",
-    "pointCount": "{count} pts",
-    "tabTitle": "Cliquer pour afficher dans la voie active ; clic droit pour superposer",
     "unconfirmed": "Identité non confirmée pour {count} instances du même nom ; nouvel essai chaque minute.",
-    "events": "Événements d’état"
+    "column": {
+      "pid": "PID",
+      "started": "Démarré",
+      "last": "Dernier enregistrement",
+      "duration": "Durée",
+      "points": "Enregistrements",
+      "state": "État"
+    }
   },
   "instanceUnavailable": "L’instance enregistrée de {name} (PID {pid}) est terminée ou son identité ne peut pas être confirmée.",
   "range": {
@@ -175,7 +170,8 @@
     "notRunning": "Argus ne s’exécutait pas",
     "off": "Enregistrement désactivé",
     "unknown": "Aucun enregistrement",
-    "tip": "Aucun enregistrement : {reason}"
+    "tip": "Aucun enregistrement : {reason}",
+    "missing": "Aucune mesure valide"
   },
   "duration": {
     "seconds": {

@@ -764,14 +764,7 @@ impl Desktop {
                 "aboutScroll":{"max":about_max,"offset":about_offset,"canScroll":about_max > 0.5,
                     "atEnd":about_max > 0.5 && (about_offset-about_max).abs() < 0.5},
                 "settingsScrollY":f32::from(self.settings_rail.scroll.max_offset().y),"settingsTop":self.settings_rail.scroll.top_item(),"sections":self.section_rail_state()});
-            let watch_lanes: Vec<_> = self
-                .watch_ui
-                .lanes
-                .iter()
-                .map(
-                    |lane| json!({"id": lane.id, "reading": lane.reading, "overlay": lane.overlay}),
-                )
-                .collect();
+            let watch_lanes = self.watch_lanes_inspect();
             layout["watch"] = json!(self.data.get("processWatch").map(|watch| json!({
                 "pid": watch["pid"],
                 "state": watch["state"],

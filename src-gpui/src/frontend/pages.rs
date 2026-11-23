@@ -477,11 +477,8 @@ impl Desktop {
                 } else {
                     "system"
                 };
-                if self.history_page != next {
-                    self.history_page = next.into();
-                    if self.page == "history" {
-                        self.load_history(window, cx);
-                    }
+                if self.set_history_page(next) && self.page == "history" {
+                    self.load_history(window, cx);
                 }
                 cx.notify();
                 return;

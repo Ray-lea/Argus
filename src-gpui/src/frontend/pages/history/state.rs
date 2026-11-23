@@ -20,6 +20,40 @@ pub(super) const MIN_LANE: f32 = 76.;
 /// The lanes as a list arranged by dragging (`reorder`), each by its id.
 pub(super) const LANES: &str = "history-lanes";
 
+/// Whose readings the page draws: the system's recorded history, or one run
+/// of an observed program (`watch_points`). Each has a state of its own; the
+/// one not shown waits in `Desktop::history_parked`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::frontend) enum Source {
+    #[default]
+    System,
+    Watch,
+}
+
+impl Source {
+    /// Where this source keeps preference `name` ("range", "lanes", "band",
+    /// "split"): the system history's keys as they always were, the
+    /// observation's under `watch.`.
+    pub(super) fn pref(self, name: &str) -> String {
+        match (self, name) {
+            (Source::System, "range") => "historyRange".into(),
+            (Source::System, name) => format!("history.{name}"),
+            (Source::Watch, name) => format!("watch.{name}"),
+        }
+    }
+}
+
+/// The observed run the page draws, and when it ran: from its first record to
+/// its last, or on to the present while it runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct WatchRun {
+    pub(super) pid: u32,
+    pub(super) created: i64,
+    pub(super) first: i64,
+    pub(super) last: i64,
+    pub(super) live: bool,
+}
+
 /// A preset range in the range menu, or one picked by its ends.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Range {
@@ -27,6 +61,9 @@ pub(super) enum Range {
     Last(i64),
     /// Everything recorded, following the clock.
     All,
+    Today,
+    /// A start chosen in the picker, with the end following the clock.
+    Since(i64),
     /// Fixed ends, picked in the range picker.
     Fixed(i64, i64),
 }
@@ -64,8 +101,63 @@ impl Range {
                 .find(|(_, l)| *l == length)
                 .map(|(id, _)| *id),
             Self::All => Some("all"),
-            Self::Fixed(..) => None,
+            Self::Today | Self::Since(_) | Self::Fixed(..) => None,
         }
+    }
+
+    fn start(self, end: i64, first: Option<i64>) -> FollowStart {
+        let (from, minimum) = match self {
+            Self::Last(span) => return FollowStart::Last(span),
+            Self::All => match first {
+                Some(first) => (first, 5 * MINUTE),
+                None => return FollowStart::Last(DAY),
+            },
+            Self::Today => (super::picker::day_start(end), SECOND),
+            Self::Since(from) | Self::Fixed(from, _) => (from, SECOND),
+        };
+        if from <= end - minimum {
+            FollowStart::At(from)
+        } else {
+            FollowStart::Last(minimum)
+        }
+    }
+}
+
+/// A following window either keeps its duration or grows from a timestamp.
+#[derive(Clone, Copy)]
+pub(super) enum FollowStart {
+    At(i64),
+    Last(i64),
+}
+
+impl FollowStart {
+    fn time(self, end: i64) -> i64 {
+        match self {
+            Self::At(from) => from,
+            Self::Last(span) => end - span,
+        }
+    }
+
+    pub(super) fn at(self, end: f64) -> f64 {
+        match self {
+            Self::At(from) => from as f64,
+            Self::Last(span) => end - span as f64,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct FlowWindow {
+    pub(super) start: FollowStart,
+    pub(super) sample_end: f64,
+}
+
+impl FlowWindow {
+    /// The texture is built at the sampling cadence and fitted to the
+    /// displayed window between samples.
+    pub(super) fn raster(self) -> (f64, Option<f64>) {
+        let from = self.start.at(self.sample_end);
+        (from, Some((self.sample_end - from).max(1.)))
     }
 }
 
@@ -205,6 +297,7 @@ impl Geometry {
 pub(super) struct Glide {
     pub(super) plot: crate::frontend::charts::TimePlot,
     pub(super) bounds: Rc<std::cell::Cell<Bounds<Pixels>>>,
+    pub(super) start: FollowStart,
 }
 
 /// While the window glides with the clock in the fluid and balanced chart
@@ -215,6 +308,7 @@ pub(super) struct Glide {
 pub(super) struct Gliding {
     pub(super) plots: Vec<Glide>,
     pub(super) drawn: Instant,
+    pub(super) end: f64,
     pub(super) step: Duration,
 }
 
@@ -236,6 +330,10 @@ struct Tween {
 }
 
 pub(in crate::frontend) struct HistoryState {
+    /// Whose readings these are.
+    pub(super) source: Source,
+    /// The observed run drawn (`Source::Watch`), once the observation is read.
+    pub(super) run: Option<WatchRun>,
     /// Following the newest readings: the window's end stays on the clock.
     pub(super) follow: bool,
     pub(super) range: Range,
@@ -313,16 +411,12 @@ pub(in crate::frontend) struct HistoryState {
     /// While the window glides with the clock: where the curves' textures
     /// start (lanes, navigator), the window drawn when the newest reading came
     /// in; the window on screen is a little ahead and moves them.
-    pub(super) flow_origin: Option<(f64, f64)>,
-    /// The redraw waiting for the window to move a device pixel.
-    pub(super) flow: Option<gpui_kit::gpui::Task<()>>,
+    pub(super) flow_windows: Option<(FlowWindow, FlowWindow)>,
     /// The curves the chart card draws, collected while it renders.
     pub(super) glides: Vec<Glide>,
     /// While the curves glide frame by frame.
     pub(super) gliding: Option<Gliding>,
-    /// A frame callback moving the curves is waiting; frames counted for the
-    /// balanced chart mode's pace.
-    pub(super) glide_queued: bool,
+    /// Frames counted for the balanced chart mode's pace.
     pub(super) glide_frames: u64,
     /// What the range pill says for a range picked by name (today, yesterday,
     /// custom ends), a locale key; none for the drop-down's ranges.
@@ -478,6 +572,8 @@ impl Kinds {
 impl Default for HistoryState {
     fn default() -> Self {
         Self {
+            source: Source::System,
+            run: None,
             follow: true,
             range: Range::Last(5 * MINUTE),
             extent: (0, 5 * MINUTE),
@@ -519,11 +615,9 @@ impl Default for HistoryState {
             toast: None,
             picker: None,
             chooser: None,
-            flow_origin: None,
-            flow: None,
+            flow_windows: None,
             glides: Vec::new(),
             gliding: None,
-            glide_queued: false,
             glide_frames: 0,
             range_name: None,
             restored: false,
@@ -551,6 +645,43 @@ impl Default for HistoryState {
 }
 
 impl HistoryState {
+    /// The observation's state: a lane of the private working set with the
+    /// private commit over it, over the whole run.
+    pub(in crate::frontend) fn watch() -> Self {
+        Self {
+            source: Source::Watch,
+            lanes: vec![Lane::new(1, "memory".into(), Some("commit".into()), 1.)],
+            ..Self::default()
+        }
+    }
+
+    /// Draws `run` from now on: another run forgets what was read for the
+    /// one before and takes up the saved range again over its own records
+    /// (`history_restore`). Whether the run changed.
+    pub(super) fn set_run(&mut self, run: Option<WatchRun>) -> bool {
+        let same = self.run.map(|r| (r.pid, r.created)) == run.map(|r| (r.pid, r.created));
+        self.first = run.map(|run| run.first);
+        self.run = run;
+        if same {
+            return false;
+        }
+        self.points = None;
+        self.overview = None;
+        self.previous = None;
+        self.stash.clear();
+        self.pin = None;
+        self.pin_lane = None;
+        self.selection = None;
+        self.hover = None;
+        self.tip = None;
+        self.tip_for = None;
+        self.points_asked = None;
+        self.overview_asked = None;
+        self.follow = true;
+        self.restored = false;
+        true
+    }
+
     pub(super) fn span(&self) -> i64 {
         (self.view.1 - self.view.0).max(SECOND)
     }
@@ -576,24 +707,35 @@ impl HistoryState {
         if !self.follow {
             return;
         }
-        let span = self.span();
-        let length = match self.range {
-            Range::All => {
-                clock
-                    - self
-                        .first
-                        .unwrap_or(clock - self.length())
-                        .min(clock - span)
-            }
-            _ => self.length(),
-        };
-        let end = if span > 6 * HOUR {
+        let (view, extent) = self.follow_starts(clock);
+        let end = if clock - view.time(clock) > 6 * HOUR {
             clock.div_euclid(MINUTE) * MINUTE
         } else {
             clock
         };
-        self.view = (end - span.min(length), end);
-        self.extent = (end - length, end);
+        self.extent = (extent.time(end), end);
+        self.view = (view.time(end).max(self.extent.0), end);
+    }
+
+    fn follow_starts(&self, end: i64) -> (FollowStart, FollowStart) {
+        let extent = self.range.start(end, self.first);
+        let view = if self.view == self.extent || self.span() >= end - extent.time(end) {
+            extent
+        } else {
+            FollowStart::Last(self.span())
+        };
+        (view, extent)
+    }
+
+    pub(super) fn show_flow(&mut self, end: f64, sample: i64) {
+        let (view, extent) = self.follow_starts(end.floor() as i64);
+        self.shown = (view.at(end), end);
+        self.extent_shown = (extent.at(end), end);
+        let window = |start| FlowWindow {
+            start,
+            sample_end: sample as f64,
+        };
+        self.flow_windows = Some((window(view), window(extent)));
     }
 
     /// The window drawn now, easing towards the target; whether it still moves.
@@ -797,15 +939,9 @@ impl HistoryState {
         self.selection = None;
         self.mode = TableMode::Moment;
         match range {
-            Range::Last(length) => {
+            Range::Last(_) | Range::All | Range::Today | Range::Since(_) => {
                 self.follow = true;
-                self.extent = (clock - length, clock);
-                self.view = self.extent;
-            }
-            Range::All => {
-                self.follow = true;
-                let first = self.first.unwrap_or(clock - DAY).min(clock - 5 * MINUTE);
-                self.extent = (first, clock);
+                self.extent = (range.start(clock, self.first).time(clock), clock);
                 self.view = self.extent;
             }
             Range::Fixed(from, to) => {
@@ -830,7 +966,6 @@ impl HistoryState {
 
     /// Back to the newest readings, following them, at the width shown.
     pub(super) fn go_latest(&mut self, clock: i64) {
-        let span = self.span().min(self.length());
         let length = self.length();
         // Fixed ends give way to as long a range following the clock.
         if let Range::Fixed(..) = self.range {
@@ -841,8 +976,7 @@ impl HistoryState {
         self.pin = None;
         self.selection = None;
         self.mode = TableMode::Moment;
-        self.extent = (clock - length, clock);
-        self.view = (clock - span, clock);
+        self.anchor(clock);
         self.retarget(SLOW);
     }
 
@@ -1189,6 +1323,69 @@ mod tests {
         assert!(state.follow && state.pin.is_none());
         assert_eq!(state.view, (NOW + MINUTE - HOUR / 2, NOW + MINUTE));
         assert_eq!(state.mode, TableMode::Moment);
+    }
+
+    #[test]
+    fn all_records_keep_the_full_window_as_records_arrive_and_expire() {
+        let mut state = HistoryState::default();
+        state.set_range(Range::All, NOW);
+        state.first = Some(NOW - 8 * HOUR + 13 * SECOND);
+        state.anchor(NOW + 29 * SECOND);
+        assert_eq!(state.extent, (state.first.unwrap(), NOW));
+        assert_eq!(state.view, state.extent);
+        state.first = Some(NOW - 10 * MINUTE);
+        state.anchor(NOW + SECOND);
+        assert_eq!(state.view, (NOW - 10 * MINUTE, NOW + SECOND));
+        assert_eq!(state.view, state.extent);
+
+        state.zoom(0.5, NOW, Duration::ZERO);
+        let span = state.span();
+        state.anchor(NOW + 2 * MINUTE);
+        assert_eq!(state.view, (NOW + 2 * MINUTE - span, NOW + 2 * MINUTE));
+        assert_eq!(state.extent.0, NOW - 10 * MINUTE);
+        let end = state.view.1 as f64 + 0.75;
+        state.show_flow(end, NOW + 2 * MINUTE + SECOND);
+        assert_eq!(state.shown_now(), (end - span as f64, end));
+        assert_eq!(state.extent_shown(), ((NOW - 10 * MINUTE) as f64, end));
+        state.reset_zoom();
+        state.pause();
+        let paused = state.view;
+        state.anchor(NOW + 3 * MINUTE);
+        assert_eq!(state.view, paused);
+        state.go_latest(NOW + 3 * MINUTE);
+        assert_eq!(state.view, (NOW - 10 * MINUTE, NOW + 3 * MINUTE));
+        assert_eq!(state.view, state.extent);
+    }
+
+    #[test]
+    fn a_new_observation_rolls_for_five_minutes_then_keeps_its_first_record() {
+        let mut state = HistoryState::watch();
+        assert_eq!(state.range, Range::Last(5 * MINUTE));
+        state.first = Some(NOW);
+        state.set_range(Range::All, NOW);
+        state.anchor(NOW + 4 * MINUTE);
+        assert_eq!(state.view, (NOW - MINUTE, NOW + 4 * MINUTE));
+        state.anchor(NOW + 6 * MINUTE);
+        assert_eq!(state.view, (NOW, NOW + 6 * MINUTE));
+        let end = (NOW + 6 * MINUTE) as f64 + 0.5;
+        state.show_flow(end, NOW + 6 * MINUTE + SECOND);
+        assert_eq!(state.shown_now(), (NOW as f64, end));
+        assert_eq!(state.shown_now(), state.extent_shown());
+    }
+
+    #[test]
+    fn custom_start_and_today_keep_their_calendar_boundaries() {
+        let mut state = HistoryState::default();
+        let midnight = super::super::picker::day_start(NOW);
+        state.set_range(Range::Today, midnight - SECOND);
+        state.anchor(midnight + 10 * SECOND);
+        assert_eq!(state.view, (midnight, midnight + 10 * SECOND));
+        state.zoom(0.5, midnight, Duration::ZERO);
+        assert_eq!(state.view, state.extent);
+        state.set_range(Range::Since(NOW - HOUR), NOW);
+        state.anchor(NOW + MINUTE);
+        assert_eq!(state.view, (NOW - HOUR, NOW + MINUTE));
+        assert_eq!(state.view, state.extent);
     }
 
     #[test]

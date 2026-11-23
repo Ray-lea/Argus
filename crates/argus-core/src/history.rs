@@ -118,7 +118,8 @@ const MAX_CHANNELS: usize = 512;
 const MAX_INSTANCES: usize = 65_536;
 const MAX_FRAME_ROWS: usize = MAX_INSTANCES;
 // Ten minutes at the sampler's shortest supported cadence (250 ms), inclusive.
-const MAX_RECENT: usize = 2401;
+pub(crate) const MAX_RECENT: usize = 2401;
+pub const RECENT_MS: i64 = 10 * 60_000;
 const MAX_FRAMES: usize = 100_000;
 const MAX_POINTS: usize = 4096;
 const MAX_BUCKETS: usize = 100_000;
@@ -447,7 +448,7 @@ impl HistoryRecorder {
                 .live
                 .samples
                 .front()
-                .is_some_and(|p| p.ts < s.timestamp.saturating_sub(600_000))
+                .is_some_and(|p| p.ts < s.timestamp.saturating_sub(RECENT_MS))
         {
             self.live.evicted = true;
             self.live.samples.pop_front();
@@ -457,7 +458,7 @@ impl HistoryRecorder {
                 .live
                 .frames
                 .front()
-                .is_some_and(|&ts| ts < s.timestamp.saturating_sub(605_000))
+                .is_some_and(|&ts| ts < s.timestamp.saturating_sub(RECENT_MS + FRAME_MS))
         {
             self.live.frames.pop_front();
         }
@@ -466,7 +467,7 @@ impl HistoryRecorder {
                 .live
                 .gaps
                 .front()
-                .is_some_and(|g| g.to < s.timestamp.saturating_sub(600_000))
+                .is_some_and(|g| g.to < s.timestamp.saturating_sub(RECENT_MS))
         {
             self.live.gaps.pop_front();
         }

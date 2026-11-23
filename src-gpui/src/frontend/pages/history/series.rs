@@ -50,7 +50,7 @@ pub(super) fn bucket_for(span: i64, width: f32) -> i64 {
 
 /// The narrowest window a range zooms to: a fifth of it, from 30 s to 10 min.
 pub(super) fn min_span(range: i64) -> i64 {
-    (range / 5).clamp(30 * SECOND, 10 * MINUTE)
+    (range / 5).clamp(30 * SECOND, 10 * MINUTE).min(range)
 }
 
 /// A window (or an axis's range) part of the way `e` from `from` to `to`,
@@ -83,6 +83,8 @@ pub(super) enum GapReason {
     Shutdown,
     NotRunning,
     Off,
+    /// An observed run's samples went missing (`watch_points`).
+    Missing,
     Unknown,
 }
 
@@ -93,6 +95,7 @@ impl GapReason {
             "shutdown" => Self::Shutdown,
             "notRunning" => Self::NotRunning,
             "off" => Self::Off,
+            "missing" => Self::Missing,
             _ => Self::Unknown,
         }
     }
@@ -103,6 +106,7 @@ impl GapReason {
             Self::Shutdown => "history.gap.shutdown",
             Self::NotRunning => "history.gap.notRunning",
             Self::Off => "history.gap.off",
+            Self::Missing => "history.gap.missing",
             Self::Unknown => "history.gap.unknown",
         }
     }
@@ -564,7 +568,7 @@ impl Points {
             return false;
         };
         let end = self.ts[i] + self.span[i];
-        if self.gaps_across(end - 1, *next).next().is_some() {
+        if self.gaps_after_at(i).next().is_some() {
             return false;
         }
         let widest = self.span[i].max(self.span[i + 1]);
@@ -577,11 +581,10 @@ impl Points {
     /// of it in the bucket) leaves the line whole and is not shown: hatched,
     /// it lay over a line that ran on through it.
     pub(super) fn shown_gaps(&self) -> Vec<&Gap> {
-        let (Some(&first), Some(&last), Some(&last_span)) =
-            (self.ts.first(), self.ts.last(), self.span.last())
-        else {
+        let Some(&first) = self.ts.first() else {
             return self.gaps.iter().collect();
         };
+        let end = self.last_end(self.ts.len() - 1);
         let mut broken = vec![false; self.gaps.len()];
         for i in 0..self.ts.len() - 1 {
             if !self.joins(i) {
@@ -593,7 +596,7 @@ impl Points {
         self.gaps
             .iter()
             .enumerate()
-            .filter(|(at, gap)| gap.to <= first || gap.from >= last + last_span || broken[*at])
+            .filter(|(at, gap)| gap.to <= first || gap.from >= end || broken[*at])
             .map(|(_, gap)| gap)
             .collect()
     }
@@ -617,20 +620,36 @@ impl Points {
         (first..upto).filter(move |at| self.gaps[*at].to > after)
     }
 
-    fn gaps_across(&self, after: i64, before: i64) -> impl Iterator<Item = &Gap> {
-        self.gaps_across_at(after, before).map(|at| &self.gaps[at])
-    }
-
     /// The recorded gaps between point `i` and the next: those the line
     /// breaks across (`joins`), by where they are in `gaps`.
     fn gaps_after_at(&self, i: usize) -> impl Iterator<Item = usize> + '_ {
         let before = self.ts.get(i + 1).copied().unwrap_or(i64::MIN);
-        let end = self.ts[i] + self.span[i];
-        self.gaps_across_at(end - 1, before)
+        // A raw sample's span measures backwards. A faster next tick may
+        // mark a gap before the previous cadence would have ended.
+        let after = if self.single(i) {
+            self.ts[i]
+        } else {
+            self.ts[i] + self.span[i] - 1
+        };
+        self.gaps_across_at(after, before)
     }
 
     fn gaps_after(&self, i: usize) -> impl Iterator<Item = &Gap> {
         self.gaps_after_at(i).map(|at| &self.gaps[at])
+    }
+
+    /// An explicit missing sample can arrive before the preceding sample's
+    /// cadence elapses, including before there is a new reading to join to.
+    fn last_end(&self, i: usize) -> i64 {
+        let start = self.ts[i];
+        let end = start.saturating_add(self.span[i]);
+        if self.single(i)
+            && !self.gaps.is_empty()
+            && let Some(at) = self.gaps_across_at(start, end).next()
+        {
+            return self.gaps[at].from.clamp(start, end);
+        }
+        end
     }
 
     /// Where the step of point `i` (beginning at `at`) stops when the line
@@ -713,9 +732,7 @@ impl Points {
                 start
             };
             let stop = if i + 1 == count {
-                self.ts[i]
-                    .saturating_add(self.span[i])
-                    .min(end.max(self.ts[i])) as f64
+                self.last_end(i).min(end.max(self.ts[i])) as f64
             } else if self.joins(i) {
                 self.ts[i + 1] as f64
             } else {
@@ -751,7 +768,7 @@ impl Points {
         }
         let i = after.checked_sub(1)?;
         let stop = if i + 1 == count {
-            self.ts[i].saturating_add(self.span[i]) as f64
+            self.last_end(i) as f64
         } else if self.joins(i) {
             self.ts[i + 1] as f64
         } else {
@@ -1204,6 +1221,25 @@ mod tests {
             assert_eq!(points.bucket, MINUTE);
             assert_eq!(points.settled, 5 * MINUTE);
         }
+    }
+
+    #[test]
+    fn a_gap_after_a_slow_sample_starts_at_the_first_missing_fast_tick() {
+        let answer = json!({"bucket": SECOND, "ts": [30_000, 35_000],
+            "span": [30_000, 1_000], "sample": [true, true],
+            "series": {"cpu": {"mean": [12, 24]}},
+            "gaps": [{"from": 31_000, "to": 35_000, "reason": "missing"}]});
+        let points = Points::parse(&answer, &args(0, 40_000, SECOND));
+        assert!(!points.joins(0));
+        assert_eq!(points.index_at(32_000), None);
+        assert_eq!(points.shown_gaps().len(), 1);
+        let pending = json!({"bucket": SECOND, "ts": [30_000], "span": [30_000],
+            "sample": [true], "series": {"cpu": {"mean": [12]}},
+            "gaps": [{"from": 31_000, "to": 33_000, "reason": "missing"}]});
+        let pending = Points::parse(&pending, &args(0, 33_000, SECOND));
+        assert_eq!(pending.index_at(32_000), None);
+        assert_eq!(pending.last_end(0), 31_000);
+        assert_eq!(pending.shown_gaps().len(), 1);
     }
 
     #[test]

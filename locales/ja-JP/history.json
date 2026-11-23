@@ -12,18 +12,15 @@
   "off": "履歴の記録はオフです。<link>設定を開く</link>",
   "watch": {
     "title": "プロセスの観測",
-    "empty": "プロセスの右クリックメニューまたは詳細で「プロセスを観測」を選ぶと、上位リストにない場合もメモリを記録できます。",
+    "empty": "プロセスの右クリックメニューまたは詳細で「プロセスを観測」を選ぶと、上位リストにない場合もプログラムのメモリ、CPU、GPU、ディスク、ネットワークを継続して記録できます。",
     "openProcesses": "プロセス一覧へ",
     "start": "プロセスを観測",
-    "target": "観測：{name}（PID {pid}）",
     "stop": "記録を停止",
     "delete": "記録を削除",
     "note": "同じパスからの起動を個別に記録します。最長 7 日間保存し、容量の上限に達すると古い記録から削除します。停止後もデータは残ります。削除すると監視が終了し、記録が消去されます。Argus の再起動後は改めて監視を開始してください。",
     "metric": {
       "memory": "プライベートワーキングセット",
-      "commit": "プライベートコミット",
-      "runs": "記録した起動",
-      "points": "選択中の測定点"
+      "commit": "プライベートコミット"
     },
     "state": {
       "recording": "記録中",
@@ -42,23 +39,21 @@
       "storage": "記録を読み書きできませんでした。記録は停止しています。",
       "invalid": "記録が破損しているか、未対応の形式です。削除できます。"
     },
-    "chooseRun": "起動を選択",
-    "launches": "起動履歴",
-    "run": "{started} · PID {pid} · {state}",
     "runSummary": "{shown}/{total} 件の起動を表示・選択中の起動に {points} 点を保存",
-    "earlier": "以前のデータ",
-    "latest": "最新のデータ",
     "damaged": "一部の記録が破損しています。該当する期間は空白で表示されます。",
     "earlierRuns": "以前の起動",
     "latestRuns": "最新の起動",
     "waiting": "次の起動を待機中",
     "liveCount": "{count} 件実行中",
-    "peak": "最大 {value}",
-    "waitingFirst": "最初の測定点を待機中…",
-    "pointCount": "{count} 点",
-    "tabTitle": "クリックで現在のレーンに表示、右クリックで重ね合わせ",
     "unconfirmed": "同名の {count} インスタンスの識別を確認できませんでした。1 分ごとに再試行します。",
-    "events": "状態イベント"
+    "column": {
+      "pid": "PID",
+      "started": "開始時刻",
+      "last": "最終記録",
+      "duration": "期間",
+      "points": "記録数",
+      "state": "状態"
+    }
   },
   "instanceUnavailable": "記録された {name}（PID {pid}）のインスタンスは終了したか、同一性を確認できません。",
   "range": {
@@ -175,7 +170,8 @@
     "notRunning": "Argus は実行されていません",
     "off": "記録はオフ",
     "unknown": "記録なし",
-    "tip": "記録なし: {reason}"
+    "tip": "記録なし: {reason}",
+    "missing": "有効な測定なし"
   },
   "duration": {
     "seconds": "{count} 秒",

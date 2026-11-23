@@ -124,6 +124,10 @@ fn midnight(date: time::Date) -> i64 {
     at(offset)
 }
 
+pub(super) fn day_start(ts: i64) -> i64 {
+    date_of(ts).map_or(ts - ts.rem_euclid(DAY), midnight)
+}
+
 /// The first of a month and the number of its days.
 fn month_days(year: i32, month: u8) -> Option<(time::Date, u8)> {
     let month = time::Month::try_from(month).ok()?;
@@ -353,7 +357,6 @@ impl Desktop {
     ) {
         let clock = self.history_clock();
         let now = self.history_now();
-        let today = date_of(now).map_or(now - now.rem_euclid(DAY), midnight);
         match preset {
             Preset::Last(length) => {
                 self.history.set_range(Range::Last(length), clock);
@@ -362,11 +365,10 @@ impl Desktop {
                 }
             }
             Preset::Today => {
-                self.history
-                    .set_range(Range::Last((clock - today).max(MINUTE)), clock);
-                self.history.range_name = Some("history.picker.today");
+                self.history.set_range(Range::Today, clock);
             }
             Preset::Yesterday => {
+                let today = day_start(now);
                 let start = date_of(today - HOUR).map_or(today - DAY, midnight);
                 self.history.set_fixed(start, today);
                 self.history.range_name = Some("history.picker.yesterday");
@@ -435,8 +437,7 @@ impl Desktop {
         let a = a.max(first.unwrap_or(a));
         let clock = self.history_clock();
         if follow {
-            self.history
-                .set_range(Range::Last((clock - a).max(MINUTE)), clock);
+            self.history.set_range(Range::Since(a), clock);
         } else {
             self.history.set_fixed(a, b.min(now));
         }
@@ -652,7 +653,7 @@ impl Desktop {
         let current = |preset: Preset| match (preset, self.history.range) {
             (Preset::Last(a), Range::Last(b)) => a == b && self.history.range_name.is_none(),
             (Preset::All, Range::All) => true,
-            (Preset::Today, _) => self.history.range_name == Some("history.picker.today"),
+            (Preset::Today, Range::Today) => true,
             (Preset::Yesterday, _) => self.history.range_name == Some("history.picker.yesterday"),
             _ => false,
         };

@@ -217,7 +217,7 @@ impl Desktop {
         let Some(reading) = self.history_reading(&lane.reading) else {
             return series;
         };
-        let end = self.history_clock();
+        let end = self.history_curve_end(points);
         let source = |part: &str| charts::hash_of(("history", lane.id, &reading.id, part));
         let format = charts::MetricFormat::Percent;
         // From the lowest to the highest reading of each bucket (CPU up to its
@@ -460,13 +460,14 @@ impl Desktop {
         let view = self.history.view;
         let clock_lines =
             self.history
-                .flow_origin
+                .flow_windows
                 .filter(|_| fading.is_none())
-                .map(|(origin, _)| {
-                    let overscan = span / 8.;
+                .map(|(lanes, _)| {
+                    let origin = lanes.start.at(lanes.sample_end);
+                    let overscan = (lanes.sample_end - origin) / 8.;
                     let lines = ticks(
                         (origin - overscan).floor() as i64,
-                        (origin + span + overscan).ceil() as i64,
+                        (lanes.sample_end + overscan).ceil() as i64,
                         tick,
                     );
                     (
@@ -974,7 +975,7 @@ impl Desktop {
             }
         }
         // Marks placed by time glide with the curves (`Nudge`).
-        let nudge = self.history.flow_origin.map(|_| Nudge {
+        let nudge = self.history.flow_windows.map(|_| Nudge {
             width: plot_width,
             scale: window.scale_factor(),
         });
@@ -1072,21 +1073,22 @@ impl Desktop {
                     // While the window glides, the texture stays the one drawn
                     // for the newest reading's window, moved under the window on
                     // screen.
-                    None => (
-                        self.history.flow_origin.map_or(from, |(lanes, _)| lanes),
-                        None,
-                    ),
+                    None => self
+                        .history
+                        .flow_windows
+                        .map_or((from, None), |(lanes, _)| lanes.raster()),
                 },
                 clock_lines.cloned(),
             );
             if let Some((_, _, alpha)) = fade {
                 plot = plot.child(div().absolute().inset_0().opacity(alpha).child(curve));
-            } else if self.history.flow_origin.is_some() {
+            } else if let Some((lanes, _)) = self.history.flow_windows {
                 // The plot fills the box: its bounds are the box's.
                 let bounds = Rc::new(Cell::new(Bounds::default()));
                 self.history.glides.push(Glide {
                     plot: curve.clone(),
                     bounds: bounds.clone(),
+                    start: lanes.start,
                 });
                 plot = plot.child(
                     canvas(move |laid, _, _| bounds.set(laid), |_, _, _, _| {})

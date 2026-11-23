@@ -1,90 +1,13 @@
-//! Dedicated process observation subpage under History, modeled after the
-//! system history page's reading tabs, multi-lane dual-axis charts, and lower
-//! launches panel.
+//! The process observation subpage under History. An observed program's
+//! runs are drawn by the system history's own lanes, tabs, navigator and
+//! tooltips (`history::Source::Watch`); this module adds what is the
+//! observation's own: the page before anything is observed, and the card of
+//! the program and its runs where the system's history lists processes.
 use super::*;
 use widgets::Tone;
 
-mod lanes;
-mod metrics;
-
-/// Axis label gutter width either side of the plots, matching `history/lanes.rs`.
-pub(super) const GUTTER: f32 = 48.;
-/// Maximum concurrent chart lanes on the observation page.
-pub(super) const MAX_LANES: usize = 4;
-/// Maximum launch rows shown directly in the launches card.
-const VISIBLE_RUN_ROWS: usize = 8;
-
-#[derive(Clone, Debug)]
-pub(in crate::frontend) enum Command {
-    /// Show this metric in the active lane.
-    Show(&'static str),
-    /// Add a new lane showing this metric (or activate it if already shown).
-    AddLane(&'static str),
-    /// Change the primary metric of a specific lane.
-    SetReading(u64, &'static str),
-    /// Set or clear the overlay metric on a specific lane.
-    SetOverlay(u64, Option<&'static str>),
-    /// Toggle this metric as the active lane's overlay (right-click on a reading tab).
-    ToggleOverlay(&'static str),
-    /// Remove a lane when more than one exists.
-    RemoveLane(u64),
-}
-
-#[derive(Clone, Debug)]
-pub(in crate::frontend) struct WatchLane {
-    pub(in crate::frontend) id: u64,
-    pub(in crate::frontend) reading: &'static str,
-    pub(in crate::frontend) overlay: Option<&'static str>,
-}
-
-pub(in crate::frontend) struct WatchUiState {
-    pub(in crate::frontend) lanes: Vec<WatchLane>,
-    pub(in crate::frontend) active: u64,
-    next_id: u64,
-    pub(super) hover: Option<i64>,
-    pub(super) pin: Option<i64>,
-    pub(super) plot_bounds: Rc<RefCell<Bounds<Pixels>>>,
-}
-
-impl Default for WatchUiState {
-    fn default() -> Self {
-        Self {
-            lanes: vec![WatchLane {
-                id: 1,
-                reading: "memory",
-                overlay: Some("commit"),
-            }],
-            active: 1,
-            next_id: 2,
-            hover: None,
-            pin: None,
-            plot_bounds: Rc::new(RefCell::new(Bounds::default())),
-        }
-    }
-}
-
-impl WatchUiState {
-    pub(in crate::frontend) fn clear_cursor(&mut self) {
-        self.hover = None;
-        self.pin = None;
-    }
-
-    pub(super) fn active_lane(&self) -> &WatchLane {
-        self.lanes
-            .iter()
-            .find(|lane| lane.id == self.active)
-            .unwrap_or(&self.lanes[0])
-    }
-
-    fn active_lane_mut(&mut self) -> &mut WatchLane {
-        let active = self.active;
-        if let Some(pos) = self.lanes.iter().position(|lane| lane.id == active) {
-            &mut self.lanes[pos]
-        } else {
-            &mut self.lanes[0]
-        }
-    }
-}
+/// A run's row in the runs card.
+const RUN_ROW: f32 = 30.;
 
 fn status_color(state: &str, waiting: bool, p: Palette) -> Hsla {
     if waiting {
@@ -109,91 +32,6 @@ fn status_label(state: &str, waiting: bool) -> String {
 impl Desktop {
     pub(super) fn watch_anchor(&self, key: impl Into<SharedString>) -> AnyElement {
         layout::anchor_probe(key, self.ui.anchors.clone()).into_any_element()
-    }
-
-    pub(in crate::frontend) fn watch_command(
-        &mut self,
-        command: Command,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match command {
-            Command::Show(id) => {
-                let lane = self.watch_ui.active_lane_mut();
-                lane.reading = id;
-                if lane.overlay == Some(id) {
-                    lane.overlay = None;
-                }
-            }
-            Command::AddLane(id) => {
-                if let Some(existing) = self.watch_ui.lanes.iter().find(|l| l.reading == id) {
-                    self.watch_ui.active = existing.id;
-                } else if self.watch_ui.lanes.len() < MAX_LANES {
-                    let lane_id = self.watch_ui.next_id;
-                    self.watch_ui.next_id += 1;
-                    self.watch_ui.lanes.push(WatchLane {
-                        id: lane_id,
-                        reading: id,
-                        overlay: None,
-                    });
-                    self.watch_ui.active = lane_id;
-                }
-            }
-            Command::SetReading(lane_id, id) => {
-                if let Some(lane) = self.watch_ui.lanes.iter_mut().find(|l| l.id == lane_id) {
-                    lane.reading = id;
-                    if lane.overlay == Some(id) {
-                        lane.overlay = None;
-                    }
-                    self.watch_ui.active = lane_id;
-                }
-            }
-            Command::SetOverlay(lane_id, id) => {
-                if let Some(lane) = self.watch_ui.lanes.iter_mut().find(|l| l.id == lane_id) {
-                    let valid = id.filter(|&oid| {
-                        oid != lane.reading
-                            && metrics::metric_by_id(oid).is_some_and(|m| !m.is_pair())
-                    });
-                    lane.overlay = valid;
-                    self.watch_ui.active = lane_id;
-                }
-            }
-            Command::ToggleOverlay(id) => {
-                if metrics::metric_by_id(id).is_some_and(|m| !m.is_pair()) {
-                    let lane = self.watch_ui.active_lane_mut();
-                    if lane.reading != id {
-                        lane.overlay = if lane.overlay == Some(id) {
-                            None
-                        } else {
-                            Some(id)
-                        };
-                    }
-                }
-            }
-            Command::RemoveLane(lane_id) => {
-                if self.watch_ui.lanes.len() > 1 {
-                    self.watch_ui.lanes.retain(|l| l.id != lane_id);
-                    if !self
-                        .watch_ui
-                        .lanes
-                        .iter()
-                        .any(|l| l.id == self.watch_ui.active)
-                    {
-                        self.watch_ui.active = self.watch_ui.lanes[0].id;
-                    }
-                }
-            }
-        }
-        cx.notify();
-    }
-
-    pub(in crate::frontend) fn watch_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
-        if key == "escape" && self.watch_ui.pin.is_some() {
-            self.watch_ui.pin = None;
-            cx.notify();
-            return true;
-        }
-        false
     }
 
     pub(super) fn load_watch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -241,7 +79,8 @@ impl Desktop {
                 self.watch_empty(cx)
             }
         } else {
-            self.watch_body(watch, window, cx)
+            // Drawn by the history page's lanes once it can be read.
+            div().into_any_element()
         };
         div()
             .id("watch-content")
@@ -302,7 +141,7 @@ impl Desktop {
             )
             .child(
                 div()
-                    .max_w(px(480.))
+                    .max_w(px(560.))
                     .text_center()
                     .text_size(theme::font(13.))
                     .text_color(p.muted)
@@ -393,83 +232,47 @@ impl Desktop {
             .into_any_element()
     }
 
-    fn watch_body(&self, watch: &Value, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// Under the chart, where the system's history lists processes: the
+    /// observed program (name, path, state, what can be done) and its runs,
+    /// newest first. A run clicked is drawn on the lanes above.
+    pub(in crate::frontend) fn watch_panel(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = self.palette;
+        let Some(watch) = self.data.get("processWatch").filter(|w| w.is_object()) else {
+            return div().into_any_element();
+        };
         let state = text(watch, "state");
-        let has_program = watch["program"].is_object();
         let active = matches!(state, "recording" | "gap");
-        let waiting = has_program && active && watch["liveRuns"] == 0;
-        let points = values(&watch["points"]);
+        let live_runs = watch["liveRuns"].as_u64().unwrap_or(0);
+        let waiting = watch["program"].is_object() && active && live_runs == 0;
         let runs = values(&watch["runs"]);
         let total_runs = watch["totalRuns"].as_u64().unwrap_or(runs.len() as u64);
-        let live_runs = watch["liveRuns"].as_u64().unwrap_or(0);
+        let offset = watch["runOffset"].as_u64().unwrap_or(0);
+        let path = text(&watch["program"], "displayPath").to_owned();
 
-        // 1. Compact target header bar (target identity, status pill, path, stop/delete).
-        let mut head_left = div()
-            .flex_1()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap(px(3.))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(
-                        div()
-                            .font_family(theme::display_font(cx))
-                            .text_size(theme::font(16.))
-                            .font_weight(theme::LABEL_WEIGHT)
-                            .text_color(p.ink)
-                            .child(tr!(
-                                "history.watch.target",
-                                name = text(watch, "name"),
-                                pid = watch["pid"]
-                            )),
-                    )
-                    .child(self.watch_status_pill(state, waiting))
-                    .child(
-                        div()
-                            .text_size(theme::font(12.))
-                            .font_features(theme::tabular())
-                            .text_color(p.muted)
-                            .child(tr!("history.watch.liveCount", count = live_runs)),
-                    ),
-            );
-        if has_program {
-            let path = text(&watch["program"], "displayPath");
-            if !path.is_empty() {
-                head_left = head_left.child(
-                    div()
-                        .min_w_0()
-                        .font_family(theme::mono_font(cx))
-                        .text_size(theme::font(11.5))
-                        .text_color(p.muted)
-                        .child(path.to_owned()),
-                );
-            }
-        }
-        let head_actions = div()
+        // Stopping is offered while it records; deleting always.
+        let actions = div()
             .flex_none()
             .flex()
-            .flex_wrap()
             .items_center()
             .gap(px(6.))
-            .child(
-                self.btn_small(
-                    "watch-stop",
-                    label("history.watch.stop"),
-                    Some("StopIcon"),
-                    Tone::Plain,
+            .when(active, |d| {
+                d.child(
+                    self.btn_small(
+                        "watch-stop",
+                        label("history.watch.stop"),
+                        Some("StopIcon"),
+                        Tone::Plain,
+                    )
+                    .child(self.watch_anchor("watch-stop"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.preference("watchProcess", json!({"op":"stop"}), window, cx)
+                    })),
                 )
-                .child(self.watch_anchor("watch-stop"))
-                .disabled(!active)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.preference("watchProcess", json!({"op":"stop"}), window, cx)
-                })),
-            )
+            })
             .child(
                 self.btn_small(
                     "watch-delete",
@@ -482,22 +285,56 @@ impl Desktop {
                     this.preference("watchProcess", json!({"op":"delete"}), window, cx)
                 })),
             );
-
-        let mut header_card = self
-            .watch_surface()
-            .py(px(10.))
+        // The program: its name and state on one line with what can be done,
+        // its path under them (long paths end in an ellipsis).
+        let heading = div()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .pt(px(8.))
             .px(px(14.))
-            .gap(px(8.))
+            .pb(px(8.))
             .child(
                 div()
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .justify_between()
-                    .gap(px(10.))
-                    .child(head_left)
-                    .child(head_actions),
-            );
+                    .gap_x(px(10.))
+                    .gap_y_1()
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(theme::font(14.))
+                            .font_weight(theme::LABEL_WEIGHT)
+                            .text_color(p.ink)
+                            .child(text(watch, "name").to_owned()),
+                    )
+                    .child(self.watch_status_pill(state, waiting))
+                    .when(live_runs > 1, |d| {
+                        d.child(
+                            div()
+                                .text_size(theme::font(12.))
+                                .font_features(theme::tabular())
+                                .text_color(p.muted)
+                                .child(tr!("history.watch.liveCount", count = live_runs)),
+                        )
+                    })
+                    .child(div().flex_1())
+                    .child(actions),
+            )
+            .when(!path.is_empty(), |d| {
+                d.child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .font_family(theme::mono_font(cx))
+                        .text_size(theme::font(11.5))
+                        .text_color(p.muted)
+                        .child(path),
+                )
+            });
+
         let mut notices: Vec<String> = Vec::new();
         if watch["damaged"] == true {
             notices.push(label("history.watch.damaged"));
@@ -511,293 +348,247 @@ impl Desktop {
         if let Some(message) = self.data.get("watchError").and_then(Value::as_str) {
             notices.push(message.to_owned());
         }
-        for notice in notices {
-            header_card = header_card.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .py(px(6.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(p.stroke)
-                    .bg(p.control)
-                    .text_size(theme::font(12.))
-                    .text_color(p.muted)
-                    .child(icon("WarningIcon", p.io).size(px(14.)).flex_shrink_0())
-                    .child(div().min_w_0().child(notice)),
-            );
-        }
+        let notices = notices.into_iter().map(|notice| {
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .mx(px(14.))
+                .mb(px(6.))
+                .px(px(10.))
+                .py(px(6.))
+                .rounded(px(6.))
+                .bg(p.io.opacity(0.08))
+                .text_size(theme::font(12.))
+                .text_color(p.muted)
+                .child(icon("WarningIcon", p.io).size(px(14.)).flex_shrink_0())
+                .child(div().min_w_0().child(notice))
+        });
 
-        // 2. History-style reading tabs bar + 3. Multi-lane dual-axis chart card.
-        let reading_bar = self.watch_reading_bar(points, window, cx);
-        let chart_card = self.watch_chart_card(watch, points, window, cx);
-
-        // 4. Lower panel: launches list & selector (styled like history's lower table card).
-        let options = runs
-            .iter()
-            .map(|run| {
-                tr!(
-                    "history.watch.run",
-                    started = date_time(number(run, "createTime")),
-                    pid = run["pid"],
-                    state = label(&format!("history.watch.state.{}", text(run, "state")))
-                )
-            })
-            .collect();
-        let selected = runs
-            .iter()
-            .position(|run| run["pid"] == watch["pid"] && run["createTime"] == watch["createTime"]);
-        let keys: Vec<_> = runs
-            .iter()
-            .map(|run| json!({"op":"selectRun","pid":run["pid"],"createTime":run["createTime"]}))
-            .collect();
-        let offset = watch["runOffset"].as_u64().unwrap_or(0);
-        let run_controls = div()
+        // The runs as a table: newest first, the one drawn selected.
+        let cell = |width: Option<f32>, right: bool| {
+            div()
+                .flex_shrink_0()
+                .when_some(width, |d, w| d.w(px(w)))
+                .when(width.is_none(), |d| d.flex_1().min_w_0())
+                .truncate()
+                .when(right, |d| d.text_right())
+        };
+        let columns: [(&str, Option<f32>, bool); 6] = [
+            ("pid", Some(96.), false),
+            ("started", None, false),
+            ("last", None, false),
+            ("duration", Some(112.), true),
+            ("points", Some(84.), true),
+            ("state", Some(150.), false),
+        ];
+        let head = div()
             .flex()
-            .flex_wrap()
             .items_center()
-            .gap(px(6.))
-            .child(div().w(px(260.)).max_w_full().child(self.select(
-                "watch-run",
-                label("history.watch.chooseRun"),
-                options,
-                selected,
-                keys.is_empty(),
-                move |this, index, window, cx| {
-                    if let Some(action) = keys.get(index) {
-                        this.preference("watchProcess", action.clone(), window, cx);
-                    }
-                },
-                cx,
-            )))
-            .child(
-                self.btn_small(
-                    "watch-older-runs",
-                    label("history.watch.earlierRuns"),
-                    Some("ChevronLeft"),
-                    Tone::Plain,
-                )
-                .child(self.watch_anchor("watch-older-runs"))
-                .disabled(offset + runs.len() as u64 >= total_runs)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.preference(
-                        "watchProcess",
-                        json!({"op":"runs","offset":offset+256}),
-                        window,
-                        cx,
-                    )
-                })),
-            )
-            .child(
-                self.btn_small(
-                    "watch-latest-runs",
-                    label("history.watch.latestRuns"),
-                    Some("ArrowRightIcon"),
-                    Tone::Plain,
-                )
-                .child(self.watch_anchor("watch-latest-runs"))
-                .disabled(offset == 0)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.preference("watchProcess", json!({"op":"runs","offset":0}), window, cx)
-                })),
-            );
-        let mut launches_card =
-            self.watch_surface().gap(px(8.)).child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(8.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .items_baseline()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .font_weight(theme::LABEL_WEIGHT)
-                                    .text_size(theme::font(13.))
-                                    .text_color(p.ink)
-                                    .child(label("history.watch.launches")),
-                            )
-                            .child(div().text_size(theme::font(12.)).text_color(p.muted).child(
-                                tr!(
-                                    "history.watch.runSummary",
-                                    shown = runs.len(),
-                                    total = watch["totalRuns"],
-                                    points = watch["totalPoints"]
-                                ),
-                            )),
-                    )
-                    .child(run_controls),
-            );
-        if !runs.is_empty() {
-            let mut visible_indices: Vec<usize> =
-                (0..runs.len()).rev().take(VISIBLE_RUN_ROWS).collect();
-            if let Some(sel) = selected
-                && !visible_indices.contains(&sel)
-            {
-                visible_indices.push(sel);
-            }
-            let mut list = div().flex().flex_col().gap(px(3.));
-            for index in visible_indices {
-                let run = &runs[index];
-                let is_selected = selected == Some(index);
+            .gap(px(12.))
+            .h(px(30.))
+            .pl(px(32.))
+            .pr(px(14.))
+            .border_t_1()
+            .border_b_1()
+            .border_color(p.stroke)
+            .text_size(theme::font(12.))
+            .text_color(p.muted)
+            .children(columns.iter().map(|(key, width, right)| {
+                cell(*width, *right).child(label(&format!("history.watch.column.{key}")))
+            }));
+        let now = self.snapshot["timestamp"].as_i64().unwrap_or(0);
+        let rows = runs
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(index, run)| {
+                let selected =
+                    run["pid"] == watch["pid"] && run["createTime"] == watch["createTime"];
                 let run_state = text(run, "state");
+                let recording = run_state == "recording";
+                let first = run["firstTs"].as_i64().filter(|ts| *ts > 0);
+                let last = run["lastTs"].as_i64().filter(|ts| *ts > 0);
+                let end = if recording {
+                    now.max(last.unwrap_or(0))
+                } else {
+                    last.unwrap_or(0)
+                };
+                let duration = first
+                    .map(|first| super::history::duration_label((end - first).max(0)))
+                    .unwrap_or_else(|| label("format.missing"));
+                let stamp = |ts: Option<i64>| {
+                    ts.map(|ts| date_time(ts as f64))
+                        .unwrap_or_else(|| label("format.missing"))
+                };
                 let dot = status_color(run_state, false, p);
                 let action =
                     json!({"op":"selectRun","pid":run["pid"],"createTime":run["createTime"]});
-                let row = div()
+                div()
                     .id(SharedString::from(format!("watch-run-row-{index}")))
+                    .relative()
                     .flex()
-                    .flex_wrap()
+                    .flex_shrink_0()
                     .items_center()
-                    .justify_between()
-                    .gap(px(10.))
-                    .px(px(10.))
-                    .py(px(6.))
-                    .rounded(px(5.))
-                    .border_1()
-                    .border_color(if is_selected {
-                        p.accent.opacity(0.45)
-                    } else {
-                        gpui_kit::gpui::transparent_black()
+                    .gap(px(12.))
+                    .h(px(RUN_ROW))
+                    .pl(px(14.))
+                    .pr(px(14.))
+                    .text_size(theme::font(13.))
+                    .font_features(theme::tabular())
+                    .text_color(p.ink)
+                    .when(selected, |d| d.bg(p.accent.opacity(0.12)))
+                    .when(!selected, |d| {
+                        d.cursor_pointer().hover(move |s| s.bg(p.hover))
                     })
-                    .bg(if is_selected {
-                        p.accent.opacity(0.1)
-                    } else {
-                        p.control.opacity(0.45)
+                    // The run drawn: an accent bar at the row's start.
+                    .when(selected, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .left(px(4.))
+                                .top(px(7.))
+                                .bottom(px(7.))
+                                .w(px(3.))
+                                .rounded_full()
+                                .bg(p.accent),
+                        )
                     })
-                    .cursor_pointer()
-                    .when(!is_selected, |d| d.hover(move |s| s.bg(p.hover)))
                     .child(
                         div()
+                            .w(px(6.))
+                            .flex_shrink_0()
                             .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(div().size(px(7.)).rounded_full().bg(dot).flex_shrink_0())
-                            .child(
-                                div()
-                                    .font_weight(if is_selected {
-                                        theme::LABEL_WEIGHT
-                                    } else {
-                                        FontWeight::NORMAL
-                                    })
-                                    .font_features(theme::tabular())
-                                    .text_size(theme::font(12.5))
-                                    .text_color(p.ink)
-                                    .child(format!("PID {}", run["pid"])),
-                            )
-                            .child(
-                                div()
-                                    .text_size(theme::font(12.))
-                                    .font_features(theme::tabular())
-                                    .text_color(p.muted)
-                                    .child(date_time(number(run, "createTime"))),
-                            ),
+                            .justify_center()
+                            .child(div().size(px(7.)).rounded_full().bg(dot)),
+                    )
+                    .child(self.watch_anchor(format!("watch-run-{index}")))
+                    .child(cell(Some(96.), false).child(run["pid"].to_string()))
+                    .child(cell(None, false).child(date_time(number(run, "createTime"))))
+                    .child(cell(None, false).text_color(p.muted).child(stamp(last)))
+                    .child(cell(Some(112.), true).child(duration))
+                    .child(
+                        cell(Some(84.), true)
+                            .text_color(p.muted)
+                            .child(crate::regional::count(number(run, "points"))),
                     )
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .text_size(theme::font(12.))
-                            .child(
-                                div()
-                                    .font_features(theme::tabular())
-                                    .text_color(p.muted)
-                                    .child(tr!("history.watch.pointCount", count = run["points"])),
-                            )
-                            .child(
-                                div()
-                                    .text_color(if run_state == "recording" {
-                                        p.ink
-                                    } else {
-                                        p.muted
-                                    })
-                                    .child(label(&format!("history.watch.state.{run_state}"))),
-                            ),
+                        cell(Some(150.), false)
+                            .text_color(if recording { p.ink } else { p.muted })
+                            .child(label(&format!("history.watch.state.{run_state}"))),
                     )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.preference("watchProcess", action.clone(), window, cx);
-                    }));
-                list = list.child(row);
-            }
-            launches_card = launches_card.child(list);
-        }
-
-        let mut stack = div()
+                    }))
+            })
+            .collect::<Vec<_>>();
+        let rows_scroll = window
+            .use_keyed_state("watch-runs-scroll", cx, |_, _| ScrollHandle::new())
+            .read(cx)
+            .clone();
+        let body = div()
+            .id("watch-runs")
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .track_scroll(&rows_scroll)
+            .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .child(header_card)
-            .child(reading_bar)
-            .child(chart_card)
-            .child(launches_card);
+            .children(rows)
+            .child(scrollbar::scrollbar(
+                "watch-runs-scrollbar",
+                &rows_scroll,
+                p.dark,
+            ));
 
-        // Status events card (gaps, exit, stop, interruption, limit).
-        let events: Vec<_> = points
-            .iter()
-            .filter(|point| text(point, "state") != "recording")
-            .rev()
-            .take(6)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        if !events.is_empty() {
-            let mut event_list = div().flex().flex_col().gap(px(5.));
-            for point in events {
-                let point_state = text(point, "state");
-                let dot = status_color(point_state, false, p);
-                event_list = event_list.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(8.))
-                        .text_size(theme::font(12.))
-                        .child(div().size(px(6.)).rounded_full().bg(dot).flex_shrink_0())
-                        .child(
-                            div()
-                                .font_features(theme::tabular())
-                                .text_color(p.muted)
-                                .child(date_time(number(point, "ts"))),
-                        )
-                        .child(
-                            div()
-                                .text_color(p.ink)
-                                .child(label(&format!("history.watch.state.{point_state}"))),
-                        ),
-                );
-            }
-            stack = stack.child(
-                self.watch_surface()
-                    .gap(px(6.))
-                    .child(
-                        div()
-                            .font_weight(theme::LABEL_WEIGHT)
-                            .text_size(theme::font(13.))
-                            .text_color(p.ink)
-                            .child(label("history.watch.events")),
-                    )
-                    .child(event_list),
-            );
-        }
-
-        stack
+        // What is shown of how many, and how long records are kept.
+        let paging = total_runs > runs.len() as u64;
+        let foot = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .justify_between()
+            .gap_x_4()
+            .gap_y_1()
+            .px(px(14.))
+            .py(px(8.))
+            .border_t_1()
+            .border_color(p.stroke)
+            .text_size(theme::font(12.))
+            .text_color(p.muted)
             .child(
                 div()
-                    .px(px(4.))
-                    .text_size(theme::font(12.))
-                    .text_color(p.muted)
-                    .child(label("history.watch.note")),
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(tr!(
+                        "history.watch.runSummary",
+                        shown = runs.len(),
+                        total = total_runs,
+                        points = watch["totalPoints"]
+                    ))
+                    .when(paging, |d| {
+                        d.child(
+                            self.btn_small(
+                                "watch-older-runs",
+                                label("history.watch.earlierRuns"),
+                                Some("ChevronLeft"),
+                                Tone::Plain,
+                            )
+                            .child(self.watch_anchor("watch-older-runs"))
+                            .disabled(offset + runs.len() as u64 >= total_runs)
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.preference(
+                                        "watchProcess",
+                                        json!({"op":"runs","offset":offset + 256}),
+                                        window,
+                                        cx,
+                                    )
+                                },
+                            )),
+                        )
+                        .child(
+                            self.btn_small(
+                                "watch-latest-runs",
+                                label("history.watch.latestRuns"),
+                                Some("ArrowRightIcon"),
+                                Tone::Plain,
+                            )
+                            .child(self.watch_anchor("watch-latest-runs"))
+                            .disabled(offset == 0)
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.preference(
+                                        "watchProcess",
+                                        json!({"op":"runs","offset":0}),
+                                        window,
+                                        cx,
+                                    )
+                                },
+                            )),
+                        )
+                    }),
             )
+            .child(div().child(label("history.watch.note")));
+
+        div()
+            .id("watch-panel")
+            .flex_1()
+            .min_h(px(RUN_ROW * 3. + 160.))
+            .flex()
+            .flex_col()
+            .border_1()
+            .border_color(p.stroke)
+            .rounded(px(8.))
+            .bg(p.layer)
+            .overflow_hidden()
+            .child(heading)
+            .children(notices)
+            .child(head)
+            .child(body)
+            .child(foot)
             .into_any_element()
     }
 }

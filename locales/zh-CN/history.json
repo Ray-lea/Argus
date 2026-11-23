@@ -12,18 +12,15 @@
   "off": "历史记录已关闭。<link>打开设置</link>",
   "watch": {
     "title": "进程观察",
-    "empty": "在进程的右键菜单或详细信息中选择“观察进程”，即可记录未进入排行榜的内存变化。",
+    "empty": "在进程的右键菜单或详细信息中选择“观察进程”，即可持续记录该程序的内存、CPU、GPU、磁盘与网络读数，不受排行榜限制。",
     "openProcesses": "前往进程列表",
     "start": "观察进程",
-    "target": "观察 {name}（PID {pid}）",
     "stop": "停止记录",
     "delete": "删除记录",
     "note": "同一路径的各次运行分别记录。最多保留 7 天，达到容量上限时提前清理最旧记录。停止后保留数据，删除会结束观察并清除记录。重启 Argus 后需重新开始观察。",
     "metric": {
       "memory": "专用工作集",
-      "commit": "专用提交量",
-      "runs": "已记录实例",
-      "points": "当前实例采样"
+      "commit": "专用提交量"
     },
     "state": {
       "recording": "正在记录",
@@ -42,23 +39,21 @@
       "storage": "无法读写观察记录；记录已停止。",
       "invalid": "观察记录损坏或格式不受支持；可删除此记录。"
     },
-    "chooseRun": "选择运行实例",
-    "launches": "运行实例",
-    "run": "{started} · PID {pid} · {state}",
     "runSummary": "显示 {shown}/{total} 个实例；所选实例共 {points} 个记录点",
-    "earlier": "更早的记录",
-    "latest": "最新记录",
     "damaged": "部分记录损坏，相应时段留空。",
     "earlierRuns": "更早的实例",
     "latestRuns": "最新实例",
     "waiting": "等待后续运行",
     "liveCount": "{count} 个运行中",
-    "peak": "峰值 {value}",
-    "waitingFirst": "等待首个采样点…",
-    "pointCount": "{count} 点",
-    "tabTitle": "单击在当前轨道显示；右键可叠加到当前轨道",
     "unconfirmed": "有 {count} 个同名实例无法确认身份；每分钟重试一次。",
-    "events": "状态记录"
+    "column": {
+      "pid": "PID",
+      "started": "启动时间",
+      "last": "最后记录",
+      "duration": "时长",
+      "points": "记录点",
+      "state": "状态"
+    }
   },
   "instanceUnavailable": "进程 {name}（PID {pid}）的记录实例已结束，或无法确认其身份。",
   "range": {
@@ -175,7 +170,8 @@
     "notRunning": "Argus 未运行",
     "off": "记录已关闭",
     "unknown": "无记录",
-    "tip": "无记录：{reason}"
+    "tip": "无记录：{reason}",
+    "missing": "缺少有效采样"
   },
   "duration": {
     "seconds": "{count} 秒",

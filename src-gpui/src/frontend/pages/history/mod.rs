@@ -25,7 +25,7 @@ use crate::frontend::motion;
 use readings::Reading;
 use series::{FRAME, HOUR, MINUTE, Points, SECOND};
 pub(in crate::frontend) use state::HistoryState;
-use state::{Range, TableMode};
+use state::{Range, Source, TableMode};
 
 /// Commands from the page's menus and buttons.
 #[derive(Clone, Debug)]
@@ -82,6 +82,51 @@ pub(super) fn recorded_target(row: &Value, frame: Option<i64>, live: &[Value]) -
             json!({"pid": process["pid"], "createTime": created,
             "name": process["name"], "historyFrame": frame})
         })
+}
+
+/// An observation's records (`WatchPoint`s) as `watch_points` answers them
+/// at one-second buckets: each with readings as one sample. For fixtures,
+/// whose observation is made up and never asked.
+fn watch_fixture_points(points: &[Value]) -> Points {
+    use argus_core::watch::{SeriesQuery, WatchPoint};
+    let points: Vec<WatchPoint> = points
+        .iter()
+        .filter_map(|p| serde_json::from_value(p.clone()).ok())
+        .collect();
+    let first = points.first().map_or(0, |p| p.ts);
+    let last = points.last().map_or(first, |p| p.ts);
+    let query = SeriesQuery {
+        pid: 0,
+        create_time: 0,
+        from: first,
+        to: last,
+        bucket: SECOND,
+        origin: 0,
+        keys: [
+            "memory",
+            "commit",
+            "workingSet",
+            "cpu",
+            "gpu",
+            "gpuMemory",
+            "diskRead",
+            "diskWrite",
+            "ioRead",
+            "ioWrite",
+            "netReceived",
+            "netSent",
+            "threads",
+            "handles",
+        ]
+        .map(str::to_owned)
+        .to_vec(),
+    };
+    let answer = json!(query.recorded(&points));
+    Points::parse(
+        &answer,
+        &json!({"from": first - series::DAY, "to": last,
+        "bucket": SECOND, "origin": 0, "keys": query.keys}),
+    )
 }
 
 fn now_ms() -> i64 {
@@ -183,7 +228,7 @@ fn edge_label(ts: i64, span: i64, now: i64) -> String {
     }
 }
 /// A duration in words: "2 小时 5 分钟".
-fn duration_label(ms: i64) -> String {
+pub(in crate::frontend) fn duration_label(ms: i64) -> String {
     let minutes = ms / MINUTE;
     if ms < MINUTE {
         tr!("history.duration.seconds", count = (ms / SECOND).max(1))
@@ -238,6 +283,10 @@ impl Desktop {
     /// landed was drawn again at once.
     fn history_clock(&self) -> i64 {
         let now = self.history_now();
+        // An observed run that ended holds still at its last record's end.
+        if let Some(run) = self.history.run.filter(|run| !run.live) {
+            return run.last;
+        }
         match self.history.points.as_ref().and_then(Points::newest) {
             Some(newest) if newest <= now + SECOND && now - newest < 10 * SECOND => newest,
             _ => (now - SECOND).div_euclid(SECOND) * SECOND,
@@ -267,11 +316,29 @@ impl Desktop {
         !cx.reduce_motion()
     }
 
+    fn history_source_live(&self) -> bool {
+        self.history.source == Source::System || self.history.run.is_some_and(|run| run.live)
+    }
+
+    /// An observation holds each raw reading for its recorded span. Include
+    /// the last step in the texture so the moving edge can reveal it before
+    /// the next record arrives. A late or missing record leaves a gap beyond it.
+    fn history_curve_end(&self, points: &Points) -> i64 {
+        if self.history.run.is_some_and(|run| run.live)
+            && let Some(i) = points.ts.len().checked_sub(1)
+            && points.single(i)
+        {
+            return points.ts[i].saturating_add(points.span[i]);
+        }
+        self.history_clock()
+    }
+
     /// Whether the window glides with the clock: while it follows a short
     /// window (the newest readings move across it a pixel at a time), with
     /// motion on. Longer windows move a second or a minute at a time.
     fn history_flowing(&self, cx: &App) -> bool {
         self.history.follow
+            && self.history_source_live()
             && self.history.span() <= FLOW_SPAN
             && self.history_motion(cx)
             && self.chart_clock.borrow().mode != crate::frontend::motion::Mode::Off
@@ -301,23 +368,16 @@ impl Desktop {
         let precise = flowing.then(|| precise_now_ms() - self.history_lag() as f64);
         let clock = precise.map_or(data, |end| end.floor() as i64);
         self.history.anchor(clock);
-        self.history.flow_origin = flowing.then(|| {
-            // The newest reading is usually ahead of the window on screen: the
-            // texture keeps the readings' own window, a little ahead of it.
-            let shift = clock - data;
-            (
-                (self.history.view.0 - shift) as f64,
-                (self.history.extent.0 - shift) as f64,
-            )
-        });
-        let (mut shown, easing) = self.history.shown(now, motion);
+        self.history.flow_windows = None;
+        let (_, easing) = self.history.shown(now, motion);
         // The points an answer replaced are drawn with it only while the
         // window eases from them.
         if !easing && self.history.held_since().is_none() {
             self.history.previous = None;
         }
-        if let Some(end) = precise.filter(|_| !easing) {
-            shown = (end - (shown.1 - shown.0), end);
+        let glide_end = precise.filter(|_| !easing && self.history.held_since().is_none());
+        if let Some(end) = glide_end {
+            self.history.show_flow(end, data);
         }
         let lanes_moving = self.history.step_lanes(now, motion);
         let toast = self
@@ -341,7 +401,7 @@ impl Desktop {
             self.history_ask_tip(window, cx);
         }
         self.history.glides.clear();
-        let chart = self.history_chart(shown, window, cx);
+        let chart = self.history_chart(self.history.shown_now(), window, cx);
         let glides = std::mem::take(&mut self.history.glides);
         self.history.gliding = None;
         if easing
@@ -352,7 +412,7 @@ impl Desktop {
             || self.history.lanes_order.moving(now)
         {
             window.request_isolated_animation_frame();
-        } else if flowing {
+        } else if let Some(end) = glide_end {
             // Device pixels the window moves in a millisecond.
             let width = self.history_plot_width(window) * window.scale_factor();
             let speed = width.max(1.) / self.history.span() as f32;
@@ -366,6 +426,7 @@ impl Desktop {
                 self.history.gliding = Some(state::Gliding {
                     plots: glides,
                     drawn: now,
+                    end,
                     step,
                 });
                 self.schedule_history_glide(window, cx);
@@ -396,14 +457,14 @@ impl Desktop {
             && self.host.get_window("main").is_some_and(|w| {
                 w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
             });
-        if self.history.glide_queued || !shown {
+        if self.history_glide_queued || !shown {
             return;
         }
-        self.history.glide_queued = true;
+        self.history_glide_queued = true;
         let owner = cx.entity().downgrade();
         window.on_next_frame(move |window, cx| {
             let _ = owner.update(cx, |this, cx| {
-                this.history.glide_queued = false;
+                this.history_glide_queued = false;
                 this.history_glide(window, cx);
                 this.schedule_history_glide(window, cx);
             });
@@ -427,7 +488,7 @@ impl Desktop {
         if self.page_enter_pending || self.page_entering(cx) {
             return;
         }
-        let Some(gliding) = &self.history.gliding else {
+        let Some(gliding) = &mut self.history.gliding else {
             return;
         };
         let mode = self.chart_clock.borrow().mode;
@@ -442,11 +503,11 @@ impl Desktop {
         }
         let elapsed = gliding.drawn.elapsed();
         let moved = elapsed < gliding.step && {
-            let ms = elapsed.as_secs_f64() * 1000.;
-            gliding.plots.iter().all(|glide| {
-                glide
-                    .plot
-                    .glide(glide.bounds.get(), glide.plot.end + ms, window)
+            let end = gliding.end + elapsed.as_secs_f64() * 1000.;
+            gliding.plots.iter_mut().all(|glide| {
+                glide.plot.start = glide.start.at(end);
+                glide.plot.end = end;
+                glide.plot.glide(glide.bounds.get(), end, window)
             })
         };
         if !moved {
@@ -456,13 +517,13 @@ impl Desktop {
 
     /// Draws the chart again once the window has moved a device pixel.
     fn history_flow_later(&mut self, delay: Duration, window: &mut Window, cx: &mut Context<Self>) {
-        if self.history.flow.is_some() {
+        if self.history_pixel_timer.is_some() {
             return;
         }
-        self.history.flow = Some(cx.spawn_in(window, async move |this, cx| {
+        self.history_pixel_timer = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
             let _ = this.update_in(cx, |this, window, _| {
-                this.history.flow = None;
+                this.history_pixel_timer = None;
                 if this.page == "history" {
                     this.redraw_region_alone(regions::RegionKind::HistoryChart, window);
                 }
@@ -545,16 +606,17 @@ impl Desktop {
             return;
         }
         self.history.restored = true;
-        let saved = self.prefs.get::<String>("historyRange", "5m".into());
+        let source = self.history.source;
+        let saved = self.prefs.get::<String>(&source.pref("range"), "5m".into());
         let clock = self.history_clock();
         self.history.set_range(Range::parse(&saved), clock);
         self.history.settle();
         self.history
-            .restore_lanes(&self.prefs.get::<Value>("history.lanes", Value::Null));
-        self.history.band = self.prefs.get::<bool>("history.band", true);
+            .restore_lanes(&self.prefs.get::<Value>(&source.pref("lanes"), Value::Null));
+        self.history.band = self.prefs.get::<bool>(&source.pref("band"), true);
         self.history.split = self
             .prefs
-            .get::<f64>("history.split", 0.6)
+            .get::<f64>(&source.pref("split"), 0.6)
             .clamp(0.34, 0.82) as f32;
         self.history.folded = self
             .prefs
@@ -624,7 +686,10 @@ impl Desktop {
 
     /// The readings there are, from what was recorded.
     fn history_catalogue(&mut self) {
-        self.history.readings = readings::catalogue(&self.history.channels, &self.palette);
+        self.history.readings = match self.history.source {
+            Source::System => readings::catalogue(&self.history.channels, &self.palette),
+            Source::Watch => readings::watch_catalogue(&self.palette),
+        };
         self.history.catalogue_key = (self.palette.dark, argus_core::i18n::locale() as u8);
     }
 
@@ -632,10 +697,118 @@ impl Desktop {
         self.history.readings.iter().find(|r| r.id == id)
     }
 
+    /// The readings over the chart as tabs; the rest are in the chooser.
+    fn history_tab_ids(&self) -> Vec<String> {
+        match self.history.source {
+            Source::System => readings::tab_ids(&self.history.readings),
+            Source::Watch => readings::WATCH_TABS.map(str::to_owned).to_vec(),
+        }
+    }
+
+    /// Asks for points as the page's source reads them: the system's history,
+    /// or the observed run's records, which answer in the same shape.
+    fn history_request_points(
+        &mut self,
+        mut args: Value,
+        cache: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let command = match self.history.source {
+            Source::System => "history_points",
+            Source::Watch => {
+                let Some(run) = self.history.run else {
+                    return;
+                };
+                args["pid"] = json!(run.pid);
+                args["createTime"] = json!(run.created);
+                "watch_points"
+            }
+        };
+        self.request(command, args, Some(cache), window, cx);
+    }
+
+    /// Shows the system's history or the observation: each keeps a state of
+    /// its own (window, lanes, readings), the other one waits. Whether the
+    /// page changed.
+    pub(in crate::frontend) fn set_history_page(&mut self, page: &str) -> bool {
+        let next = if page == "watch" { "watch" } else { "system" };
+        if self.history_page == next {
+            return false;
+        }
+        self.history_page = next.into();
+        std::mem::swap(&mut self.history, &mut self.history_parked);
+        self.history.hover = None;
+        self.history.drag = None;
+        self.history.glides.clear();
+        self.history.gliding = None;
+        true
+    }
+
+    /// The observation's lanes for the test controls (`inspectLayout.watch`).
+    pub(in crate::frontend) fn watch_lanes_inspect(&self) -> Value {
+        let state = if self.history.source == Source::Watch {
+            &self.history
+        } else {
+            &self.history_parked
+        };
+        json!(
+            state
+                .live_lanes()
+                .map(
+                    |lane| json!({"id": lane.id, "reading": lane.reading, "overlay": lane.overlay})
+                )
+                .collect::<Vec<_>>()
+        )
+    }
+
+    /// The observation's state, shown or waiting.
+    fn watch_state_mut(&mut self) -> &mut HistoryState {
+        if self.history.source == Source::Watch {
+            &mut self.history
+        } else {
+            &mut self.history_parked
+        }
+    }
+
+    /// Takes up the run the observation's answer names (`processWatch`): the
+    /// one its points are of, when it ran, and whether it still runs. Another
+    /// run starts over at its newest readings.
+    pub(in crate::frontend) fn watch_sync_run(&mut self) {
+        let now = self.history_now();
+        let run = self.data.get("processWatch").and_then(|watch| {
+            let pid = watch["pid"].as_u64().filter(|pid| *pid > 0)? as u32;
+            let created = watch["createTime"].as_i64()?;
+            let listed = values(&watch["runs"])
+                .iter()
+                .find(|run| run["pid"] == watch["pid"] && run["createTime"] == watch["createTime"]);
+            let state = listed.map_or(text(watch, "state"), |run| text(run, "state"));
+            let live = matches!(state, "recording" | "gap") && watch["liveRuns"] != 0;
+            // A run with no record yet starts now.
+            let first = listed
+                .and_then(|run| run["firstTs"].as_i64())
+                .filter(|ts| *ts > 0)
+                .unwrap_or(now);
+            let last = listed
+                .and_then(|run| run["lastTs"].as_i64())
+                .filter(|ts| *ts > 0)
+                .unwrap_or(first);
+            Some(state::WatchRun {
+                pid,
+                created,
+                first,
+                last,
+                live,
+            })
+        });
+        self.watch_state_mut().set_run(run);
+    }
+
     fn history_save_lanes(&mut self) {
         let saved = self.history.saved_lanes();
-        if self.prefs.get::<Value>("history.lanes", Value::Null) != saved {
-            self.prefs.set("history.lanes", saved);
+        let key = self.history.source.pref("lanes");
+        if self.prefs.get::<Value>(&key, Value::Null) != saved {
+            self.prefs.set(&key, saved);
         }
     }
 
@@ -664,7 +837,7 @@ impl Desktop {
                 ids.push(overlay);
             }
         }
-        let tabs = readings::tab_ids(&self.history.readings);
+        let tabs = self.history_tab_ids();
         ids.extend(tabs.iter().map(String::as_str));
         let mut keys = ids
             .into_iter()
@@ -685,13 +858,19 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.load_watch(window, cx);
-        if self.history_page == "watch" {
-            return;
-        }
         self.history_restore();
         if self.options.fixture.is_some() {
             self.history_fixture();
             self.history.release_hold();
+            return;
+        }
+        if self.history.source == Source::Watch {
+            // The observation's records: the run's points and overview only.
+            let clock = self.history_clock();
+            self.history.anchor(clock);
+            self.history_ask_points(window, cx);
+            self.history_ask_overview(window, cx);
+            self.history_wait_for_points(window, cx);
             return;
         }
         let clock = self.history_clock();
@@ -792,6 +971,9 @@ impl Desktop {
     }
 
     fn history_ask_points(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.history.source == Source::Watch && self.history.run.is_none() {
+            return;
+        }
         let width = self.history_plot_width(window);
         let (a, b) = self.history.view;
         let span = (b - a).max(SECOND);
@@ -836,15 +1018,12 @@ impl Desktop {
             {
                 return;
             }
-            // Only what is new since the last settled bucket.
-            let settled = self.history.points.as_ref().map_or(b, |p| p.settled);
-            let from = settled - (settled - origin).rem_euclid(bucket) - bucket;
+            let from = self.history_incremental_from(self.history.points.as_ref().unwrap(), a, now);
             self.history.points_asked = Some(Instant::now());
-            self.request(
-                "history_points",
+            self.history_request_points(
                 json!({"from": from, "to": now + bucket, "bucket": bucket, "origin": origin,
                     "keys": keys, "part": "main", "incremental": true}),
-                Some("historyPoints"),
+                "historyPoints",
                 window,
                 cx,
             );
@@ -871,19 +1050,34 @@ impl Desktop {
         let from = a - margin;
         let to = if follow { now + bucket } else { b + margin };
         self.history.points_asked = Some(Instant::now());
-        self.request(
-            "history_points",
+        self.history_request_points(
             json!({"from": from, "to": to, "bucket": bucket, "origin": origin, "keys": keys,
                 "part": "main", "incremental": false}),
-            Some("historyPoints"),
+            "historyPoints",
             window,
             cx,
         );
     }
 
+    fn history_incremental_from(&self, points: &Points, visible_from: i64, now: i64) -> i64 {
+        let mut start = points.settled;
+        if self.history.source == Source::Watch
+            && visible_from < now - argus_core::history::RECENT_MS
+        {
+            // The previous answer's oldest live readings have just expired.
+            // Replace them with the disk records as well as adding the new tail.
+            let old_cut = points.to - points.bucket - argus_core::history::RECENT_MS;
+            start = start.min(old_cut.max(visible_from));
+        }
+        start - (start - points.origin).rem_euclid(points.bucket) - points.bucket
+    }
+
     /// The navigator draws the active lane's reading over the whole range: from
     /// the window's points when they cover it, else from an overview of its own.
     fn history_ask_overview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.history.source == Source::Watch && self.history.run.is_none() {
+            return;
+        }
         let (a, b) = self.history.extent;
         let covered = self
             .history
@@ -921,17 +1115,15 @@ impl Desktop {
         }
         let incremental = fresh && self.history.follow;
         let from = if incremental {
-            let settled = self.history.overview.as_ref().map_or(a, |p| p.settled);
-            settled - (settled - origin).rem_euclid(bucket) - bucket
+            self.history_incremental_from(self.history.overview.as_ref().unwrap(), a, now)
         } else {
             a - bucket
         };
         self.history.overview_asked = Some(Instant::now());
-        self.request(
-            "history_points",
+        self.history_request_points(
             json!({"from": from, "to": now + bucket, "bucket": bucket, "origin": origin, "keys": keys,
                 "part": "overview", "incremental": incremental}),
-            Some("historyOverview"),
+            "historyOverview",
             window,
             cx,
         );
@@ -982,6 +1174,10 @@ impl Desktop {
     }
 
     fn history_ask_table(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // The observation lists its runs, not processes.
+        if self.history.source == Source::Watch {
+            return;
+        }
         match self.history.mode {
             // The running processes need no query: the table reads the sample.
             TableMode::Moment if self.history_table_live() => {}
@@ -1093,6 +1289,18 @@ impl Desktop {
     /// A fixture run reads the page's data from its fixture, and again after
     /// the test controls replace it (`data`).
     fn history_fixture(&mut self) {
+        if self.history.source == Source::Watch {
+            // The observation's own records, as `watch_points` answers them.
+            self.watch_sync_run();
+            self.history_restore();
+            self.history.points = self
+                .data
+                .get("processWatch")
+                .map(|watch| watch_fixture_points(values(&watch["points"])));
+            let clock = self.history_clock();
+            self.history.anchor(clock);
+            return;
+        }
         if let Some(answer) = self.data.get("historyPoints") {
             let keys = answer["series"]
                 .as_object()
@@ -1133,6 +1341,7 @@ impl Desktop {
         if !matches!(
             command,
             "history_points"
+                | "watch_points"
                 | "history_channels"
                 | "history_frame"
                 | "history_table"
@@ -1140,6 +1349,34 @@ impl Desktop {
         ) && !(command == "history_range" && cache == Some("historyRange"))
         {
             return false;
+        }
+        // An answer for the page not shown now (asked before a switch between
+        // the system's history and the observation), or for a run no longer
+        // drawn: that page asks again when shown.
+        let source = if command == "watch_points" {
+            Source::Watch
+        } else {
+            Source::System
+        };
+        let run = (args["pid"].as_u64(), args["createTime"].as_i64());
+        let other_run = source == Source::Watch
+            && self
+                .history
+                .run
+                .map(|r| (Some(u64::from(r.pid)), Some(r.created)))
+                != Some(run);
+        if source != self.history.source || other_run {
+            let parked = &mut self.history_parked;
+            parked.channels_asked = None;
+            parked.range_asked = None;
+            parked.points_asked = None;
+            parked.overview_asked = None;
+            parked.frame_at = None;
+            if std::mem::take(&mut self.history.points_again) {
+                self.history.points_asked = None;
+                self.history_ask_points(window, cx);
+            }
+            return true;
         }
         // The range picker's hours and events: kept for it as they come.
         if let Some(key @ ("historyDays" | "historyEvents")) = cache {
@@ -1188,7 +1425,7 @@ impl Desktop {
             return true;
         };
         match command {
-            "history_points" => {
+            "history_points" | "watch_points" => {
                 let points = Points::parse(answer, args);
                 let overview = args["part"] == "overview";
                 let incremental = args["incremental"] == true;
@@ -1303,7 +1540,7 @@ impl Desktop {
     /// it is recorded.
     fn history_restore_default_overlay(&mut self) {
         let saved = self.prefs.get::<Value>("history.lanes", Value::Null);
-        if !saved.is_null() {
+        if !saved.is_null() || self.history.source != Source::System {
             return;
         }
         let recorded = self
@@ -1329,8 +1566,10 @@ impl Desktop {
         let wanted = lanes::comfortable_height(lanes) / content;
         if wanted > self.history.split {
             self.history.split = wanted.min(0.8);
-            self.prefs
-                .set("history.split", f64::from(self.history.split));
+            self.prefs.set(
+                &self.history.source.pref("split"),
+                f64::from(self.history.split),
+            );
         }
     }
 
@@ -1359,7 +1598,7 @@ impl Desktop {
             Command::RemoveLane(lane) => self.history.remove_lane(lane, motion),
             Command::Range(id) => {
                 self.history.set_range(Range::parse(id), clock);
-                self.prefs.set("historyRange", id);
+                self.prefs.set(&self.history.source.pref("range"), id);
             }
             Command::Latest => {
                 self.history.go_latest(clock);
@@ -1375,7 +1614,8 @@ impl Desktop {
             Command::ZoomSelection => self.history.zoom_selection(),
             Command::Band => {
                 self.history.band = !self.history.band;
-                self.prefs.set("history.band", self.history.band);
+                self.prefs
+                    .set(&self.history.source.pref("band"), self.history.band);
             }
             Command::Mode(range) => {
                 self.history.mode = if range {
@@ -1435,9 +1675,6 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.history_page == "watch" {
-            return self.watch_key(key, cx);
-        }
         // The range's drop-down takes the arrows, Enter, Space and Esc while
         // open, as a combo box holding the focus does.
         if self.history_ranges_open() {
@@ -1570,7 +1807,8 @@ impl Desktop {
             cx,
         );
         let mut row = div().flex().items_center().gap(px(8.));
-        if self.history_page == "system" {
+        // An observed run that ended has nothing newer to follow.
+        if self.history_source_live() {
             let follow = self.history.follow;
             let live = if follow {
                 // Following: a quiet mark rather than a button; a click pauses.
@@ -1618,7 +1856,7 @@ impl Desktop {
     /// draw (on system history), and the history settings.
     pub(in crate::frontend) fn history_more_items(&self) -> Vec<MenuItem> {
         let mut items = Vec::new();
-        if self.history_page == "system" {
+        {
             items.push(
                 MenuItem::new(label("history.menu.band"), Action::History(Command::Band))
                     .checked(self.history.band),
@@ -1664,7 +1902,10 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        if self.history_page == "watch" {
+        // No observation yet, or one that cannot be read: what to do instead.
+        if self.history.source == Source::Watch
+            && !self.data.get("processWatch").is_some_and(Value::is_object)
+        {
             return self.watch_view(window, cx);
         }
         self.history_restore();
@@ -1695,7 +1936,10 @@ impl Desktop {
                 .flex_shrink_0(),
             cx,
         );
-        let table = self.history_table(window, cx);
+        let table = match self.history.source {
+            Source::System => self.history_table(window, cx),
+            Source::Watch => self.watch_panel(window, cx),
+        };
         let dragging = self.history.drag.is_some();
         div()
             .id("history-content")
@@ -1875,8 +2119,10 @@ impl Desktop {
         let motion = self.history_motion(cx);
         match drag {
             state::Drag::Split { .. } => {
-                self.prefs
-                    .set("history.split", f64::from(self.history.split));
+                self.prefs.set(
+                    &self.history.source.pref("split"),
+                    f64::from(self.history.split),
+                );
             }
             state::Drag::Divider { .. } => self.history_save_lanes(),
             state::Drag::Select { start, moved, .. } => {

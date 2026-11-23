@@ -131,8 +131,6 @@ enum Action {
     ExportTableCsv,
     /// A command of the history page.
     History(pages::history::Command),
-    /// A command of the process observation subpage.
-    Watch(pages::watch::Command),
     CloseOverlay,
     Confirm,
 }
@@ -288,6 +286,9 @@ struct Desktop {
     /// last laid out: the card's height in a viewport of any height.
     perf_card_chrome: Rc<Cell<Option<Pixels>>>,
     chart_tick_queued: bool,
+    /// Both history subpages use the same window callback and pixel-mode timer.
+    history_glide_queued: bool,
+    history_pixel_timer: Option<Task<()>>,
     /// Where the about page left room for the hundred dots (`hundred`).
     hundred_place: Rc<RefCell<hundred::Place>>,
     /// A fixture fed made-up samples (the `sample` test control): its chart
@@ -443,7 +444,9 @@ struct Desktop {
     welcome_checked: bool,
     /// The history page (`pages::history`).
     history: pages::history::HistoryState,
-    watch_ui: pages::watch::WatchUiState,
+    /// The history subpage not shown (the system's or the observation's),
+    /// with its own window and lanes (`Desktop::set_history_page`).
+    history_parked: pages::history::HistoryState,
     /// The tray's open flyouts (`tray`).
     tray: tray::Flyouts,
     /// The desktop monitor's window (`monitors`).
@@ -501,6 +504,8 @@ impl Desktop {
             live_motions: Rc::default(),
             perf_card_chrome: Rc::new(Cell::new(None)),
             chart_tick_queued: false,
+            history_glide_queued: false,
+            history_pixel_timer: None,
             hundred_place: Rc::default(),
             fixture_samples: false,
             chart_frame: 0,
@@ -629,7 +634,7 @@ impl Desktop {
             prefetched: false,
             welcome_checked: false,
             history: Default::default(),
-            watch_ui: Default::default(),
+            history_parked: pages::history::HistoryState::watch(),
             tray: tray::Flyouts::default(),
             monitors: monitors::Monitors::default(),
             ui_scale: appearance::SCALE.load(&prefs),
