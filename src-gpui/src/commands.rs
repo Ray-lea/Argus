@@ -1788,7 +1788,10 @@ mod tests {
             Err(ActionError::AccessDeniedPrivileged)
         ));
         // Acting with its own rights, Argus may still lack them.
-        assert!(matches!(guarded(false, denied()), Err(ActionError::AccessDenied)));
+        assert!(matches!(
+            guarded(false, denied()),
+            Err(ActionError::AccessDenied)
+        ));
         assert!(matches!(
             guarded(true, Err::<(), _>(ActionError::NotFound)),
             Err(ActionError::NotFound)
