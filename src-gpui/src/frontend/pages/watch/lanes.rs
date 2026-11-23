@@ -87,11 +87,13 @@ fn nearest_point_index(points: &[Value], target_ts: i64) -> Option<usize> {
     }
 }
 
+/// The newest recorded point, else the newest of any kind; none before the
+/// first point (a watch just started).
 fn latest_recording_index(points: &[Value]) -> Option<usize> {
     points
         .iter()
         .rposition(|p| text(p, "state") == "recording")
-        .or_else(|| (!points.is_empty()).then_some(points.len() - 1))
+        .or_else(|| points.len().checked_sub(1))
 }
 
 impl Desktop {
@@ -1221,5 +1223,24 @@ impl Desktop {
                 }),
             )
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{latest_recording_index, nearest_point_index};
+    use serde_json::json;
+
+    #[test]
+    fn a_watch_without_points_yet_reads_none() {
+        // A watch just started answers before its first point is recorded.
+        assert_eq!(latest_recording_index(&[]), None);
+        assert_eq!(nearest_point_index(&[], 0), None);
+        let points = [
+            json!({"ts": 0, "state": "recording"}),
+            json!({"ts": 5000, "state": "gap"}),
+        ];
+        assert_eq!(latest_recording_index(&points), Some(0));
+        assert_eq!(latest_recording_index(&points[1..]), Some(0));
     }
 }
