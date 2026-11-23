@@ -31,6 +31,15 @@ fn section_icon(section: &str) -> &'static str {
         _ => "InfoIcon",
     }
 }
+/// The setting that holds the background interval for `away`
+/// ("minimized" or "tray").
+fn background_field(away: &str) -> &'static str {
+    if away == "minimized" {
+        "minimizedInterval"
+    } else {
+        "trayInterval"
+    }
+}
 const RULE_PRIORITIES: [&str; 6] = [
     "realtime",
     "high",
@@ -703,22 +712,20 @@ impl Desktop {
     }
 
     /// How often to sample while minimized or in the tray; under 5 s only
-    /// after a warning.
+    /// after a warning. `superseded` while a monitor keeps sampling at the
+    /// refresh interval (`background_superseded`): faded, yet it still takes
+    /// a choice for when the interval applies again.
     pub(in crate::frontend) fn background_select(
         &self,
         place: &str,
         away: &'static str,
+        superseded: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let settings = &self.data["settings"];
-        let field = if away == "minimized" {
-            "minimizedInterval"
-        } else {
-            "trayInterval"
-        };
-        let current = settings[field].as_u64();
+        let current = settings[background_field(away)].as_u64();
         let choices = crate::settings::BACKGROUND_INTERVALS;
-        self.select(
+        self.select_superseded(
             format!("{place}-background-{away}"),
             label(&format!("settings.data.{away}.title")),
             choices
@@ -726,7 +733,7 @@ impl Desktop {
                 .map(|ms| tr!("shell.interval.option", seconds = crate::regional::seconds(*ms)))
                 .collect(),
             choices.iter().position(|ms| Some(*ms) == current),
-            false,
+            superseded,
             move |this, index, window, cx| {
                 let ms = choices[index];
                 let save = move |this: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>| {
@@ -755,6 +762,73 @@ impl Desktop {
             },
             cx,
         )
+    }
+
+    /// A background interval's card. While the interval does not apply (the
+    /// desktop or taskbar monitor keeps sampling at the refresh interval,
+    /// `shell::sampling_state`), its drop-down is faded and a note under the
+    /// description says which monitor and how often it samples instead.
+    pub(in crate::frontend) fn background_card(
+        &self,
+        place: &str,
+        id: &str,
+        glyph: &str,
+        away: &'static str,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let superseded = self.background_superseded(away);
+        let select = self.background_select(place, away, superseded.is_some(), cx);
+        let desc = div()
+            .child(label(&format!("settings.data.{away}.desc")))
+            .children(superseded.map(|monitors| self.background_pace_note(monitors)));
+        self.setting(
+            id,
+            self.glyph(glyph),
+            label(&format!("settings.data.{away}.title")),
+            Some(desc.into_any_element()),
+            None,
+            vec![select],
+        )
+    }
+
+    /// Whether the desktop and the taskbar monitor are on, when either is
+    /// and so keeps sampling at the refresh interval instead of `away`'s;
+    /// none while that is the refresh interval anyway.
+    fn background_superseded(&self, away: &str) -> Option<(bool, bool)> {
+        let settings = &self.data["settings"];
+        if settings[background_field(away)].as_u64() == Some(self.interval) {
+            return None;
+        }
+        // As `sync_monitors` and `shell::apply_taskbar_monitor` decide.
+        let desktop = &settings["desktopMonitor"];
+        let desktop = desktop["enabled"].as_bool() == Some(true)
+            && desktop["metrics"].as_array().is_some_and(|m| !m.is_empty());
+        let taskbar = settings["taskbarMonitor"]["enabled"].as_bool() == Some(true);
+        (desktop || taskbar).then_some((desktop, taskbar))
+    }
+
+    /// Which monitors keep the refresh interval, and how often that samples.
+    fn background_pace_note(&self, (desktop, taskbar): (bool, bool)) -> AnyElement {
+        let seconds = crate::regional::seconds(self.interval);
+        let text = match (desktop, taskbar) {
+            (true, true) => tr!("settings.data.monitorPace.both", seconds = seconds),
+            (true, false) => tr!("settings.data.monitorPace.desktop", seconds = seconds),
+            _ => tr!("settings.data.monitorPace.taskbar", seconds = seconds),
+        };
+        let p = self.palette;
+        div()
+            .mt(px(6.))
+            .flex()
+            .gap(px(6.))
+            .text_color(p.ink)
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .mt(px(1.))
+                    .child(icon("InfoIcon", p.accent)),
+            )
+            .child(div().flex_1().min_w_0().child(text))
+            .into_any_element()
     }
 
     /// Settings polls once on arrival; only the rule statistics follow.
@@ -1791,13 +1865,12 @@ impl Desktop {
             vec![interval],
         ));
         // The tray's interval is on the Components page.
-        let select = self.background_select("settings", "minimized", cx);
-        cards.push(self.setting_text(
+        cards.push(self.background_card(
+            "settings",
             "minimizedInterval",
             "MinimizeIcon",
-            "settings.data.minimized.title",
-            "settings.data.minimized.desc",
-            vec![select],
+            "minimized",
+            cx,
         ));
         let minutes = self.release_hidden_minutes();
         let release = self.select(

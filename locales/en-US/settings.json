@@ -289,11 +289,11 @@
     "intervalDesc": "Shorter intervals give finer charts but make Argus itself use more resources.",
     "minimized": {
       "title": "Refresh rate while minimized",
-      "desc": "Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+      "desc": "Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely. While the desktop or taskbar monitor is shown, sampling follows the refresh rate."
     },
     "tray": {
       "title": "Refresh rate in the tray",
-      "desc": "Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely."
+      "desc": "Longer intervals cost less in the background, but rules can take up to one interval to apply to newly started programs, and above 5 seconds history is recorded more sparsely. While the desktop or taskbar monitor is shown, sampling follows the refresh rate."
     },
     "background": {
       "error": "Couldn't save the refresh rate: {error}"
@@ -414,6 +414,11 @@
         "processes": "Processes",
         "watch": "Observations"
       }
+    },
+    "monitorPace": {
+      "desktop": "The desktop monitor is on: this interval does not apply, and sampling runs every {seconds} s.",
+      "taskbar": "The taskbar monitor is on: this interval does not apply, and sampling runs every {seconds} s.",
+      "both": "The desktop and taskbar monitors are on: this interval does not apply, and sampling runs every {seconds} s."
     }
   },
   "rules": {

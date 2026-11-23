@@ -647,6 +647,9 @@ impl ButtonExt for gpui_kit::base::Button {
 
 /// How long a segmented control's selection takes to glide to another choice.
 const SLIDE: Duration = Duration::from_millis(250);
+/// A superseded drop-down at rest (`select_superseded`): as faded as a
+/// disabled control (`inert_dimmed`).
+const SUPERSEDED_OPACITY: f32 = 0.5;
 
 impl Desktop {
     /// A segmented control (`.segmented`): a layer-coloured track with a
@@ -1271,7 +1274,29 @@ impl Desktop {
         pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        self.select_with(id, name, options, selected, disabled, false, pick, cx)
+        self.select_with(
+            id, name, options, selected, disabled, false, false, pick, cx,
+        )
+    }
+
+    /// A drop-down for a setting that another one overrides for now:
+    /// `superseded`, it is faded as a disabled one is, but still opens and
+    /// takes a choice, which applies once the setting does again. It comes
+    /// up to full strength on hover and while open.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::frontend) fn select_superseded(
+        &self,
+        id: impl Into<SharedString>,
+        name: impl Into<SharedString>,
+        options: Vec<String>,
+        selected: Option<usize>,
+        superseded: bool,
+        pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        self.select_with(
+            id, name, options, selected, false, false, superseded, pick, cx,
+        )
     }
 
     /// A drop-down inside a chart label (`.select.compact`): the label's size
@@ -1287,7 +1312,7 @@ impl Desktop {
         pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        self.select_with(id, name, options, selected, false, true, pick, cx)
+        self.select_with(id, name, options, selected, false, true, false, pick, cx)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1299,6 +1324,7 @@ impl Desktop {
         selected: Option<usize>,
         disabled: bool,
         compact: bool,
+        superseded: bool,
         pick: impl Fn(&mut Desktop, usize, &mut Window, &mut Context<Desktop>) + 'static,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1346,7 +1372,11 @@ impl Desktop {
             .justify_start()
             .rounded(px(4.))
             .border_1()
-            .hover(move |s| s.bg(p.control_hover))
+            .hover(move |s| {
+                let s = s.bg(p.control_hover);
+                if superseded { s.opacity(1.) } else { s }
+            })
+            .when(superseded && !open, |b| b.opacity(SUPERSEDED_OPACITY))
             .map(|button| {
                 if compact {
                     button

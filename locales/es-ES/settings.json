@@ -289,11 +289,11 @@
     "intervalDesc": "Los intervalos más cortos proporcionan gráficos más finos pero hacen que el propio Argus utilice más recursos.",
     "minimized": {
       "title": "Actualización al minimizar",
-      "desc": "Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
+      "desc": "Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados. Mientras se muestra el monitor de escritorio o el de la barra de tareas, el muestreo sigue la frecuencia de actualización."
     },
     "tray": {
       "title": "Actualización en la bandeja",
-      "desc": "Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados."
+      "desc": "Un intervalo mayor reduce el consumo en segundo plano, pero puede retrasar hasta un intervalo la aplicación de reglas a programas nuevos. Si supera los 5 segundos, los registros del historial quedan más espaciados. Mientras se muestra el monitor de escritorio o el de la barra de tareas, el muestreo sigue la frecuencia de actualización."
     },
     "background": {
       "error": "No se pudo guardar la frecuencia de actualización: {error}"
@@ -417,6 +417,11 @@
         "processes": "Procesos",
         "watch": "Observaciones"
       }
+    },
+    "monitorPace": {
+      "desktop": "El monitor de escritorio está activado: este intervalo no se aplica y el muestreo se realiza cada {seconds} s.",
+      "taskbar": "El monitor en la barra de tareas está activado: este intervalo no se aplica y el muestreo se realiza cada {seconds} s.",
+      "both": "El monitor de escritorio y el de la barra de tareas están activados: este intervalo no se aplica y el muestreo se realiza cada {seconds} s."
     }
   },
   "rules": {

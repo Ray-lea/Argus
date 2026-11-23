@@ -289,11 +289,11 @@
     "intervalDesc": "Des intervalles plus courts donnent des graphiques plus fins mais font que Argus lui-même utilise plus de ressources.",
     "minimized": {
       "title": "Actualisation lorsque la fenêtre est réduite",
-      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent. Tant que le moniteur de bureau ou de barre des tâches est affiché, l’échantillonnage suit la fréquence d’actualisation."
     },
     "tray": {
       "title": "Actualisation dans la zone de notification",
-      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent."
+      "desc": "Un intervalle plus long réduit la consommation en arrière-plan, mais peut retarder l’application des règles aux nouveaux programmes d’un intervalle au maximum. Au-delà de 5 secondes, l’historique est aussi enregistré moins souvent. Tant que le moniteur de bureau ou de barre des tâches est affiché, l’échantillonnage suit la fréquence d’actualisation."
     },
     "background": {
       "error": "Impossible d’enregistrer le taux de rafraîchissement : {error}"
@@ -417,6 +417,11 @@
         "processes": "Processus",
         "watch": "Observations"
       }
+    },
+    "monitorPace": {
+      "desktop": "Le moniteur de bureau est activé : cet intervalle ne s’applique pas, l’échantillonnage a lieu toutes les {seconds} s.",
+      "taskbar": "Le moniteur de barre des tâches est activé : cet intervalle ne s’applique pas, l’échantillonnage a lieu toutes les {seconds} s.",
+      "both": "Les moniteurs de bureau et de barre des tâches sont activés : cet intervalle ne s’applique pas, l’échantillonnage a lieu toutes les {seconds} s."
     }
   },
   "rules": {

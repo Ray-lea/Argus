@@ -308,7 +308,7 @@ impl Desktop {
             window,
             cx,
         );
-        let interval = self.background_select("components", "tray", cx);
+        let interval = self.background_card("components", "trayInterval", "TimerIcon", "tray", cx);
         vec![
             self.setting_text(
                 "trayIcon",
@@ -339,13 +339,7 @@ impl Desktop {
                 vec![close],
             ),
             self.tray_page_setting(cx),
-            self.setting_text(
-                "trayInterval",
-                "TimerIcon",
-                "settings.data.tray.title",
-                "settings.data.tray.desc",
-                vec![interval],
-            ),
+            interval,
         ]
     }
 

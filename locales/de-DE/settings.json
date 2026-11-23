@@ -289,11 +289,11 @@
     "intervalDesc": "Kürzere Intervalle ergeben feinere Diagramme, führen aber dazu, dass Argus selbst mehr Ressourcen verbraucht.",
     "minimized": {
       "title": "Intervall bei minimiertem Fenster",
-      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet. Solange die Desktop- oder Taskleistenanzeige zu sehen ist, gilt das Aktualisierungsintervall."
     },
     "tray": {
       "title": "Intervall im Infobereich",
-      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet."
+      "desc": "Längere Intervalle verringern den Hintergrundaufwand, verzögern die Anwendung von Regeln auf neue Programme aber um bis zu ein Intervall. Über 5 Sekunden wird auch der Verlauf seltener aufgezeichnet. Solange die Desktop- oder Taskleistenanzeige zu sehen ist, gilt das Aktualisierungsintervall."
     },
     "background": {
       "error": "Das Aktualisierungsintervall konnte nicht gespeichert werden: {error}"
@@ -414,6 +414,11 @@
         "processes": "Prozesse",
         "watch": "Beobachtungen"
       }
+    },
+    "monitorPace": {
+      "desktop": "Die Desktopanzeige ist eingeschaltet: Dieses Intervall gilt derzeit nicht, Daten werden alle {seconds} s erfasst.",
+      "taskbar": "Die Taskleistenanzeige ist eingeschaltet: Dieses Intervall gilt derzeit nicht, Daten werden alle {seconds} s erfasst.",
+      "both": "Desktop- und Taskleistenanzeige sind eingeschaltet: Dieses Intervall gilt derzeit nicht, Daten werden alle {seconds} s erfasst."
     }
   },
   "rules": {
