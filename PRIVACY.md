@@ -4,7 +4,7 @@
 
 ## 简体中文
 
-Argus 在本机处理进程、硬件、网络连接与资源占用数据，设置、最近 7 天的历史记录和诊断日志保存在本机。Argus 不内置使用行为遥测、广告追踪或自动崩溃上报，也不会自动上传进程列表、命令行、账户名、文件内容或历史记录。
+Argus 在本机处理进程、硬件、网络连接与资源占用数据，设置、历史记录（默认保留 30 天）和诊断日志保存在本机。Argus 不内置使用行为遥测、广告追踪或自动崩溃上报，也不会自动上传进程列表、命令行、账户名、文件内容或历史记录。
 
 ### 联网功能与控制
 
@@ -27,7 +27,7 @@ Argus 在本机处理进程、硬件、网络连接与资源占用数据，设�
 
 ## English
 
-Argus processes information about processes, hardware, network connections, and resource usage locally. Settings, the last 7 days of history, and diagnostic logs stay on the device. Argus includes no usage telemetry, advertising trackers, or automatic crash reporting, and does not automatically upload process lists, command lines, account names, file contents, or history.
+Argus processes information about processes, hardware, network connections, and resource usage locally. Settings, history (kept for 30 days by default), and diagnostic logs stay on the device. Argus includes no usage telemetry, advertising trackers, or automatic crash reporting, and does not automatically upload process lists, command lines, account names, file contents, or history.
 
 ### Network features and controls
 
