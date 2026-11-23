@@ -1372,12 +1372,14 @@ pub fn set_service_start_type_registry(
     name: String,
     start_type: StartType,
 ) -> Result<(), ActionError> {
+    let operation = Operation::ServiceStartTypeRegistry {
+        name: name.clone(),
+        start_type,
+    };
+    operation.validate()?;
     privileged(
         &state,
-        Operation::ServiceStartTypeRegistry {
-            name: name.clone(),
-            start_type,
-        },
+        operation,
         |reply| {
             done(reply)?;
             state.services.invalidate(&name);

@@ -1510,7 +1510,7 @@ impl Desktop {
             "" => text(raw, "startType"),
             pending => pending,
         };
-        let packaged = boolean(raw, "packaged");
+        let registry_allowed = boolean(raw, "registryStartTypeAllowed");
         let mut items = vec![
             MenuItem::new(label("common.start"), control("start"))
                 .icon("PlayIcon")
@@ -1540,7 +1540,7 @@ impl Desktop {
                         json!({
                             "name":name,
                             "startType":start_type,
-                            "packaged":packaged,
+                            "registryStartTypeAllowed":registry_allowed,
                             "display":text(raw, "displayName"),
                         }),
                     ),

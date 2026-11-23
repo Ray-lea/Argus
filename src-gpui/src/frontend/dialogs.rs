@@ -1879,7 +1879,7 @@ impl Desktop {
             // which takes the same rights. The host says whether it acted with
             // them (`accessDeniedPrivileged`); without them the usual guidance shows.
             "set_service_start_type"
-                if boolean(args, "packaged")
+                if boolean(args, "registryStartTypeAllowed")
                     && text(error, "kind") == "accessDeniedPrivileged" =>
             {
                 self.offer_registry_start_type(args, window, cx);
