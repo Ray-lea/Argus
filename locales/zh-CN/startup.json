@@ -14,6 +14,7 @@
     "title": "删除启动项 {name}？",
     "registry": "将从{location}中删除“{entry}”，此操作无法撤销；程序本身保留。",
     "file": "将把{location}中的“{entry}”移到回收站；程序本身保留。",
+    "program": "将把{location}中的“{entry}”移到回收站。该文件即启动时运行的程序或脚本。",
     "done": "已删除启动项 {name}。",
     "error": {
       "accessDenied": "没有权限删除启动项 {name}。“所有用户”的项需要以管理员身份运行 Argus；其他项可能受文件或注册表权限保护。",

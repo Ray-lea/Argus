@@ -1,5 +1,5 @@
 {
-  "about": "用 `data` 控制换上三个服务与三个启动项，核对右键菜单的“删除”：Argus 自己的特权服务与应用包启动任务不可删除；其余经菜单打开确认框、确认后发出 `delete_service` 或 `delete_startup_item`（`skippedRequest`），再用 `resolve` 模拟成功、标记删除与各类失败，核对通知中的原因，并捕获系统服务与注册表项的确认框。",
+  "about": "用 `data` 控制换上三个服务与三个启动项，核对右键菜单的“删除”：Argus 自己的特权服务与应用包启动任务不可删除；其余经菜单打开确认框、确认后发出 `delete_service` 或 `delete_startup_item`（`skippedRequest`），再用 `resolve` 模拟成功、标记删除与各类失败，核对通知中的原因，并捕获系统服务、注册表项与启动文件夹中程序本体的确认框。",
   "window": [1200, 800],
   "steps": [
     {"control":{"page":"services","motion":"off","pointerOutside":true,"data":{"services":[
@@ -36,6 +36,8 @@
     {"control":{"resolve":{"command":"delete_startup_item","args":{"id":"hklmRun|Vendor","name":"Vendor Agent"},"ok":false,"value":{"kind":"accessDenied"}}},"wait":300,"inspect":"layout","label":"startup-denied"},
     {"control":{"resolve":{"command":"delete_startup_item","args":{"id":"hkcuRun|Gone","name":"Gone"},"ok":false,"value":{"kind":"notFound"}}},"wait":300,"inspect":"layout","label":"startup-missing","capture":"startup-notices"},
     {"control":{"dialog":"deleteStartup","args":{"id":"hkcuRun|VendorTray","name":"Vendor Tray","entry":"VendorTray","location":"hkcuRun"}},"wait":500,"inspect":"layout","label":"startup-registry-dialog","expect":{"dialog.title":"删除启动项 Vendor Tray？"},"capture":"startup-registry-dialog"},
+    {"control":{"keys":["escape"]},"wait":300},
+    {"control":{"dialog":"deleteStartup","args":{"id":"userFolder|Reminder.exe","name":"Reminder","entry":"Reminder.exe","location":"userFolder"}},"wait":500,"inspect":"layout","label":"startup-program-dialog","expect":{"dialog.title":"删除启动项 Reminder？"},"capture":"startup-program-dialog"},
     {"control":{"keys":["escape"]},"wait":300}
   ]
 }

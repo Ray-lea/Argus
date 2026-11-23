@@ -558,8 +558,12 @@ impl Desktop {
                 let entry = text(&args, "entry");
                 (
                     tr!("startup.delete.title", name = name),
-                    if location.ends_with("Folder") {
+                    // A shortcut leaves its program in place; any other file in
+                    // the Startup folder is the program or script itself.
+                    if location.ends_with("Folder") && entry.to_lowercase().ends_with(".lnk") {
                         tr!("startup.delete.file", location = place, entry = entry)
+                    } else if location.ends_with("Folder") {
+                        tr!("startup.delete.program", location = place, entry = entry)
                     } else {
                         tr!("startup.delete.registry", location = place, entry = entry)
                     },

@@ -14,6 +14,7 @@
     "title": "¿Eliminar la aplicación de inicio {name}?",
     "registry": "Se quitará «{entry}» de {location}. Esta acción no se puede deshacer; el programa se conserva.",
     "file": "«{entry}» de {location} se moverá a la Papelera de reciclaje; el programa se conserva.",
+    "program": "«{entry}» de {location} se moverá a la Papelera de reciclaje. Este archivo es el programa o script que se ejecuta al iniciar.",
     "done": "Se eliminó la aplicación de inicio {name}.",
     "error": {
       "accessDenied": "Acceso denegado: no se pudo eliminar la aplicación de inicio {name}. Los elementos para todos los usuarios requieren ejecutar Argus como administrador; los demás pueden estar protegidos por permisos de archivo o del registro.",

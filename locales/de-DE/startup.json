@@ -14,6 +14,7 @@
     "title": "Autostart-App {name} löschen?",
     "registry": "„{entry}“ wird aus {location} entfernt. Dies kann nicht rückgängig gemacht werden; das Programm selbst bleibt erhalten.",
     "file": "„{entry}“ in {location} wird in den Papierkorb verschoben; das Programm selbst bleibt erhalten.",
+    "program": "„{entry}“ in {location} wird in den Papierkorb verschoben. Diese Datei ist das Programm oder Skript, das beim Start ausgeführt wird.",
     "done": "Autostart-App {name} wurde gelöscht.",
     "error": {
       "accessDenied": "Zugriff verweigert: Autostart-App {name} konnte nicht gelöscht werden. Elemente für alle Benutzer erfordern, dass Argus als Administrator ausgeführt wird; andere Elemente sind möglicherweise durch Datei- oder Registry-Berechtigungen geschützt.",

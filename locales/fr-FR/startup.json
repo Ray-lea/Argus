@@ -14,6 +14,7 @@
     "title": "Supprimer l’application de démarrage {name} ?",
     "registry": "« {entry} » sera supprimé de {location}. Cette action est irréversible ; le programme lui-même est conservé.",
     "file": "« {entry} » dans {location} sera placé dans la Corbeille ; le programme lui-même est conservé.",
+    "program": "« {entry} » dans {location} sera placé dans la Corbeille. Ce fichier est le programme ou le script exécuté au démarrage.",
     "done": "L’application de démarrage {name} a été supprimée.",
     "error": {
       "accessDenied": "Accès refusé : impossible de supprimer l’application de démarrage {name}. Les éléments destinés à tous les utilisateurs nécessitent d’exécuter Argus en tant qu’administrateur ; les autres peuvent être protégés par des autorisations de fichier ou de registre.",
