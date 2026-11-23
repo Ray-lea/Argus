@@ -375,6 +375,191 @@ pub fn set_memory_priority(
     Ok(memory_priority(handle.0).unwrap_or(priority))
 }
 
+/// Which logical processors a process runs on by default, as Windows CPU
+/// Sets: a preference the scheduler keeps to without changing the affinity
+/// the process sees, so games and anti-cheat that check their affinity are
+/// left alone. Offered on hybrid CPUs only, where the presets pick the
+/// performance or the efficiency cores (LP E-cores included); a set chosen
+/// elsewhere reads as `Custom` and can't be set from here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CpuSets {
+    All,
+    Performance,
+    Efficient,
+    Custom,
+}
+
+impl CpuSets {
+    /// Whether a user may set it.
+    pub fn settable(self) -> bool {
+        self != Self::Custom
+    }
+}
+
+/// The CPU Set IDs of a hybrid CPU's performance and efficiency cores, sorted.
+#[derive(Debug, PartialEq)]
+struct HybridSets {
+    performance: Vec<u32>,
+    efficient: Vec<u32>,
+}
+
+/// The hybrid CPU's sets, read once; None on other CPUs. The core kinds come
+/// from Argus's own topology (`hardware::cpu_info`), which also tells P- from
+/// E-cores where Windows ranks them in one efficiency class.
+fn hybrid_sets() -> Option<&'static HybridSets> {
+    static SETS: std::sync::OnceLock<Option<HybridSets>> = std::sync::OnceLock::new();
+    SETS.get_or_init(|| {
+        let cpu = crate::hardware::cpu_info();
+        if cpu.performance_cores == 0 {
+            return None;
+        }
+        split_sets(&system_cpu_sets(), &cpu.threads)
+    })
+    .as_ref()
+}
+
+/// Whether CPU Sets can be chosen here: a hybrid CPU whose sets are known.
+pub fn cpu_sets_available() -> bool {
+    hybrid_sets().is_some()
+}
+
+/// (Id, group, logical processor) of every CPU Set of the system.
+fn system_cpu_sets() -> Vec<(u32, u16, u8)> {
+    use windows::Win32::System::SystemInformation::{
+        CpuSetInformation, GetSystemCpuSetInformation, SYSTEM_CPU_SET_INFORMATION,
+    };
+    let mut len = 0u32;
+    let _ = unsafe { GetSystemCpuSetInformation(None, 0, &mut len, None, None) };
+    if len == 0 {
+        return Vec::new();
+    }
+    // u64 words keep the records aligned.
+    let mut buf = vec![0u64; (len as usize).div_ceil(8)];
+    if !unsafe {
+        GetSystemCpuSetInformation(Some(buf.as_mut_ptr().cast()), len, &mut len, None, None)
+    }
+    .as_bool()
+    {
+        return Vec::new();
+    }
+    let base = buf.as_ptr().cast::<u8>();
+    let mut sets = Vec::new();
+    let mut offset = 0usize;
+    while offset + size_of::<u32>() * 2 <= len as usize {
+        // SAFETY: records are laid out back to back, each `Size` bytes long.
+        let record = unsafe { &*(base.add(offset) as *const SYSTEM_CPU_SET_INFORMATION) };
+        let size = record.Size as usize;
+        if size == 0 || size > len as usize - offset {
+            break;
+        }
+        if record.Type == CpuSetInformation {
+            let set = unsafe { &record.Anonymous.CpuSet };
+            sets.push((set.Id, set.Group, set.LogicalProcessorIndex));
+        }
+        offset += size;
+    }
+    sets
+}
+
+/// The sets of the performance and of the efficiency logical processors;
+/// None when a set matches no known processor or a kind is missing.
+fn split_sets(
+    sets: &[(u32, u16, u8)],
+    threads: &[crate::hardware::CpuThread],
+) -> Option<HybridSets> {
+    let (mut performance, mut efficient) = (Vec::new(), Vec::new());
+    for &(id, group, processor) in sets {
+        let thread = threads
+            .iter()
+            .find(|t| t.group == group && t.processor == processor)?;
+        if thread.efficient {
+            efficient.push(id);
+        } else {
+            performance.push(id);
+        }
+    }
+    performance.sort_unstable();
+    efficient.sort_unstable();
+    (!performance.is_empty() && !efficient.is_empty()).then_some(HybridSets {
+        performance,
+        efficient,
+    })
+}
+
+/// What a process's default sets amount to.
+fn classify_sets(ids: &mut [u32], sets: &HybridSets) -> CpuSets {
+    ids.sort_unstable();
+    if ids.is_empty() || ids.len() == sets.performance.len() + sets.efficient.len() {
+        CpuSets::All
+    } else if ids == sets.performance.as_slice() {
+        CpuSets::Performance
+    } else if ids == sets.efficient.as_slice() {
+        CpuSets::Efficient
+    } else {
+        CpuSets::Custom
+    }
+}
+
+/// The CPU Sets of a process, through a handle with limited query rights;
+/// None on CPUs without a choice, or when they can't be read.
+pub(crate) fn cpu_sets(process: windows::Win32::Foundation::HANDLE) -> Option<CpuSets> {
+    read_cpu_sets(process, hybrid_sets()?)
+}
+
+fn read_cpu_sets(
+    process: windows::Win32::Foundation::HANDLE,
+    sets: &HybridSets,
+) -> Option<CpuSets> {
+    use windows::Win32::System::Threading::GetProcessDefaultCpuSets;
+    // Read for every process on every sample: one buffer per thread, no
+    // allocation, and most processes (no default sets) skip the sort.
+    thread_local! {
+        static IDS: std::cell::RefCell<Vec<u32>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    IDS.with_borrow_mut(|ids| {
+        ids.resize(sets.performance.len() + sets.efficient.len(), 0);
+        let mut count = 0u32;
+        if !unsafe { GetProcessDefaultCpuSets(process, Some(ids), &mut count) }.as_bool() {
+            return None;
+        }
+        Some(if count == 0 {
+            CpuSets::All
+        } else {
+            classify_sets(&mut ids[..count as usize], sets)
+        })
+    })
+}
+
+/// Sets the CPU Sets of a process instance and returns the ones it ended up
+/// with.
+pub fn set_cpu_sets(pid: u32, create_time: i64, choice: CpuSets) -> Result<CpuSets, ActionError> {
+    if !choice.settable() {
+        return Err(ActionError::Refused);
+    }
+    let sets = hybrid_sets().ok_or(ActionError::Refused)?;
+    apply_cpu_sets(pid, create_time, choice, sets)
+}
+
+fn apply_cpu_sets(
+    pid: u32,
+    create_time: i64,
+    choice: CpuSets,
+    sets: &HybridSets,
+) -> Result<CpuSets, ActionError> {
+    use windows::Win32::System::Threading::{
+        PROCESS_SET_LIMITED_INFORMATION, SetProcessDefaultCpuSets,
+    };
+    let handle = open_instance(pid, create_time, PROCESS_SET_LIMITED_INFORMATION)?;
+    let ids = match choice {
+        CpuSets::Performance => Some(sets.performance.as_slice()),
+        CpuSets::Efficient => Some(sets.efficient.as_slice()),
+        _ => None,
+    };
+    unsafe { SetProcessDefaultCpuSets(handle.0, ids) }.ok()?;
+    Ok(read_cpu_sets(handle.0, sets).unwrap_or(choice))
+}
+
 /// Turns efficiency mode on or off the way Task Manager does: EcoQoS (the
 /// scheduler prefers efficient cores and low clocks) plus the idle priority
 /// class; turning it off hands QoS back to Windows and restores normal
@@ -624,6 +809,137 @@ mod tests {
             let _ = self.0.kill();
             let _ = self.0.wait();
         }
+    }
+
+    #[test]
+    fn cpu_sets_split_by_core_kind_and_read_back_as_presets() {
+        use super::{CpuSets, HybridSets, classify_sets, split_sets};
+        use crate::hardware::CpuThread;
+        let thread = |group, processor, efficient| CpuThread {
+            group,
+            processor,
+            efficient,
+            ..Default::default()
+        };
+        // Two P-core threads, two E-cores, set IDs out of order.
+        let threads = [
+            thread(0, 0, false),
+            thread(0, 1, false),
+            thread(0, 2, true),
+            thread(0, 3, true),
+        ];
+        let sets = split_sets(
+            &[(259, 0, 2), (256, 0, 0), (260, 0, 3), (257, 0, 1)],
+            &threads,
+        )
+        .unwrap();
+        assert_eq!(
+            sets,
+            HybridSets {
+                performance: vec![256, 257],
+                efficient: vec![259, 260],
+            }
+        );
+        // A set naming no known processor, or one kind alone, offers nothing.
+        assert!(split_sets(&[(256, 0, 0), (300, 1, 0)], &threads).is_none());
+        assert!(split_sets(&[(256, 0, 0), (257, 0, 1)], &threads).is_none());
+        let read = |ids: &[u32]| classify_sets(&mut ids.to_vec(), &sets);
+        assert_eq!(read(&[]), CpuSets::All);
+        assert_eq!(read(&[260, 256, 259, 257]), CpuSets::All);
+        assert_eq!(read(&[257, 256]), CpuSets::Performance);
+        assert_eq!(read(&[259, 260]), CpuSets::Efficient);
+        assert_eq!(read(&[256, 259]), CpuSets::Custom);
+        assert!(!CpuSets::Custom.settable());
+    }
+
+    /// The per-sample cost of reading every process's CPU Sets, on any CPU:
+    /// the system's sets split in half stand in for a hybrid CPU's.
+    /// `cargo test -p argus-core --lib cpu_set_read_cost -- --ignored --nocapture`
+    #[test]
+    #[ignore = "measurement"]
+    fn cpu_set_read_cost() {
+        use super::HybridSets;
+        let mut ids: Vec<u32> = super::system_cpu_sets().iter().map(|s| s.0).collect();
+        ids.sort_unstable();
+        let efficient = ids.split_off(ids.len() / 2);
+        let sets = HybridSets {
+            performance: ids,
+            efficient,
+        };
+        let handles: Vec<_> = crate::process::list_lineage()
+            .into_iter()
+            .filter_map(|(pid, ..)| unsafe {
+                super::OpenProcess(super::PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()
+            })
+            .map(super::OwnedHandle)
+            .collect();
+        let rounds = 200;
+        let started = std::time::Instant::now();
+        let mut read = 0;
+        for _ in 0..rounds {
+            for handle in &handles {
+                read += usize::from(super::read_cpu_sets(handle.0, &sets).is_some());
+            }
+        }
+        let per_sample = started.elapsed() / rounds;
+        println!(
+            "{} processes: {:?} per sample, {:?} per process ({} reads)",
+            handles.len(),
+            per_sample,
+            per_sample / handles.len().max(1) as u32,
+            read / rounds as usize
+        );
+    }
+
+    #[test]
+    fn cpu_sets_are_set_on_the_instance_and_read_back() {
+        use super::{CpuSets, HybridSets};
+        use std::os::windows::process::CommandExt;
+        // Any CPU with two or more sets stands in for a hybrid one: half of
+        // them play the performance cores, the rest the efficient ones.
+        let mut ids: Vec<u32> = super::system_cpu_sets().iter().map(|s| s.0).collect();
+        ids.sort_unstable();
+        if ids.len() < 2 {
+            return;
+        }
+        let efficient = ids.split_off(ids.len() / 2);
+        let sets = HybridSets {
+            performance: ids,
+            efficient,
+        };
+        let child = KillOnDrop(
+            std::process::Command::new("ping")
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0)
+                .spawn()
+                .unwrap(),
+        );
+        let pid = child.0.id();
+        let created = crate::process::list_lineage()
+            .into_iter()
+            .find(|&(p, ..)| p == pid)
+            .unwrap()
+            .2;
+        let handle =
+            super::open_instance(pid, created, super::PROCESS_QUERY_LIMITED_INFORMATION).unwrap();
+        assert_eq!(super::read_cpu_sets(handle.0, &sets), Some(CpuSets::All));
+        for choice in [CpuSets::Performance, CpuSets::Efficient, CpuSets::All] {
+            assert_eq!(
+                super::apply_cpu_sets(pid, created, choice, &sets).unwrap(),
+                choice
+            );
+            assert_eq!(super::read_cpu_sets(handle.0, &sets), Some(choice));
+        }
+        // Another instance under the same PID is never touched.
+        assert!(matches!(
+            super::apply_cpu_sets(pid, created + 1, CpuSets::Efficient, &sets),
+            Err(super::ActionError::NotFound)
+        ));
+        assert!(matches!(
+            super::set_cpu_sets(pid, created, CpuSets::Custom),
+            Err(super::ActionError::Refused)
+        ));
     }
 
     #[test]

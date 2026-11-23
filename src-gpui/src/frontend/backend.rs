@@ -725,6 +725,7 @@ impl Desktop {
             "set_suspended" => Some("suspend"),
             "set_io_priority" => Some("ioPriority"),
             "set_memory_priority" => Some("memoryPriority"),
+            "set_cpu_sets" => Some("cpuSets"),
             _ => None,
         };
         if let Some(action) = own {

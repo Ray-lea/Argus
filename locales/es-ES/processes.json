@@ -304,6 +304,12 @@
     "belowNormal": "Por debajo de lo normal",
     "normal": "Normal"
   },
+  "cpuSets": {
+    "all": "Todos los núcleos",
+    "performance": "Solo núcleos P",
+    "efficient": "Solo núcleos E",
+    "custom": "Personalizado"
+  },
   "power": {
     "veryLow": "Muy bajo",
     "low": "Bajo",
@@ -320,6 +326,7 @@
     "setPriority": "Establecer prioridad",
     "ioPriority": "Prioridad de I/O",
     "memoryPriority": "Prioridad de memoria",
+    "cpuSets": "Núcleos de CPU",
     "suspend": "Suspender proceso",
     "resume": "Reanudar proceso",
     "addRule": "Añadir regla",

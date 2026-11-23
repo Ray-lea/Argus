@@ -82,6 +82,20 @@
     },
     "done": "The memory priority of {name} has been set to “{priority}”."
   },
+  "cpuSets": {
+    "failed": "Couldn't change the cores {name} runs on. {error}",
+    "error": {
+      "accessDenied": "Access denied. Turn on the privileged service in Settings, or run Argus as administrator. Protected processes may still prevent this change.",
+      "refused": "The cores {name} runs on can't be changed.",
+      "serviceOutdated": "Access denied. The privileged service version is incompatible; update the service and try again.",
+      "notFound": "{name} has already exited."
+    },
+    "partial": {
+      "one": "Changed the cores of {count} process; {failed} couldn't be changed: {error}",
+      "other": "Changed the cores of {count} processes; {failed} couldn't be changed: {error}"
+    },
+    "done": "{name} now runs on: {priority}."
+  },
   "efficiency": {
     "on": {
       "failed": "Couldn't turn on Efficiency mode for {name}",

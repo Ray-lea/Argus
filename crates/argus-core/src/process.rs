@@ -122,6 +122,8 @@ pub struct ProcessRow {
     /// None when the process can't be queried.
     pub io_priority: Option<crate::actions::IoPriority>,
     pub memory_priority: Option<crate::actions::MemoryPriority>,
+    /// None on CPUs without a choice of cores, or when unreadable.
+    pub cpu_sets: Option<crate::actions::CpuSets>,
     /// Owns a taskbar window, which puts it under "Apps" (see `app_windows`).
     pub app_window: bool,
     /// Windows component identity for display grouping, not an action safety check.
@@ -581,6 +583,10 @@ impl ProcessTracker {
                     .handle
                     .as_ref()
                     .and_then(|h| crate::actions::memory_priority(h.0)),
+                cpu_sets: entry
+                    .handle
+                    .as_ref()
+                    .and_then(|h| crate::actions::cpu_sets(h.0)),
                 app_window: false,
                 windows_process: meta.is_some_and(|m| m.windows_component)
                     || kernel_process(pid, entry.parent, &entry.name, entry.path.is_some()),

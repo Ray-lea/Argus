@@ -301,6 +301,12 @@
     "belowNormal": "Below normal",
     "normal": "Normal"
   },
+  "cpuSets": {
+    "all": "All cores",
+    "performance": "P-cores only",
+    "efficient": "E-cores only",
+    "custom": "Custom"
+  },
   "power": {
     "veryLow": "Very low",
     "low": "Low",
@@ -316,6 +322,7 @@
     "setPriority": "Set priority",
     "ioPriority": "I/O priority",
     "memoryPriority": "Memory priority",
+    "cpuSets": "CPU cores",
     "suspend": "Suspend process",
     "resume": "Resume process",
     "addRule": "Add rule",

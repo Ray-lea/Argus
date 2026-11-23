@@ -58,6 +58,17 @@
     "partial": "已更改 {count} 个进程的内存优先级，{failed} 个未能更改：{error}",
     "done": "{name} 的内存优先级已设为“{priority}”。"
   },
+  "cpuSets": {
+    "failed": "无法更改 {name} 使用的核心。{error}",
+    "error": {
+      "accessDenied": "没有权限。请在设置中启用特权服务，或以管理员身份运行 Argus；受保护的进程仍可能无法更改。",
+      "refused": "无法更改 {name} 使用的核心。",
+      "serviceOutdated": "没有权限。特权服务版本不兼容，请更新服务后重试。",
+      "notFound": "{name} 已经退出。"
+    },
+    "partial": "已更改 {count} 个进程使用的核心，{failed} 个未能更改：{error}",
+    "done": "{name} 现在使用：{priority}。"
+  },
   "efficiency": {
     "on": {
       "failed": "无法为 {name} 开启效率模式",

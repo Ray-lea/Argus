@@ -61,6 +61,7 @@ impl Desktop {
             "priority" => ("set_priority", json!({"priority":args["priority"]})),
             "ioPriority" => ("set_io_priority", json!({"priority":args["priority"]})),
             "memoryPriority" => ("set_memory_priority", json!({"priority":args["priority"]})),
+            "cpuSets" => ("set_cpu_sets", json!({"sets":args["priority"]})),
             "suspend" => ("set_suspended", json!({"suspend":args["on"]})),
             _ => ("set_efficiency_mode", json!({"on":args["on"]})),
         };
@@ -234,7 +235,7 @@ impl Desktop {
                     )
                 }
             }
-            "ioPriority" | "memoryPriority" => {
+            "ioPriority" | "memoryPriority" | "cpuSets" => {
                 let wanted = text(value, "priority");
                 if failed.len() == total {
                     // The whole sentence, cause included, comes from the

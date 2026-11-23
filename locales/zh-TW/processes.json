@@ -275,6 +275,12 @@
     "belowNormal": "低於正常",
     "normal": "正常"
   },
+  "cpuSets": {
+    "all": "全部核心",
+    "performance": "僅效能核心",
+    "efficient": "僅效率核心",
+    "custom": "自訂"
+  },
   "power": {
     "veryLow": "非常低",
     "low": "低",
@@ -287,6 +293,7 @@
     "setPriority": "設定優先順序",
     "ioPriority": "I/O 優先順序",
     "memoryPriority": "記憶體優先順序",
+    "cpuSets": "CPU 核心",
     "suspend": "暫停處理程序",
     "resume": "繼續處理程序",
     "addRule": "新增規則",

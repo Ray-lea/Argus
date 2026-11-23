@@ -5,7 +5,7 @@ use crate::settings::{
     Theme, TrayIcon, TrayMenu, UpdateChannel, UpdateRoute,
 };
 use argus_core::{
-    actions::{IoPriority, MemoryPriority, Priority},
+    actions::{CpuSets, IoPriority, MemoryPriority, Priority},
     rules::ProcessRule,
     services::{ServiceAction, StartType},
 };
@@ -124,6 +124,14 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<u32>(&args, "pid")?,
             argument::<i64>(&args, "createTime")?,
             argument::<MemoryPriority>(&args, "priority")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "set_cpu_sets" => crate::commands::set_cpu_sets(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+            argument::<CpuSets>(&args, "sets")?,
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),

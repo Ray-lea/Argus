@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::native_runtime::State;
 
 use argus_core::actions::{
-    self, ActionError, IoPriority, MemoryPriority, Priority, TreeKillReport,
+    self, ActionError, CpuSets, IoPriority, MemoryPriority, Priority, TreeKillReport,
 };
 use argus_core::connections::{self, Connection};
 use argus_core::details::{self, ProcessDetails};
@@ -185,6 +185,7 @@ fn privileged<T>(
         Operation::Efficiency { .. } => ("set process efficiency", operation),
         Operation::IoPriority { .. } => ("set process I/O priority", operation),
         Operation::MemoryPriority { .. } => ("set process memory priority", operation),
+        Operation::CpuSets { .. } => ("set process CPU sets", operation),
         Operation::Suspend { .. } => ("suspend or resume process", operation),
         Operation::ControlService { .. } => ("control Windows service", operation),
         Operation::ServiceStartType { .. } => ("set service start type", operation),
@@ -371,6 +372,26 @@ pub fn set_memory_priority(
         },
         done,
         || actions::set_memory_priority(pid, create_time, priority).map(|_| ()),
+    );
+    state.sampler.send(Control::Refresh);
+    result
+}
+
+pub fn set_cpu_sets(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+    sets: CpuSets,
+) -> Result<(), ActionError> {
+    let result = privileged(
+        &state,
+        Operation::CpuSets {
+            pid,
+            create_time,
+            sets,
+        },
+        done,
+        || actions::set_cpu_sets(pid, create_time, sets).map(|_| ()),
     );
     state.sampler.send(Control::Refresh);
     result

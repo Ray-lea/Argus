@@ -90,6 +90,21 @@
     },
     "done": "La priorité mémoire de {name} est désormais « {priority} »."
   },
+  "cpuSets": {
+    "failed": "Impossible de modifier les cœurs utilisés par {name}. {error}",
+    "error": {
+      "accessDenied": "Accès refusé. Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur. Les processus protégés peuvent rester impossibles à modifier.",
+      "refused": "Les cœurs utilisés par {name} ne peuvent pas être modifiés.",
+      "serviceOutdated": "Accès refusé. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
+      "notFound": "{name} est déjà terminé."
+    },
+    "partial": {
+      "one": "Cœurs modifiés pour {count} processus ; non modifiés : {failed}. {error}",
+      "many": "Cœurs modifiés pour {count} processus ; non modifiés : {failed}. {error}",
+      "other": "Cœurs modifiés pour {count} processus ; non modifiés : {failed}. {error}"
+    },
+    "done": "{name} utilise désormais : {priority}."
+  },
   "efficiency": {
     "on": {
       "failed": "Impossible d’activer le mode d’efficacité pour {name}",
