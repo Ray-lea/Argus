@@ -79,7 +79,7 @@ import {
 } from "./Processes";
 import { store, useShared, type Page } from "./store";
 import { exportTable, copyEntries, listCopy, rowCopy } from "./tableActions";
-import { Button, rollAway, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
+import { Button, scaleOf, Segments, Select, slideIn, useIsoLayoutEffect } from "./widgets";
 
 // Only the processes page shows at first; the others' code loads off the
 // first paint's path. React.lazy would hold a page that loads late behind a
@@ -2323,12 +2323,6 @@ function ContextMenu({ menu, onClose }: { menu: MenuState; onClose: () => void }
   const [keyboard, setKeyboard] = useState(menu.keyboard);
   const [place, setPlace] = useState<{ x: number; y: number } | null>(null);
   const [subPlace, setSubPlace] = useState<{ x: number; y: number } | null>(null);
-  useIsoLayoutEffect(()=>{
-    const el=box.current;if(!el)return;return ()=>rollAway(el,el.offsetTop<menu.y);
-  },[menu.id]);
-  useIsoLayoutEffect(()=>{
-    const el=subBox.current;if(!el||sub===null)return;return ()=>rollAway(el);
-  },[sub]);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const children = sub !== null ? ((items[sub] as Exclude<MenuEntry, "-">).children ?? []) : null;
   useIsoLayoutEffect(() => {
