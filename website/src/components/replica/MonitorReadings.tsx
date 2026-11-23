@@ -455,7 +455,8 @@ function Strip({ groups }: { groups: Gauge[][] }) {
   );
 }
 type Cell = { label: string; name: string; run: number; value: string; widest: string; high: boolean };
-type TaskGroup = { cells: Cell[]; tone: string; history: number[] };
+// `plain`: of no device, so in no device's colour (`Tone::Plain`).
+type TaskGroup = { cells: Cell[]; tone: string; plain: boolean; history: number[] };
 // The taskbar's cells: a single value under its short name, a pair of rates
 // under their marks; a CPU or GPU reading after another of its device also
 // has its parameter's name (monitors.rs `taskbar_groups`).
@@ -467,6 +468,7 @@ function taskGroups(list: Gauge[]): TaskGroup[] {
     if (!follows) run = index + 1;
     return {
       tone: tone(g),
+      plain: g.family === 6,
       history: g.trend?.[0] ?? [],
       cells:
         g.parts.length === 1
@@ -569,12 +571,17 @@ function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
     <>
       {stacks(groups).map((column, n) => (
         <span className="w-tb-column" key={n}>
-          {column.map(([c], row) => {
+          {column.map(([c, g], row) => {
             const before = row > 0 ? column[row - 1][0] : null;
             const shown = before && before.run === c.run ? tag(c) : c.label;
             return (
               <span className="w-tb-row" key={c.label + row}>
-                {shown && <span className="w-tb-name">{shown}</span>}
+                {/* In its device's colour, as a figure's name; a reading of no device keeps the quieter ink. */}
+                {shown && (
+                  <span className="w-tb-name" style={g.plain ? undefined : { color: g.tone }}>
+                    {shown}
+                  </span>
+                )}
                 <Room value={c.value} widest={c.widest} size={15} high={c.high} />
               </span>
             );
