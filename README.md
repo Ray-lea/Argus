@@ -65,8 +65,8 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>服务与启动项</b><br>启停服务、修改启动类型，启用或禁用启动项</td>
-<td width="50%" valign="top"><b>常驻托盘</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 随时显示或隐藏窗口，隐藏时资源开销极低</td>
+<td width="50%" valign="top"><b>服务与启动项</b><br>启停、删除服务，修改启动类型；启用、禁用或删除启动项</td>
+<td width="50%" valign="top"><b>托盘与监控</b><br>托盘图标实时显示 CPU 占用，桌面监控与任务栏监控常驻显示读数；<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 随时显示或隐藏窗口</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>替换任务管理器</b><br>可<a href="docs/architecture/task-manager.md">替换系统任务管理器</a>并响应 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>；可运行新任务、重新启动资源管理器</td>
@@ -120,7 +120,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 
 | 操作 | 按键 |
 |---|---|
-| 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | 搜索进程 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 临时暂停刷新 | 按住 <kbd>Ctrl</kbd>，松开后恢复（进程页、性能页） |
 | 打开详细信息 | <kbd>Enter</kbd> |

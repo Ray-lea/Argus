@@ -71,8 +71,8 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>Servicios y aplicaciones de inicio</b><br>Iniciar y detener servicios, cambiar su tipo de inicio y activar o desactivar aplicaciones de inicio</td>
-<td width="50%" valign="top"><b>Bandeja del sistema</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> muestra u oculta la ventana; consumo mínimo mientras está oculta</td>
+<td width="50%" valign="top"><b>Servicios y aplicaciones de inicio</b><br>Iniciar, detener y eliminar servicios, cambiar su tipo de inicio, y activar, desactivar o eliminar aplicaciones de inicio</td>
+<td width="50%" valign="top"><b>Bandeja y monitores</b><br>El icono de la bandeja muestra el uso de CPU en tiempo real, y los monitores de escritorio y de la barra de tareas mantienen las lecturas a la vista; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> muestra u oculta la ventana</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Sustitución del Administrador de tareas</b><br>Puede <a href="docs/architecture/task-manager.md">sustituir el Administrador de tareas de Windows</a> —documentación en chino— y abrirse con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; ejecuta tareas nuevas y reinicia el Explorador de Windows</td>
@@ -134,7 +134,7 @@ La [guía de desarrollo](docs/development/README.md), en chino, explica las comp
 
 | Acción | Teclas |
 |---|---|
-| Cambiar de página | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| Cambiar de página | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Buscar procesos | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Pausar temporalmente las actualizaciones | Mantener <kbd>Ctrl</kbd>; soltar para reanudar, en Procesos y Rendimiento |
 | Abrir detalles | <kbd>Enter</kbd> |

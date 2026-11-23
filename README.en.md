@@ -65,8 +65,8 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>Services and startup apps</b><br>Start and stop services, change their startup type, and enable or disable startup apps</td>
-<td width="50%" valign="top"><b>System tray</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> shows or hides the window at any time; minimal resource use while hidden</td>
+<td width="50%" valign="top"><b>Services and startup apps</b><br>Start, stop and delete services, change their startup type, and enable, disable or delete startup apps</td>
+<td width="50%" valign="top"><b>Tray and monitors</b><br>The tray icon shows live CPU usage, and the desktop and taskbar monitors keep readings on screen; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> shows or hides the window at any time</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Task Manager replacement</b><br>Can <a href="docs/architecture/task-manager.md">replace Windows Task Manager</a> (in Chinese) and open on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; runs new tasks and restarts Windows Explorer</td>
@@ -120,7 +120,7 @@ For code checks, packaging the installer, and cleaning caches, see the [developm
 
 | Action | Keys |
 |---|---|
-| Switch pages | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| Switch pages | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Search processes | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Temporarily pause updates | Hold <kbd>Ctrl</kbd>; release to resume (Processes and Performance) |
 | Open details | <kbd>Enter</kbd> |

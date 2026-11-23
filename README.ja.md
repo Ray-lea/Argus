@@ -71,8 +71,8 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>サービスとスタートアップ</b><br>サービスの開始・停止とスタートアップの種類の変更、スタートアップ アプリの有効化・無効化</td>
-<td width="50%" valign="top"><b>通知領域への常駐</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> でいつでも表示・非表示。非表示中は少ないリソースで動作</td>
+<td width="50%" valign="top"><b>サービスとスタートアップ</b><br>サービスの開始・停止・削除とスタートアップの種類の変更、スタートアップ アプリの有効化・無効化・削除</td>
+<td width="50%" valign="top"><b>通知領域とモニター</b><br>通知領域のアイコンに CPU 使用率をリアルタイム表示。デスクトップ モニターとタスク バー モニターで読み取り値を常時表示。<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> でいつでも表示・非表示</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>タスク マネージャーの置き換え</b><br><a href="docs/architecture/task-manager.md">Windows タスク マネージャーを置き換え</a>（説明は中国語）、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> で開けます。新しいタスクの実行とエクスプローラーの再起動にも対応</td>
@@ -134,7 +134,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 | 操作 | キー |
 |---|---|
-| ページの切り替え | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| ページの切り替え | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | プロセスの検索 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 更新の一時停止 | <kbd>Ctrl</kbd> を押している間は停止し、離すと再開（プロセス・パフォーマンス ページ） |
 | 詳細を開く | <kbd>Enter</kbd> |

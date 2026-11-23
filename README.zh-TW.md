@@ -67,8 +67,8 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>服務與啟動項目</b><br>啟動、停止服務並修改啟動類型，啟用或停用啟動項目</td>
-<td width="50%" valign="top"><b>常駐系統匣</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 隨時顯示或隱藏視窗，隱藏時資源負擔極低</td>
+<td width="50%" valign="top"><b>服務與啟動項目</b><br>啟動、停止或刪除服務並修改啟動類型，啟用、停用或刪除啟動項目</td>
+<td width="50%" valign="top"><b>系統匣與監控</b><br>系統匣圖示即時顯示 CPU 使用率，桌面監控與工作列監控常駐顯示讀數；<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> 隨時顯示或隱藏視窗</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>取代工作管理員</b><br>可<a href="docs/architecture/task-manager.md">取代 Windows 工作管理員</a>並回應 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>（連結文件為簡體中文）；可執行新工作、重新啟動檔案總管</td>
@@ -130,7 +130,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 | 操作 | 按鍵 |
 |---|---|
-| 切換頁面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| 切換頁面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | 搜尋處理程序 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 暫時停止重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
 | 開啟詳細資料 | <kbd>Enter</kbd> |

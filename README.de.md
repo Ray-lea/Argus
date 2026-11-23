@@ -71,8 +71,8 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>Dienste und Autostart-Apps</b><br>Dienste starten und beenden, den Starttyp ändern, Autostart-Apps aktivieren oder deaktivieren</td>
-<td width="50%" valign="top"><b>Infobereich</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> blendet das Fenster jederzeit ein oder aus; ausgeblendet mit geringem Ressourcenbedarf</td>
+<td width="50%" valign="top"><b>Dienste und Autostart-Apps</b><br>Dienste starten, beenden und löschen, den Starttyp ändern, Autostart-Apps aktivieren, deaktivieren oder löschen</td>
+<td width="50%" valign="top"><b>Infobereich und Anzeigen</b><br>Das Symbol im Infobereich zeigt die CPU-Auslastung live, Desktop- und Taskleistenanzeige halten Messwerte sichtbar; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> blendet das Fenster jederzeit ein oder aus</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Task-Manager ersetzen</b><br>Kann den <a href="docs/architecture/task-manager.md">Windows-Task-Manager ersetzen</a> —Dokumentation auf Chinesisch— und auf <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> öffnen; führt neue Aufgaben aus und startet den Windows-Explorer neu</td>
@@ -134,7 +134,7 @@ Codeprüfungen, das Erstellen des Installationsprogramms und die Cache-Bereinigu
 
 | Aktion | Tasten |
 |---|---|
-| Seite wechseln | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| Seite wechseln | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Prozesse suchen | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Aktualisierung vorübergehend anhalten | <kbd>Ctrl</kbd> gedrückt halten; zum Fortsetzen loslassen, auf den Seiten Prozesse und Leistung |
 | Details öffnen | <kbd>Enter</kbd> |

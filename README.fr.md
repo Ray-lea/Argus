@@ -71,8 +71,8 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 
 <table>
 <tr>
-<td width="50%" valign="top"><b>Services et applications au démarrage</b><br>Démarrer ou arrêter les services, modifier leur type de démarrage, activer ou désactiver les applications au démarrage</td>
-<td width="50%" valign="top"><b>Zone de notification</b><br><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> affiche ou masque la fenêtre ; consommation faible lorsqu’elle est masquée</td>
+<td width="50%" valign="top"><b>Services et applications au démarrage</b><br>Démarrer, arrêter ou supprimer les services, modifier leur type de démarrage, activer, désactiver ou supprimer les applications au démarrage</td>
+<td width="50%" valign="top"><b>Zone de notification et moniteurs</b><br>L’icône de la zone de notification affiche l’utilisation du CPU en direct, les moniteurs de bureau et de barre des tâches gardent les mesures à l’écran ; <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Esc</kbd> affiche ou masque la fenêtre</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Remplacement du Gestionnaire des tâches</b><br>Peut <a href="docs/architecture/task-manager.md">remplacer le Gestionnaire des tâches Windows</a> —documentation en chinois— et s’ouvrir avec <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> ; lance de nouvelles tâches et redémarre l’Explorateur Windows</td>
@@ -134,7 +134,7 @@ Le [guide de développement](docs/development/README.md), en chinois, détaille 
 
 | Action | Touches |
 |---|---|
-| Changer de page | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>8</kbd> |
+| Changer de page | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Rechercher des processus | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Suspendre temporairement l’actualisation | Maintenir <kbd>Ctrl</kbd>, puis relâcher pour reprendre, sur les pages Processus et Performances |
 | Ouvrir les détails | <kbd>Enter</kbd> |
