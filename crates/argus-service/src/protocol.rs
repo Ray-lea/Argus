@@ -110,6 +110,12 @@ pub enum Operation {
     DeleteService {
         name: String,
     },
+    /// Writes `Start` in the registry key of a packaged service whose SCM
+    /// security descriptor refuses the change.
+    ServiceStartTypeRegistry {
+        name: String,
+        start_type: StartType,
+    },
     CloseConnection {
         local_address: String,
         local_port: u16,
@@ -193,7 +199,8 @@ impl Operation {
             }
             Self::ControlService { name, .. }
             | Self::ServiceStartType { name, .. }
-            | Self::DeleteService { name } => {
+            | Self::DeleteService { name }
+            | Self::ServiceStartTypeRegistry { name, .. } => {
                 if name.is_empty()
                     || name.len() > 256
                     || name.contains(['\0', '/', '\\'])
@@ -318,6 +325,9 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
             context.services.set_start_type(&name, start_type)
         }
         Operation::DeleteService { name } => context.services.delete(&name),
+        Operation::ServiceStartTypeRegistry { name, start_type } => context
+            .services
+            .set_start_type_in_registry(&name, start_type),
         Operation::CloseConnection {
             local_address,
             local_port,
@@ -331,6 +341,32 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registry_start_type_guards_the_name_like_the_scm_operation() {
+        let op = |name: &str| Operation::ServiceStartTypeRegistry {
+            name: name.into(),
+            start_type: StartType::Manual,
+        };
+        for name in [
+            "",
+            "ArgusPrivileged",
+            "argusprivilegeddev",
+            r"Foo\..\Bar",
+            "a/b",
+            "x\0",
+        ] {
+            assert!(
+                matches!(op(name).validate(), Err(ActionError::Refused)),
+                "{name}"
+            );
+        }
+        assert!(op("CoworkVMService").validate().is_ok());
+        let json =
+            r#"{"op":"serviceStartTypeRegistry","name":"CoworkVMService","start_type":"manual"}"#;
+        assert!(serde_json::from_str::<Operation>(json).is_ok());
+        assert!(serde_json::from_str::<Operation>(&json.replace("manual", "boot")).is_err());
+    }
 
     #[test]
     fn disk_details_accept_only_a_bounded_disk_number() {

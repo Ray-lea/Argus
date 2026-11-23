@@ -3,6 +3,10 @@
 //! Status for every service is one `EnumServicesStatusExW` call. Static
 //! configuration (start type, binary path, description) costs three RPCs per
 //! service, so it is cached and refreshed only occasionally.
+//!
+//! Some MSIX services deny startup changes through the SCM. For an
+//! unprotected packaged service, a confirmed registry change can take effect
+//! immediately or after a restart. The list shows any pending startup type.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -10,10 +14,14 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::{
-    ERROR_SERVICE_DOES_NOT_EXIST, ERROR_SERVICE_MARKED_FOR_DELETE, ERROR_SUCCESS,
+    ERROR_FILE_NOT_FOUND, ERROR_SERVICE_DOES_NOT_EXIST, ERROR_SERVICE_MARKED_FOR_DELETE,
+    ERROR_SUCCESS,
 };
+use windows::Win32::Storage::FileSystem::{CommitTransaction, CreateTransaction};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegLoadMUIStringW, RegOpenKeyExW,
+    HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_READ, KEY_SET_VALUE, REG_DWORD, REG_LINK,
+    REG_OPTION_OPEN_LINK, REG_SAM_FLAGS, RegCloseKey, RegLoadMUIStringW, RegOpenKeyExW,
+    RegOpenKeyTransactedW, RegQueryValueExW, RegSetValueExW,
 };
 use windows::Win32::System::Services::{
     ChangeServiceConfig2W, ChangeServiceConfigW, CloseServiceHandle, ControlService, DeleteService,
@@ -21,17 +29,19 @@ use windows::Win32::System::Services::{
     OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfig2W, QueryServiceConfigW,
     QueryServiceStatusEx, SC_ENUM_PROCESS_INFO, SC_HANDLE, SC_MANAGER_CONNECT,
     SC_MANAGER_ENUMERATE_SERVICE, SC_STATUS_PROCESS_INFO, SERVICE_CHANGE_CONFIG,
-    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_DESCRIPTION, SERVICE_CONTROL_STOP,
-    SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DESCRIPTIONW, SERVICE_ERROR, SERVICE_NO_CHANGE,
-    SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_START, SERVICE_START_TYPE,
-    SERVICE_STATE_ALL, SERVICE_STATUS, SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_WIN32,
-    StartServiceW,
+    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_DESCRIPTION,
+    SERVICE_CONFIG_LAUNCH_PROTECTED, SERVICE_CONTROL_STOP, SERVICE_DELAYED_AUTO_START_INFO,
+    SERVICE_DESCRIPTIONW, SERVICE_ERROR, SERVICE_LAUNCH_PROTECTED_INFO,
+    SERVICE_LAUNCH_PROTECTED_NONE, SERVICE_NO_CHANGE, SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS,
+    SERVICE_START, SERVICE_START_TYPE, SERVICE_STATE_ALL, SERVICE_STATUS, SERVICE_STATUS_PROCESS,
+    SERVICE_STOP, SERVICE_WIN32, StartServiceW,
 };
+use windows::Win32::System::SystemServices::SERVICE_PKG_SERVICE;
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::actions::ActionError;
 use crate::tr;
-use crate::util::{AlignedBuf, from_wide, wide};
+use crate::util::{AlignedBuf, OwnedHandle, from_wide, wide};
 
 const CONFIG_TTL: Duration = Duration::from_secs(60);
 const SERVICE_ACCEPT_STOP: u32 = 0x1;
@@ -49,6 +59,11 @@ pub struct ServiceInfo {
     pub state: &'static str,
     /// `boot` | `system` | `auto` | `autoDelayed` | `manual` | `disabled`
     pub start_type: Option<&'static str>,
+    /// Start type written to the registry that the SCM picks up at the next
+    /// boot; None when it matches `start_type`.
+    pub pending_start_type: Option<&'static str>,
+    /// An MSIX service with no Windows launch protection.
+    pub registry_start_type_allowed: bool,
     /// Hosting process; 0 when not running.
     pub pid: u32,
     /// Command line of the service binary.
@@ -81,6 +96,8 @@ struct Config {
     /// Display name in the user's UI language (the SCM resolves it in the system one).
     display_name: Option<String>,
     start_type: Option<&'static str>,
+    pending_start_type: Option<&'static str>,
+    registry_start_type_allowed: bool,
     path: Option<Arc<str>>,
     account: Option<Arc<str>>,
     description: Option<Arc<str>>,
@@ -122,9 +139,15 @@ fn open_scm() -> Result<Handle, ActionError> {
 
 fn open_service(scm: &Handle, name: &str, access: u32) -> Result<Handle, ActionError> {
     let w = wide(name);
-    Ok(Handle(unsafe {
-        OpenServiceW(scm.0, PCWSTR(w.as_ptr()), access)
-    }?))
+    unsafe { OpenServiceW(scm.0, PCWSTR(w.as_ptr()), access) }
+        .map(Handle)
+        .map_err(|e| {
+            if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() {
+                ActionError::NotFound
+            } else {
+                e.into()
+            }
+        })
 }
 
 unsafe fn pwstr(p: PWSTR) -> Option<String> {
@@ -200,6 +223,8 @@ impl ServiceCatalog {
             description: config.description.clone(),
             state: state_name(st.dwCurrentState.0),
             start_type: config.start_type,
+            pending_start_type: config.pending_start_type,
+            registry_start_type_allowed: config.registry_start_type_allowed,
             pid: st.dwProcessId,
             path: config.path.clone(),
             account: config.account.clone(),
@@ -314,6 +339,25 @@ impl ServiceCatalog {
         self.invalidate(name);
         Ok(())
     }
+
+    /// Rechecks eligibility after confirmation. Keeping the service handle open
+    /// prevents the SCM from deleting and recreating that name during the write.
+    pub fn set_start_type_in_registry(
+        &self,
+        name: &str,
+        start: StartType,
+    ) -> Result<(), ActionError> {
+        let scm = open_scm()?;
+        let svc = open_service(&scm, name, SERVICE_QUERY_CONFIG)?;
+        let buf = basic_config(&svc)?;
+        let config = unsafe { &*buf.as_ptr().cast::<QUERY_SERVICE_CONFIGW>() };
+        if !registry_start_type_allowed(&svc, config.dwServiceType) {
+            return Err(ActionError::Refused);
+        }
+        write_registry_start_type(name, start)?;
+        self.invalidate(name);
+        Ok(())
+    }
 }
 
 /// The standard right to delete an object, which `DeleteService` needs.
@@ -334,6 +378,122 @@ pub fn remains(name: &str) -> bool {
         }
         Err(error) => error.code() != ERROR_SERVICE_DOES_NOT_EXIST.to_hresult(),
     }
+}
+
+/// `Start` and, for automatic starts, `DelayedAutostart` registry values.
+fn start_values(start: StartType) -> (u32, Option<bool>) {
+    match start {
+        StartType::Auto => (2, Some(false)),
+        StartType::AutoDelayed => (2, Some(true)),
+        StartType::Manual => (3, None),
+        StartType::Disabled => (4, None),
+    }
+}
+
+/// The start type the registry values describe, named like `start_type`.
+fn registry_start_name(start: u32, delayed: bool) -> Option<&'static str> {
+    match (start, delayed) {
+        (0, _) => Some("boot"),
+        (1, _) => Some("system"),
+        (2, true) => Some("autoDelayed"),
+        (2, false) => Some("auto"),
+        (3, _) => Some("manual"),
+        (4, _) => Some("disabled"),
+        _ => None,
+    }
+}
+
+/// Updates the two parts of an automatic startup type in a single transaction.
+fn write_registry_start_type(name: &str, start: StartType) -> Result<(), ActionError> {
+    let key = open_registry_key(
+        name,
+        KEY_QUERY_VALUE | KEY_SET_VALUE,
+        Some(REG_OPTION_OPEN_LINK.0),
+    )?;
+    let mut kind = REG_DWORD;
+    let status = unsafe {
+        RegQueryValueExW(
+            key.0,
+            windows::core::w!("SymbolicLinkValue"),
+            None,
+            Some(&mut kind),
+            None,
+            None,
+        )
+    };
+    if status != ERROR_FILE_NOT_FOUND {
+        status.ok()?;
+        if kind == REG_LINK {
+            return Err(ActionError::Refused);
+        }
+    }
+
+    let txn = OwnedHandle(unsafe {
+        CreateTransaction(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            PCWSTR::null(),
+        )
+    }?);
+    let mut transacted = HKEY::default();
+    // Reopen the checked key itself, without resolving its service name again.
+    unsafe {
+        RegOpenKeyTransactedW(
+            key.0,
+            PCWSTR::null(),
+            None,
+            KEY_SET_VALUE,
+            &mut transacted,
+            txn.0,
+            None,
+        )
+    }
+    .ok()?;
+    let transacted = RegKey(transacted);
+    let (code, delayed) = start_values(start);
+    set_dword(&transacted, "Start", code)?;
+    if let Some(delayed) = delayed {
+        set_dword(&transacted, "DelayedAutostart", delayed.into())?;
+    }
+    unsafe { CommitTransaction(txn.0) }?;
+    Ok(())
+}
+
+fn set_dword(key: &RegKey, value: &str, data: u32) -> Result<(), ActionError> {
+    let v = wide(value);
+    unsafe {
+        RegSetValueExW(
+            key.0,
+            PCWSTR(v.as_ptr()),
+            None,
+            REG_DWORD,
+            Some(&data.to_le_bytes()),
+        )
+    }
+    .ok()?;
+    Ok(())
+}
+
+fn read_dword(key: &RegKey, value: &str) -> Option<u32> {
+    let v = wide(value);
+    let mut data = [0u8; 4];
+    let mut len = data.len() as u32;
+    let mut kind = REG_DWORD;
+    let r = unsafe {
+        RegQueryValueExW(
+            key.0,
+            PCWSTR(v.as_ptr()),
+            None,
+            Some(&mut kind),
+            Some(data.as_mut_ptr()),
+            Some(&mut len),
+        )
+    };
+    (r == ERROR_SUCCESS && kind == REG_DWORD && len == 4).then(|| u32::from_le_bytes(data))
 }
 
 fn start(scm: &Handle, name: &str) -> Result<(), ActionError> {
@@ -367,38 +527,49 @@ fn stop(scm: &Handle, name: &str, wait: bool) -> Result<(), ActionError> {
     Err(ActionError::Os(tr!("core.services.stopTimeout")))
 }
 
+fn basic_config(svc: &Handle) -> windows::core::Result<AlignedBuf> {
+    // QueryServiceConfigW documents an 8 KiB maximum including its strings.
+    let mut buf = AlignedBuf::with_capacity(8192);
+    let mut needed = 0;
+    unsafe {
+        QueryServiceConfigW(
+            svc.0,
+            Some(buf.as_mut_ptr().cast()),
+            buf.len() as u32,
+            &mut needed,
+        )
+    }?;
+    Ok(buf)
+}
+
+fn registry_start_type_allowed(svc: &Handle, service_type: ENUM_SERVICE_TYPE) -> bool {
+    service_type.0 & SERVICE_PKG_SERVICE != 0
+        && query_config2(svc, SERVICE_CONFIG_LAUNCH_PROTECTED).is_some_and(|buf| {
+            let info = unsafe { &*buf.as_ptr().cast::<SERVICE_LAUNCH_PROTECTED_INFO>() };
+            info.dwLaunchProtected == SERVICE_LAUNCH_PROTECTED_NONE
+        })
+}
+
 fn query_config(scm: &Handle, name: &str) -> Option<Config> {
     let svc = open_service(scm, name, SERVICE_QUERY_CONFIG).ok()?;
     let mut config = Config::default();
 
-    let mut needed = 0u32;
-    let _ = unsafe { QueryServiceConfigW(svc.0, None, 0, &mut needed) };
-    if needed > 0 {
-        let mut buf = AlignedBuf::with_capacity(needed as usize);
-        if unsafe { QueryServiceConfigW(svc.0, Some(buf.as_mut_ptr().cast()), needed, &mut needed) }
-            .is_ok()
-        {
-            let c = unsafe { &*(buf.as_ptr() as *const QUERY_SERVICE_CONFIGW) };
-            config.start_type = match c.dwStartType.0 {
-                0 => Some("boot"),
-                1 => Some("system"),
-                2 => Some("auto"),
-                3 => Some("manual"),
-                4 => Some("disabled"),
-                _ => None,
-            };
-            config.path = unsafe { pwstr(c.lpBinaryPathName) }.map(Into::into);
-            config.account = unsafe { pwstr(c.lpServiceStartName) }.map(Into::into);
-        }
+    if let Ok(buf) = basic_config(&svc) {
+        let c = unsafe { &*buf.as_ptr().cast::<QUERY_SERVICE_CONFIGW>() };
+        config.start_type = registry_start_name(c.dwStartType.0, false);
+        config.registry_start_type_allowed = registry_start_type_allowed(&svc, c.dwServiceType);
+        config.path = unsafe { pwstr(c.lpBinaryPathName) }.map(Into::into);
+        config.account = unsafe { pwstr(c.lpServiceStartName) }.map(Into::into);
     }
 
     if let Some(buf) = query_config2(&svc, SERVICE_CONFIG_DESCRIPTION) {
         let d = unsafe { &*(buf.as_ptr() as *const SERVICE_DESCRIPTIONW) };
         config.description = unsafe { pwstr(d.lpDescription) }.map(Into::into);
     }
-    if let Some(key) = registry_key(name) {
-        config.display_name = mui_string(&key, "DisplayName");
-        if let Some(d) = mui_string(&key, "Description") {
+    let key = open_registry_key(name, KEY_READ, None).ok();
+    if let Some(key) = &key {
+        config.display_name = mui_string(key, "DisplayName");
+        if let Some(d) = mui_string(key, "Description") {
             config.description = Some(d.into());
         }
     }
@@ -409,6 +580,15 @@ fn query_config(scm: &Handle, name: &str) -> Option<Config> {
         if info.fDelayedAutostart.as_bool() {
             config.start_type = Some("autoDelayed");
         }
+    }
+    // A registry value the SCM has not taken up (written by Argus or by hand)
+    // shows as pending; the SCM reads it at the next boot at the latest.
+    if let Some(key) = &key
+        && let Some(start) = read_dword(key, "Start")
+    {
+        let delayed = read_dword(key, "DelayedAutostart").is_some_and(|d| d != 0);
+        config.pending_start_type = registry_start_name(start, delayed)
+            .filter(|registry| config.start_type.is_some_and(|scm| scm != *registry));
     }
     Some(config)
 }
@@ -424,19 +604,24 @@ impl Drop for RegKey {
     }
 }
 
-fn registry_key(name: &str) -> Option<RegKey> {
+fn open_registry_key(
+    name: &str,
+    access: REG_SAM_FLAGS,
+    options: Option<u32>,
+) -> windows::core::Result<RegKey> {
     let path = wide(&format!(r"SYSTEM\CurrentControlSet\Services\{name}"));
     let mut key = HKEY::default();
-    let r = unsafe {
+    unsafe {
         RegOpenKeyExW(
             HKEY_LOCAL_MACHINE,
             PCWSTR(path.as_ptr()),
-            None,
-            KEY_READ,
+            options,
+            access,
             &mut key,
         )
-    };
-    (r == ERROR_SUCCESS).then_some(RegKey(key))
+    }
+    .ok()?;
+    Ok(RegKey(key))
 }
 
 /// Reads a registry string, resolving `@file.dll,-id` references in the
@@ -490,7 +675,7 @@ fn state_name(state: u32) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Handle, ServiceCatalog, remains};
+    use super::{Handle, ServiceCatalog, StartType, registry_start_name, remains, start_values};
     use crate::actions::ActionError;
     use crate::util::wide;
     use windows::Win32::System::Services::{
@@ -572,11 +757,44 @@ mod tests {
         }
         let _gone = Gone(&name);
         let catalog = ServiceCatalog::default();
+        assert!(matches!(
+            catalog.set_start_type_in_registry(&name, StartType::Disabled),
+            Err(ActionError::Refused)
+        ));
+        // Exercise the underlying transaction on this disposable service only.
+        super::write_registry_start_type(&name, StartType::AutoDelayed).unwrap();
+        let key = super::open_registry_key(&name, super::KEY_READ, None).unwrap();
+        assert_eq!(super::read_dword(&key, "Start"), Some(2));
+        assert_eq!(super::read_dword(&key, "DelayedAutostart"), Some(1));
+        drop(key);
         assert!(catalog.delete(&name).is_ok());
         assert!(remains(&name), "held open, it stays until closed");
         assert!(catalog.delete(&name).is_ok(), "marked already counts");
         drop(held);
         assert!(!remains(&name));
         assert!(matches!(catalog.delete(&name), Err(ActionError::NotFound)));
+    }
+
+    #[test]
+    fn registry_values_read_back_as_the_chosen_start_type() {
+        for (start, name) in [
+            (StartType::Auto, "auto"),
+            (StartType::AutoDelayed, "autoDelayed"),
+            (StartType::Manual, "manual"),
+            (StartType::Disabled, "disabled"),
+        ] {
+            let (code, delayed) = start_values(start);
+            assert_eq!(
+                registry_start_name(code, delayed.unwrap_or(false)),
+                Some(name)
+            );
+        }
+    }
+
+    #[test]
+    fn delayed_flag_only_matters_for_automatic_starts() {
+        assert_eq!(registry_start_name(3, true), Some("manual"));
+        assert_eq!(registry_start_name(4, true), Some("disabled"));
+        assert_eq!(registry_start_name(7, false), None);
     }
 }
