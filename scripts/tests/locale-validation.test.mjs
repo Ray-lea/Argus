@@ -31,6 +31,6 @@ test("recovery instructions preserve registry values, JSON literals, paths and s
   for (const token of ["Debugger", "--task-manager", "before.debugger", "taskmgr-recovery.json", "null"]) {
     assert.ok(textErrors(source, source.replace(token, "translated")).some(error => error.includes(token)));
   }
-  const path = "Program Files\\Argus Sensor Setup";
-  assert.ok(textErrors(path, "Programme\\Argus Sensor Setup").some(error => error.includes(path)));
+  const path = "Program Files\\Argus Privileged\\setup";
+  assert.ok(textErrors(path, "Programme\\Argus Privileged\\setup").some(error => error.includes(path)));
 });

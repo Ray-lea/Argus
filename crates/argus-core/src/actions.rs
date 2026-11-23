@@ -415,10 +415,13 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// Image names whose stall cannot be undone from Argus, though Windows does
 /// not mark them critical: the Desktop Window Manager (the whole screen,
 /// Argus's window included, stops updating) and Argus's own privileged
-/// service (`argus-service-<pid>-<stamp>.exe`, which every Argus waits on).
+/// service (`argus-service.exe`, or `argus-service-<pid>-<stamp>.exe` as
+/// Argus 0.5 and earlier named it), which every Argus waits on.
 fn essential_image(name: &str) -> bool {
     let name = name.to_lowercase();
-    name == "dwm.exe" || (name.starts_with("argus-service-") && name.ends_with(".exe"))
+    name == "dwm.exe"
+        || name == "argus-service.exe"
+        || (name.starts_with("argus-service-") && name.ends_with(".exe"))
 }
 
 /// The file name of the process's image, from a handle with limited query rights.
@@ -771,7 +774,12 @@ mod tests {
 
     #[test]
     fn the_desktop_window_manager_and_argus_service_are_essential() {
-        for name in ["dwm.exe", "DWM.EXE", "argus-service-123-456.exe"] {
+        for name in [
+            "dwm.exe",
+            "DWM.EXE",
+            "argus-service.exe",
+            "argus-service-123-456.exe",
+        ] {
             assert!(super::essential_image(name), "{name}");
         }
         for name in [

@@ -546,29 +546,57 @@ impl Store for Machine {
 
 pub fn atomic_file(dir: &Path, filename: &str, bytes: &[u8]) -> Result<()> {
     let destination = dir.join(filename);
+    let temporary = stage(&destination, bytes)?;
+    let result = unsafe {
+        MoveFileExW(
+            PCWSTR(util::wide(&temporary.to_string_lossy()).as_ptr()),
+            PCWSTR(util::wide(&destination.to_string_lossy()).as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(|e| e.to_string());
+    if result.is_err() {
+        let _ = fs::remove_file(temporary);
+    }
+    result
+}
+
+/// `atomic_file` for a program that may be running: the file `filename` names
+/// keeps another name until it exits (`layout::swap_in`), which the returned
+/// value undoes or releases.
+pub fn swap_file(dir: &Path, filename: &str, bytes: &[u8]) -> Result<crate::layout::Swapped> {
+    let destination = dir.join(filename);
+    let stem = filename
+        .strip_suffix(".exe")
+        .ok_or_else(|| util::message(87))?;
+    let temporary = stage(&destination, bytes)?;
+    crate::layout::swap_in(&temporary, &destination, stem).map_err(|code| {
+        let _ = fs::remove_file(&temporary);
+        util::message(code)
+    })
+}
+
+/// Writes `bytes` in full to a new file beside `destination`, which must be
+/// safe to replace when it is there.
+fn stage(destination: &Path, bytes: &[u8]) -> Result<std::path::PathBuf> {
+    let dir = destination.parent().ok_or_else(|| util::message(87))?;
     if destination.exists() {
-        drop(security::protect_directory(&destination).map_err(util::message)?);
+        drop(security::protect_directory(destination).map_err(util::message)?);
     }
     let temporary = dir.join(format!("taskmgr-stage-{}.tmp", super::id()?));
     let result = (|| {
         let mut file = crate::install::new_protected_file(&temporary).map_err(util::message)?;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
-            .map_err(|e| e.to_string())?;
-        drop(file);
-        unsafe {
-            MoveFileExW(
-                PCWSTR(util::wide(&temporary.to_string_lossy()).as_ptr()),
-                PCWSTR(util::wide(&destination.to_string_lossy()).as_ptr()),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            )
-        }
-        .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(temporary);
+    match result {
+        Ok(()) => Ok(temporary),
+        Err(error) => {
+            let _ = fs::remove_file(temporary);
+            Err(error)
+        }
     }
-    result
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@
 - **服务与启动项**的操作权限取决于目标。管理多数系统服务或修改所有用户的启动项需要管理员权限。可交给特权服务执行的操作见[权限](guide/settings.md#权限)。
 - **任务管理器替换**启动特权服务目录中的 Argus 副本。手动更换免安装版或安装器更新服务失败后，在新版的“设置 → 权限”中单击“更新服务”，让 Ctrl+Shift+Esc 打开新副本。更换免安装程序前先从托盘退出旧版。
 - **安全软件的风险提示**：任务管理器替换通过 `taskmgr.exe` 的 IFEO `Debugger` 值把启动转给 Argus，部分恶意程序也使用这一机制，卡巴斯基（`HEUR:Trojan.Multi.IfeoDeb.a`）、Malwarebytes（`RiskWare.IFEOHijack`）等因此可能报告该注册表值，并在之后的扫描中反复提示。检测对象是注册表值本身，它只在开启替换时写入一次，内容固定指向 `Argus Privileged` 中的 `argus-taskmgr-launcher.exe`；按文件、文件夹或受信任程序添加的排除不覆盖这类检测。可向安全软件厂商提交误报，或在“设置 → 权限”中恢复 Windows 任务管理器，改用全局快捷键（默认 Ctrl+Alt+Esc）打开 Argus，见[替换系统任务管理器](guide/settings.md#替换系统任务管理器)。
-- **安装位置之外的文件**：特权服务、管理员运行与内核传感器的程序无需每次确认即以 SYSTEM 或管理员身份运行，因此无论 Argus 安装在哪里，它们都放在只有管理员能修改的 Program Files（`Argus Privileged`、`Argus Runtime`、`Argus Sensor Setup` 与共享的 `PawnIO` 驱动），仅在开启对应功能后创建。开启管理员运行或经任务管理器替换打开 Argus 时，运行的是这些副本。安装到 Program Files 以外时，安装程序把安装文件夹设为只有管理员能修改，无法这样保护的位置在安装前说明原因，见[权限](guide/settings.md#权限)。
+- **安装位置之外的文件**：特权服务、管理员运行与内核传感器的程序无需每次确认即以 SYSTEM 或管理员身份运行，因此无论 Argus 安装在哪里，它们都放在只有管理员能修改的 Program Files（`Argus Privileged` 与共享的 `PawnIO` 驱动），仅在开启对应功能后创建；0.5 及更早版本另有的 `Argus Runtime`、`Argus Sensor Setup` 在升级后移入 `Argus Privileged`。开启管理员运行或经任务管理器替换打开 Argus 时，运行的是这些副本。安装到 Program Files 以外时，安装程序把安装文件夹设为只有管理员能修改，无法这样保护的位置在安装前说明原因，见[权限](guide/settings.md#权限)。
 - **每进程网络流量**需要可用的本地 ETW 会话或已授权的特权服务。服务读数经后台传递，通常比本地采样晚一个刷新周期。两种来源均不可用时，界面隐藏网络列。
 - **历史记录**按 CPU、内存、I/O、GPU 和网络占用保存每个时刻最忙的进程，每帧最多 21 个。查找当前运行的其他进程请使用进程页。记录间隔见[历史](guide/README.md#历史)。
 - **全局快捷键**按一组修饰键和一个主键匹配，左右修饰键视为同一键。录制规则和保留组合见[设置](guide/settings.md#快捷键)。

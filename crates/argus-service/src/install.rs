@@ -4,7 +4,7 @@ use std::os::windows::io::FromRawHandle;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use argus_core::tr;
 use serde::Serialize;
@@ -38,6 +38,12 @@ use crate::util::{
 static MANAGING: AtomicBool = AtomicBool::new(false);
 const OWNER_FILE: &str = "owner.sid";
 const LOCK_FILE: &str = "install.lock";
+/// The service's executable, which the registration names. Argus 0.5 and
+/// earlier gave every copy a name of its own (`legacy_image_name`).
+pub(crate) const IMAGE: &str = "argus-service.exe";
+const STEM: &str = "argus-service";
+/// A new executable, written in full before it takes `IMAGE`'s place.
+const STAGED: &str = "argus-service.new.exe";
 /// Where the SCM keeps its database.
 const SERVICES_KEY: &str = r"SYSTEM\CurrentControlSet\Services";
 /// What `manage` and the elevated helper accept.
@@ -335,7 +341,7 @@ fn registry_key(root: HKEY, path: &str) -> Result<RegKey> {
 }
 
 /// Writes the registry hive that holds `path` to disk.
-fn flush_key(root: HKEY, path: &str) -> Result<()> {
+pub(crate) fn flush_key(root: HKEY, path: &str) -> Result<()> {
     let key = registry_key(root, path)?;
     match unsafe { RegFlushKey(key.0) }.0 {
         0 => Ok(()),
@@ -418,7 +424,8 @@ fn query(service: &Service) -> Result<SERVICE_STATUS_PROCESS> {
 }
 
 /// Refuse an unrelated same-name service, even when an administrator invokes
-/// the helper. Only versioned copies under our pinned protected folder qualify.
+/// the helper. Only the service's executable in our pinned protected folder
+/// qualifies, under its name or one an earlier version gave it.
 fn binary(service: &Service, dir: &Path) -> Result<PathBuf> {
     let mut needed = 0;
     unsafe {
@@ -447,10 +454,9 @@ fn binary(service: &Service, dir: &Path) -> Result<PathBuf> {
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or(FOREIGN_SERVICE)?;
-    if path.parent() != Some(dir)
-        || !filename.starts_with("argus-service-")
-        || !filename.ends_with(".exe")
-    {
+    let named = filename.eq_ignore_ascii_case(IMAGE)
+        || (filename.starts_with("argus-service-") && filename.ends_with(".exe"));
+    if path.parent() != Some(dir) || !named {
         return Err(FOREIGN_SERVICE);
     }
     Ok(path)
@@ -734,31 +740,28 @@ fn set_binary(service: &Service, path: &Path) -> Result<()> {
     )
 }
 
-fn copy_binary(dir: &Path) -> Result<PathBuf> {
-    crate::util::file_stage("service executable copy", dir, copy_binary_inner(dir))
+/// Writes this executable in full as `path`, in place of a file left there.
+fn write_binary(path: &Path) -> Result<()> {
+    crate::util::file_stage("service executable copy", path, write_binary_inner(path))
 }
 
-fn copy_binary_inner(dir: &Path) -> Result<PathBuf> {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| 87u32)?
-        .as_nanos();
-    let path = dir.join(format!("argus-service-{}-{stamp}.exe", std::process::id()));
+fn write_binary_inner(path: &Path) -> Result<()> {
+    remove_file(path)?;
     let source_path = std::env::current_exe().map_err(io)?;
     let mut source = crate::util::file_stage(
         "service source executable open",
         &source_path,
         fs::File::open(&source_path).map_err(io),
     )?;
-    let mut dest = new_protected_file(&path)?;
+    let mut dest = new_protected_file(path)?;
     let result = std::io::copy(&mut source, &mut dest).and_then(|_| dest.sync_all());
     drop(dest);
     if let Err(e) = result {
-        argus_core::diagnostics::file_failure("service executable copy and flush", &path, &e);
-        let _ = fs::remove_file(&path);
+        argus_core::diagnostics::file_failure("service executable copy and flush", path, &e);
+        let _ = fs::remove_file(path);
         return Err(io(e));
     }
-    Ok(path)
+    Ok(())
 }
 
 pub(crate) fn new_protected_file(path: &Path) -> Result<fs::File> {
@@ -788,8 +791,19 @@ pub(crate) fn new_protected_file(path: &Path) -> Result<fs::File> {
     Ok(unsafe { fs::File::from_raw_handle(h.0) })
 }
 
-/// The names `copy_binary` gives: argus-service-<process>-<time>.exe.
+/// The service's executables in its folder: `IMAGE`, a new one on its way
+/// there (`STAGED`), the one it replaced (`argus-service.old.exe`, see
+/// `swap`), and copies of Argus 0.5 and earlier.
 fn image_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(IMAGE)
+        || name.eq_ignore_ascii_case(STAGED)
+        || crate::layout::is_aside(STEM, name)
+        || legacy_image_name(name)
+}
+
+/// The names Argus 0.5 and earlier gave the service's copies:
+/// argus-service-<process>-<time>.exe.
+fn legacy_image_name(name: &str) -> bool {
     name.strip_prefix("argus-service-")
         .and_then(|rest| rest.strip_suffix(".exe"))
         .and_then(|stamp| stamp.split_once('-'))
@@ -818,8 +832,17 @@ trait Steps {
     fn delete(&mut self) -> Result<()>;
     /// Writes the registration, or its deletion, to disk.
     fn flush(&mut self) -> Result<()>;
-    /// A new copy of this executable in the service folder.
-    fn copy(&mut self) -> Result<PathBuf>;
+    /// The path of `name` in the service folder.
+    fn path(&self, name: &str) -> PathBuf;
+    /// Writes this executable in full as `path`, in place of a file there.
+    fn write(&mut self, path: &Path) -> Result<()>;
+    /// Gives the file `image` names another name as well, and returns it:
+    /// `argus-service.old.exe`, or the next `layout::aside` name while
+    /// something holds that one.
+    fn backup(&mut self, image: &Path) -> Result<PathBuf>;
+    /// Renames `from` to `to`, in place of a file there, in one step: `to`
+    /// names a whole file throughout, the one before or `from`'s.
+    fn rename(&mut self, from: &Path, to: &Path) -> Result<()>;
     fn present(&mut self, image: &Path) -> bool;
     /// The service executables in the folder.
     fn images(&mut self) -> Vec<PathBuf>;
@@ -951,8 +974,28 @@ impl Steps for Machine<'_> {
         )
     }
 
-    fn copy(&mut self) -> Result<PathBuf> {
-        copy_binary(self.dir)
+    fn path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
+    }
+
+    fn write(&mut self, path: &Path) -> Result<()> {
+        write_binary(path)
+    }
+
+    fn backup(&mut self, image: &Path) -> Result<PathBuf> {
+        crate::util::file_stage(
+            "service executable backup link",
+            image,
+            crate::layout::link_aside(self.dir, image, STEM),
+        )
+    }
+
+    fn rename(&mut self, from: &Path, to: &Path) -> Result<()> {
+        crate::util::file_stage(
+            "service executable rename",
+            to,
+            crate::layout::rename(from, to),
+        )
     }
 
     fn present(&mut self, image: &Path) -> bool {
@@ -1007,11 +1050,16 @@ fn remove_file(path: &Path) -> Result<()> {
 /// Installs the service for `sid`, or brings a registered one to this
 /// executable.
 ///
+/// The registration names `IMAGE`, which an update replaces in place
+/// (`swap`). One of Argus 0.5 or earlier names a copy of its own: the update
+/// writes `IMAGE` beside it and changes the registration once (`change`).
+///
 /// The SCM changes its database in the registry at once, but the registry
 /// reaches the disk lazily: a crash can bring back a registration from before
 /// the last change. So an image is deleted only once a registration that does
 /// not name it has been written to disk (`settle`); until then every image a
 /// registration named stays, and the service can start whatever comes back.
+/// `IMAGE` itself is only ever replaced in one step, never deleted.
 fn install_or_update(system: &mut impl Steps, sid: &str) -> Result<()> {
     let old = system.registered()?;
     let was_running = old.is_some() && system.running()?;
@@ -1026,16 +1074,66 @@ fn install_or_update(system: &mut impl Steps, sid: &str) -> Result<()> {
         // installation that was cut short left it behind.
         (_, None) => true,
     };
-    let new = system.copy()?;
-    let result = change(
-        system,
-        old.as_deref(),
-        &new,
-        was_running,
-        authorize.then_some(sid),
-    );
+    let (image, staged) = (system.path(IMAGE), system.path(STAGED));
+    system.write(&staged)?;
+    let result = if old.as_deref().is_some_and(|old| same_path(old, &image)) {
+        swap(system, &image, &staged, was_running)
+    } else {
+        system.rename(&staged, &image).and_then(|()| {
+            change(
+                system,
+                old.as_deref(),
+                &image,
+                was_running,
+                authorize.then_some(sid),
+            )
+        })
+    };
     settle(system, old.is_none() && result.is_err());
     result
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+}
+
+/// Replaces the registered `image` with `staged`, the registration naming it
+/// all along. The image it replaces keeps another name (`backup`) until the
+/// new one has started, and comes back when it does not. An image that is
+/// gone is nothing to go back to: the new one stays, and may start the next
+/// time.
+fn swap(system: &mut impl Steps, image: &Path, staged: &Path, was_running: bool) -> Result<()> {
+    system.stop()?;
+    let swapped = (|| {
+        let backup = if system.present(image) {
+            Some(system.backup(image)?)
+        } else {
+            None
+        };
+        system.rename(staged, image)?;
+        Ok(backup)
+    })();
+    let backup = match swapped {
+        Ok(backup) => backup,
+        Err(error) => {
+            // `image` is as it was.
+            if was_running {
+                system.start()?;
+            }
+            return Err(error);
+        }
+    };
+    if let Err(error) = system.start() {
+        if let Some(backup) = backup {
+            system.stop()?;
+            system.rename(&backup, image)?;
+            if was_running {
+                system.start()?;
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// Registers `new`, in place of `old` if there is one, and starts it. When
@@ -1526,7 +1624,7 @@ mod tests {
             self.0.join("Argus Privileged")
         }
         fn image(&self) -> PathBuf {
-            self.dir().join("argus-service-4242-1.exe")
+            self.dir().join(IMAGE)
         }
     }
     impl Drop for Folder {
@@ -1803,12 +1901,20 @@ mod tests {
     #[test]
     fn only_copies_of_the_service_executable_are_swept() {
         for name in [
+            "argus-service.exe",
+            "Argus-Service.EXE",
+            "argus-service.new.exe",
+            "argus-service.old.exe",
+            "argus-service.old-2.exe",
             "argus-service-4242-1.exe",
             "argus-service-1-18446744073709551615.exe",
         ] {
             assert!(image_name(name), "{name}");
         }
         for name in [
+            "argus-service.exe.bak",
+            "argus-service.new",
+            "argus-service.old-0.exe",
             "argus-service-.exe",
             "argus-service--1.exe",
             "argus-service-1-.exe",
@@ -1923,16 +2029,20 @@ mod tests {
         );
     }
 
-    /// The registration and the folder in memory. Every deletion of a file
-    /// is checked against what a crash at that moment would leave.
+    /// The registration and the folder in memory. Every change of a file or
+    /// of the registration is checked against what a crash at that moment
+    /// would leave.
     struct World {
         /// The image the registration names, as the SCM holds it.
         scm: Option<PathBuf>,
         /// Every registration the disk may hold: the SCM's since the last
         /// flush, any of which a crash can bring back.
         disk: Vec<Option<PathBuf>>,
-        files: std::collections::BTreeSet<PathBuf>,
-        deleted: Vec<PathBuf>,
+        /// The folder's files, and which build each holds: "new" is this one.
+        files: std::collections::BTreeMap<PathBuf, &'static str>,
+        /// Registered images that were gone before anything here ran: damage
+        /// an update repairs, not one it caused.
+        lost: Vec<PathBuf>,
         record: Record,
         running: bool,
         /// A handle of another program keeps a deleted registration.
@@ -1944,13 +2054,19 @@ mod tests {
     }
 
     const REFUSED: u32 = 0x00c0_ffee;
+    /// Where `swap` keeps the image it replaces, unless something holds it.
+    const BACKUP: &str = "argus-service.old.exe";
 
     impl World {
         /// A service registered with `image`, for `ACCOUNT`.
         fn installed(image: &str, present: bool) -> Self {
             let image = PathBuf::from(image);
             Self {
-                files: present.then(|| image.clone()).into_iter().collect(),
+                files: present
+                    .then(|| (image.clone(), "old"))
+                    .into_iter()
+                    .collect(),
+                lost: (!present).then(|| image.clone()).into_iter().collect(),
                 record: Record::Account(ACCOUNT.into()),
                 ..Self::new(Some(image))
             }
@@ -1961,7 +2077,7 @@ mod tests {
                 disk: vec![scm.clone()],
                 scm,
                 files: Default::default(),
-                deleted: Vec::new(),
+                lost: Vec::new(),
                 record: Record::Unusable(2),
                 running: false,
                 held: false,
@@ -1976,11 +2092,13 @@ mod tests {
             self
         }
 
-        fn step(&mut self, name: &'static str, on: Option<&Path>) -> Result<()> {
-            self.steps.push(match on {
-                Some(path) => format!("{name} {}", path.display()),
-                None => name.to_owned(),
-            });
+        fn step(&mut self, name: &'static str, on: &[&Path]) -> Result<()> {
+            self.steps.push(
+                std::iter::once(name.to_owned())
+                    .chain(on.iter().map(|path| path.display().to_string()))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
             let nth = self.calls.entry(name).or_default();
             *nth += 1;
             if self.refused.contains(&(name, *nth)) {
@@ -1992,23 +2110,34 @@ mod tests {
         fn register(&mut self, image: Option<PathBuf>) {
             self.scm = image.clone();
             self.disk.push(image);
+            self.survives_a_crash();
         }
 
-        /// After a crash now, Windows starts with one of `disk`: none of
-        /// them may name a file deleted here.
+        /// After a crash now, Windows starts with one of `disk`: each of them
+        /// must name a file that is there.
         fn survives_a_crash(&self) {
             for image in self.disk.iter().flatten() {
                 assert!(
-                    !self.deleted.contains(image),
-                    "a crash after {:?} can bring back a registration of the deleted {}",
+                    self.files.contains_key(image) || self.lost.contains(image),
+                    "a crash after {:?} can bring back a registration of the missing {}",
                     self.steps.last(),
                     image.display()
                 );
             }
         }
 
+        fn put(&mut self, path: &Path, build: &'static str) {
+            self.files.insert(path.into(), build);
+            self.lost.retain(|lost| lost != path);
+        }
+
         fn files(&self) -> Vec<&str> {
-            self.files.iter().filter_map(|file| file.to_str()).collect()
+            self.files.keys().filter_map(|file| file.to_str()).collect()
+        }
+
+        /// Which build the registered image holds.
+        fn build(&self) -> Option<&'static str> {
+            self.files.get(self.scm.as_ref()?).copied()
         }
 
         fn steps(&self) -> Vec<&str> {
@@ -2018,22 +2147,22 @@ mod tests {
 
     impl Steps for World {
         fn registered(&mut self) -> Result<Option<PathBuf>> {
-            self.step("registered", None)?;
+            self.step("registered", &[])?;
             Ok(self.scm.clone())
         }
         fn running(&mut self) -> Result<bool> {
             Ok(self.running)
         }
         fn stop(&mut self) -> Result<()> {
-            self.step("stop", None)?;
+            self.step("stop", &[])?;
             self.running = false;
             Ok(())
         }
         fn start(&mut self) -> Result<()> {
-            self.step("start", None)?;
+            self.step("start", &[])?;
             // An image that is not there cannot start.
             match &self.scm {
-                Some(image) if self.files.contains(image) => {
+                Some(image) if self.files.contains_key(image) => {
                     self.running = true;
                     Ok(())
                 }
@@ -2042,17 +2171,17 @@ mod tests {
             }
         }
         fn create(&mut self, image: &Path) -> Result<()> {
-            self.step("create", Some(image))?;
+            self.step("create", &[image])?;
             self.register(Some(image.into()));
             Ok(())
         }
         fn point(&mut self, image: &Path) -> Result<()> {
-            self.step("point", Some(image))?;
+            self.step("point", &[image])?;
             self.register(Some(image.into()));
             Ok(())
         }
         fn delete(&mut self) -> Result<()> {
-            self.step("delete", None)?;
+            self.step("delete", &[])?;
             // On disk a deletion, or the mark that keeps the service from
             // ever starting again: no registration either way.
             self.disk.push(None);
@@ -2062,26 +2191,42 @@ mod tests {
             Ok(())
         }
         fn flush(&mut self) -> Result<()> {
-            self.step("flush", None)?;
+            self.step("flush", &[])?;
             self.disk = vec![if self.held { None } else { self.scm.clone() }];
             Ok(())
         }
-        fn copy(&mut self) -> Result<PathBuf> {
-            self.step("copy", None)?;
-            let image = PathBuf::from("new.exe");
-            self.files.insert(image.clone());
-            Ok(image)
+        fn path(&self, name: &str) -> PathBuf {
+            PathBuf::from(name)
+        }
+        fn write(&mut self, path: &Path) -> Result<()> {
+            self.step("write", &[path])?;
+            self.put(path, "new");
+            self.survives_a_crash();
+            Ok(())
+        }
+        fn backup(&mut self, image: &Path) -> Result<PathBuf> {
+            let to = PathBuf::from(BACKUP);
+            self.step("link", &[image, &to])?;
+            let build = *self.files.get(image).ok_or(2u32)?;
+            self.put(&to, build);
+            Ok(to)
+        }
+        fn rename(&mut self, from: &Path, to: &Path) -> Result<()> {
+            self.step("rename", &[from, to])?;
+            let build = self.files.remove(from).ok_or(2u32)?;
+            self.put(to, build);
+            self.survives_a_crash();
+            Ok(())
         }
         fn present(&mut self, image: &Path) -> bool {
-            self.files.contains(image)
+            self.files.contains_key(image)
         }
         fn images(&mut self) -> Vec<PathBuf> {
-            self.files.iter().cloned().collect()
+            self.files.keys().cloned().collect()
         }
         fn remove(&mut self, image: &Path) -> Result<()> {
-            self.step("remove", Some(image))?;
+            self.step("remove", &[image])?;
             self.files.remove(image);
-            self.deleted.push(image.into());
             self.survives_a_crash();
             Ok(())
         }
@@ -2089,41 +2234,49 @@ mod tests {
             self.record.clone()
         }
         fn authorize(&mut self, sid: &str) -> Result<()> {
-            self.step("authorize", None)?;
+            self.step("authorize", &[])?;
             self.record = Record::Account(sid.into());
             Ok(())
         }
         fn forget(&mut self) -> Result<()> {
-            self.step("forget", None)?;
+            self.step("forget", &[])?;
             self.record = Record::Unusable(2);
             Ok(())
         }
     }
 
     #[test]
-    #[should_panic(expected = "can bring back a registration of the deleted old.exe")]
+    #[should_panic(expected = "can bring back a registration of the missing old.exe")]
     fn deleting_an_image_before_the_flush_is_what_the_model_catches() {
         // What an update did before: the new path set, the old image deleted
         // at once, the registry still to reach the disk.
         let mut world = World::installed("old.exe", true);
+        world.files.insert("new.exe".into(), "new");
         world.point(Path::new("new.exe")).unwrap();
         world.remove(Path::new("old.exe")).unwrap();
     }
 
     #[test]
-    fn an_update_deletes_the_old_image_once_the_new_registration_is_on_disk() {
+    fn the_names_of_the_service_files_hold_together() {
+        assert_eq!(BACKUP, crate::layout::aside(STEM, 1));
+        assert_eq!(IMAGE, format!("{STEM}.exe"));
+    }
+
+    #[test]
+    fn an_update_of_an_earlier_version_moves_its_service_to_the_fixed_name() {
         let mut world = World::installed("old.exe", true);
         world.running = true;
         // An earlier update could not delete this one.
-        world.files.insert("left.exe".into());
+        world.files.insert("left.exe".into(), "old");
         assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
         assert_eq!(
             world.steps(),
             [
                 "registered",
-                "copy",
+                "write argus-service.new.exe",
+                "rename argus-service.new.exe argus-service.exe",
                 "stop",
-                "point new.exe",
+                "point argus-service.exe",
                 "start",
                 "registered",
                 "flush",
@@ -2131,19 +2284,176 @@ mod tests {
                 "remove old.exe",
             ]
         );
-        assert_eq!(world.files(), ["new.exe"]);
-        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new(IMAGE)));
+        assert_eq!(world.build(), Some("new"));
         assert!(world.running);
         assert_eq!(world.record, Record::Account(ACCOUNT.into()));
+    }
+
+    #[test]
+    fn an_update_replaces_the_fixed_image_where_the_registration_names_it() {
+        let mut world = World::installed(IMAGE, true);
+        world.running = true;
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "write argus-service.new.exe",
+                "stop",
+                "link argus-service.exe argus-service.old.exe",
+                "rename argus-service.new.exe argus-service.exe",
+                "start",
+                "registered",
+                "flush",
+                "remove argus-service.old.exe",
+            ]
+        );
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.build(), Some("new"));
+        assert!(world.running);
+        // The registration never changed.
+        assert_eq!(world.disk, vec![Some(PathBuf::from(IMAGE))]);
+
+        // A service that was stopped is started by its update, as before.
+        let mut world = World::installed(IMAGE, true);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert!(world.running);
+    }
+
+    #[test]
+    fn a_fixed_image_that_does_not_start_gives_way_to_the_one_before() {
+        let mut world = World::installed(IMAGE, true).refusing("start", 1);
+        world.running = true;
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(
+            world.steps(),
+            [
+                "registered",
+                "write argus-service.new.exe",
+                "stop",
+                "link argus-service.exe argus-service.old.exe",
+                "rename argus-service.new.exe argus-service.exe",
+                "start",
+                "stop",
+                "rename argus-service.old.exe argus-service.exe",
+                "start",
+                "registered",
+                "flush",
+            ]
+        );
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.build(), Some("old"));
+        assert!(world.running);
+
+        // Stopped before: stopped after.
+        let mut world = World::installed(IMAGE, true).refusing("start", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!((world.build(), world.running), (Some("old"), false));
+
+        // The image could not be kept aside, or not be replaced: it is as
+        // it was, and runs again.
+        for (step, nth) in [("link", 1), ("rename", 1)] {
+            let mut world = World::installed(IMAGE, true).refusing(step, nth);
+            world.running = true;
+            assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+            assert_eq!(world.files(), [IMAGE], "{step}");
+            assert_eq!(world.build(), Some("old"), "{step}");
+            assert!(world.running, "{step}");
+        }
+
+        // Going back failed too: the new image stays registered and there.
+        let mut world = World::installed(IMAGE, true)
+            .refusing("start", 1)
+            .refusing("rename", 2);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.build(), Some("new"));
+
+        // The service does not stop: nothing changed but the copy, which goes.
+        let mut world = World::installed(IMAGE, true).refusing("stop", 1);
+        world.running = true;
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.build(), Some("old"));
+        assert!(world.running);
+    }
+
+    #[test]
+    fn whatever_step_fails_the_registration_names_an_image_that_is_there() {
+        let steps = [
+            "registered",
+            "write",
+            "rename",
+            "link",
+            "stop",
+            "start",
+            "point",
+            "create",
+            "delete",
+            "flush",
+            "remove",
+            "authorize",
+            "forget",
+        ];
+        let worlds: [fn() -> World; 4] = [
+            || World::installed("old.exe", true),
+            || World::installed(IMAGE, true),
+            // Registered, its image gone.
+            || World::installed("old.exe", false),
+            || World::new(None),
+        ];
+        for (index, make) in worlds.iter().enumerate() {
+            for step in steps {
+                for nth in 1..=3 {
+                    let initial = make();
+                    let mut world = make().refusing(step, nth);
+                    world.running = world.build().is_some();
+                    let result = install_or_update(&mut world, ACCOUNT);
+                    let case = format!("world {index}, {step} #{nth}: {:?}", world.steps());
+                    // `survives_a_crash` checked each step on the way. The
+                    // registered image is there, unless it was gone before.
+                    if let Some(image) = &world.scm {
+                        assert!(
+                            world.files.contains_key(image) || !initial.files.contains_key(image),
+                            "{case}"
+                        );
+                    }
+                    // Nothing but what the registration names stays behind,
+                    // unless what allows deleting (the registration read
+                    // anew and written to disk) or the deletion failed.
+                    let kept =
+                        matches!(step, "flush" | "remove") || (step, nth) == ("registered", 2);
+                    if !kept {
+                        assert!(
+                            world
+                                .files
+                                .keys()
+                                .all(|file| Some(file) == world.scm.as_ref()),
+                            "{case}"
+                        );
+                    }
+                    if result.is_ok() {
+                        assert_eq!(world.scm.as_deref(), Some(Path::new(IMAGE)), "{case}");
+                        assert_eq!(world.build(), Some("new"), "{case}");
+                        assert!(world.running, "{case}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
     fn without_the_flush_an_update_deletes_nothing() {
         let mut world = World::installed("old.exe", true).refusing("flush", 1);
         assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
-        assert_eq!(world.files(), ["new.exe", "old.exe"]);
-        assert!(world.deleted.is_empty());
-        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+        assert_eq!(world.files(), [IMAGE, "old.exe"]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new(IMAGE)));
+
+        let mut world = World::installed(IMAGE, true).refusing("flush", 1);
+        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
+        assert_eq!(world.files(), [IMAGE, BACKUP]);
     }
 
     #[test]
@@ -2155,16 +2465,17 @@ mod tests {
             world.steps(),
             [
                 "registered",
-                "copy",
+                "write argus-service.new.exe",
+                "rename argus-service.new.exe argus-service.exe",
                 "stop",
-                "point new.exe",
+                "point argus-service.exe",
                 "start",
                 "stop",
                 "point old.exe",
                 "start",
                 "registered",
                 "flush",
-                "remove new.exe",
+                "remove argus-service.exe",
             ]
         );
         assert_eq!(world.files(), ["old.exe"]);
@@ -2182,52 +2493,31 @@ mod tests {
             .refusing("start", 1)
             .refusing("point", 2);
         assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
-        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
-        assert!(world.files.contains(Path::new("new.exe")));
+        assert_eq!(world.scm.as_deref(), Some(Path::new(IMAGE)));
+        assert!(world.files.contains_key(Path::new(IMAGE)));
 
         // Nothing could be copied: nothing changed.
-        let mut world = World::installed("old.exe", true).refusing("copy", 1);
+        let mut world = World::installed("old.exe", true).refusing("write", 1);
         assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
-        assert_eq!(world.steps(), ["registered", "copy"]);
+        assert_eq!(world.steps(), ["registered", "write argus-service.new.exe"]);
     }
 
     #[test]
     fn an_update_brings_back_a_missing_image() {
-        let mut world = World::installed("old.exe", false);
-        assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
-        assert_eq!(
-            world.steps(),
-            [
-                "registered",
-                "copy",
-                "stop",
-                "point new.exe",
-                "start",
-                "registered",
-                "flush"
-            ]
-        );
-        assert_eq!(world.files(), ["new.exe"]);
-        assert!(world.running);
+        for old in ["old.exe", IMAGE] {
+            let mut world = World::installed(old, false);
+            assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()), "{old}");
+            assert_eq!(world.files(), [IMAGE], "{old}");
+            assert_eq!(world.build(), Some("new"), "{old}");
+            assert!(world.running, "{old}");
+        }
 
         // The new image does not start: there is no old one to go back to,
         // so the registration keeps naming a file that exists.
         let mut world = World::installed("old.exe", false).refusing("start", 1);
         assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
-        assert_eq!(
-            world.steps(),
-            [
-                "registered",
-                "copy",
-                "stop",
-                "point new.exe",
-                "start",
-                "registered",
-                "flush"
-            ]
-        );
-        assert_eq!(world.files(), ["new.exe"]);
-        assert_eq!(world.scm.as_deref(), Some(Path::new("new.exe")));
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.scm.as_deref(), Some(Path::new(IMAGE)));
 
         // The new path could not be set: as damaged as before, without the copy.
         let mut world = World::installed("old.exe", false).refusing("point", 1);
@@ -2265,25 +2555,28 @@ mod tests {
             world.steps(),
             [
                 "registered",
-                "copy",
+                "write argus-service.new.exe",
+                "rename argus-service.new.exe argus-service.exe",
                 "authorize",
-                "create new.exe",
+                "create argus-service.exe",
                 "start",
                 "registered",
                 "flush",
             ]
         );
         assert_eq!(world.record, Record::Account(ACCOUNT.into()));
-        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.files(), [IMAGE]);
 
-        // A removal cut short left another account's record and an image:
+        // A removal cut short left another account's record and images:
         // without a service they authorize and start nothing.
         let mut world = World::new(None);
         world.record = Record::Account(OTHER.into());
-        world.files.insert("left.exe".into());
+        world.files.insert("left.exe".into(), "old");
+        world.files.insert(IMAGE.into(), "old");
         assert_eq!(install_or_update(&mut world, ACCOUNT), Ok(()));
         assert_eq!(world.record, Record::Account(ACCOUNT.into()));
-        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.files(), [IMAGE]);
+        assert_eq!(world.build(), Some("new"));
 
         // This account's own record is kept as it is.
         let mut world = World::new(None);
@@ -2300,15 +2593,16 @@ mod tests {
             world.steps(),
             [
                 "registered",
-                "copy",
+                "write argus-service.new.exe",
+                "rename argus-service.new.exe argus-service.exe",
                 "authorize",
-                "create new.exe",
+                "create argus-service.exe",
                 "start",
                 "stop",
                 "delete",
                 "registered",
                 "flush",
-                "remove new.exe",
+                "remove argus-service.exe",
                 "forget",
             ]
         );
@@ -2326,28 +2620,27 @@ mod tests {
         let mut world = World::new(None).refusing("start", 1);
         world.held = true;
         assert_eq!(install_or_update(&mut world, ACCOUNT), Err(REFUSED));
-        assert_eq!(world.files(), ["new.exe"]);
+        assert_eq!(world.files(), [IMAGE]);
         assert_eq!(world.record, Record::Account(ACCOUNT.into()));
-        assert!(world.deleted.is_empty());
     }
 
     #[test]
     fn a_removal_puts_the_deletion_on_disk_before_any_file_goes() {
-        let mut world = World::installed("old.exe", true);
+        let mut world = World::installed(IMAGE, true);
         world.running = true;
         assert_eq!(unregister(&mut world), Ok(true));
         assert_eq!(world.steps(), ["registered", "stop", "delete", "flush"]);
         assert_eq!(world.disk, vec![None::<PathBuf>]);
         // Only now may the files go, which the model checks.
-        world.remove(Path::new("old.exe")).unwrap();
+        world.remove(Path::new(IMAGE)).unwrap();
 
         // Not written out: the caller keeps the files.
-        let mut world = World::installed("old.exe", true).refusing("flush", 1);
+        let mut world = World::installed(IMAGE, true).refusing("flush", 1);
         assert_eq!(unregister(&mut world), Ok(false));
-        assert_eq!(world.files(), ["old.exe"]);
+        assert_eq!(world.files(), [IMAGE]);
 
         // A service that does not stop keeps its registration and files.
-        let mut world = World::installed("old.exe", true).refusing("stop", 1);
+        let mut world = World::installed(IMAGE, true).refusing("stop", 1);
         assert_eq!(unregister(&mut world), Err(REFUSED));
         assert_eq!(world.steps(), ["registered", "stop"]);
         assert!(world.scm.is_some());
@@ -2376,6 +2669,9 @@ mod tests {
         ];
         let removed = [
             OWNER_FILE,
+            IMAGE,
+            STAGED,
+            BACKUP,
             "argus-service-4242-1.exe",
             "argus-service-4242-2.exe",
         ];

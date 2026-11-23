@@ -36,6 +36,29 @@ pub fn route(id: &str, args: &[String]) -> bool {
     }
 }
 
+/// Once per process, off the window's thread: when an installer running as
+/// another account moved this account's administrator startup folder, its
+/// shortcuts and sign-in entry follow the launcher there
+/// (`argus_service::admin::follow_layout`).
+pub fn follow_layout_once(id: &str) {
+    static CHECKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !argus_service::admin::supported()
+        || CHECKED.swap(true, std::sync::atomic::Ordering::Relaxed)
+    {
+        return;
+    }
+    let id = id.to_owned();
+    let spawned = std::thread::Builder::new()
+        .name("argus-admin-layout".into())
+        .spawn(move || argus_service::admin::follow_layout(&id));
+    if let Err(error) = spawned {
+        argus_core::diagnostics::warn(
+            "administrator shortcut move thread",
+            argus_core::diagnostics::io(&error),
+        );
+    }
+}
+
 /// The interface shows its first data: the start that got here succeeded.
 pub fn painted() {
     if let Some(args) = START_ARGS.get() {

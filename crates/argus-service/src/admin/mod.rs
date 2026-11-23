@@ -1,5 +1,6 @@
 //! A per-account grant to start only this protected Argus build. Task Scheduler
 //! supplies an interactive administrator token; it never stores a password.
+mod commit;
 mod image;
 mod links;
 mod task;
@@ -31,6 +32,17 @@ pub const STANDARD_ONCE: &str = "--argus-standard-once";
 pub const STARTED: &str = "--argus-admin-started";
 pub const HANDOFF: &str = "--argus-admin-handoff";
 pub use ticket::{Prepared, acknowledge, handoff_args, prepare, trusted_handoff};
+/// The administrator copy of Argus the task starts. Argus 0.5 and earlier gave
+/// each copy a name of its own, `argus-admin-<GUID>.exe`, which a record may
+/// still name.
+const IMAGE: &str = "argus-admin.exe";
+const STEM: &str = "argus-admin";
+const LAUNCHER: &str = "argus-launcher.exe";
+const ICON: &str = "argus.ico";
+/// A key of the registry hive that holds the Task Scheduler's registrations
+/// (`Schedule\TaskCache`), which reach the disk lazily, as the SCM's do.
+/// Flushing any key writes its whole hive; this one every account may open.
+const TASK_HIVE: &str = "SOFTWARE";
 
 static SUPPORTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 /// A persistent grant is offered by release builds only, never by a mutable
@@ -67,23 +79,52 @@ fn valid_id(id: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-'))
 }
+/// The identifier's folders, one for each account: `runtime\<id>` in the
+/// protected folder.
 fn root(id: &str) -> Result<PathBuf> {
     if !valid_id(id) {
         return Err(87);
     }
-    let service = crate::install::directory()?;
-    Ok(service
-        .parent()
-        .ok_or(87u32)?
-        .join("Argus Runtime")
-        .join(id))
+    Ok(crate::layout::runtime()?.join(id))
+}
+/// Where Argus 0.5 and earlier kept them: `Program Files\Argus Runtime\<id>`.
+fn legacy_root(id: &str) -> Result<PathBuf> {
+    if !valid_id(id) {
+        return Err(87);
+    }
+    Ok(crate::layout::legacy_runtime()?.join(id))
 }
 fn directory(id: &str, sid: &str) -> Result<PathBuf> {
     security::validate_sid(sid)?;
     Ok(root(id)?.join(sid))
 }
+fn legacy_directory(id: &str, sid: &str) -> Result<PathBuf> {
+    security::validate_sid(sid)?;
+    Ok(legacy_root(id)?.join(sid))
+}
+/// Whether `dir` holds an account's records.
+fn records(dir: &Path) -> bool {
+    dir.join("launch.json").exists() || dir.join("grant.json").exists()
+}
+/// The account's folder that holds its records: the protected folder's, or
+/// one Argus 0.5 or earlier made, until a grant or maintenance moves it
+/// (`install_inner`). Records are only ever written to the protected folder.
+fn located(id: &str, sid: &str) -> Result<PathBuf> {
+    Ok(located_in(directory(id, sid)?, legacy_directory(id, sid)?))
+}
+fn located_in(dir: PathBuf, legacy: PathBuf) -> PathBuf {
+    let granted = |dir: &Path| dir.join("grant.json").exists();
+    // A grant the move has not committed yet (cut short after the launch
+    // record) is still the earlier folder's: revocation deletes both.
+    let moving = granted(&legacy) && !granted(&dir);
+    if (records(&dir) && !moving) || !records(&legacy) {
+        dir
+    } else {
+        legacy
+    }
+}
 fn grant(id: &str, sid: &str) -> Result<Option<(PathBuf, Grant)>> {
-    let dir = directory(id, sid)?;
+    let dir = located(id, sid)?;
     if !dir.exists() {
         return Ok(None);
     }
@@ -103,29 +144,43 @@ fn grant(id: &str, sid: &str) -> Result<Option<(PathBuf, Grant)>> {
     }
     Ok(Some((dir, record)))
 }
+/// What a record may name: `IMAGE`, or a copy of Argus 0.5 or earlier.
 fn image_name(name: &str) -> bool {
+    name.eq_ignore_ascii_case(IMAGE) || legacy_image_name(name)
+}
+fn legacy_image_name(name: &str) -> bool {
     name.strip_prefix("argus-admin-")
         .and_then(|s| s.strip_suffix(".exe"))
         .is_some_and(util::valid_guid)
 }
+/// An administrator copy's file: one a record may name, or the name a
+/// replaced copy keeps while it still runs.
+fn copy_name(name: &str) -> bool {
+    image_name(name) || crate::layout::is_aside(STEM, name)
+}
+/// Whether `path` is an administrator copy of this account's, in its folder
+/// or the one Argus 0.5 or earlier kept.
 pub fn is_copy(path: &Path, id: &str) -> bool {
     let Ok(sid) = security::current_sid() else {
         return false;
     };
-    let Ok(dir) = directory(id, &sid) else {
-        return false;
+    let within = |dir: Result<PathBuf>| {
+        dir.is_ok_and(|dir| {
+            path.parent().is_some_and(|p| {
+                p.to_string_lossy()
+                    .eq_ignore_ascii_case(&dir.to_string_lossy())
+            })
+        })
     };
-    path.parent().is_some_and(|p| {
-        p.to_string_lossy()
-            .eq_ignore_ascii_case(&dir.to_string_lossy())
-    }) && path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .is_some_and(image_name)
+    (within(directory(id, &sid)) || within(legacy_directory(id, &sid)))
+        && path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(copy_name)
 }
 pub fn source(id: &str) -> Option<PathBuf> {
     let sid = security::current_sid().ok()?;
-    let dir = directory(id, &sid).ok()?;
+    let dir = located(id, &sid).ok()?;
     if !dir.exists() {
         return None;
     }
@@ -137,7 +192,7 @@ pub fn source(id: &str) -> Option<PathBuf> {
 }
 pub fn launcher(id: &str) -> Option<PathBuf> {
     let sid = security::current_sid().ok()?;
-    let dir = directory(id, &sid).ok()?;
+    let dir = located(id, &sid).ok()?;
     if !dir.exists() {
         return None;
     }
@@ -211,7 +266,7 @@ pub fn status(id: &str) -> Status {
     };
     let result = (|| {
         let sid = security::current_sid()?;
-        let dir = directory(id, &sid)?;
+        let dir = located(id, &sid)?;
         // Every grant creates this directory before it registers the task.
         // Without it there is nothing to show or revoke, and no reason to
         // start Task Scheduler on every launch.
@@ -251,20 +306,6 @@ pub fn status(id: &str) -> Status {
     value
 }
 
-fn create_directory(path: &Path) -> Result<()> {
-    if !path.exists() {
-        let sd = security::directory_descriptor()?;
-        unsafe {
-            windows::Win32::Storage::FileSystem::CreateDirectoryW(
-                PCWSTR(wide(&path.to_string_lossy()).as_ptr()),
-                Some(&sd.attributes()),
-            )
-        }
-        .map_err(win)?;
-    }
-    security::protect_directory(path).map(|_| ())
-}
-
 fn install(id: &str, sid: &str, enable: bool) -> Result<()> {
     install_inner(id, sid, enable, false)
 }
@@ -280,7 +321,25 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
     if !enable && !maintenance {
         // Establish Task Scheduler's COM security before shell folder resolution.
         let scheduler = task::Scheduler::new()?;
-        return revoke(&directory(id, sid)?, || scheduler.remove(id, sid));
+        let current = located(id, sid)?;
+        revoke(&current, || scheduler.remove(id, sid))?;
+        let (dir, legacy) = (directory(id, sid)?, legacy_directory(id, sid)?);
+        if current != dir {
+            return Ok(());
+        }
+        // A grant of Argus 0.5 or earlier the move did not finish goes too,
+        // or it would count again.
+        revoke(&legacy, || Ok(()))?;
+        // The standard launcher stays; this account's shortcuts and sign-in
+        // entry follow it from where Argus 0.5 or earlier kept it, if one was
+        // left there to forward. That goes once the task's deletion is on
+        // disk, which could otherwise bring back one that names its copy.
+        let moved = legacy.join(LAUNCHER);
+        let followed = !moved.is_file() || links::follow(id, &moved, &dir.join(LAUNCHER));
+        if flush_tasks() {
+            retire_legacy(id, sid, !followed);
+        }
+        return Ok(());
     }
     // Establish Task Scheduler's COM security before shell folder resolution.
     let early_scheduler = if enable {
@@ -289,18 +348,16 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         None
     };
     let root = root(id)?;
-    let base = root.parent().ok_or(87u32)?;
-    let _parent = security::protect_directory(base.parent().ok_or(87u32)?)?;
-    if !enable && !root.exists() {
+    if !enable && !root.exists() && !legacy_root(id)?.exists() {
         return Ok(());
     }
-    create_directory(base)?;
-    create_directory(&root)?;
+    // Program Files and the protected folder, which administrator startup
+    // may make before the service does or keep after it is gone.
+    let _pins = crate::layout::ensure_root()?;
+    let _runtime = crate::layout::create_protected(root.parent().ok_or(87u32)?)?;
+    let _root = crate::layout::create_protected(&root)?;
     let dir = directory(id, sid)?;
-    create_directory(&dir)?;
-    let _base = security::protect_directory(base)?;
-    let _root = security::protect_directory(&root)?;
-    let _dir = security::protect_directory(&dir)?;
+    let _dir = crate::layout::create_protected(&dir)?;
     use std::os::windows::fs::OpenOptionsExt;
     let _lock = fs::OpenOptions::new()
         .write(true)
@@ -309,6 +366,10 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         .share_mode(0)
         .open(dir.join("install.lock"))
         .map_err(io)?;
+    // Where the records are until this moves them: Argus 0.5 and earlier
+    // kept them in a folder of their own.
+    let current_dir = located(id, sid)?;
+    let moving = current_dir != dir;
     let previous = grant(id, sid)?;
     let scheduler = match early_scheduler {
         Some(scheduler) => scheduler,
@@ -319,86 +380,161 @@ fn install_inner(id: &str, sid: &str, enable: bool, maintenance: bool) -> Result
         previous
             .as_ref()
             .map(|(_, r)| r.clone())
-            .or_else(|| read_launch(&dir).ok())
+            .or_else(|| read_launch(&current_dir).ok())
             .ok_or(13u32)?
             .source
     } else {
         links::original(id, &current)
     };
-    let image = format!("argus-admin-{}.exe", guid()?);
-    let path = dir.join(&image);
-    let mut input = fs::File::open(&current).map_err(io)?;
-    let mut output = crate::install::new_protected_file(&path)?;
-    std::io::copy(&mut input, &mut output).map_err(io)?;
-    output.sync_all().map_err(io)?;
-    drop(output);
-    let record = Grant { image, source };
-    if let Some(bytes) = crate::taskmgr::launcher_asset() {
-        let pending = dir.join(format!("launcher-{}.exe", guid()?));
-        let mut file = crate::install::new_protected_file(&pending)?;
-        file.write_all(bytes).map_err(io)?;
-        file.sync_all().map_err(io)?;
-        drop(file);
-        replace(&pending, &dir.join("argus-launcher.exe"))?;
-        let pending = dir.join(format!("icon-{}.ico", guid()?));
-        let mut file = crate::install::new_protected_file(&pending)?;
-        file.write_all(include_bytes!("../../../../resources/icons/icon.ico"))
-            .map_err(io)?;
-        file.sync_all().map_err(io)?;
-        drop(file);
-        replace(&pending, &dir.join("argus.ico"))?;
-    }
-    // Prepare the complete replacement before changing the authoritative task.
     let pending = dir.join(format!("grant-{}.json", guid()?));
-    let mut output = crate::install::new_protected_file(&pending)?;
-    output
-        .write_all(&serde_json::to_vec(&record).map_err(|_| 13u32)?)
-        .map_err(io)?;
-    output.sync_all().map_err(io)?;
-    drop(output);
-    let result = (|| {
-        // An older replacement copy must also learn the new startup policy.
-        if id == "dev.argus.taskmanager" {
-            let service = crate::install::directory()?;
-            if service.exists() {
-                let _guard = security::protect_directory(&service)?;
-                crate::taskmgr::follow_update(&service).map_err(|error| {
-                    launch_failure("administrator task manager copy refresh", error)
-                })?;
-            }
-        }
-        if enable {
-            scheduler.register(id, sid, &path)?;
-        }
-        write_launch(&dir, &record)?;
-        if enable {
-            replace(&pending, &dir.join("grant.json"))?;
-        } else {
-            fs::remove_file(&pending).map_err(io)?;
-        }
-        Ok(())
-    })();
+    commit::commit(
+        &mut commit::Runtime {
+            id,
+            sid,
+            dir,
+            current,
+            record: Grant {
+                image: IMAGE.into(),
+                source,
+            },
+            previous,
+            scheduler: &scheduler,
+            enable,
+            pending,
+            swapped: None,
+        },
+        enable,
+        moving,
+        same_account,
+    )
+}
+
+/// Writes the Task Scheduler's registrations to disk; false when that failed.
+fn flush_tasks() -> bool {
+    util::stage(
+        "administrator task registration flush",
+        crate::install::flush_key(
+            windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
+            TASK_HIVE,
+        ),
+    )
+    .is_ok()
+}
+
+/// Writes this build's launcher into `dir` in place of the one there.
+fn put_launcher(dir: &Path, bytes: &[u8]) -> Result<()> {
+    let pending = dir.join(format!("launcher-{}.exe", guid()?));
+    let mut file = crate::install::new_protected_file(&pending)?;
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    drop(file);
+    let result = written
+        .map_err(io)
+        .and_then(|()| replace(&pending, &dir.join(LAUNCHER)));
     if result.is_err() {
-        if let Some((old_dir, old)) = &previous {
-            let _ = scheduler.register(id, sid, &old_dir.join(&old.image));
-        } else {
-            let _ = scheduler.remove(id, sid);
-        }
         let _ = fs::remove_file(&pending);
-        // Preserve a record that may already have committed; status exposes
-        // any inconsistency and repair can complete it with explicit consent.
-        return result;
     }
-    sweep(&dir, Some(&record.image));
-    if same_account {
-        // The grant is committed. Optional shortcut/compatibility migration
-        // failures must not report that the working authorization failed.
-        let _ = util::stage(
-            "administrator shortcut refresh",
-            links::retarget(id, &record.source, &dir.join("argus-launcher.exe")),
+    result
+}
+
+/// Once the account's records are in the protected folder, deletes what
+/// Argus 0.5 or earlier left where it kept them. With `forward` the old
+/// launcher stays, brought to this build, and starts what the protected
+/// folder's records name (`launcher_mode`): another account's shortcuts, or
+/// those of this account that could not be changed (`links::retarget`), may
+/// still start it. The account's next grant, revocation or the uninstaller
+/// deletes it then. Failures leave files for a later maintenance to delete.
+fn retire_legacy(id: &str, sid: &str, forward: bool) {
+    let (Ok(dir), Ok(legacy)) = (directory(id, sid), legacy_directory(id, sid)) else {
+        return;
+    };
+    if !records(&dir) || located_in(dir, legacy.clone()) == legacy || !legacy.exists() {
+        return;
+    }
+    let result = retire(&legacy, forward);
+    if let Err(code) = &result {
+        argus_core::diagnostics::warn(
+            "administrator earlier folder cleanup",
+            format!(
+                "{}; path={}",
+                argus_core::diagnostics::code(*code),
+                util::log_path(&legacy)
+            ),
         );
     }
-    Ok(())
+    if let Ok(root) = legacy_root(id) {
+        remove_empty_runtime(&root);
+    }
+}
+
+/// Deletes the known files of a folder Argus 0.5 or earlier kept, by name,
+/// trusting none of it; with `forward`, all but the launcher, brought to this
+/// build first, and its icon, which shortcuts show.
+fn retire(legacy: &Path, forward: bool) -> Result<()> {
+    if forward {
+        let Some(bytes) = crate::taskmgr::launcher_asset() else {
+            // Nothing to forward with: the folder stays as it is.
+            return Ok(());
+        };
+        // A program is only written to a folder that is still protected.
+        let _pin = security::protect_directory(legacy)?;
+        put_launcher(legacy, bytes)?;
+    }
+    let Some(directory) = crate::cleanup::Directory::open(legacy)? else {
+        return Ok(());
+    };
+    let lock = match directory.lock("install.lock", false) {
+        Ok(lock) => lock,
+        Err(32) => return Err(32),
+        Err(_) => None,
+    };
+    let mut result = Ok(());
+    for name in directory.names(runtime_file)? {
+        let kept = name.eq_ignore_ascii_case("install.lock")
+            || (forward
+                && (name.eq_ignore_ascii_case(LAUNCHER) || name.eq_ignore_ascii_case(ICON)));
+        if !kept {
+            // A copy still running stays for a later maintenance.
+            result = result.and(directory.remove_file(&name));
+        }
+    }
+    drop(lock);
+    if !forward && result.is_ok() {
+        directory.remove_file("install.lock")?;
+        directory.remove_empty()?;
+    }
+    result
+}
+
+/// Deletes `root` (`<runtime>\<id>`) and the folder above it when empty.
+fn remove_empty_runtime(root: &Path) {
+    if let Ok(Some(folder)) = crate::cleanup::Directory::open(root) {
+        let _ = folder.remove_empty();
+    }
+    if let Some(base) = root.parent()
+        && let Ok(Some(base)) = crate::cleanup::Directory::open(base)
+    {
+        let _ = base.remove_empty();
+    }
+}
+
+/// For an account whose folder an installer running as another account
+/// moved: points this account's shortcuts and sign-in entry at the protected
+/// launcher, from the one Argus 0.5 or earlier kept, which still forwards to
+/// it. Needs no elevation; the old launcher goes with the account's next
+/// grant or revocation, or the uninstaller.
+pub fn follow_layout(id: &str) {
+    let Ok(sid) = security::current_sid() else {
+        return;
+    };
+    let (Ok(dir), Ok(legacy)) = (directory(id, &sid), legacy_directory(id, &sid)) else {
+        return;
+    };
+    let moved = legacy.join(LAUNCHER);
+    if !records(&dir) || located_in(dir.clone(), legacy) != dir || !moved.is_file() {
+        return;
+    }
+    // What fails is logged; the next start tries again.
+    links::follow(id, &moved, &dir.join(LAUNCHER));
 }
 /// Revocation trusts neither the owner nor the ACL of the runtime directory
 /// (#46). It still takes the lock that enable and maintenance hold while they
@@ -492,7 +628,7 @@ pub fn launcher_mode() -> Option<i32> {
                     return Err(87);
                 }
                 let sid = security::current_sid()?;
-                let dir = directory(id, &sid)?;
+                let dir = located(id, &sid)?;
                 let record = read_launch(&dir)?;
                 let image = dir.join(&record.image);
                 let _image = security::protect_directory(&image)?;
@@ -521,12 +657,13 @@ pub fn launcher_mode() -> Option<i32> {
         .unwrap_or(0) as i32,
     )
 }
+/// Deletes the administrator copies in `dir` but `keep`, unless they still run.
 fn sweep(dir: &Path, keep: Option<&str>) {
     if let Ok(files) = fs::read_dir(dir) {
         for file in files.flatten() {
             if let Some(name) = file.file_name().to_str()
-                && image_name(name)
-                && Some(name) != keep
+                && copy_name(name)
+                && !keep.is_some_and(|keep| keep.eq_ignore_ascii_case(name))
             {
                 let _ = fs::remove_file(file.path());
             }
@@ -668,7 +805,13 @@ pub fn run_mode(id: &str) -> Option<i32> {
                 [_, token] => ticket::broker(id, token),
                 _ => Err(87),
             },
-            "--argus-admin-refresh" if args.len() == 1 => refresh(id, false),
+            "--argus-admin-refresh" if args.len() == 1 => {
+                // Every installation runs this. What the sensor driver's setups
+                // of Argus 0.5 and earlier left goes now: this version keeps
+                // it in the protected folder.
+                let _ = crate::driver::retire_legacy_setup();
+                refresh(id, false)
+            }
             "--argus-admin-remove" if args.len() == 1 => refresh(id, true),
             _ => ticket::standard_mode(id, &args).unwrap_or(Err(87)),
         },
@@ -682,16 +825,45 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
         task::Scheduler::new()?.remove_all(id)?;
         return remove_runtime(id);
     }
+    // The accounts with a folder here or where Argus 0.5 and earlier kept
+    // them: maintenance moves the latter.
+    let mut accounts = std::collections::BTreeSet::new();
+    let mut guards = Vec::new();
+    let legacy = legacy_root(id)?;
     let root = root(id)?;
-    if !root.exists() {
-        return Ok(());
+    if root.exists() {
+        guards.push(security::protect_directory(&root)?);
+        for entry in fs::read_dir(&root).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let sid = entry.file_name().to_string_lossy().into_owned();
+            security::validate_sid(&sid)?;
+            accounts.insert(sid);
+        }
     }
-    let guard = security::protect_directory(&root)?;
-    for entry in fs::read_dir(&root).map_err(io)? {
-        let entry = entry.map_err(io)?;
-        let sid = entry.file_name().to_string_lossy().into_owned();
-        security::validate_sid(&sid)?;
-        let dir = directory(id, &sid)?;
+    // The earlier folder is not held, so that maintenance can delete it once
+    // empty, and what is wrong with it holds up no account's maintenance.
+    if legacy.exists() {
+        let listed = security::protect_directory(&legacy).and_then(|_guard| {
+            Ok(fs::read_dir(&legacy)
+                .map_err(io)?
+                .flatten()
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|sid| security::validate_sid(sid).is_ok())
+                .collect::<Vec<_>>())
+        });
+        match listed {
+            Ok(sids) => accounts.extend(sids),
+            Err(code) => argus_core::diagnostics::warn(
+                "administrator earlier folder listing",
+                argus_core::diagnostics::code(code),
+            ),
+        }
+    }
+    for sid in accounts {
+        let dir = located(id, &sid)?;
+        if !dir.exists() {
+            continue;
+        }
         let pin = security::protect_directory(&dir)?;
         let authorized = grant(id, &sid)?.is_some();
         // Existing protected records are the only authority for maintenance;
@@ -700,48 +872,63 @@ fn refresh(id: &str, remove: bool) -> Result<()> {
             continue;
         }
         read_launch(&dir)?;
-        install_inner(id, &sid, authorized, true)?;
+        // Not held either: the folder may be the earlier one, which goes.
         drop(pin);
+        install_inner(id, &sid, authorized, true)?;
     }
-    drop(guard);
+    drop(guards);
+    remove_empty_runtime(&legacy);
     Ok(())
 }
 
+/// For the uninstaller: every account's files of this identifier, in the
+/// protected folder and where Argus 0.5 and earlier kept them.
 fn remove_runtime(id: &str) -> Result<()> {
-    let root = root(id)?;
-    if let Some(guard) = crate::cleanup::Directory::open(&root)? {
-        for entry in fs::read_dir(&root).map_err(io)? {
-            let entry = entry.map_err(io)?;
-            let sid = entry.file_name().to_string_lossy().into_owned();
-            if security::validate_sid(&sid).is_err() {
-                continue;
-            }
-            let dir = directory(id, &sid)?;
-            if let Some(pin) = crate::cleanup::Directory::open(&dir)? {
-                remove_runtime_files(&dir)?;
-                pin.remove_empty()?;
-            }
-        }
-        guard.remove_empty()?;
+    let mut result = Ok(());
+    for root in [root(id)?, legacy_root(id)?] {
+        result = result.and(remove_runtime_in(&root));
+        // The shared `runtime` (`Argus Runtime`) goes with its last
+        // identifier, including one an earlier version left empty. An empty
+        // folder never fails the uninstall.
+        remove_empty_runtime(&root);
     }
-    // The shared `Argus Runtime` goes with its last identifier, including one an
-    // earlier version left empty. An empty folder never fails the uninstall.
-    if let Some(base) = root.parent()
-        && let Ok(Some(base)) = crate::cleanup::Directory::open(base)
+    // So does the protected folder, when nothing else is left in it.
+    if let Ok(base) = crate::layout::root()
+        && let Ok(Some(base)) = crate::cleanup::Directory::open(&base)
     {
         let _ = base.remove_empty();
     }
-    Ok(())
+    result
+}
+
+fn remove_runtime_in(root: &Path) -> Result<()> {
+    let Some(guard) = crate::cleanup::Directory::open(root)? else {
+        return Ok(());
+    };
+    for entry in fs::read_dir(root).map_err(io)? {
+        let entry = entry.map_err(io)?;
+        let sid = entry.file_name().to_string_lossy().into_owned();
+        if security::validate_sid(&sid).is_err() {
+            continue;
+        }
+        let dir = root.join(&sid);
+        if let Some(pin) = crate::cleanup::Directory::open(&dir)? {
+            remove_runtime_files(&dir)?;
+            pin.remove_empty()?;
+        }
+    }
+    guard.remove_empty()
 }
 
 fn runtime_file(name: &str) -> bool {
-    image_name(name)
+    copy_name(name)
         || matches!(
             name,
             "grant.json" | "launch.json" | "argus-launcher.exe" | "argus.ico" | "install.lock"
         )
         || [
             ("launcher-", ".exe"),
+            ("image-", ".exe"),
             ("icon-", ".ico"),
             ("grant-", ".json"),
             ("launch-", ".json"),
@@ -761,10 +948,23 @@ fn remove_runtime_files(dir: &Path) -> Result<()> {
         let file = file.map_err(io)?;
         if file.file_name().to_str().is_some_and(runtime_file) {
             // Never recurse into an unexpected directory or follow a link.
-            directory.remove_file(&file.file_name().to_string_lossy())?;
+            remove_retrying(&directory, &file.file_name().to_string_lossy())?;
         }
     }
     Ok(())
+}
+/// A copy the uninstaller has just ended can hold its file a moment longer
+/// (refused with 5 or 32): retried for up to two seconds.
+fn remove_retrying(directory: &crate::cleanup::Directory, name: &str) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match directory.remove_file(name) {
+            Err(5 | 32) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            result => return result,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -807,6 +1007,10 @@ mod tests {
             "install.lock".into(),
             "grant.json".into(),
             format!("argus-admin-{nonce}.exe"),
+            "argus-admin.exe".into(),
+            "argus-admin.old.exe".into(),
+            "argus-admin.old-2.exe".into(),
+            format!("image-{nonce}.exe"),
             format!("launcher-{nonce}.exe"),
             format!("icon-{nonce}.ico"),
             format!("grant-{nonce}.json"),
@@ -894,6 +1098,84 @@ mod tests {
 
         remove_runtime_files(&dir).unwrap();
         fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn records_are_read_where_they_are_until_they_move() {
+        let base = std::env::temp_dir().join(format!("argus-located-{}", guid().unwrap()));
+        let (dir, legacy) = (base.join("new"), base.join("legacy"));
+        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&legacy).unwrap();
+        let at = || located_in(dir.clone(), legacy.clone());
+        // Neither: new records go to the protected folder.
+        assert_eq!(at(), dir);
+        // Argus 0.5 or earlier kept them, and nothing moved them yet.
+        fs::write(legacy.join("launch.json"), b"{}").unwrap();
+        assert_eq!(at(), legacy);
+        fs::write(legacy.join("grant.json"), b"{}").unwrap();
+        fs::remove_file(legacy.join("launch.json")).unwrap();
+        assert_eq!(at(), legacy);
+        // A copy or launcher alone written here moves nothing.
+        fs::write(dir.join(IMAGE), b"image").unwrap();
+        fs::write(dir.join(LAUNCHER), b"launcher").unwrap();
+        assert_eq!(at(), legacy);
+        // A grant writes the launch record once the task names the copy
+        // here, then commits the grant: until then the earlier folder's
+        // grant is the one read, as when a crash cut the move short.
+        fs::write(dir.join("launch.json"), b"{}").unwrap();
+        assert_eq!(at(), legacy);
+        fs::write(dir.join("grant.json"), b"{}").unwrap();
+        assert_eq!(at(), dir);
+        // A revoked grant's move: only launch records on either side.
+        fs::remove_file(dir.join("grant.json")).unwrap();
+        fs::remove_file(legacy.join("grant.json")).unwrap();
+        fs::write(legacy.join("launch.json"), b"{}").unwrap();
+        assert_eq!(at(), dir);
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn the_earlier_folder_goes_by_name_and_a_running_copy_waits() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let base = std::env::temp_dir().join(format!("argus-retire-{}", guid().unwrap()));
+        let legacy = base.join("S-1-5-21-1-2-3-1001");
+        fs::create_dir_all(&legacy).unwrap();
+        let copy = format!("argus-admin-{}.exe", guid().unwrap());
+        for name in [
+            copy.as_str(),
+            "grant.json",
+            "launch.json",
+            LAUNCHER,
+            ICON,
+            "install.lock",
+            "notes.txt",
+        ] {
+            fs::write(legacy.join(name), b"x").unwrap();
+        }
+        // Still running: it stays, and so does the folder.
+        let running = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(legacy.join(&copy))
+            .unwrap();
+        assert!(retire(&legacy, false).is_err());
+        let mut left: Vec<_> = fs::read_dir(&legacy)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(left, [copy.as_str(), "install.lock", "notes.txt"]);
+        drop(running);
+        // Only known files go: the folder stays for what Argus did not write.
+        assert_eq!(retire(&legacy, false), Ok(()));
+        assert!(!legacy.exists() || fs::read_dir(&legacy).unwrap().count() == 1);
+        fs::remove_file(legacy.join("notes.txt")).unwrap();
+        assert!(retire(&legacy, false).is_ok());
+        assert!(!legacy.exists());
+        // A development build has no launcher to forward with: nothing goes.
+        fs::create_dir(&legacy).unwrap();
+        fs::write(legacy.join("launch.json"), b"{}").unwrap();
+        assert_eq!(retire(&legacy, true), Ok(()));
+        assert!(legacy.join("launch.json").exists());
+        fs::remove_dir_all(base).unwrap();
     }
     #[test]
     fn interrupted_runtime_cleanup_can_be_retried_after_a_file_is_released() {

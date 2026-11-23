@@ -422,6 +422,7 @@ fn settings_view(app: &crate::native_runtime::Host) -> SettingsView {
 
 pub fn get_settings(app: crate::native_runtime::Host) -> SettingsView {
     autostart::repair_once(&app.package_info().name);
+    crate::admin::follow_layout_once(&app.config().identifier);
     settings_view(&app)
 }
 

@@ -72,6 +72,15 @@
       Abort
     ${EndIf}
 
+    ; No service registered, though another program (a security product, say)
+    ; may have deleted the registration and left its files: those go without a
+    ; question. --argus-service-remove does only that then, and returns 0.
+    ClearErrors
+    ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
+    ${If} ${Errors}
+      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-service-remove'
+    ${EndIf}
+
     !insertmacro ARGUS_TEXT $2 ArgusRemoveService
     ClearErrors
     ReadRegStr $1 HKLM "SYSTEM\CurrentControlSet\Services\ArgusPrivileged" "ImagePath"
@@ -103,7 +112,8 @@
 
     ; Last, after the helpers above may have written failure reports: remove
     ; them, the PawnIO setup lock and staging leftovers from Program Files\Argus
-    ; Sensor Setup, then the empty folder. Never blocks the uninstall.
+    ; Privileged\setup (and Argus Sensor Setup, where 0.5 and earlier kept them),
+    ; then the empty folders. Never blocks the uninstall.
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-sensor-setup-remove'
     ClearErrors
   ${EndIf}

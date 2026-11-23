@@ -9,13 +9,11 @@ use std::time::Instant;
 use argus_core::diagnostics as log;
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::{FILETIME, HANDLE};
-use windows::Win32::Storage::FileSystem::CreateDirectoryW;
 use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessId, GetProcessTimes};
-use windows::core::PCWSTR;
 
 use crate::{
     security,
-    util::{Handle, Result, io, wide, win},
+    util::{Handle, Result, io, win},
 };
 
 const LIMIT: u64 = 256 * 1024;
@@ -146,11 +144,11 @@ fn identity(process: HANDLE) -> Result<(u32, u64)> {
     ))
 }
 
+/// Beside the sensor driver's setup, in the protected folder. Argus 0.5 and
+/// earlier kept them in `Argus Sensor Setup` beside it in Program Files,
+/// which only the uninstaller and an installer's maintenance still clean up.
 fn root() -> Result<PathBuf> {
-    Ok(crate::install::directory()?
-        .parent()
-        .ok_or(87u32)?
-        .join(crate::driver::SETUP_DIR))
+    crate::layout::setup()
 }
 
 fn filename(pid: u32, created: u64) -> String {
@@ -171,21 +169,12 @@ pub(crate) fn report_name(name: &str) -> bool {
 }
 
 fn pin_root(path: &Path, create: bool) -> Result<(Handle, Handle)> {
-    let parent = security::protect_directory(path.parent().ok_or(87u32)?)?;
     if create {
-        let sd = security::directory_descriptor()?;
-        if let Err(error) = unsafe {
-            CreateDirectoryW(
-                PCWSTR(wide(&path.to_string_lossy()).as_ptr()),
-                Some(&sd.attributes()),
-            )
-        } {
-            let code = win(error);
-            if code != 183 {
-                return Err(code);
-            }
-        }
+        // The protected folder, which a helper may make before the service does.
+        let (_programs, parent) = crate::layout::ensure_root()?;
+        return Ok((parent, crate::layout::create_protected(path)?));
     }
+    let parent = security::protect_directory(path.parent().ok_or(87u32)?)?;
     Ok((parent, security::protect_directory(path)?))
 }
 
@@ -321,6 +310,8 @@ pub(crate) fn collect(action: &'static str, process: HANDLE, code: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::wide;
+    use windows::core::PCWSTR;
 
     #[test]
     fn service_reports_deduplicate_sequences_and_reject_malformed_batches() {
