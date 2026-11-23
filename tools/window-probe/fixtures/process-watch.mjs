@@ -29,7 +29,9 @@ const steps=[
  {control:{rowMenu:0},wait:400,inspect:'menu',label:'row-menu-watch',expect:{'state.open':true,'state.items.9':'观察进程','state.disabled.9':false},capture:'row-menu'},
  {control:{keys:['escape']},wait:300},
  {control:{clickAnchor:'details-watch'},wait:250,inspect:'layout',label:'start-action',expect:{'watchAction.op':'start','watchAction.pid':pid}},
- {control:answer('start',view,1),wait:600,inspect:'layout',label:'watch-history',expect:{page:'history','watch.runs':2,'watch.pid':pid},capture:'first-launch'},
+ {control:answer('start',view,1),wait:600,inspect:'layout',label:'watch-history',expect:{page:'history','history.page':'watch','watch.runs':2,'watch.pid':pid},capture:'first-launch'},
+ {control:{clickAnchor:'seg:history-page:0'},wait:400,inspect:'layout',label:'switch-to-system',expect:{page:'history','history.page':'system'},capture:'system-subpage'},
+ {control:{clickAnchor:'seg:history-page:1'},wait:400,inspect:'layout',label:'switch-to-watch',expect:{page:'history','history.page':'watch'}},
  {control:{clickAnchor:'watch-earlier'},wait:250,inspect:'layout',label:'earlier-action',expect:{'watchAction.op':'page','watchAction.before':101}},
  {control:answer('page',earlier,2),wait:350,capture:'earlier-points'},
  {control:{clickAnchor:'watch-latest'},wait:200,inspect:'layout',label:'latest-action',expect:{'watchAction.op':'page','watchAction.before':null}},
@@ -53,7 +55,7 @@ if(process.argv[2]){
  const real=JSON.parse(readFileSync(process.argv[2],'utf8'));
  const last=real.runs.at(-1);
  const realSteps=[
-  {control:{page:'history',pointerOutside:true},wait:400},
+  {control:{page:'history',historyPage:'watch',pointerOutside:true},wait:400},
   {control:answer('status',real,0),wait:600,inspect:'layout',label:'real-runs',expect:{'watch.runs':real.runs.length},capture:'real-recording'},
   {control:{contentZoom:1.5,theme:'light'},probe:'size 900 700',wait:700,capture:'real-small-150'},
   {control:{contentZoom:1,theme:'dark'},probe:'size 1200 900',wait:500},

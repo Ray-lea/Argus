@@ -86,7 +86,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `settingsSection` | 切到设置页并定位到该分组 |
 | `locate` | `{ "section", "item" }`：如通知中的按钮那样打开设置页（`section` 为 `components` 时是组件页）并标出该卡片 |
 | `preference` | `{ "键": 值 }`，经正常的偏好路径设置任意偏好 |
-| `navPosition`、`navExpanded`、`coreFilter`、`diskPage`、`uiMotion`、`windowMotion`、`historyRange`、`netUnit`、`fontSize`、`uiScale` | `preference` 的简写，键名即偏好名 |
+| `navPosition`、`navExpanded`、`coreFilter`、`diskPage`、`historyPage`、`uiMotion`、`windowMotion`、`historyRange`、`netUnit`、`fontSize`、`uiScale` | `preference` 的简写，键名即偏好名 |
 | `motion` | 曲线模式：`balanced`、`pixel`、`off`，其他值为流畅 |
 | `contentZoom` | 0.5–3：窗口内容的缩放比例，用于复现分数缩放下的布局与滚动；仅模拟快照 |
 | `toast` | 显示一条内容为该文字的通知 |

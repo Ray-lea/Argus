@@ -471,6 +471,21 @@ impl Desktop {
                 return;
             }
             "diskPage" => self.disk_page = value.as_str().unwrap_or("overview").into(),
+            "historyPage" => {
+                let next = if value.as_str() == Some("watch") {
+                    "watch"
+                } else {
+                    "system"
+                };
+                if self.history_page != next {
+                    self.history_page = next.into();
+                    if self.page == "history" {
+                        self.load_history(window, cx);
+                    }
+                }
+                cx.notify();
+                return;
+            }
             DISK_RAW_HEX => self.disk_raw_hex = value.as_bool().unwrap_or(false),
             "refreshDiskDetails" => {
                 if let Some(index) = value.as_u64() {

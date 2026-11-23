@@ -13,6 +13,7 @@
   "watch": {
     "title": "Prozessbeobachtung",
     "empty": "Im Kontextmenü oder in den Details eines Prozesses „Prozess beobachten“ wählen, um Speicher auch unterhalb der Spitzenliste aufzuzeichnen.",
+    "openProcesses": "Zu den Prozessen",
     "start": "Prozess beobachten",
     "target": "Beobachtung: {name} (PID {pid})",
     "stop": "Aufzeichnung stoppen",
@@ -20,7 +21,9 @@
     "note": "Jeder Start vom selben Pfad wird separat aufgezeichnet. Die Daten bleiben bis zu 7 Tage erhalten. Bei Erreichen des Speicherlimits werden die ältesten Daten früher gelöscht. Stoppen behält die Daten bei. Löschen beendet die Beobachtung und entfernt die Aufzeichnung. Nach einem Neustart von Argus die Beobachtung erneut starten.",
     "metric": {
       "memory": "Privater Arbeitssatz",
-      "commit": "Privat zugesicherter Speicher"
+      "commit": "Privat zugesicherter Speicher",
+      "runs": "Aufgezeichnete Starts",
+      "points": "Messpunkte des Starts"
     },
     "state": {
       "recording": "Aufzeichnung läuft",
@@ -40,6 +43,7 @@
       "invalid": "Die Aufzeichnung ist beschädigt oder das Format wird nicht unterstützt. Sie kann gelöscht werden."
     },
     "chooseRun": "Start auswählen",
+    "launches": "Starts",
     "run": "{started} · PID {pid} · {state}",
     "runSummary": "{shown}/{total} Starts angezeigt; {points} gespeicherte Punkte in diesem Start",
     "earlier": "Frühere Punkte",
@@ -48,7 +52,12 @@
     "earlierRuns": "Frühere Starts",
     "latestRuns": "Neueste Starts",
     "waiting": "Warten auf einen weiteren Start",
-    "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute."
+    "liveCount": "{count} aktiv",
+    "peak": "Spitze {value}",
+    "waitingFirst": "Warten auf den ersten Messpunkt…",
+    "pointCount": "{count} Pkt.",
+    "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute.",
+    "events": "Statusereignisse"
   },
   "instanceUnavailable": "Die aufgezeichnete Instanz von {name} (PID {pid}) wurde beendet oder ihre Identität kann nicht bestätigt werden.",
   "range": {
@@ -382,5 +391,8 @@
     "gpuPower": "Leistung",
     "gpuClock": "Geschwindigkeit",
     "gpuFan": "Lüfter"
+  },
+  "page": {
+    "system": "Systemverlauf"
   }
 }

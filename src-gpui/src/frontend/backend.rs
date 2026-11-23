@@ -155,6 +155,7 @@ impl Desktop {
                     self.data.insert("processWatch".into(), value.clone());
                 }
                 if pending.command == "watch_process" && pending.args["action"]["op"] == "start" {
+                    self.history_page = "watch".into();
                     self.act(Action::Page("history".into()), window, cx);
                 }
                 if pending.command.starts_with("set_") && value.get("closeToTray").is_some() {

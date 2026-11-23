@@ -685,6 +685,9 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         self.load_watch(window, cx);
+        if self.history_page == "watch" {
+            return;
+        }
         self.history_restore();
         if self.options.fixture.is_some() {
             self.history_fixture();
@@ -1432,6 +1435,9 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.history_page == "watch" {
+            return false;
+        }
         // The range's drop-down takes the arrows, Enter, Space and Esc while
         // open, as a combo box holding the focus does.
         if self.history_ranges_open() {
@@ -1541,68 +1547,98 @@ impl Desktop {
         }
     }
 
-    /// The history page's controls in the page bar: following or not, and its menu.
+    /// The history page's controls in the page bar: subpage switcher, and when
+    /// on system history, following or jumping back to latest.
     pub(in crate::frontend) fn history_controls(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
-        let follow = self.history.follow;
-        let live = if follow {
-            // Following: a quiet mark rather than a button; a click pauses.
-            div()
-                .id("history-live")
-                .flex()
-                .items_center()
-                .gap(px(7.))
-                .px(px(12.))
-                .h(px(32.))
-                .rounded(px(4.))
-                .border_1()
-                .border_color(p.stroke)
-                .text_size(theme::font(13.))
-                .cursor_pointer()
-                .hover(move |s| s.bg(p.hover))
-                .child(div().size(px(8.)).rounded_full().bg(p.network))
-                .child(label("history.live.on"))
-                .tooltip(|window, cx| widgets::tooltip(label("history.live.onTitle"), window, cx))
+        let pages = self.segments(
+            "history-page",
+            [
+                ("system", label("history.page.system")),
+                ("watch", label("history.watch.title")),
+            ]
+            .into_iter()
+            .map(|(page, title)| {
+                (
+                    title,
+                    None,
+                    Action::Preference("historyPage".into(), json!(page)),
+                    self.history_page == page,
+                )
+            })
+            .collect(),
+            cx,
+        );
+        let mut row = div().flex().items_center().gap(px(8.));
+        if self.history_page == "system" {
+            let follow = self.history.follow;
+            let live = if follow {
+                // Following: a quiet mark rather than a button; a click pauses.
+                div()
+                    .id("history-live")
+                    .flex()
+                    .items_center()
+                    .gap(px(7.))
+                    .px(px(12.))
+                    .h(px(32.))
+                    .rounded(px(4.))
+                    .border_1()
+                    .border_color(p.stroke)
+                    .text_size(theme::font(13.))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(p.hover))
+                    .child(div().size(px(8.)).rounded_full().bg(p.network))
+                    .child(label("history.live.on"))
+                    .tooltip(|window, cx| {
+                        widgets::tooltip(label("history.live.onTitle"), window, cx)
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.history_command(Command::Pause, window, cx)
+                    }))
+                    .into_any_element()
+            } else {
+                self.btn(
+                    "history-live",
+                    label("history.live.off"),
+                    Some("ArrowRightIcon"),
+                    widgets::Tone::Plain,
+                )
+                .tooltip(|window, cx| widgets::tooltip(label("history.live.offTitle"), window, cx))
                 .on_click(cx.listener(|this, _, window, cx| {
-                    this.history_command(Command::Pause, window, cx)
+                    this.history_command(Command::Latest, window, cx)
                 }))
                 .into_any_element()
-        } else {
-            self.btn(
-                "history-live",
-                label("history.live.off"),
-                Some("ArrowRightIcon"),
-                widgets::Tone::Plain,
-            )
-            .tooltip(|window, cx| widgets::tooltip(label("history.live.offTitle"), window, cx))
-            .on_click(
-                cx.listener(|this, _, window, cx| {
-                    this.history_command(Command::Latest, window, cx)
-                }),
-            )
-            .into_any_element()
-        };
-        div().flex().items_center().child(live).into_any_element()
+            };
+            row = row.child(live);
+        }
+        row.child(pages).into_any_element()
     }
 
     /// The history page's entries in the page bar's "More" menu: how the lanes
-    /// draw, and the history settings.
+    /// draw (on system history), and the history settings.
     pub(in crate::frontend) fn history_more_items(&self) -> Vec<MenuItem> {
-        vec![
-            MenuItem::new(label("history.menu.band"), Action::History(Command::Band))
-                .checked(self.history.band),
+        let mut items = Vec::new();
+        if self.history_page == "system" {
+            items.push(
+                MenuItem::new(label("history.menu.band"), Action::History(Command::Band))
+                    .checked(self.history.band),
+            );
+        }
+        items.push(
             MenuItem::new(
                 label("history.menu.settings"),
                 Action::History(Command::Settings),
             )
             .icon("HistoryIcon"),
-        ]
+        );
+        items
     }
 
     /// The page's state for the test controls (`inspectLayout.history`).
     pub(in crate::frontend) fn history_inspect(&self, cx: &App) -> Value {
         let h = &self.history;
         json!({
+            "page": self.history_page,
             "follow": h.follow,
             "picker": h.picker.is_some(),
             "chooser": self.history_chooser_state(cx),
@@ -1628,6 +1664,9 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.history_page == "watch" {
+            return self.watch_view(window, cx);
+        }
         self.history_restore();
         if self.history.catalogue_key != (self.palette.dark, argus_core::i18n::locale() as u8) {
             self.history_catalogue();
@@ -1671,11 +1710,6 @@ impl Desktop {
             .flex_col()
             .gap(px(10.))
             .line_height(relative(1.4))
-            .when(
-                self.data.get("processWatch").is_some_and(Value::is_object)
-                    || self.data.contains_key("watchError"),
-                |d| d.child(self.watch_card(window, cx)),
-            )
             .child(bar)
             .child(chart)
             .child(self.history_splitter(cx))

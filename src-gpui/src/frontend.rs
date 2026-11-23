@@ -405,6 +405,7 @@ struct Desktop {
     cpu_mode: String,
     cpu_page: String,
     disk_page: String,
+    history_page: String,
     /// Whether SMART raw values read in hexadecimal rather than decimal.
     disk_raw_hex: bool,
     /// The disk details page that is open, if one is.
@@ -599,6 +600,7 @@ impl Desktop {
             cpu_mode: prefs.get("cpuMode", "overall".into()),
             cpu_page: prefs.get("cpuPage", "overview".into()),
             disk_page: prefs.get("diskPage", "overview".into()),
+            history_page: "system".into(),
             disk_raw_hex: prefs.get(DISK_RAW_HEX, false),
             disk_details_open: None,
             interval: prefs.get("interval", 1000),

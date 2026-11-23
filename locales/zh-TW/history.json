@@ -13,6 +13,7 @@
   "watch": {
     "title": "處理程序觀察",
     "empty": "在處理程序的右鍵選單或詳細資料中選擇「觀察處理程序」，即可記錄未進入排行榜的記憶體變化。",
+    "openProcesses": "前往處理程序清單",
     "start": "觀察處理程序",
     "target": "觀察 {name}（PID {pid}）",
     "stop": "停止記錄",
@@ -20,7 +21,9 @@
     "note": "相同路徑的每次執行分別記錄。最多保留 7 天，達到容量上限時會提前清除最舊記錄。停止後保留資料，刪除會結束觀察並清除記錄。重新啟動 Argus 後需重新開始觀察。",
     "metric": {
       "memory": "私人工作集",
-      "commit": "私人認可用量"
+      "commit": "私人認可用量",
+      "runs": "已記錄個體",
+      "points": "目前個體取樣"
     },
     "state": {
       "recording": "正在記錄",
@@ -40,6 +43,7 @@
       "invalid": "觀察記錄損壞或格式不受支援；可刪除此記錄。"
     },
     "chooseRun": "選擇執行個體",
+    "launches": "執行個體",
     "run": "{started} · PID {pid} · {state}",
     "runSummary": "顯示 {shown}/{total} 個執行個體；所選個體共 {points} 個記錄點",
     "earlier": "較早的記錄",
@@ -48,7 +52,12 @@
     "earlierRuns": "較早的執行個體",
     "latestRuns": "最新執行個體",
     "waiting": "等待後續執行",
-    "unconfirmed": "有 {count} 個同名執行個體無法確認身分；每分鐘重試一次。"
+    "liveCount": "{count} 個執行中",
+    "peak": "峰值 {value}",
+    "waitingFirst": "等待首個取樣點…",
+    "pointCount": "{count} 點",
+    "unconfirmed": "有 {count} 個同名執行個體無法確認身分；每分鐘重試一次。",
+    "events": "狀態記錄"
   },
   "instanceUnavailable": "處理程序 {name}（PID {pid}）的記錄執行個體已結束，或無法確認其身分。",
   "range": {
@@ -364,5 +373,8 @@
     "gpuPower": "功耗",
     "gpuClock": "速度",
     "gpuFan": "風扇"
+  },
+  "page": {
+    "system": "系統歷程"
   }
 }

@@ -13,6 +13,7 @@
   "watch": {
     "title": "Observación de proceso",
     "empty": "Elija «Observar proceso» en el menú contextual o en los detalles de un proceso para registrar memoria fuera de la lista principal.",
+    "openProcesses": "Ir a Procesos",
     "start": "Observar proceso",
     "target": "Observando {name} (PID {pid})",
     "stop": "Detener registro",
@@ -20,7 +21,9 @@
     "note": "Cada ejecución desde la misma ruta se registra por separado. Los datos se conservan hasta 7 días. Si se alcanza el límite de almacenamiento, se borran antes los más antiguos. Detener la grabación conserva los datos. Eliminarla finaliza la observación y borra el registro. Tras reiniciar Argus, se debe iniciar otra observación.",
     "metric": {
       "memory": "Conjunto de trabajo privado",
-      "commit": "Memoria privada comprometida"
+      "commit": "Memoria privada comprometida",
+      "runs": "Inicios registrados",
+      "points": "Muestras del inicio"
     },
     "state": {
       "recording": "Registrando",
@@ -40,6 +43,7 @@
       "invalid": "El registro está dañado o su formato no es compatible. Puede eliminarlo."
     },
     "chooseRun": "Elegir un inicio",
+    "launches": "Inicios",
     "run": "{started} · PID {pid} · {state}",
     "runSummary": "Se muestran {shown}/{total} inicios; {points} puntos guardados en este inicio",
     "earlier": "Puntos anteriores",
@@ -48,7 +52,12 @@
     "earlierRuns": "Inicios anteriores",
     "latestRuns": "Últimos inicios",
     "waiting": "Esperando otro inicio",
-    "unconfirmed": "No se pudieron confirmar {count} instancias con el mismo nombre; se reintenta una vez por minuto."
+    "liveCount": "{count} en ejecución",
+    "peak": "Pico {value}",
+    "waitingFirst": "Esperando la primera muestra…",
+    "pointCount": "{count} pts",
+    "unconfirmed": "No se pudieron confirmar {count} instancias con el mismo nombre; se reintenta una vez por minuto.",
+    "events": "Eventos de estado"
   },
   "instanceUnavailable": "La instancia registrada de {name} (PID {pid}) ha finalizado o no se puede confirmar su identidad.",
   "range": {
@@ -388,5 +397,8 @@
     "gpuPower": "Potencia",
     "gpuClock": "Velocidad",
     "gpuFan": "Ventilador"
+  },
+  "page": {
+    "system": "Historial del sistema"
   }
 }

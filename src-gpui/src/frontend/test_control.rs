@@ -1041,6 +1041,7 @@ impl Desktop {
             "navExpanded",
             "coreFilter",
             "diskPage",
+            "historyPage",
             "uiMotion",
             "windowMotion",
             "historyRange",
