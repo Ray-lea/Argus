@@ -1,20 +1,10 @@
-//! The folder of an installation outside Program Files.
-//!
-//! Elevated code runs what that folder holds: the installer's and the
-//! uninstaller's maintenance steps, and Argus itself when an administrator
-//! lets it install the privileged service. Only administrators can change
-//! Program Files. Another folder is as hard to change only on a local volume
-//! that keeps permissions, below folders that other accounts can neither
-//! rename nor re-permit, and owned by Administrators with a protected DACL
-//! like the one Program Files hands down. `assess` says what stands in the
-//! way; `prepare` creates the folder that way, or replaces one that holds only
-//! Argus's own files. A folder with other files keeps its permissions, and
-//! nothing above the folder is changed.
+//! Validates the selected installation folder, its files and its ancestors.
+//! Missing components are created with administrative ownership and a protected
+//! DACL. Shared folders retain their permissions.
 
 use std::path::{Component, Path, PathBuf, Prefix};
 
 use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Globalization::{CSTR_EQUAL, CompareStringOrdinal};
 use windows::Win32::Security::Authorization::{SE_FILE_OBJECT, SetSecurityInfo};
 use windows::Win32::Security::{
     ACL, DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, GetSecurityDescriptorOwner,
@@ -29,9 +19,7 @@ use windows::Win32::Storage::FileSystem::{
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::SystemServices::FILE_PERSISTENT_ACLS;
 use windows::Win32::System::WindowsProgramming::DRIVE_FIXED;
-use windows::Win32::UI::Shell::{
-    FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, KF_FLAG_DEFAULT, SHGetKnownFolderPath,
-};
+use windows::Win32::UI::Shell::{FOLDERID_ProgramFiles, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
 use windows::core::{GUID, PCWSTR};
 
 use crate::security::{self, Hold, PathError, PathInspection};
@@ -47,8 +35,6 @@ const MAX_ENTRIES: usize = 256;
 /// Where a folder is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Place {
-    /// In Program Files, which only administrators can change. Left as it is.
-    ProgramFiles,
     /// Somewhere permissions cannot protect: not this computer's own fixed
     /// disk (removable, network, SUBST), a file system without permissions,
     /// or a path that Win32 would rewrite. Says which, for the log.
@@ -104,7 +90,6 @@ impl Assessment {
     /// and what it holds.
     pub fn protected(&self) -> bool {
         match self.place {
-            Place::ProgramFiles => true,
             Place::Unsupported(_) => false,
             Place::Local => self.parent.is_none() && self.contents != Contents::Shared,
         }
@@ -136,17 +121,6 @@ fn known_folder(id: &GUID) -> Option<PathBuf> {
     let path = unsafe { raw.to_string() }.ok();
     unsafe { CoTaskMemFree(Some(raw.0.cast())) };
     path.map(PathBuf::from)
-}
-
-/// Whether `path` is `base` or below it, ignoring case as NTFS does.
-fn within(path: &Path, base: &Path) -> bool {
-    let path: Vec<u16> = path.as_os_str().to_string_lossy().encode_utf16().collect();
-    let base = base.as_os_str().to_string_lossy();
-    let base: Vec<u16> = base.trim_end_matches('\\').encode_utf16().collect();
-    path.len() >= base.len()
-        && !base.is_empty()
-        && unsafe { CompareStringOrdinal(&path[..base.len()], &base, true) } == CSTR_EQUAL
-        && path.get(base.len()).is_none_or(|&c| c == u16::from(b'\\'))
 }
 
 /// The drive letter and the folders from the volume root down to `dir`.
@@ -247,13 +221,6 @@ fn describe(error: PathError, trace: &PathInspection) -> String {
 
 /// Looks at `dir` and the folders above it. Opens and reads; changes nothing.
 pub fn assess(dir: &Path) -> std::result::Result<Assessment, Failure> {
-    if [&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86]
-        .into_iter()
-        .filter_map(known_folder)
-        .any(|base| within(dir, &base))
-    {
-        return Ok(Assessment::new(Place::ProgramFiles));
-    }
     let (letter, list) = match components(dir) {
         Ok(found) => found,
         Err(reason) => return Ok(Assessment::new(Place::Unsupported(reason))),
@@ -339,7 +306,7 @@ fn contents(dir: &Path) -> (Contents, Option<String>) {
 
 /// Before the installer writes to `dir`: creates it as only administrators
 /// may change it, or replaces it when it holds only Argus's files. A folder
-/// in Program Files or where permissions cannot protect it is created as
+/// where permissions cannot protect it is created as
 /// before, a folder with other files is left as it is. Fails only when the
 /// folder cannot be made at all; what cannot be protected is in `log`.
 pub fn prepare(
@@ -348,7 +315,7 @@ pub fn prepare(
 ) -> std::result::Result<Assessment, Failure> {
     let assessment = assess(dir)?;
     match (assessment.place, assessment.contents) {
-        (Place::ProgramFiles | Place::Unsupported(_), _) => {
+        (Place::Unsupported(_), _) => {
             std::fs::create_dir_all(dir).map_err(|error| Failure {
                 stage: "create install folder",
                 code: error.raw_os_error().unwrap_or(1) as u32,
@@ -583,17 +550,14 @@ mod tests {
     }
 
     #[test]
-    fn program_files_matches_whole_names_ignoring_case() {
-        let base = Path::new(r"C:\Program Files");
-        assert!(within(Path::new(r"c:\program files\Argus"), base));
-        assert!(within(Path::new(r"C:\Program Files"), base));
-        assert!(within(
-            Path::new(r"C:\Program Files\Argus"),
-            Path::new(r"C:\Program Files\")
-        ));
-        assert!(!within(Path::new(r"C:\Program Files (x86)\Argus"), base));
-        assert!(!within(Path::new(r"C:\Program"), base));
-        assert!(!within(Path::new(r"D:\Program Files\Argus"), base));
+    fn missing_components_inside_program_files_are_assessed() {
+        let base = program_files().unwrap();
+        let target = base.join(crate::taskmgr::id().unwrap()).join("Argus");
+        let found = assess(&target).unwrap();
+        assert_eq!(found.place, Place::Local);
+        assert_eq!(found.contents, Contents::Missing);
+        assert!(!found._pins.is_empty());
+        assert!(!target.exists());
     }
 
     #[test]

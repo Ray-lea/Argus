@@ -606,6 +606,19 @@ mod tests {
     }
 
     #[test]
+    fn inherited_program_files_access_and_explicit_modify_grant() {
+        let inherited = "O:BAG:BAD:AI(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;FRFX;;;BU)";
+        let writable = "O:BAG:BAD:AI(A;OICI;0x1301bf;;;BU)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;FRFX;;;BU)";
+        for hold in [Hold::Parent, Hold::Content] {
+            assert_eq!(inspect_acl_mask(inherited, hold.mask()), Ok(()));
+            assert_eq!(
+                inspect_acl_mask(writable, hold.mask()),
+                Err(PathError::Writable)
+            );
+        }
+    }
+
+    #[test]
     fn folders_above_an_installation_may_let_others_add_but_not_replace() {
         let mask = |hold: Hold| hold.mask();
         // A volume Windows formats: Authenticated Users may modify the root

@@ -873,7 +873,7 @@ fn language(value: &OsString) -> Option<argus_core::i18n::Locale> {
         .and_then(argus_core::i18n::Locale::from_langid)
 }
 
-/// A new installation outside Program Files: when the folder cannot be
+/// A new installation: when the chosen folder cannot be
 /// protected, says why and asks. 0 installs there; 1223 goes back to the page.
 /// A failed check never holds up the installation.
 fn folder_mode(args: &[OsString]) -> i32 {
