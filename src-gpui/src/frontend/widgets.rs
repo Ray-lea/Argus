@@ -532,8 +532,8 @@ const TOOLTIP_SIZE: f32 = 12.;
 /// UI's ascent and descent, 1.33 em), as the system draws tooltip text.
 const TOOLTIP_LINE_HEIGHT: f32 = 4. / 3.;
 
-/// A hover hint as it shows: not at all while a context menu is open or
-/// fading out (`menus::in_the_way`).
+/// A hover hint as it shows: not at all while a context menu is open
+/// (`menus::in_the_way`).
 struct Hint(AnyView);
 
 impl Render for Hint {

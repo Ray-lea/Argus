@@ -417,8 +417,6 @@ struct Desktop {
     horizontal: f32,
     drag: Option<(String, Point<Pixels>, f32)>,
     popup: Option<menus::Popup>,
-    /// The menu that just closed, fading out (`menus::Popup`).
-    popup_leaving: Option<(menus::Popup, Instant)>,
     /// The control whose menu a press on it closed, and when (`menu_just_shut`).
     menu_shut: Option<(String, Instant)>,
     modal: Option<dialogs::Modal>,
@@ -611,7 +609,6 @@ impl Desktop {
             horizontal: 0.,
             drag: None,
             popup: None,
-            popup_leaving: None,
             menu_shut: None,
             modal: None,
             ui: widgets::UiState::default(),
