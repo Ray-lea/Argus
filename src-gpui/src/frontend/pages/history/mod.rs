@@ -1436,7 +1436,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.history_page == "watch" {
-            return false;
+            return self.watch_key(key, cx);
         }
         // The range's drop-down takes the arrows, Enter, Space and Esc while
         // open, as a combo box holding the focus does.

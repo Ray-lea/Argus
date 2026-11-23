@@ -56,6 +56,7 @@
     "peak": "最大 {value}",
     "waitingFirst": "最初の測定点を待機中…",
     "pointCount": "{count} 点",
+    "tabTitle": "クリックで現在のレーンに表示、右クリックで重ね合わせ",
     "unconfirmed": "同名の {count} インスタンスの識別を確認できませんでした。1 分ごとに再試行します。",
     "events": "状態イベント"
   },

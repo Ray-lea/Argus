@@ -131,6 +131,8 @@ enum Action {
     ExportTableCsv,
     /// A command of the history page.
     History(pages::history::Command),
+    /// A command of the process observation subpage.
+    Watch(pages::watch::Command),
     CloseOverlay,
     Confirm,
 }
@@ -441,6 +443,7 @@ struct Desktop {
     welcome_checked: bool,
     /// The history page (`pages::history`).
     history: pages::history::HistoryState,
+    watch_ui: pages::watch::WatchUiState,
     /// The tray's open flyouts (`tray`).
     tray: tray::Flyouts,
     /// The desktop monitor's window (`monitors`).
@@ -626,6 +629,7 @@ impl Desktop {
             prefetched: false,
             welcome_checked: false,
             history: Default::default(),
+            watch_ui: Default::default(),
             tray: tray::Flyouts::default(),
             monitors: monitors::Monitors::default(),
             ui_scale: appearance::SCALE.load(&prefs),

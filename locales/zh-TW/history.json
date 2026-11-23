@@ -56,6 +56,7 @@
     "peak": "峰值 {value}",
     "waitingFirst": "等待首個取樣點…",
     "pointCount": "{count} 點",
+    "tabTitle": "按一下在目前軌道顯示；按右鍵可疊加至目前軌道",
     "unconfirmed": "有 {count} 個同名執行個體無法確認身分；每分鐘重試一次。",
     "events": "狀態記錄"
   },

@@ -56,6 +56,7 @@
     "peak": "Pic {value}",
     "waitingFirst": "En attente de la première mesure…",
     "pointCount": "{count} pts",
+    "tabTitle": "Cliquer pour afficher dans la voie active ; clic droit pour superposer",
     "unconfirmed": "Identité non confirmée pour {count} instances du même nom ; nouvel essai chaque minute.",
     "events": "Événements d’état"
   },

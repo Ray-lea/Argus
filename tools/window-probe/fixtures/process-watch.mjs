@@ -3,7 +3,17 @@ import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 const fixture=JSON.parse(readFileSync(new URL('desktop.json',import.meta.url),'utf8'));
 const base=Date.now()-60000;
 const pid=44101,created=base-20000;
-const point=(ts,memory,state='recording')=>({ts,memory,commit:memory===null?null:memory+1048576,state});
+const point=(ts,memory,state='recording',extra={})=>memory===null
+ ? {ts,state}
+ : {
+  ts,memory,commit:memory+1048576,workingSet:memory+2097152,
+  cpu:extra.cpu??14.5,gpu:extra.gpu??6.2,gpuMemory:extra.gpuMemory??(32<<20),
+  diskRead:extra.diskRead??262144,diskWrite:extra.diskWrite??65536,
+  ioRead:extra.ioRead??524288,ioWrite:extra.ioWrite??131072,
+  netReceived:extra.netReceived??40960,netSent:extra.netSent??12288,
+  threads:extra.threads??18,handles:extra.handles??312,
+  state
+ };
 const runs=[
  {pid,createTime:created,firstTs:base,lastTs:base+15000,points:1008,state:'exited'},
  {pid:44102,createTime:base+16000,firstTs:base+20000,lastTs:base+50000,points:7,state:'recording'}
@@ -12,13 +22,22 @@ const view={version:1,pid,createTime:created,name:'same.exe',state:'recording',l
  program:{nativePath:'\\Device\\HarddiskVolume3\\Argus test\\one\\same.exe',displayPath:'C:\\Argus test\\one\\same.exe'},
  runs,totalRuns:2,totalPoints:1008,runOffset:0,damaged:false,unconfirmed:0,
  firstSequence:101,hasEarlier:true,hasLater:false,
- points:[point(base,4<<20),point(base+5000,12<<20),point(base+10000,null,'gap'),point(base+15000,null,'exited')]
+ points:[
+  point(base,4<<20,'recording',{cpu:8.2,handles:290}),
+  point(base+5000,12<<20,'recording',{cpu:34.6,handles:340}),
+  point(base+10000,null,'gap'),
+  point(base+15000,null,'exited')
+ ]
 };
 fixture.snapshot.processes=[{...fixture.snapshot.processes[0],pid,ppid:0,createTime:created,instanceKey:undefined,name:'same.exe',description:'same.exe',appWindow:true}];
 fixture.snapshot.system.processCount=1;
 fixture.processWatch=null;
 const second={...view,pid:44102,createTime:runs[1].createTime,totalPoints:7,firstSequence:1200,hasEarlier:false,
- points:[point(base+20000,2<<20),point(base+25000,3<<20),point(base+30000,4<<20)]};
+ points:[
+  point(base+20000,2<<20,'recording',{cpu:4.0,handles:120}),
+  point(base+25000,3<<20,'recording',{cpu:9.5,handles:145}),
+  point(base+30000,4<<20,'recording',{cpu:12.1,handles:168})
+ ]};
 const earlier={...view,firstSequence:1,hasEarlier:false,hasLater:true,points:[point(base-40000,1<<20),point(base-35000,2<<20)]};
 const waiting={...view,liveRuns:0,runs:runs.map(run=>({...run,state:'exited'}))};
 const stopped={...waiting,state:'stopped'};
@@ -29,7 +48,14 @@ const steps=[
  {control:{rowMenu:0},wait:400,inspect:'menu',label:'row-menu-watch',expect:{'state.open':true,'state.items.9':'观察进程','state.disabled.9':false},capture:'row-menu'},
  {control:{keys:['escape']},wait:300},
  {control:{clickAnchor:'details-watch'},wait:250,inspect:'layout',label:'start-action',expect:{'watchAction.op':'start','watchAction.pid':pid}},
- {control:answer('start',view,1),wait:600,inspect:'layout',label:'watch-history',expect:{page:'history','history.page':'watch','watch.runs':2,'watch.pid':pid},capture:'first-launch'},
+ {control:answer('start',view,1),wait:600,inspect:'layout',label:'watch-history',expect:{page:'history','history.page':'watch','watch.runs':2,'watch.pid':pid,'watch.lanes.0.reading':'memory','watch.lanes.0.overlay':'commit'},capture:'first-launch'},
+ {control:{clickAnchor:'watch-tab-cpu'},wait:300,inspect:'layout',label:'switch-to-cpu',expect:{'watch.lanes.0.reading':'cpu','watch.lanes.0.overlay':'commit'},capture:'cpu-with-commit-overlay'},
+ {control:{clickAnchor:'watch-lane-overlay-1'},wait:300,inspect:'menu',label:'overlay-menu',expect:{'state.open':true}},
+ {control:{keys:['down','enter']},wait:300,inspect:'layout',label:'overlay-changed',expect:{'watch.lanes.0.overlay':'memory'}},
+ {control:{clickAnchor:'watch-add-lane'},wait:300,inspect:'menu',label:'add-lane-menu',expect:{'state.open':true}},
+ {control:{keys:['down','down','down','down','down','down','enter']},wait:350,inspect:'layout',label:'second-lane-added',expect:{'watch.lanes.length':2},capture:'two-lanes'},
+ {control:{clickAnchor:'watch-lane-remove-2'},wait:300,inspect:'layout',label:'second-lane-removed',expect:{'watch.lanes.length':1}},
+ {control:{clickAnchor:'watch-tab-memory'},wait:250,inspect:'layout',label:'back-to-memory',expect:{'watch.lanes.0.reading':'memory'}},
  {control:{clickAnchor:'seg:history-page:0'},wait:400,inspect:'layout',label:'switch-to-system',expect:{page:'history','history.page':'system'},capture:'system-subpage'},
  {control:{clickAnchor:'seg:history-page:1'},wait:400,inspect:'layout',label:'switch-to-watch',expect:{page:'history','history.page':'watch'}},
  {control:{clickAnchor:'watch-earlier'},wait:250,inspect:'layout',label:'earlier-action',expect:{'watchAction.op':'page','watchAction.before':101}},

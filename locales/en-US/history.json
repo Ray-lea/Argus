@@ -56,6 +56,7 @@
     "peak": "Peak {value}",
     "waitingFirst": "Waiting for the first sample…",
     "pointCount": "{count} pts",
+    "tabTitle": "Click to show in the active lane; right-click to overlay on it",
     "unconfirmed": "Could not confirm {count} same-named instances; retrying once per minute.",
     "events": "Status events"
   },

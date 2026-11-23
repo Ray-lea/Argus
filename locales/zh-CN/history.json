@@ -56,6 +56,7 @@
     "peak": "峰值 {value}",
     "waitingFirst": "等待首个采样点…",
     "pointCount": "{count} 点",
+    "tabTitle": "单击在当前轨道显示；右键可叠加到当前轨道",
     "unconfirmed": "有 {count} 个同名实例无法确认身份；每分钟重试一次。",
     "events": "状态记录"
   },

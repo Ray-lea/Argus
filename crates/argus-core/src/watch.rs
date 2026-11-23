@@ -58,9 +58,75 @@ pub enum WatchState {
 #[serde(rename_all = "camelCase")]
 pub struct WatchPoint {
     pub ts: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_set: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gpu_memory: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_read: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_write: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_read: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_write: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net_received: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub net_sent: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threads: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handles: Option<u32>,
     pub state: WatchState,
+}
+
+impl WatchPoint {
+    pub fn marker(ts: i64, state: WatchState) -> Self {
+        Self {
+            ts,
+            memory: None,
+            commit: None,
+            working_set: None,
+            cpu: None,
+            gpu: None,
+            gpu_memory: None,
+            disk_read: None,
+            disk_write: None,
+            io_read: None,
+            io_write: None,
+            net_received: None,
+            net_sent: None,
+            threads: None,
+            handles: None,
+            state,
+        }
+    }
+
+    pub fn has_any_metric(&self) -> bool {
+        self.memory.is_some()
+            || self.commit.is_some()
+            || self.working_set.is_some()
+            || self.cpu.is_some()
+            || self.gpu.is_some()
+            || self.gpu_memory.is_some()
+            || self.disk_read.is_some()
+            || self.disk_write.is_some()
+            || self.io_read.is_some()
+            || self.io_write.is_some()
+            || self.net_received.is_some()
+            || self.net_sent.is_some()
+            || self.threads.is_some()
+            || self.handles.is_some()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -367,10 +433,9 @@ mod tests {
                 42,
                 1,
                 WatchPoint {
-                    ts,
                     memory: Some(4096),
                     commit: Some(8192),
-                    state: WatchState::Recording,
+                    ..WatchPoint::marker(ts, WatchState::Recording)
                 },
             )
             .unwrap();
@@ -378,12 +443,7 @@ mod tests {
             .push(
                 42,
                 1,
-                WatchPoint {
-                    ts: ts + SAMPLE_MS,
-                    memory: None,
-                    commit: None,
-                    state: WatchState::Exited,
-                },
+                WatchPoint::marker(ts + SAMPLE_MS, WatchState::Exited),
             )
             .unwrap();
         store.flush().unwrap();

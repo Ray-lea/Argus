@@ -11,10 +11,11 @@ use std::{
 pub const FILE_NAME: &str = "program-watch.v1.bin";
 const MAGIC: &[u8; 8] = b"ARGWCH01";
 const HEADER: u64 = 1 << 20;
-const RECORD: u64 = 64;
+const RECORD: u64 = 144;
 pub const CAPACITY: usize = 131072;
 pub const RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 pub const MAX_BYTES: u64 = HEADER + CAPACITY as u64 * RECORD;
+const PRESENT_MASK: u16 = (1 << 14) - 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -60,19 +61,45 @@ fn state_byte(state: WatchState) -> u8 {
 
 impl Entry {
     fn encode(&self) -> [u8; RECORD as usize] {
+        let p = &self.point;
         let mut bytes = [0; RECORD as usize];
         bytes[0..8].copy_from_slice(&self.seq.to_le_bytes());
-        bytes[8..16].copy_from_slice(&self.point.ts.to_le_bytes());
+        bytes[8..16].copy_from_slice(&p.ts.to_le_bytes());
         bytes[16..20].copy_from_slice(&self.pid.to_le_bytes());
         bytes[20..28].copy_from_slice(&self.created.to_le_bytes());
-        bytes[28..36].copy_from_slice(&self.point.memory.unwrap_or_default().to_le_bytes());
-        bytes[36..44].copy_from_slice(&self.point.commit.unwrap_or_default().to_le_bytes());
-        bytes[44] = state_byte(self.point.state);
-        bytes[45] =
-            u8::from(self.point.memory.is_some()) | (u8::from(self.point.commit.is_some()) << 1);
-        let sum = checksum(&bytes[..52]);
-        bytes[52..56].copy_from_slice(&sum.to_le_bytes());
-        bytes[56..64].copy_from_slice(&(!self.seq).to_le_bytes());
+        bytes[28..36].copy_from_slice(&p.memory.unwrap_or_default().to_le_bytes());
+        bytes[36..44].copy_from_slice(&p.commit.unwrap_or_default().to_le_bytes());
+        bytes[44..52].copy_from_slice(&p.working_set.unwrap_or_default().to_le_bytes());
+        bytes[52..56].copy_from_slice(&p.cpu.unwrap_or_default().to_le_bytes());
+        bytes[56..60].copy_from_slice(&p.gpu.unwrap_or_default().to_le_bytes());
+        bytes[60..68].copy_from_slice(&p.gpu_memory.unwrap_or_default().to_le_bytes());
+        bytes[68..76].copy_from_slice(&p.disk_read.unwrap_or_default().to_le_bytes());
+        bytes[76..84].copy_from_slice(&p.disk_write.unwrap_or_default().to_le_bytes());
+        bytes[84..92].copy_from_slice(&p.io_read.unwrap_or_default().to_le_bytes());
+        bytes[92..100].copy_from_slice(&p.io_write.unwrap_or_default().to_le_bytes());
+        bytes[100..108].copy_from_slice(&p.net_received.unwrap_or_default().to_le_bytes());
+        bytes[108..116].copy_from_slice(&p.net_sent.unwrap_or_default().to_le_bytes());
+        bytes[116..120].copy_from_slice(&p.threads.unwrap_or_default().to_le_bytes());
+        bytes[120..124].copy_from_slice(&p.handles.unwrap_or_default().to_le_bytes());
+        bytes[124] = state_byte(p.state);
+        let present: u16 = u16::from(p.memory.is_some())
+            | (u16::from(p.commit.is_some()) << 1)
+            | (u16::from(p.working_set.is_some()) << 2)
+            | (u16::from(p.cpu.is_some()) << 3)
+            | (u16::from(p.gpu.is_some()) << 4)
+            | (u16::from(p.gpu_memory.is_some()) << 5)
+            | (u16::from(p.disk_read.is_some()) << 6)
+            | (u16::from(p.disk_write.is_some()) << 7)
+            | (u16::from(p.io_read.is_some()) << 8)
+            | (u16::from(p.io_write.is_some()) << 9)
+            | (u16::from(p.net_received.is_some()) << 10)
+            | (u16::from(p.net_sent.is_some()) << 11)
+            | (u16::from(p.threads.is_some()) << 12)
+            | (u16::from(p.handles.is_some()) << 13);
+        bytes[126..128].copy_from_slice(&present.to_le_bytes());
+        let sum = checksum(&bytes[..128]);
+        bytes[128..132].copy_from_slice(&sum.to_le_bytes());
+        bytes[136..144].copy_from_slice(&(!self.seq).to_le_bytes());
         bytes
     }
 
@@ -81,19 +108,21 @@ impl Entry {
         let ts = i64::from_le_bytes(bytes[8..16].try_into().ok()?);
         let pid = u32::from_le_bytes(bytes[16..20].try_into().ok()?);
         let created = i64::from_le_bytes(bytes[20..28].try_into().ok()?);
+        let present = u16::from_le_bytes(bytes[126..128].try_into().ok()?);
         if seq == 0
             || (seq - 1) % CAPACITY as u64 != slot as u64
-            || !seq != u64::from_le_bytes(bytes[56..64].try_into().ok()?)
-            || checksum(&bytes[..52]) != u32::from_le_bytes(bytes[52..56].try_into().ok()?)
+            || !seq != u64::from_le_bytes(bytes[136..144].try_into().ok()?)
+            || checksum(&bytes[..128]) != u32::from_le_bytes(bytes[128..132].try_into().ok()?)
             || pid == 0
             || created <= 0
             || ts <= 0
-            || bytes[45] & !3 != 0
-            || bytes[46..52] != [0; 6]
+            || bytes[125] != 0
+            || bytes[132..136] != [0; 4]
+            || present & !PRESENT_MASK != 0
         {
             return None;
         }
-        let state = match bytes[44] {
+        let state = match bytes[124] {
             1 => WatchState::Recording,
             2 => WatchState::Gap,
             3 => WatchState::Exited,
@@ -102,9 +131,26 @@ impl Entry {
             6 => WatchState::Limit,
             _ => return None,
         };
-        if state != WatchState::Recording && bytes[45] != 0 {
+        if state != WatchState::Recording && present != 0 {
             return None;
         }
+        let u64_at = |bit: u16, range: std::ops::Range<usize>| {
+            (present & (1 << bit) != 0)
+                .then(|| u64::from_le_bytes(bytes[range].try_into().unwrap()))
+        };
+        let u32_at = |bit: u16, range: std::ops::Range<usize>| {
+            (present & (1 << bit) != 0)
+                .then(|| u32::from_le_bytes(bytes[range].try_into().unwrap()))
+        };
+        let f32_at = |bit: u16, range: std::ops::Range<usize>| -> Option<Option<f32>> {
+            if present & (1 << bit) == 0 {
+                return Some(None);
+            }
+            let value = f32::from_le_bytes(bytes[range].try_into().unwrap());
+            (value.is_finite() && value >= 0.).then_some(Some(value))
+        };
+        let cpu = f32_at(3, 52..56)?;
+        let gpu = f32_at(4, 56..60)?;
         Some(Self {
             seq,
             pid,
@@ -112,10 +158,20 @@ impl Entry {
             point: WatchPoint {
                 ts,
                 state,
-                memory: (bytes[45] & 1 != 0)
-                    .then(|| u64::from_le_bytes(bytes[28..36].try_into().unwrap())),
-                commit: (bytes[45] & 2 != 0)
-                    .then(|| u64::from_le_bytes(bytes[36..44].try_into().unwrap())),
+                memory: u64_at(0, 28..36),
+                commit: u64_at(1, 36..44),
+                working_set: u64_at(2, 44..52),
+                cpu,
+                gpu,
+                gpu_memory: u64_at(5, 60..68),
+                disk_read: u64_at(6, 68..76),
+                disk_write: u64_at(7, 76..84),
+                io_read: u64_at(8, 84..92),
+                io_write: u64_at(9, 92..100),
+                net_received: u64_at(10, 100..108),
+                net_sent: u64_at(11, 108..116),
+                threads: u32_at(12, 116..120),
+                handles: u32_at(13, 120..124),
             },
         })
     }
@@ -281,8 +337,9 @@ impl Store {
                 .entries
                 .back()
                 .is_some_and(|last| point.ts < last.point.ts)
-            || (point.state != WatchState::Recording
-                && (point.memory.is_some() || point.commit.is_some()))
+            || (point.state != WatchState::Recording && point.has_any_metric())
+            || point.cpu.is_some_and(|v| !v.is_finite() || v < 0.)
+            || point.gpu.is_some_and(|v| !v.is_finite() || v < 0.)
         {
             return Err(WatchError::Invalid);
         }
@@ -329,10 +386,21 @@ mod tests {
     }
     fn point(ts: i64, value: u64) -> WatchPoint {
         WatchPoint {
-            ts,
             memory: Some(value),
             commit: Some(value + 1),
-            state: WatchState::Recording,
+            working_set: Some(value + 2),
+            cpu: Some(12.5),
+            gpu: Some(4.25),
+            gpu_memory: Some(value + 3),
+            disk_read: Some(value + 4),
+            disk_write: Some(value + 5),
+            io_read: Some(value + 6),
+            io_write: Some(value + 7),
+            net_received: Some(value + 8),
+            net_sent: Some(value + 9),
+            threads: Some(16),
+            handles: Some(256),
+            ..WatchPoint::marker(ts, WatchState::Recording)
         }
     }
     fn path(tag: &str) -> std::path::PathBuf {
@@ -372,10 +440,22 @@ mod tests {
         );
         assert_eq!(store.entries.len(), CAPACITY);
         assert_eq!(store.entries.front().unwrap().point.memory, Some(3));
-        assert_eq!(
-            store.entries.back().unwrap().point.memory,
-            Some((CAPACITY + 2) as u64)
-        );
+        let last = &store.entries.back().unwrap().point;
+        let expected = (CAPACITY + 2) as u64;
+        assert_eq!(last.memory, Some(expected));
+        assert_eq!(last.commit, Some(expected + 1));
+        assert_eq!(last.working_set, Some(expected + 2));
+        assert_eq!(last.cpu, Some(12.5));
+        assert_eq!(last.gpu, Some(4.25));
+        assert_eq!(last.gpu_memory, Some(expected + 3));
+        assert_eq!(last.disk_read, Some(expected + 4));
+        assert_eq!(last.disk_write, Some(expected + 5));
+        assert_eq!(last.io_read, Some(expected + 6));
+        assert_eq!(last.io_write, Some(expected + 7));
+        assert_eq!(last.net_received, Some(expected + 8));
+        assert_eq!(last.net_sent, Some(expected + 9));
+        assert_eq!(last.threads, Some(16));
+        assert_eq!(last.handles, Some(256));
         assert_eq!(store.entries.front().unwrap().pid, 18);
         assert!(!store.damaged);
         drop(store);

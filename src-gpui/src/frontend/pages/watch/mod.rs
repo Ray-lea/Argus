@@ -1,10 +1,90 @@
-//! Dedicated process observation subpage under History.
+//! Dedicated process observation subpage under History, modeled after the
+//! system history page's reading tabs, multi-lane dual-axis charts, and lower
+//! launches panel.
 use super::*;
 use widgets::Tone;
 
-/// Maximum launch rows shown directly in the launches card; older launches remain
-/// reachable through the dropdown selector and pagination controls.
+mod lanes;
+mod metrics;
+
+/// Axis label gutter width either side of the plots, matching `history/lanes.rs`.
+pub(super) const GUTTER: f32 = 48.;
+/// Maximum concurrent chart lanes on the observation page.
+pub(super) const MAX_LANES: usize = 4;
+/// Maximum launch rows shown directly in the launches card.
 const VISIBLE_RUN_ROWS: usize = 8;
+
+#[derive(Clone, Debug)]
+pub(in crate::frontend) enum Command {
+    /// Show this metric in the active lane.
+    Show(&'static str),
+    /// Add a new lane showing this metric (or activate it if already shown).
+    AddLane(&'static str),
+    /// Change the primary metric of a specific lane.
+    SetReading(u64, &'static str),
+    /// Set or clear the overlay metric on a specific lane.
+    SetOverlay(u64, Option<&'static str>),
+    /// Toggle this metric as the active lane's overlay (right-click on a reading tab).
+    ToggleOverlay(&'static str),
+    /// Remove a lane when more than one exists.
+    RemoveLane(u64),
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::frontend) struct WatchLane {
+    pub(in crate::frontend) id: u64,
+    pub(in crate::frontend) reading: &'static str,
+    pub(in crate::frontend) overlay: Option<&'static str>,
+}
+
+pub(in crate::frontend) struct WatchUiState {
+    pub(in crate::frontend) lanes: Vec<WatchLane>,
+    pub(in crate::frontend) active: u64,
+    next_id: u64,
+    pub(super) hover: Option<i64>,
+    pub(super) pin: Option<i64>,
+    pub(super) plot_bounds: Rc<RefCell<Bounds<Pixels>>>,
+}
+
+impl Default for WatchUiState {
+    fn default() -> Self {
+        Self {
+            lanes: vec![WatchLane {
+                id: 1,
+                reading: "memory",
+                overlay: Some("commit"),
+            }],
+            active: 1,
+            next_id: 2,
+            hover: None,
+            pin: None,
+            plot_bounds: Rc::new(RefCell::new(Bounds::default())),
+        }
+    }
+}
+
+impl WatchUiState {
+    pub(in crate::frontend) fn clear_cursor(&mut self) {
+        self.hover = None;
+        self.pin = None;
+    }
+
+    pub(super) fn active_lane(&self) -> &WatchLane {
+        self.lanes
+            .iter()
+            .find(|lane| lane.id == self.active)
+            .unwrap_or(&self.lanes[0])
+    }
+
+    fn active_lane_mut(&mut self) -> &mut WatchLane {
+        let active = self.active;
+        if let Some(pos) = self.lanes.iter().position(|lane| lane.id == active) {
+            &mut self.lanes[pos]
+        } else {
+            &mut self.lanes[0]
+        }
+    }
+}
 
 fn status_color(state: &str, waiting: bool, p: Palette) -> Hsla {
     if waiting {
@@ -27,17 +107,93 @@ fn status_label(state: &str, waiting: bool) -> String {
 }
 
 impl Desktop {
-    pub(super) fn watch_anchor(&self, key: &'static str) -> AnyElement {
-        let anchors = self.ui.anchors.clone();
-        canvas(
-            move |bounds, _, _| {
-                anchors.borrow_mut().insert(key.into(), bounds);
-            },
-            |_, _, _, _| {},
-        )
-        .absolute()
-        .inset_0()
-        .into_any_element()
+    pub(super) fn watch_anchor(&self, key: impl Into<SharedString>) -> AnyElement {
+        layout::anchor_probe(key, self.ui.anchors.clone()).into_any_element()
+    }
+
+    pub(in crate::frontend) fn watch_command(
+        &mut self,
+        command: Command,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            Command::Show(id) => {
+                let lane = self.watch_ui.active_lane_mut();
+                lane.reading = id;
+                if lane.overlay == Some(id) {
+                    lane.overlay = None;
+                }
+            }
+            Command::AddLane(id) => {
+                if let Some(existing) = self.watch_ui.lanes.iter().find(|l| l.reading == id) {
+                    self.watch_ui.active = existing.id;
+                } else if self.watch_ui.lanes.len() < MAX_LANES {
+                    let lane_id = self.watch_ui.next_id;
+                    self.watch_ui.next_id += 1;
+                    self.watch_ui.lanes.push(WatchLane {
+                        id: lane_id,
+                        reading: id,
+                        overlay: None,
+                    });
+                    self.watch_ui.active = lane_id;
+                }
+            }
+            Command::SetReading(lane_id, id) => {
+                if let Some(lane) = self.watch_ui.lanes.iter_mut().find(|l| l.id == lane_id) {
+                    lane.reading = id;
+                    if lane.overlay == Some(id) {
+                        lane.overlay = None;
+                    }
+                    self.watch_ui.active = lane_id;
+                }
+            }
+            Command::SetOverlay(lane_id, id) => {
+                if let Some(lane) = self.watch_ui.lanes.iter_mut().find(|l| l.id == lane_id) {
+                    let valid = id.filter(|&oid| {
+                        oid != lane.reading
+                            && metrics::metric_by_id(oid).is_some_and(|m| !m.is_pair())
+                    });
+                    lane.overlay = valid;
+                    self.watch_ui.active = lane_id;
+                }
+            }
+            Command::ToggleOverlay(id) => {
+                if metrics::metric_by_id(id).is_some_and(|m| !m.is_pair()) {
+                    let lane = self.watch_ui.active_lane_mut();
+                    if lane.reading != id {
+                        lane.overlay = if lane.overlay == Some(id) {
+                            None
+                        } else {
+                            Some(id)
+                        };
+                    }
+                }
+            }
+            Command::RemoveLane(lane_id) => {
+                if self.watch_ui.lanes.len() > 1 {
+                    self.watch_ui.lanes.retain(|l| l.id != lane_id);
+                    if !self
+                        .watch_ui
+                        .lanes
+                        .iter()
+                        .any(|l| l.id == self.watch_ui.active)
+                    {
+                        self.watch_ui.active = self.watch_ui.lanes[0].id;
+                    }
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    pub(in crate::frontend) fn watch_key(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
+        if key == "escape" && self.watch_ui.pin.is_some() {
+            self.watch_ui.pin = None;
+            cx.notify();
+            return true;
+        }
+        false
     }
 
     pub(super) fn load_watch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -95,10 +251,10 @@ impl Desktop {
             .overflow_y_scroll()
             .pl(px(12.))
             .pr(px(12. + scrollbar::SIZE))
-            .pb(px(16.))
+            .pb(px(12.))
             .flex()
             .flex_col()
-            .gap(px(12.))
+            .gap(px(10.))
             .line_height(relative(1.4))
             .child(content)
             .child(scrollbar::scrollbar("watch-scrollbar", &scroll, p.dark))
@@ -109,10 +265,10 @@ impl Desktop {
         let p = self.palette;
         div()
             .flex_none()
-            .p(px(16.))
+            .p(px(14.))
             .flex()
             .flex_col()
-            .gap(px(12.))
+            .gap(px(10.))
             .border_1()
             .border_color(p.stroke)
             .rounded(px(8.))
@@ -237,52 +393,6 @@ impl Desktop {
             .into_any_element()
     }
 
-    fn watch_metric_tile(
-        &self,
-        title: String,
-        swatch: Option<Hsla>,
-        value: String,
-        sub: String,
-        cx: &App,
-    ) -> AnyElement {
-        let p = self.palette;
-        div()
-            .flex_1()
-            .min_w(px(148.))
-            .flex()
-            .flex_col()
-            .gap(px(3.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_size(theme::font(12.))
-                    .text_color(p.muted)
-                    .when_some(swatch, |d, color| {
-                        d.child(div().size(px(8.)).rounded(px(2.)).bg(color).flex_shrink_0())
-                    })
-                    .child(title),
-            )
-            .child(
-                div()
-                    .font_family(theme::display_font(cx))
-                    .text_size(theme::font(20.))
-                    .font_weight(theme::LABEL_WEIGHT)
-                    .font_features(theme::tabular())
-                    .text_color(p.ink)
-                    .child(value),
-            )
-            .child(
-                div()
-                    .text_size(theme::font(12.))
-                    .font_features(theme::tabular())
-                    .text_color(p.muted)
-                    .child(sub),
-            )
-            .into_any_element()
-    }
-
     fn watch_body(&self, watch: &Value, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = self.palette;
         let state = text(watch, "state");
@@ -291,42 +401,16 @@ impl Desktop {
         let waiting = has_program && active && watch["liveRuns"] == 0;
         let points = values(&watch["points"]);
         let runs = values(&watch["runs"]);
-        let start = points
-            .first()
-            .map(|point| number(point, "ts"))
-            .unwrap_or(0.);
-        let last_ts = points
-            .last()
-            .map(|point| number(point, "ts"))
-            .unwrap_or(start);
-        let end = last_ts + argus_core::watch::SAMPLE_MS as f64;
-        let latest_reading = points
-            .iter()
-            .rev()
-            .find(|point| point["memory"].is_number() || point["commit"].is_number());
-        let peak_of = |field: &str| {
-            points
-                .iter()
-                .filter_map(|point| point[field].as_f64())
-                .reduce(f64::max)
-        };
-        let memory_peak = peak_of("memory");
-        let commit_peak = peak_of("commit");
-        let format_opt = |value: Option<f64>| {
-            value
-                .map(theme::memory)
-                .unwrap_or_else(|| label("format.missing"))
-        };
-        let latest_memory = format_opt(latest_reading.and_then(|point| point["memory"].as_f64()));
-        let latest_commit = format_opt(latest_reading.and_then(|point| point["commit"].as_f64()));
+        let total_runs = watch["totalRuns"].as_u64().unwrap_or(runs.len() as u64);
+        let live_runs = watch["liveRuns"].as_u64().unwrap_or(0);
 
-        // Card 1: target identity, status pill, actions, key metrics, and notices.
-        let mut head_meta = div()
+        // 1. Compact target header bar (target identity, status pill, path, stop/delete).
+        let mut head_left = div()
             .flex_1()
             .min_w_0()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(px(3.))
             .child(
                 div()
                     .flex()
@@ -336,7 +420,7 @@ impl Desktop {
                     .child(
                         div()
                             .font_family(theme::display_font(cx))
-                            .text_size(theme::font(18.))
+                            .text_size(theme::font(16.))
                             .font_weight(theme::LABEL_WEIGHT)
                             .text_color(p.ink)
                             .child(tr!(
@@ -345,27 +429,34 @@ impl Desktop {
                                 pid = watch["pid"]
                             )),
                     )
-                    .child(self.watch_status_pill(state, waiting)),
+                    .child(self.watch_status_pill(state, waiting))
+                    .child(
+                        div()
+                            .text_size(theme::font(12.))
+                            .font_features(theme::tabular())
+                            .text_color(p.muted)
+                            .child(tr!("history.watch.liveCount", count = live_runs)),
+                    ),
             );
         if has_program {
             let path = text(&watch["program"], "displayPath");
             if !path.is_empty() {
-                head_meta = head_meta.child(
+                head_left = head_left.child(
                     div()
                         .min_w_0()
                         .font_family(theme::mono_font(cx))
-                        .text_size(theme::font(12.))
+                        .text_size(theme::font(11.5))
                         .text_color(p.muted)
                         .child(path.to_owned()),
                 );
             }
         }
-        let actions = div()
+        let head_actions = div()
             .flex_none()
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(8.))
+            .gap(px(6.))
             .child(
                 self.btn_small(
                     "watch-stop",
@@ -391,78 +482,43 @@ impl Desktop {
                     this.preference("watchProcess", json!({"op":"delete"}), window, cx)
                 })),
             );
-        let total_runs = watch["totalRuns"].as_u64().unwrap_or(runs.len() as u64);
-        let live_runs = watch["liveRuns"].as_u64().unwrap_or(0);
-        let total_points = watch["totalPoints"].as_u64().unwrap_or(points.len() as u64);
-        let metrics = div()
-            .flex()
-            .flex_wrap()
-            .gap(px(16.))
-            .child(self.watch_metric_tile(
-                label("history.watch.metric.memory"),
-                Some(p.memory),
-                latest_memory.clone(),
-                tr!("history.watch.peak", value = format_opt(memory_peak)),
-                cx,
-            ))
-            .child(self.watch_metric_tile(
-                label("history.watch.metric.commit"),
-                Some(p.cpu),
-                latest_commit.clone(),
-                tr!("history.watch.peak", value = format_opt(commit_peak)),
-                cx,
-            ))
-            .child(self.watch_metric_tile(
-                label("history.watch.metric.runs"),
-                None,
-                total_runs.to_string(),
-                tr!("history.watch.liveCount", count = live_runs),
-                cx,
-            ))
-            .child(self.watch_metric_tile(
-                label("history.watch.metric.points"),
-                None,
-                total_points.to_string(),
-                date_time(number(watch, "createTime")),
-                cx,
-            ));
 
-        let mut overview = self
+        let mut header_card = self
             .watch_surface()
+            .py(px(10.))
+            .px(px(14.))
+            .gap(px(8.))
             .child(
                 div()
                     .flex()
                     .flex_wrap()
-                    .items_start()
+                    .items_center()
                     .justify_between()
-                    .gap(px(12.))
-                    .child(head_meta)
-                    .child(actions),
-            )
-            .child(div().h(px(1.)).bg(p.stroke))
-            .child(metrics);
-
-        let mut banners: Vec<String> = Vec::new();
+                    .gap(px(10.))
+                    .child(head_left)
+                    .child(head_actions),
+            );
+        let mut notices: Vec<String> = Vec::new();
         if watch["damaged"] == true {
-            banners.push(label("history.watch.damaged"));
+            notices.push(label("history.watch.damaged"));
         }
         if number(watch, "unconfirmed") > 0. {
-            banners.push(tr!(
+            notices.push(tr!(
                 "history.watch.unconfirmed",
                 count = watch["unconfirmed"]
             ));
         }
         if let Some(message) = self.data.get("watchError").and_then(Value::as_str) {
-            banners.push(message.to_owned());
+            notices.push(message.to_owned());
         }
-        for notice in banners {
-            overview = overview.child(
+        for notice in notices {
+            header_card = header_card.child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(8.))
                     .px(px(10.))
-                    .py(px(7.))
+                    .py(px(6.))
                     .rounded(px(6.))
                     .border_1()
                     .border_color(p.stroke)
@@ -474,222 +530,11 @@ impl Desktop {
             );
         }
 
-        // Card 2: memory & commit curve with pagination controls.
-        let names = [
-            label("history.watch.metric.memory"),
-            label("history.watch.metric.commit"),
-        ];
-        let latest = points.last();
-        let key = charts::hash_of((
-            watch["pid"].as_u64(),
-            watch["createTime"].as_i64(),
-            points.len(),
-            end.to_bits(),
-            latest.and_then(|point| point["memory"].as_u64()),
-            latest.and_then(|point| point["commit"].as_u64()),
-            p.dark,
-            &names,
-        ));
-        let cached = window.use_keyed_state("process-watch-series", cx, |_, _| {
-            None::<(u64, Arc<Vec<charts::Series>>, f64)>
-        });
-        let plot = cached
-            .read(cx)
-            .as_ref()
-            .filter(|(stored, _, _)| *stored == key)
-            .cloned();
-        let (_, series, maximum) = plot.unwrap_or_else(|| {
-            let mut maximum = 1024. * 1024.;
-            let mut series = Vec::new();
-            for ((field, color, fill), name) in
-                [("memory", p.memory, 0.18_f32), ("commit", p.cpu, 0.0_f32)]
-                    .into_iter()
-                    .zip(&names)
-            {
-                let data = points
-                    .iter()
-                    .map(|point| (number(point, "ts"), point[field].as_f64()))
-                    .collect::<Vec<_>>();
-                maximum = data
-                    .iter()
-                    .filter_map(|(_, value)| *value)
-                    .fold(maximum, f64::max);
-                series.push(
-                    charts::Series::new(name.clone(), data, color, charts::MetricFormat::Gigabytes)
-                        .fill(fill)
-                        .source(charts::hash_of((key, field))),
-                );
-            }
-            let plot = (key, Arc::new(series), maximum);
-            cached.update(cx, |cache, _| *cache = Some(plot.clone()));
-            plot
-        });
-        let chart_top = maximum * 1.1;
-        let legend = div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap_x(px(16.))
-            .gap_y(px(4.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_size(theme::font(13.))
-                    .child(div().size(px(8.)).rounded(px(2.)).bg(p.memory))
-                    .child(div().text_color(p.muted).child(names[0].clone()))
-                    .child(
-                        div()
-                            .font_weight(theme::LABEL_WEIGHT)
-                            .font_features(theme::tabular())
-                            .text_color(p.ink)
-                            .child(latest_memory),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_size(theme::font(13.))
-                    .child(div().size(px(8.)).rounded(px(2.)).bg(p.cpu))
-                    .child(div().text_color(p.muted).child(names[1].clone()))
-                    .child(
-                        div()
-                            .font_weight(theme::LABEL_WEIGHT)
-                            .font_features(theme::tabular())
-                            .text_color(p.ink)
-                            .child(latest_commit),
-                    ),
-            );
-        let point_paging = div()
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(px(6.))
-            .child(
-                self.btn_small(
-                    "watch-earlier",
-                    label("history.watch.earlier"),
-                    Some("ChevronLeft"),
-                    Tone::Plain,
-                )
-                .child(self.watch_anchor("watch-earlier"))
-                .disabled(watch["hasEarlier"] != true)
-                .on_click(cx.listener({
-                    let before = watch["firstSequence"].clone();
-                    move |this, _, window, cx| {
-                        this.preference(
-                            "watchProcess",
-                            json!({"op":"page","before":before}),
-                            window,
-                            cx,
-                        )
-                    }
-                })),
-            )
-            .child(
-                self.btn_small(
-                    "watch-latest",
-                    label("history.watch.latest"),
-                    Some("ArrowRightIcon"),
-                    Tone::Plain,
-                )
-                .child(self.watch_anchor("watch-latest"))
-                .disabled(watch["hasLater"] != true)
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.preference(
-                        "watchProcess",
-                        json!({"op":"page","before":null}),
-                        window,
-                        cx,
-                    )
-                })),
-            );
-        let mut chart_card = self.watch_surface().gap(px(8.)).child(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .justify_between()
-                .gap(px(8.))
-                .child(legend)
-                .child(point_paging),
-        );
-        if !points.is_empty() {
-            chart_card = chart_card
-                .child(
-                    div()
-                        .flex()
-                        .justify_end()
-                        .text_size(theme::font(11.))
-                        .font_features(theme::tabular())
-                        .text_color(p.faint)
-                        .child(theme::memory(chart_top)),
-                )
-                .child(
-                    div()
-                        .h(px(260.))
-                        .border_1()
-                        .border_color(p.stroke)
-                        .rounded(px(6.))
-                        .bg(p.chart_surface)
-                        .child(charts::TimePlot {
-                            id: "process-watch-memory".into(),
-                            series,
-                            start,
-                            end,
-                            max: chart_top,
-                            min: 0.,
-                            interactive: true,
-                            grid: true,
-                            fill: true,
-                            background_separate: false,
-                            smooth: false,
-                            ticks: None,
-                            geometry_start: start,
-                            measured_width: Rc::new(Cell::new(1.)),
-                            live_clock: None,
-                            image_surface: Default::default(),
-                            dash_phases: Default::default(),
-                            rescale: Default::default(),
-                            readout: Default::default(),
-                            captions: None,
-                            redraw_alone: false,
-                            raster_span: None,
-                            corner: 0.,
-                        }),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .justify_between()
-                        .gap(px(8.))
-                        .text_size(theme::font(11.))
-                        .font_features(theme::tabular())
-                        .text_color(p.faint)
-                        .child(date_time(start))
-                        .child(date_time(last_ts)),
-                );
-        } else {
-            chart_card = chart_card.child(
-                div()
-                    .h(px(180.))
-                    .border_1()
-                    .border_color(p.stroke)
-                    .rounded(px(6.))
-                    .bg(p.chart_surface)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_size(theme::font(13.))
-                    .text_color(p.muted)
-                    .child(label("history.watch.waitingFirst")),
-            );
-        }
+        // 2. History-style reading tabs bar + 3. Multi-lane dual-axis chart card.
+        let reading_bar = self.watch_reading_bar(points, window, cx);
+        let chart_card = self.watch_chart_card(watch, points, window, cx);
 
-        // Card 3: launch selector, pagination, and clickable launch list.
+        // 4. Lower panel: launches list & selector (styled like history's lower table card).
         let options = runs
             .iter()
             .map(|run| {
@@ -713,8 +558,8 @@ impl Desktop {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(8.))
-            .child(div().w(px(280.)).max_w_full().child(self.select(
+            .gap(px(6.))
+            .child(div().w(px(260.)).max_w_full().child(self.select(
                 "watch-run",
                 label("history.watch.chooseRun"),
                 options,
@@ -759,7 +604,7 @@ impl Desktop {
                 })),
             );
         let mut launches_card =
-            self.watch_surface().gap(px(10.)).child(
+            self.watch_surface().gap(px(8.)).child(
                 div()
                     .flex()
                     .flex_wrap()
@@ -775,7 +620,7 @@ impl Desktop {
                             .child(
                                 div()
                                     .font_weight(theme::LABEL_WEIGHT)
-                                    .text_size(theme::font(14.))
+                                    .text_size(theme::font(13.))
                                     .text_color(p.ink)
                                     .child(label("history.watch.launches")),
                             )
@@ -791,8 +636,6 @@ impl Desktop {
                     .child(run_controls),
             );
         if !runs.is_empty() {
-            // Show newest launches first, capped so the page stays compact; ensure
-            // the currently selected launch is always present in the list.
             let mut visible_indices: Vec<usize> =
                 (0..runs.len()).rev().take(VISIBLE_RUN_ROWS).collect();
             if let Some(sel) = selected
@@ -800,7 +643,7 @@ impl Desktop {
             {
                 visible_indices.push(sel);
             }
-            let mut list = div().flex().flex_col().gap(px(4.));
+            let mut list = div().flex().flex_col().gap(px(3.));
             for index in visible_indices {
                 let run = &runs[index];
                 let is_selected = selected == Some(index);
@@ -816,8 +659,8 @@ impl Desktop {
                     .justify_between()
                     .gap(px(10.))
                     .px(px(10.))
-                    .py(px(7.))
-                    .rounded(px(6.))
+                    .py(px(6.))
+                    .rounded(px(5.))
                     .border_1()
                     .border_color(if is_selected {
                         p.accent.opacity(0.45)
@@ -827,7 +670,7 @@ impl Desktop {
                     .bg(if is_selected {
                         p.accent.opacity(0.1)
                     } else {
-                        p.control.opacity(0.5)
+                        p.control.opacity(0.45)
                     })
                     .cursor_pointer()
                     .when(!is_selected, |d| d.hover(move |s| s.bg(p.hover)))
@@ -846,7 +689,7 @@ impl Desktop {
                                         FontWeight::NORMAL
                                     })
                                     .font_features(theme::tabular())
-                                    .text_size(theme::font(13.))
+                                    .text_size(theme::font(12.5))
                                     .text_color(p.ink)
                                     .child(format!("PID {}", run["pid"])),
                             )
@@ -891,12 +734,13 @@ impl Desktop {
         let mut stack = div()
             .flex()
             .flex_col()
-            .gap(px(12.))
-            .child(overview)
+            .gap(px(10.))
+            .child(header_card)
+            .child(reading_bar)
             .child(chart_card)
             .child(launches_card);
 
-        // Card 4: recent status events (gaps, exit, stop, interruption, limit).
+        // Status events card (gaps, exit, stop, interruption, limit).
         let events: Vec<_> = points
             .iter()
             .filter(|point| text(point, "state") != "recording")
@@ -907,7 +751,7 @@ impl Desktop {
             .rev()
             .collect();
         if !events.is_empty() {
-            let mut event_list = div().flex().flex_col().gap(px(6.));
+            let mut event_list = div().flex().flex_col().gap(px(5.));
             for point in events {
                 let point_state = text(point, "state");
                 let dot = status_color(point_state, false, p);
@@ -934,7 +778,7 @@ impl Desktop {
             }
             stack = stack.child(
                 self.watch_surface()
-                    .gap(px(8.))
+                    .gap(px(6.))
                     .child(
                         div()
                             .font_weight(theme::LABEL_WEIGHT)

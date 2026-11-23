@@ -154,16 +154,7 @@ impl ProgramWatch {
     }
 
     fn terminal(&mut self, key: Key, state: WatchState, ts: i64) -> Result<(), WatchError> {
-        self.store.push(
-            key.0,
-            key.1,
-            WatchPoint {
-                ts,
-                memory: None,
-                commit: None,
-                state,
-            },
-        )
+        self.store.push(key.0, key.1, WatchPoint::marker(ts, state))
     }
 
     pub fn stop(&mut self, state: WatchState, ts: i64) -> Result<(), WatchError> {
@@ -303,24 +294,33 @@ impl ProgramWatch {
             .iter()
             .map(|p| ((p.pid, p.create_time), p))
             .collect();
+        let net_enabled = snapshot.process_network;
         for key in self.handles.keys() {
             let row = rows
                 .get(key)
                 .filter(|p| !p.stale && !p.sample_reused && !p.counters_pending);
-            self.store.push(
-                key.0,
-                key.1,
-                WatchPoint {
+            let point = match row {
+                Some(p) => WatchPoint {
                     ts: snapshot.timestamp,
-                    memory: row.map(|p| p.private_ws),
-                    commit: row.map(|p| p.commit),
-                    state: if row.is_some() {
-                        WatchState::Recording
-                    } else {
-                        WatchState::Gap
-                    },
+                    memory: Some(p.private_ws),
+                    commit: Some(p.commit),
+                    working_set: Some(p.working_set),
+                    cpu: p.cpu.is_finite().then_some(p.cpu.max(0.)),
+                    gpu: p.gpu.is_finite().then_some(p.gpu.max(0.)),
+                    gpu_memory: p.gpu_dedicated,
+                    disk_read: p.disk_read,
+                    disk_write: p.disk_write,
+                    io_read: Some(p.io_read),
+                    io_write: Some(p.io_write),
+                    net_received: net_enabled.then_some(p.net_received),
+                    net_sent: net_enabled.then_some(p.net_sent),
+                    threads: Some(p.threads),
+                    handles: Some(p.handles),
+                    state: WatchState::Recording,
                 },
-            )?;
+                None => WatchPoint::marker(snapshot.timestamp, WatchState::Gap),
+            };
+            self.store.push(key.0, key.1, point)?;
         }
         self.store.prune(snapshot.timestamp)?;
         self.store.flush()?;
@@ -396,12 +396,7 @@ impl ProgramWatch {
                 && entry.point.ts.saturating_sub(previous.ts) > SAMPLE_MS * 2
                 && previous.memory.is_some()
             {
-                points.push(WatchPoint {
-                    ts: previous.ts + SAMPLE_MS,
-                    memory: None,
-                    commit: None,
-                    state: WatchState::Gap,
-                });
+                points.push(WatchPoint::marker(previous.ts + SAMPLE_MS, WatchState::Gap));
             }
             points.push(entry.point.clone());
         }
@@ -474,10 +469,9 @@ mod tests {
                     17,
                     100,
                     WatchPoint {
-                        ts: start + i * SAMPLE_MS,
                         memory: Some(i as u64),
                         commit: Some(0),
-                        state: WatchState::Recording,
+                        ..WatchPoint::marker(start + i * SAMPLE_MS, WatchState::Recording)
                     },
                 )
                 .unwrap();
@@ -488,10 +482,9 @@ mod tests {
                     pid,
                     i64::from(pid),
                     WatchPoint {
-                        ts: start + 2000 * SAMPLE_MS,
                         memory: Some(0),
                         commit: Some(0),
-                        state: WatchState::Recording,
+                        ..WatchPoint::marker(start + 2000 * SAMPLE_MS, WatchState::Recording)
                     },
                 )
                 .unwrap();

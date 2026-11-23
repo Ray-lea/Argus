@@ -56,6 +56,7 @@
     "peak": "Spitze {value}",
     "waitingFirst": "Warten auf den ersten Messpunkt…",
     "pointCount": "{count} Pkt.",
+    "tabTitle": "Klicken zum Anzeigen in der aktiven Spur; Rechtsklick zum Überlagern",
     "unconfirmed": "Identität von {count} gleichnamigen Instanzen nicht bestätigt; erneuter Versuch einmal pro Minute.",
     "events": "Statusereignisse"
   },
