@@ -215,6 +215,23 @@ impl ProgramWatch {
         if self.last_ts.is_some_and(|ts| snapshot.timestamp < ts) {
             return self.stop(WatchState::Interrupted, self.last_ts.unwrap());
         }
+        let terminal: Vec<_> = self
+            .handles
+            .iter()
+            .filter_map(
+                |(key, handle)| match unsafe { WaitForSingleObject(handle.0, 0) } {
+                    WAIT_TIMEOUT => None,
+                    WAIT_OBJECT_0 => Some((*key, WatchState::Exited)),
+                    _ => Some((*key, WatchState::Interrupted)),
+                },
+            )
+            .collect();
+        let mut ended_state = None;
+        for (key, state) in terminal {
+            self.terminal(key, state, snapshot.timestamp)?;
+            self.handles.remove(&key);
+            ended_state = Some(state);
+        }
         if let Some(target_program) = self.store.meta.program.clone() {
             let present: HashSet<_> = snapshot
                 .processes
@@ -263,23 +280,6 @@ impl ProgramWatch {
                 }
                 self.handles.insert(key, instance.into_handle());
             }
-        }
-        let terminal: Vec<_> = self
-            .handles
-            .iter()
-            .filter_map(
-                |(key, handle)| match unsafe { WaitForSingleObject(handle.0, 0) } {
-                    WAIT_TIMEOUT => None,
-                    WAIT_OBJECT_0 => Some((*key, WatchState::Exited)),
-                    _ => Some((*key, WatchState::Interrupted)),
-                },
-            )
-            .collect();
-        let mut ended_state = None;
-        for (key, state) in terminal {
-            self.terminal(key, state, snapshot.timestamp)?;
-            self.handles.remove(&key);
-            ended_state = Some(state);
         }
         if self.store.meta.program.is_none() && self.handles.is_empty() {
             self.active = false;
@@ -615,6 +615,74 @@ mod tests {
         drop(watch);
         std::fs::remove_file(dir.join(store::FILE_NAME)).unwrap();
         std::fs::remove_dir(dir).unwrap();
+    }
+
+    #[test]
+    fn full_watch_reaps_exits_before_admitting_a_confirmed_launch() {
+        use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess};
+        let pid = std::process::id();
+        let (mut created, mut exit, mut kernel, mut user) = Default::default();
+        unsafe {
+            GetProcessTimes(
+                GetCurrentProcess(),
+                &mut created,
+                &mut exit,
+                &mut kernel,
+                &mut user,
+            )
+        }
+        .unwrap();
+        let birth = ticks_to_unix_ms(filetime_ticks(created));
+        let name = std::env::current_exe()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        for exited in [true, false] {
+            let dir = std::env::temp_dir().join(format!("argus-watch-cap-{pid}-{exited}"));
+            let mut w = ProgramWatch::start(&dir, pid, birth, name.clone()).unwrap();
+            w.handles.clear();
+            w.seen.clear();
+            // Waitable events supply 512 independent liveness states. The new
+            // instance still takes the production PID, birth and image checks.
+            for i in 1..=MAX_ACTIVE as u32 {
+                let h = unsafe { CreateEventW(None, true, exited && i == 1, None) }.unwrap();
+                w.handles.insert((i, 1), OwnedHandle(h));
+            }
+            let ts = super::super::now_ms();
+            w.record(&Snapshot {
+                seq: 1,
+                timestamp: ts,
+                system: Default::default(),
+                hardware: Default::default(),
+                sessions: vec![],
+                leaks: vec![],
+                process_network: false,
+                processes: vec![crate::ProcessRow {
+                    pid,
+                    create_time: birth,
+                    name: name.clone().into(),
+                    ..Default::default()
+                }],
+            })
+            .unwrap();
+            if exited {
+                assert!(w.active && w.handles.contains_key(&(pid, birth)));
+                assert_eq!(w.handles.len(), MAX_ACTIVE);
+                let first = w.store.entries.front().unwrap();
+                assert_eq!(
+                    (first.pid, first.created, first.point.ts, first.point.state),
+                    (1, 1, ts, WatchState::Exited)
+                );
+            } else {
+                assert!(!w.active);
+                assert_eq!(w.state, WatchState::Limit);
+                assert_eq!(w.store.entries.len(), MAX_ACTIVE);
+            }
+            drop(w);
+            std::fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     struct Helper(Child);
