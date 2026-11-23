@@ -22,20 +22,24 @@ use std::{
 /// How many of `MIGRATIONS` have run on this profile.
 const MIGRATED: &str = "migrations";
 
+type Change = (String, Option<Value>);
+type Migration = fn(&BTreeMap<String, Value>) -> Vec<Change>;
+
 /// Steps that bring preferences an earlier version saved up to date, in
 /// order; each runs once per profile, and the count that ran is saved
 /// (`MIGRATED`), so a value chosen afterwards stays. They are for saved
 /// values that must change as well: a choice that lost its meaning, or a
 /// value an earlier version saved but never restored. Only append: a step's
 /// place is its number.
-const MIGRATIONS: [fn(&mut Prefs); 1] = [
+const MIGRATIONS: [Migration; 1] = [
     // Releases up to 0.5.0 saved the history range a click picked but always
     // opened the page at an hour. The page restores what is saved now, which
     // would open it at whatever was clicked last back then.
-    |prefs| prefs.remove("historyRange"),
+    |_| vec![("historyRange".into(), None)],
 ];
 
 pub struct Prefs {
+    writer: mpsc::Sender<Job>,
     path: PathBuf,
     values: BTreeMap<String, Value>,
     report: Sender<bool>,
@@ -48,6 +52,7 @@ impl Prefs {
         let values = argus_app::preferences::load(&path).unwrap_or_default();
         let (report, outcomes) = smol::channel::unbounded();
         Self {
+            writer: writer().clone(),
             path,
             values,
             report,
@@ -75,10 +80,20 @@ impl Prefs {
         if done >= MIGRATIONS.len() {
             return;
         }
+        let mut changes = Vec::new();
         for step in &MIGRATIONS[done..] {
-            step(self);
+            for (key, value) in step(&self.values) {
+                match &value {
+                    Some(v) => self.values.insert(key.clone(), v.clone()),
+                    None => self.values.remove(&key),
+                };
+                changes.push((key, value));
+            }
         }
-        self.set(MIGRATED, MIGRATIONS.len());
+        let count = Value::from(MIGRATIONS.len());
+        self.values.insert(MIGRATED.into(), count.clone());
+        changes.push((MIGRATED.into(), Some(count)));
+        self.write(changes);
     }
     pub fn set(&mut self, key: &str, value: impl serde::Serialize) {
         let Ok(value) = serde_json::to_value(value) else {
@@ -89,21 +104,12 @@ impl Prefs {
             return;
         }
         self.values.insert(key.into(), value.clone());
-        self.write(key, Some(value));
+        self.write(vec![(key.into(), Some(value))]);
     }
-    /// Forgets a preference: it reads as its default again.
-    pub fn remove(&mut self, key: &str) {
-        if self.values.remove(key).is_some() {
-            self.write(key, None);
-        }
-    }
-    fn write(&self, key: &str, value: Option<Value>) {
-        let _ = writer().send(Job::Set(
-            self.path.clone(),
-            key.into(),
-            value,
-            self.report.clone(),
-        ));
+    fn write(&self, changes: Vec<Change>) {
+        let _ = self
+            .writer
+            .send(Job::Set(self.path.clone(), changes, self.report.clone()));
     }
     /// The writer's outcomes, for the interface to take once: true for each
     /// write that reached the disk, false for each that failed.
@@ -121,7 +127,7 @@ impl Prefs {
 
 enum Job {
     /// A value to store, or none to remove the key.
-    Set(PathBuf, String, Option<Value>, Sender<bool>),
+    Set(PathBuf, Vec<Change>, Sender<bool>),
     Flush(mpsc::SyncSender<()>),
 }
 
@@ -146,7 +152,7 @@ fn writer() -> &'static mpsc::Sender<Job> {
                     let mut flushed = Vec::new();
                     for job in std::iter::once(job).chain(receiver.try_iter()) {
                         match job {
-                            Job::Set(path, key, value, report) => {
+                            Job::Set(path, changes, report) => {
                                 let index = match files.iter().position(|file| file.path == path) {
                                     Some(index) => index,
                                     None => {
@@ -159,7 +165,7 @@ fn writer() -> &'static mpsc::Sender<Job> {
                                     }
                                 };
                                 let file = &mut files[index];
-                                file.entries.push((key, value));
+                                file.entries.extend(changes);
                                 if !file.reports.iter().any(|r| r.same_channel(&report)) {
                                     file.reports.push(report);
                                 }
@@ -278,6 +284,44 @@ mod tests {
         assert_eq!(restored.get::<String>("netUnit", String::new()), "bits");
         assert_eq!(restored.get::<usize>(MIGRATED, 0), MIGRATIONS.len());
         assert!(argus_app::preferences::window(&file).is_some());
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn failed_migration_retries_all_changes_after_restart() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let file = path("migration-retry");
+        let original = br#"{"values":{"historyRange":"7d","unrelated":42}}"#;
+        std::fs::write(&file, original).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&file)
+            .unwrap();
+        let mut prefs = Prefs::load(file.clone());
+        let outcomes = prefs.outcomes().unwrap();
+        let (queue, pending) = mpsc::channel();
+        prefs.writer = queue;
+        prefs.migrate();
+        // Force the writer to take the first job by itself. Any separately
+        // queued completion marker would now succeed after the lock is released.
+        writer().send(pending.try_recv().unwrap()).unwrap();
+        flush(Duration::from_secs(5));
+        assert_eq!(outcomes.try_recv(), Ok(false));
+        drop(lock);
+        for job in pending.try_iter() {
+            writer().send(job).unwrap();
+        }
+        flush(Duration::from_secs(5));
+        assert!(outcomes.try_recv().is_err());
+        assert_eq!(std::fs::read(&file).unwrap(), original);
+        let mut restored = Prefs::load(file.clone());
+        restored.migrate();
+        flush(Duration::from_secs(5));
+        let saved = argus_app::preferences::load(&file).unwrap();
+        assert!(!saved.contains_key("historyRange"));
+        assert_eq!(saved[MIGRATED], MIGRATIONS.len());
+        assert_eq!(saved["unrelated"], 42);
         std::fs::remove_file(file).unwrap();
     }
 
