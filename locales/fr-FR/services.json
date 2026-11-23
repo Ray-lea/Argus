@@ -45,7 +45,8 @@
       "notFound": "Le service {name} est introuvable.",
       "refused": "Le service {name} ne peut pas être supprimé.",
       "serviceOutdated": "Accès refusé : impossible de supprimer le service {name}. La version du service privilégié est incompatible ; mettez le service à jour et réessayez.",
-      "generic": "Impossible de supprimer le service {name} : {error}"
+      "generic": "Impossible de supprimer le service {name} : {error}",
+      "accessDeniedPrivileged": "Windows a refusé la suppression du service « {name} ». Ce service est peut-être protégé par Windows ou par un logiciel de sécurité."
     }
   },
   "copied": {
@@ -63,15 +64,15 @@
   "manageHint": "La gestion de la plupart des services nécessite le service privilégié ou des droits d’administrateur.",
   "packaged": {
     "title": "Modifier le type de démarrage dans le registre ?",
-    "body": "Windows ne permet à personne de modifier le type de démarrage de « {name} », pas même aux administrateurs : le service appartient à un package d’application. Argus peut écrire « {type} » dans la clé de registre du service.\n\nWindows l’applique généralement tout de suite ; sinon, le tableau l’indique comme en attente jusqu’au prochain redémarrage. Une mise à jour de l’application peut rétablir la valeur d’origine.",
+    "body": "Windows a refusé de modifier le type de démarrage du service « {name} », installé par un package d’application. Argus peut enregistrer « {type} » dans la clé de registre du service.\n\nLa liste des services indique si un redémarrage de Windows est nécessaire. Une mise à jour de l’application peut rétablir le type de démarrage précédent.",
     "confirm": "Écrire dans le registre",
     "done": "Type de démarrage écrit dans le registre."
   },
   "error": {
-    "accessDenied": "Impossible de modifier le service {name} : accès refusé. Activez le service privilégié dans les Paramètres ou exécutez Argus en tant qu’administrateur. Les logiciels de sécurité peuvent protéger leurs propres services.",
+    "accessDenied": "Droits insuffisants pour modifier le service « {name} ». Activez le service privilégié dans les paramètres ou exécutez Argus en tant qu’administrateur.",
     "notFound": "Le service {name} est introuvable.",
     "refused": "Argus ne peut pas modifier le service {name}.",
     "serviceOutdated": "Impossible de modifier le service {name} : accès refusé. La version du service privilégié n’est pas compatible ; mettez le service à jour et réessayez.",
-    "accessDeniedPrivileged": "Impossible de modifier le service {name} : accès refusé même avec les droits d’administrateur. Le service est probablement protégé par son propre logiciel, par exemple l’autoprotection d’un antivirus."
+    "accessDeniedPrivileged": "Windows a refusé la modification du service « {name} ». Ce service est peut-être protégé par Windows ou par un logiciel de sécurité."
   }
 }

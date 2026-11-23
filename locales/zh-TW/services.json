@@ -45,7 +45,8 @@
       "notFound": "找不到服務 {name}。",
       "refused": "無法刪除服務 {name}。",
       "serviceOutdated": "沒有權限刪除服務 {name}。特殊權限服務版本不相容，請更新服務後重試。",
-      "generic": "無法刪除服務 {name}：{error}"
+      "generic": "無法刪除服務 {name}：{error}",
+      "accessDeniedPrivileged": "Windows 拒絕刪除服務「{name}」。該服務可能受到系統或安全性軟體保護。"
     }
   },
   "copied": {
@@ -63,15 +64,15 @@
   "manageHint": "管理大多數服務需要特殊權限服務或系統管理員權限。",
   "packaged": {
     "title": "透過登錄更改啟動類型？",
-    "body": "「{name}」屬於應用程式套件，Windows 不允許任何人（包括系統管理員）更改其啟動類型。Argus 可以改為將「{type}」寫入該服務的登錄機碼。\n\nWindows 通常會立即套用；若未套用，表格會將其標示為待生效，直到下次重新啟動。應用程式更新可能會還原原本的值。",
+    "body": "Windows 拒絕變更應用程式套件服務「{name}」的啟動類型。可將「{type}」寫入該服務的登錄機碼。\n\n若須重新啟動 Windows 才能生效，服務清單會加以標示。更新應用程式後，啟動類型可能會還原。",
     "confirm": "寫入登錄",
     "done": "啟動類型已寫入登錄。"
   },
   "error": {
-    "accessDenied": "無法變更服務 {name}：存取遭拒。請在設定中啟用特權服務，或以系統管理員身分執行 Argus。安全性軟體可能會保護自己的服務。",
+    "accessDenied": "權限不足，無法變更服務「{name}」。可在設定中啟用特殊權限服務，或以系統管理員身分執行 Argus。",
     "notFound": "找不到服務 {name}。",
     "refused": "Argus 無法變更服務 {name}。",
     "serviceOutdated": "無法變更服務 {name}：存取遭拒。特權服務版本不相容，請更新服務後再試一次。",
-    "accessDeniedPrivileged": "無法變更服務 {name}：即使具備系統管理員權限，存取仍遭拒。該服務可能受其自身軟體保護，例如防毒軟體的自我保護功能。"
+    "accessDeniedPrivileged": "Windows 拒絕變更服務「{name}」。該服務可能受到系統或安全性軟體保護。"
   }
 }

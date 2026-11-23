@@ -45,7 +45,8 @@
       "notFound": "No se encontró el servicio {name}.",
       "refused": "No se puede eliminar el servicio {name}.",
       "serviceOutdated": "Acceso denegado: no se pudo eliminar el servicio {name}. La versión del servicio privilegiado no es compatible; actualice el servicio y vuelva a intentarlo.",
-      "generic": "No se pudo eliminar el servicio {name}: {error}"
+      "generic": "No se pudo eliminar el servicio {name}: {error}",
+      "accessDeniedPrivileged": "Windows ha rechazado la eliminación del servicio «{name}». Es posible que Windows o un programa de seguridad protejan este servicio."
     }
   },
   "copied": {
@@ -63,15 +64,15 @@
   "manageHint": "Para gestionar la mayoría de los servicios se requiere el servicio privilegiado o permisos de administrador.",
   "packaged": {
     "title": "¿Cambiar el tipo de inicio en el registro?",
-    "body": "Windows no permite a nadie cambiar el tipo de inicio de «{name}», ni siquiera a los administradores: el servicio pertenece a un paquete de aplicación. Argus puede escribir «{type}» en la clave de registro del servicio.\n\nWindows suele aplicarlo al momento; si no, la tabla lo marca como pendiente hasta el próximo reinicio. Una actualización de la aplicación puede restaurar el valor original.",
+    "body": "Windows ha rechazado el cambio de tipo de inicio del servicio «{name}», instalado por un paquete de aplicación. Argus puede guardar «{type}» en la clave del registro del servicio.\n\nLa lista de servicios indica si es necesario reiniciar Windows. Una actualización de la aplicación puede restaurar el tipo de inicio anterior.",
     "confirm": "Escribir en el registro",
     "done": "Tipo de inicio escrito en el registro."
   },
   "error": {
-    "accessDenied": "No se pudo cambiar el servicio {name}: acceso denegado. Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador. El software de seguridad puede proteger sus propios servicios.",
+    "accessDenied": "Permisos insuficientes para modificar el servicio «{name}». Activa el servicio privilegiado en Configuración o ejecuta Argus como administrador.",
     "notFound": "No se encontró el servicio {name}.",
     "refused": "Argus no puede cambiar el servicio {name}.",
     "serviceOutdated": "No se pudo cambiar el servicio {name}: acceso denegado. La versión del servicio privilegiado no es compatible; actualiza el servicio e inténtalo de nuevo.",
-    "accessDeniedPrivileged": "No se pudo cambiar el servicio {name}: acceso denegado incluso con permisos de administrador. Probablemente el servicio esté protegido por su propio software, como la autoprotección de un antivirus."
+    "accessDeniedPrivileged": "Windows ha rechazado el cambio en el servicio «{name}». Es posible que Windows o un programa de seguridad protejan este servicio."
   }
 }

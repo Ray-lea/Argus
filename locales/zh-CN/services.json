@@ -45,7 +45,8 @@
       "notFound": "找不到服务 {name}。",
       "refused": "不能删除服务 {name}。",
       "serviceOutdated": "没有权限删除服务 {name}。特权服务版本不兼容，请更新服务后重试。",
-      "generic": "无法删除服务 {name}：{error}"
+      "generic": "无法删除服务 {name}：{error}",
+      "accessDeniedPrivileged": "Windows 拒绝删除服务“{name}”。该服务可能受系统或安全软件保护。"
     }
   },
   "copied": {
@@ -63,15 +64,15 @@
   "manageHint": "管理多数服务需要特权服务或管理员权限。",
   "packaged": {
     "title": "通过注册表更改启动类型？",
-    "body": "“{name}”属于应用包，Windows 不允许任何人（包括管理员）更改其启动类型。Argus 可以改为将“{type}”写入该服务的注册表项。\n\nWindows 通常会立即应用；若未应用，表格会将其标为待生效，直到下次重启。应用更新可能会恢复原来的值。",
+    "body": "Windows 拒绝了对应用包服务“{name}”启动类型的更改。可将“{type}”写入该服务的注册表项。\n\n如果需要重新启动 Windows 才能生效，服务列表会标注。更新应用后，启动类型可能恢复为原值。",
     "confirm": "写入注册表",
     "done": "启动类型已写入注册表。"
   },
   "error": {
-    "accessDenied": "无法更改服务 {name}：访问被拒绝。请在设置中启用特权服务，或以管理员身份运行 Argus。安全软件可能会保护自己的服务。",
+    "accessDenied": "没有权限更改服务“{name}”。可在设置中启用特权服务，或以管理员身份运行 Argus。",
     "notFound": "未找到服务 {name}。",
     "refused": "Argus 无法更改服务 {name}。",
     "serviceOutdated": "无法更改服务 {name}：访问被拒绝。特权服务版本不兼容，请更新服务后重试。",
-    "accessDeniedPrivileged": "无法更改服务 {name}：即使拥有管理员权限，访问仍被拒绝。该服务可能受其自身软件保护，例如杀毒软件的自我保护功能。"
+    "accessDeniedPrivileged": "Windows 拒绝了对服务“{name}”的更改。该服务可能受系统或安全软件保护。"
   }
 }

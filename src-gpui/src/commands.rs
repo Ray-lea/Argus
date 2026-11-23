@@ -200,6 +200,7 @@ fn privileged<T>(
     let service = matches!(
         operation.1,
         Operation::ControlService { .. }
+            | Operation::DeleteService { .. }
             | Operation::ServiceStartType { .. }
             | Operation::ServiceStartTypeRegistry { .. }
     );
