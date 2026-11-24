@@ -29,7 +29,12 @@ interface Snapshot {
     tag: string;
     published: string;
     beta: string;
-    files: { installer: Download; portable: Download };
+    files: {
+      installer: Download;
+      portable: Download;
+      installerArm64?: Download;
+      portableArm64?: Download;
+    };
   };
   translations: Record<
     Language,

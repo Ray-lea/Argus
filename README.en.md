@@ -14,7 +14,7 @@ Try the full interactive interface and guided tour right in your browser on the 
 
 [![Latest release](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=release&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Downloads](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=downloads&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D4)](#-system-requirements)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20(x64%20%C2%B7%20ARM64)-0078D4)](#-system-requirements)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -86,15 +86,15 @@ Get the latest stable build and SHA-256 checksums from the [official download pa
 
 | File | Description |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Installer (recommended).** Installs for all users into `Program Files`; installing and updating require administrator permission. Supports in-app updates. |
-| `Argus_<version>_x64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Installer (recommended).** Installs for all users into `Program Files`; installing and updating require administrator permission. Supports in-app updates. |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
 
 [Code signing policy](#code-signing-policy) · [Privacy policy](PRIVACY.md#english)
 
 ## 💻 System requirements
 
-- **Operating system**: Windows 10 version 22H2 (build 19045) or later, including Windows 11 (x64 only)
+- **Operating system**: Windows 10 version 22H2 (build 19045) or later, including Windows 11 (x64 and ARM64)
 - **Graphics**: a graphics device and driver supporting DirectX 11
 
 See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (in Chinese) for tested Windows versions, feature differences, and permission requirements.
@@ -103,7 +103,7 @@ See [compatibility](docs/guide/hardware-data.md#系统兼容范围) (in Chinese)
 
 Prerequisites:
 
-- Rust `stable-x86_64-pc-windows-msvc` toolchain (1.100.0 or later)
+- Rust `stable-x86_64-pc-windows-msvc` or `stable-aarch64-pc-windows-msvc` toolchain (1.100.0 or later)
 - Node.js 26.x from 26.13.1 (24.x LTS from 24.22.3 is also supported) and pnpm 12.18.0
 - Visual Studio Build Tools ("Desktop development with C++" workload)
 

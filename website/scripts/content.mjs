@@ -462,7 +462,7 @@ export async function prepareContent(release, { worktree = !process.env.ARGUS_DO
       operatingSystem:
         requirements
           .match(/^[-*]\s+\*\*[^*]+\*\*\s*[:：]\s*(.+)$/m)?.[1]
-          ?.trim() ?? "Windows x64",
+          ?.trim() ?? "Windows x64 / ARM64",
       requirements: render(requirements, (href) => {
         const [target, fragment] = href.split("#");
         return docs.routes[target]

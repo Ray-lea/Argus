@@ -426,7 +426,7 @@
   "Drop a file here": "Déposer un fichier ici",
   "Only file names are read. Results are simulated in the browser; files stay on the device.": "Seuls les noms sont lus. Les résultats sont simulés dans le navigateur ; les fichiers restent sur l’appareil.",
   "Download Argus for Windows": "Télécharger Argus pour Windows",
-  "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Téléchargez l’installateur ou la version portable d’Argus pour Windows x64 et consultez la configuration requise, les notes de version et les sommes SHA-256.",
+  "Download the Argus Windows x64 or ARM64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Téléchargez l’installateur ou la version portable d’Argus pour Windows x64 ou ARM64 et consultez la configuration requise, les notes de version et les sommes SHA-256.",
   "Download Argus": "Télécharger Argus",
   "A free, open-source task manager for Windows. The installer and the portable edition share settings and history.": "Un gestionnaire des tâches Windows gratuit et open source. Les versions installée et portable partagent paramètres et historique.",
   "After installation": "Après l’installation",

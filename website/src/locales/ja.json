@@ -426,7 +426,7 @@
   "Drop a file here": "ここにファイルをドロップ",
   "Only file names are read. Results are simulated in the browser; files stay on the device.": "読み取るのはファイル名だけです。結果はブラウザー内でシミュレーションし、ファイルは端末に保存されたままです。",
   "Download Argus for Windows": "Windows 版 Argus をダウンロード",
-  "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Windows x64 向けの Argus インストーラー版またはポータブル版をダウンロードし、動作環境、リリース ノート、SHA-256 チェックサムを確認できます。",
+  "Download the Argus Windows x64 or ARM64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Windows x64 または ARM64 向けの Argus インストーラー版またはポータブル版をダウンロードし、動作環境、リリース ノート、SHA-256 チェックサムを確認できます。",
   "Download Argus": "Argus をダウンロード",
   "A free, open-source task manager for Windows. The installer and the portable edition share settings and history.": "無料のオープンソース Windows タスク マネージャーです。インストール版とポータブル版は設定と履歴を共有します。",
   "After installation": "インストール後",

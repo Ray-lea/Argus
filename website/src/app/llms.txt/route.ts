@@ -16,8 +16,14 @@ const markdown = (path: string) => origin + "/llms.mdx" + path + "content.md";
 // page states, and the stable documentation as Markdown.
 export function GET() {
   const r = site.release,
-    { installer, portable } = r.files;
+    { installer, portable, installerArm64, portableArm64 } = r.files;
   const released = site.changelog.en[0]?.version === r.version ? site.changelog.en[0].date : r.published.slice(0, 10);
+  const arm64Lines = installerArm64 && portableArm64
+    ? [
+        `- Installer (ARM64): ${installerArm64.url} (${mebibytes(installerArm64.size)} MiB, SHA-256 ${installerArm64.sha256})`,
+        `- Portable edition (ARM64): ${portableArm64.url} (${mebibytes(portableArm64.size)} MiB, SHA-256 ${portableArm64.sha256})`,
+      ]
+    : [];
   const lines = [
     "# Argus",
     "",
@@ -32,6 +38,7 @@ export function GET() {
     "- Price and license: free and open source under AGPL-3.0",
     `- Installer: ${installer.url} (${mebibytes(installer.size)} MiB, SHA-256 ${installer.sha256})`,
     `- Portable edition: ${portable.url} (${mebibytes(portable.size)} MiB, SHA-256 ${portable.sha256})`,
+    ...arm64Lines,
     "- Source code: " + repo,
     `- Measured speed: ${latency("en").find((row) => row.id === fastest.id)?.label} takes ${fastest.argus} ms in Argus and ${fastest.native} ms in Task Manager (median time from the click until the window shows the target content)`,
     "",

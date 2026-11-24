@@ -281,9 +281,16 @@ async function local() {
     const m = JSON.parse(
       await readFile(join(dist, "updates", channel + ".json"), "utf8"),
     );
-    const expected = `${downloadOrigin}/v${m.version}/${filenames(m.version).installer}`;
+    const hasArm64 = Boolean(m.platforms["windows-aarch64"]);
+    const names = filenames(m.version, hasArm64);
+    const expected = `${downloadOrigin}/v${m.version}/${names.installer}`;
     for (const key of ["windows-x86_64", "windows-x86_64-nsis"])
       assert.equal(m.platforms[key].url, expected);
+    if (names.installerArm64) {
+      const expectedArm64 = `${downloadOrigin}/v${m.version}/${names.installerArm64}`;
+      for (const key of ["windows-aarch64", "windows-aarch64-nsis"])
+        assert.equal(m.platforms[key].url, expectedArm64);
+    }
   }
   console.log(
     `Validated ${pages.size} HTML files, ${links} internal links and anchors, verified downloads and Free limits.`,

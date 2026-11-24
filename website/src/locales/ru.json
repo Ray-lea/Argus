@@ -426,7 +426,7 @@
   "Drop a file here": "Перетащите файл сюда",
   "Only file names are read. Results are simulated in the browser; files stay on the device.": "Читаются только имена файлов. Результаты моделируются в браузере, сами файлы остаются на устройстве.",
   "Download Argus for Windows": "Скачать Argus для Windows",
-  "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Загрузите установщик или портативную версию Argus для Windows x64, ознакомьтесь с системными требованиями, примечаниями к выпуску и контрольными суммами SHA-256.",
+  "Download the Argus Windows x64 or ARM64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "Загрузите установщик или портативную версию Argus для Windows x64 или ARM64, ознакомьтесь с системными требованиями, примечаниями к выпуску и контрольными суммами SHA-256.",
   "Download Argus": "Скачать Argus",
   "A free, open-source task manager for Windows. The installer and the portable edition share settings and history.": "Бесплатный диспетчер задач Windows с открытым кодом. Установленная и портативная версии используют общие настройки и историю.",
   "After installation": "После установки",

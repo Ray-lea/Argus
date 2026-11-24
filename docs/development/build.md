@@ -1,10 +1,10 @@
 # 构建与缓存
 
-Windows 构建使用 `stable-x86_64-pc-windows-msvc`，通过仓库目录的 rustup override 选择。发行配置启用 LTO，静态链接 VC 运行库，使用系统的 Universal CRT。`build-support/windows-runtime.rs` 为应用、服务和测试配置运行库。
+Windows 构建使用 `stable-x86_64-pc-windows-msvc`（在 x64 开发机上通过仓库目录的 rustup override 选择）或 `stable-aarch64-pc-windows-msvc`。发行配置启用 LTO，静态链接 VC 运行库，使用系统的 Universal CRT。`build-support/windows-runtime.rs` 按目标架构（x64 或 ARM64）为应用、服务和测试配置运行库。
 
 GPUI 提供应用的 Windows manifest，声明普通权限、PerMonitorV2 DPI 感知和 Common Controls。应用构建脚本嵌入图标与版本资源，各尺寸图标通过 `node scripts/icons.mjs` 生成：16、20、24、30、32、36、40、42、48 px 取 `resources/icons/logo-<尺寸>.svg` 的整像素母版，64 与 256 px 取 `resources/logo.svg`。界面里的标志按设备像素尺寸选用同一组来源：64 px 以下取不大于该尺寸的最大像素母版并居中，64 px 起用矢量标志。托盘的“应用图标”样式按系统小图标尺寸加载图标资源，同样取到对应的像素母版。资源管理器按路径和序号缓存图标，安装程序在安装与更新结束时通知其丢弃图标缓存，桌面、开始菜单和固定到任务栏的快捷方式随之换用新版本的图标。
 
-`scripts/build.mjs` 先构建任务管理器启动器与恢复程序，再将它们嵌入 `argus.exe`。签名流水线通过 `--skip-helpers` 复用已签名的辅助程序。`scripts/bundle.mjs` 调用 NSIS，安装包输出到 `target/release/bundle/nsis`。
+`scripts/build.mjs` 先构建任务管理器启动器与恢复程序，再将它们嵌入 `argus.exe`；`--arch x64|arm64` 可指定目标架构（不指定时跟随当前 Windows 架构），交叉指定其他架构时输出到 `target/<triple>/release`。签名流水线通过 `--skip-helpers` 复用已签名的辅助程序。`scripts/bundle.mjs` 同样支持 `--arch x64|arm64`，调用 NSIS 生成对应架构的安装包并校验主程序 PE 架构。
 
 开发脚本从 `target/native-dev/runs` 启动副本，编译器可继续更新构建产物。项目检查使用独立目录 `target/rust-analyzer`。更改链接器、`RUSTFLAGS` 或工具链会触发依赖重编译。
 

@@ -14,7 +14,7 @@ Essayez l’interface interactive et la présentation des fonctions dans le navi
 
 [![Dernière version](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=Derni%C3%A8re+version&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Téléchargements](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=T%C3%A9l%C3%A9chargements&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Plateforme](https://img.shields.io/static/v1?label=Plateforme&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
+[![Plateforme](https://img.shields.io/static/v1?label=Plateforme&message=Windows+10+%2F+11+(x64+%C2%B7+ARM64)&color=0078D4)](#system-requirements)
 [![Licence](https://img.shields.io/static/v1?label=Licence&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -94,8 +94,8 @@ La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles 
 
 | Fichier | Description |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Installateur, recommandé.** Installe pour tous les utilisateurs dans `Program Files`. L’installation et les mises à jour nécessitent une autorisation d’administrateur. Prend en charge les mises à jour intégrées. |
-| `Argus_<version>_x64.exe` | **Version portable.** Exécutable autonome qui partage les paramètres et l’historique avec la version installée. Les mises à jour automatiques ne sont pas prises en charge. |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Installateur, recommandé.** Installe pour tous les utilisateurs dans `Program Files`. L’installation et les mises à jour nécessitent une autorisation d’administrateur. Prend en charge les mises à jour intégrées. |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Version portable.** Exécutable autonome qui partage les paramètres et l’historique avec la version installée. Les mises à jour automatiques ne sont pas prises en charge. |
 | `SHA256SUMS.txt` | Sommes de contrôle SHA-256 des fichiers de la version. |
 
 [Politique de signature du code](#code-signing-policy) · [Politique de confidentialité en anglais](PRIVACY.md#english)
@@ -104,7 +104,7 @@ La dernière version stable et ses sommes de contrôle SHA-256 sont disponibles 
 
 ## 💻 Configuration requise
 
-- **Système** : Windows 10 22H2, build 19045, ou version ultérieure, y compris Windows 11 ; architecture x64 uniquement.
+- **Système** : Windows 10 22H2, build 19045, ou version ultérieure, y compris Windows 11 ; architectures x64 et ARM64.
 - **Graphiques** : périphérique graphique et pilote compatibles avec DirectX 11.
 
 Les versions de Windows vérifiées, les différences fonctionnelles et les autorisations nécessaires sont décrites dans la [documentation de compatibilité](docs/guide/hardware-data.md#系统兼容范围), en chinois.
@@ -115,7 +115,7 @@ Les versions de Windows vérifiées, les différences fonctionnelles et les auto
 
 Prérequis :
 
-- Chaîne d’outils Rust `stable-x86_64-pc-windows-msvc`, version 1.100.0 ou ultérieure.
+- Chaîne d’outils Rust `stable-x86_64-pc-windows-msvc` ou `stable-aarch64-pc-windows-msvc`, version 1.100.0 ou ultérieure.
 - Node.js 26.x à partir de 26.13.1, ou 24.x LTS à partir de 24.22.3, et pnpm 12.18.0.
 - Visual Studio Build Tools avec la charge de travail « Développement Desktop en C++ ».
 

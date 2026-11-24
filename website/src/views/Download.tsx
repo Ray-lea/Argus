@@ -13,8 +13,8 @@ import { changelogLanguage, downloadOrigin, localized, mebibytes, repo, site, so
 const title = (lang: Language) => (localize(lang, lang !== "zh" ? "Download Argus for Windows" : "下载 Argus Windows 版"));
 const description = (lang: Language) =>
   localize(lang, lang !== "zh"
-    ? "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums."
-    : "下载 Argus 的 Windows x64 安装版或免安装版，查看系统要求、发布说明和 SHA-256 校验值。");
+    ? "Download the Argus Windows x64 or ARM64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums."
+    : "下载 Argus 的 Windows x64 或 ARM64 安装版或免安装版，查看系统要求、发布说明和 SHA-256 校验值。");
 
 export const downloadMetadata = (lang: Language) =>
   pageMetadata({ lang, path: "/download/", title: title(lang), description: description(lang) });
@@ -24,7 +24,7 @@ const copy = {
     h1: "下载 Argus",
     lead: "免费开源的 Windows 任务管理器。安装版与免安装版共用设置和历史数据。",
     released: "发布",
-    system: "Windows 10 / 11 · x64",
+    system: "Windows 10 / 11 · x64 · ARM64",
     recommended: "推荐",
     copy: "复制 SHA-256",
     copied: "已复制",
@@ -47,7 +47,7 @@ const copy = {
     h1: "Download Argus",
     lead: "A free, open-source task manager for Windows. The installer and the portable edition share settings and history.",
     released: "Released",
-    system: "Windows 10 / 11 · x64",
+    system: "Windows 10 / 11 · x64 · ARM64",
     recommended: "Recommended",
     copy: "Copy SHA-256",
     copied: "Copied",
@@ -74,9 +74,17 @@ export function Download({ lang }: { lang: Language }) {
     r = site.release;
   const notes = site.changelog[lang];
   const current = notes[0]?.version === r.version ? notes[0] : null;
-  const packages: { file: typeof r.files.installer; title: string; icon: IconName; points: string[]; action: string }[] = localize(lang, [
+  const packages: {
+    file: typeof r.files.installer;
+    arm64?: typeof r.files.installer;
+    title: string;
+    icon: IconName;
+    points: string[];
+    action: string;
+  }[] = localize(lang, [
     {
       file: r.files.installer,
+      arm64: r.files.installerArm64,
       title: localize(lang, en ? "Installer" : "安装版"),
       icon: "box",
       points: localize(lang, en
@@ -86,6 +94,7 @@ export function Download({ lang }: { lang: Language }) {
     },
     {
       file: r.files.portable,
+      arm64: r.files.portableArm64,
       title: localize(lang, en ? "Portable" : "免安装版"),
       icon: "file",
       points: localize(lang, en
@@ -156,7 +165,7 @@ export function Download({ lang }: { lang: Language }) {
                 started={text[lang].started}
                 extra={<span className="package-size figures">{mebibytes(pkg.file.size)} MiB</span>}
               >
-                {pkg.action}
+                {pkg.arm64 ? `${pkg.action} (x64)` : pkg.action}
               </DownloadButton>
               <div className="package-file">
                 <span className="figures">{pkg.file.name}</span>
@@ -168,6 +177,28 @@ export function Download({ lang }: { lang: Language }) {
                   </span>
                 </details>
               </div>
+              {pkg.arm64 && (
+                <>
+                  <DownloadButton
+                    className="package-get"
+                    href={pkg.arm64.url}
+                    started={text[lang].started}
+                    extra={<span className="package-size figures">{mebibytes(pkg.arm64.size)} MiB</span>}
+                  >
+                    {`${pkg.action} (ARM64)`}
+                  </DownloadButton>
+                  <div className="package-file">
+                    <span className="figures">{pkg.arm64.name}</span>
+                    <details data-disclose="">
+                      <summary>SHA-256</summary>
+                      <span className="package-hash">
+                        <code>{pkg.arm64.sha256}</code>
+                        <CopyButton text={pkg.arm64.sha256} label={t.copy} done={t.copied} />
+                      </span>
+                    </details>
+                  </div>
+                </>
+              )}
             </article>
           ))}
         </div>

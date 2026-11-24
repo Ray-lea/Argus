@@ -11,7 +11,9 @@ function channelDownloads(release) {
   return [...new Set([release.version, release.beta])].map(version => {
     assert(versions.has(version), `Missing downloads for channel version ${version}`);
     const item = versions.get(version);
-    const expected = filenames(version);
+    const hasArm64 =
+      "installerArm64" in (item.files ?? {}) || "portableArm64" in (item.files ?? {});
+    const expected = filenames(version, hasArm64);
     assert.equal(Object.keys(item.files ?? {}).length, Object.keys(expected).length, `Incomplete download metadata for ${version}`);
     for (const [kind, name] of Object.entries(expected)) {
       const file = item.files?.[kind];

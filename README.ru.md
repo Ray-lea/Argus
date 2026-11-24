@@ -14,7 +14,7 @@
 
 [![Последняя версия](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%D0%9F%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BD%D1%8F%D1%8F+%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Загрузки](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%D0%97%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B8&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Платформа](https://img.shields.io/static/v1?label=%D0%9F%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
+[![Платформа](https://img.shields.io/static/v1?label=%D0%9F%D0%BB%D0%B0%D1%82%D1%84%D0%BE%D1%80%D0%BC%D0%B0&message=Windows+10+%2F+11+(x64+%C2%B7+ARM64)&color=0078D4)](#system-requirements)
 [![Лицензия](https://img.shields.io/static/v1?label=%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -94,8 +94,8 @@ Argus обращается к нативным API Windows напрямую из
 
 | Файл | Описание |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Установщик, рекомендуется.** Устанавливает программу для всех пользователей в `Program Files`. Установка и обновления требуют разрешения администратора. Поддерживает обновления из приложения. |
-| `Argus_<version>_x64.exe` | **Портативная версия.** Отдельный исполняемый файл с общими настройками и историей для портативной и установленной версий. Автоматическое обновление не поддерживается. |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Установщик, рекомендуется.** Устанавливает программу для всех пользователей в `Program Files`. Установка и обновления требуют разрешения администратора. Поддерживает обновления из приложения. |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Портативная версия.** Отдельный исполняемый файл с общими настройками и историей для портативной и установленной версий. Автоматическое обновление не поддерживается. |
 | `SHA256SUMS.txt` | Контрольные суммы SHA-256 файлов выпуска. |
 
 [Политика подписи кода](#code-signing-policy) · [Политика конфиденциальности на английском](PRIVACY.md#english)
@@ -104,7 +104,7 @@ Argus обращается к нативным API Windows напрямую из
 
 ## 💻 Системные требования
 
-- **Операционная система**: Windows 10 22H2, сборка 19045, или новее, включая Windows 11; только x64.
+- **Операционная система**: Windows 10 22H2, сборка 19045, или новее, включая Windows 11; архитектуры x64 и ARM64.
 - **Графика**: графическое устройство и драйвер с поддержкой DirectX 11.
 
 Проверенные версии Windows, различия функций и требования к правам описаны в [документации по совместимости](docs/guide/hardware-data.md#系统兼容范围) на китайском.
@@ -115,7 +115,7 @@ Argus обращается к нативным API Windows напрямую из
 
 Необходимы:
 
-- Набор инструментов Rust `stable-x86_64-pc-windows-msvc`, версия 1.100.0 или новее.
+- Набор инструментов Rust `stable-x86_64-pc-windows-msvc` или `stable-aarch64-pc-windows-msvc`, версия 1.100.0 или новее.
 - Node.js 26.x начиная с 26.13.1 либо 24.x LTS начиная с 24.22.3, а также pnpm 12.18.0.
 - Visual Studio Build Tools с рабочей нагрузкой «Разработка классических приложений на C++».
 

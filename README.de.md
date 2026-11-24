@@ -14,7 +14,7 @@ Die interaktive Oberfläche und die Funktionsübersicht können auf der [offizie
 
 [![Aktuelle Version](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=Aktuelle+Version&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Downloads](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=Downloads&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Plattform](https://img.shields.io/static/v1?label=Plattform&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
+[![Plattform](https://img.shields.io/static/v1?label=Plattform&message=Windows+10+%2F+11+(x64+%C2%B7+ARM64)&color=0078D4)](#system-requirements)
 [![Lizenz](https://img.shields.io/static/v1?label=Lizenz&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -94,8 +94,8 @@ Die aktuelle stabile Version und SHA-256-Prüfsummen stehen auf der [offiziellen
 
 | Datei | Beschreibung |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Installationsprogramm, empfohlen.** Installiert für alle Benutzer unter `Program Files`. Installation und Updates erfordern Administratorrechte. Unterstützt Updates innerhalb der Anwendung. |
-| `Argus_<version>_x64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Automatische Updates werden nicht unterstützt. |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Installationsprogramm, empfohlen.** Installiert für alle Benutzer unter `Program Files`. Installation und Updates erfordern Administratorrechte. Unterstützt Updates innerhalb der Anwendung. |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Automatische Updates werden nicht unterstützt. |
 | `SHA256SUMS.txt` | SHA-256-Prüfsummen der veröffentlichten Dateien. |
 
 [Richtlinie zur Codesignierung](#code-signing-policy) · [Datenschutzrichtlinie auf Englisch](PRIVACY.md#english)
@@ -104,7 +104,7 @@ Die aktuelle stabile Version und SHA-256-Prüfsummen stehen auf der [offiziellen
 
 ## 💻 Systemanforderungen
 
-- **Betriebssystem**: Windows 10 22H2, Build 19045, oder neuer, einschließlich Windows 11; nur x64.
+- **Betriebssystem**: Windows 10 22H2, Build 19045, oder neuer, einschließlich Windows 11; x64 und ARM64.
 - **Grafik**: Grafikgerät und Treiber mit Unterstützung für DirectX 11.
 
 Geprüfte Windows-Versionen, Funktionsunterschiede und erforderliche Berechtigungen beschreibt die [Kompatibilitätsübersicht](docs/guide/hardware-data.md#系统兼容范围) auf Chinesisch.
@@ -115,7 +115,7 @@ Geprüfte Windows-Versionen, Funktionsunterschiede und erforderliche Berechtigun
 
 Voraussetzungen:
 
-- Rust-Toolchain `stable-x86_64-pc-windows-msvc`, Version 1.100.0 oder neuer.
+- Rust-Toolchain `stable-x86_64-pc-windows-msvc` oder `stable-aarch64-pc-windows-msvc`, Version 1.100.0 oder neuer.
 - Node.js 26.x ab 26.13.1 oder 24.x LTS ab 24.22.3 sowie pnpm 12.18.0.
 - Visual Studio Build Tools mit der Workload „Desktopentwicklung mit C++“.
 

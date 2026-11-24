@@ -29,7 +29,7 @@ export async function writeDistribution(root, dir, release) {
   for (const releaseTag of new Set([...tags, tag, "v" + release.beta])) {
     let names;
     try {
-      names = filenames(releaseTag.slice(1));
+      names = filenames(releaseTag.slice(1), true);
     } catch {
       continue;
     }
@@ -72,11 +72,19 @@ export async function writeDistribution(root, dir, release) {
     yaml("version") +
       `DefaultLocale: en-US\nManifestType: version\nManifestVersion: ${schema}\n`,
   );
+  const wingetInstallers = [
+    `  - Architecture: x64\n    InstallerUrl: ${files.installer.upstream}\n    InstallerSha256: ${files.installer.sha256.toUpperCase()}`,
+    ...(files.installerArm64
+      ? [
+          `  - Architecture: arm64\n    InstallerUrl: ${files.installerArm64.upstream}\n    InstallerSha256: ${files.installerArm64.sha256.toUpperCase()}`,
+        ]
+      : []),
+  ].join("\n");
   await put(
     dir.packages,
     winget + id + ".installer.yaml",
     yaml("installer") +
-      `InstallerType: nullsoft\nScope: machine\nInstallerSwitches:\n  Silent: /S\n  SilentWithProgress: /S\nInstallers:\n  - Architecture: x64\n    InstallerUrl: ${files.installer.upstream}\n    InstallerSha256: ${files.installer.sha256.toUpperCase()}\nManifestType: installer\nManifestVersion: ${schema}\n`,
+      `InstallerType: nullsoft\nScope: machine\nInstallerSwitches:\n  Silent: /S\n  SilentWithProgress: /S\nInstallers:\n${wingetInstallers}\nManifestType: installer\nManifestVersion: ${schema}\n`,
   );
   await put(
     dir.packages,
@@ -84,6 +92,20 @@ export async function writeDistribution(root, dir, release) {
     yaml("defaultLocale") +
       `PackageLocale: en-US\nPublisher: Argus contributors\nPackageName: Argus\nPackageUrl: ${origin}/en/\nLicense: AGPL-3.0-or-later\nLicenseUrl: ${repo}/blob/${tag}/LICENSE\nShortDescription: A Windows task manager for processes, hardware and resource history.\nReleaseNotesUrl: ${repo}/releases/tag/${tag}\nManifestType: defaultLocale\nManifestVersion: ${schema}\n`,
   );
+  const scoopArchitecture = {
+    "64bit": {
+      url: files.portable.upstream + "#/argus.exe",
+      hash: files.portable.sha256,
+    },
+    ...(files.portableArm64
+      ? {
+          arm64: {
+            url: files.portableArm64.upstream + "#/argus.exe",
+            hash: files.portableArm64.sha256,
+          },
+        }
+      : {}),
+  };
   await put(
     dir.packages,
     "scoop/argus.json",
@@ -94,12 +116,7 @@ export async function writeDistribution(root, dir, release) {
           "Windows task manager for processes, hardware and resource history",
         homepage: origin,
         license: "AGPL-3.0-or-later",
-        architecture: {
-          "64bit": {
-            url: files.portable.upstream + "#/argus.exe",
-            hash: files.portable.sha256,
-          },
-        },
+        architecture: scoopArchitecture,
         bin: "argus.exe",
         shortcuts: [["argus.exe", "Argus"]],
       },

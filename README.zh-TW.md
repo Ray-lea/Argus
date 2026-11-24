@@ -14,7 +14,7 @@
 
 [![最新版本](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases&sort=semver&label=Release&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![下載次數](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=Downloads&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![平台](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20x64-0078D4)](#system-requirements)
+[![平台](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64%20%C2%B7%20ARM64)-0078D4)](#system-requirements)
 [![授權條款](https://img.shields.io/badge/License-AGPL--3.0--or--later-A42E2B?logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -90,8 +90,8 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 | 檔案 | 說明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | **安裝版（建議）**。為所有使用者安裝至 `Program Files`，安裝與更新需要系統管理員授權，支援應用程式內更新。 |
-| `Argus_<版本>_x64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，不支援自動更新。 |
+| `Argus_<版本>_x64-setup.exe` / `Argus_<版本>_arm64-setup.exe` | **安裝版（建議）**。為所有使用者安裝至 `Program Files`，安裝與更新需要系統管理員授權，支援應用程式內更新。 |
+| `Argus_<版本>_x64.exe` / `Argus_<版本>_arm64.exe` | **免安裝版**。單一檔案直接執行，與安裝版共用設定及歷程資料，不支援自動更新。 |
 | `SHA256SUMS.txt` | 上述發行檔案的 SHA-256 總和檢查碼。 |
 
 [程式碼簽署政策（Code signing policy）](#code-signing-policy) · [隱私權政策（簡體中文）](PRIVACY.md#简体中文)
@@ -100,7 +100,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 ## 💻 系統需求
 
-- **作業系統**：Windows 10 22H2（組建 19045）及更新版本（含 Windows 11），僅支援 x64 架構
+- **作業系統**：Windows 10 22H2（組建 19045）及更新版本（含 Windows 11），支援 x64 與 ARM64 架構
 - **圖形**：支援 DirectX 11 的圖形裝置與驅動程式
 
 已驗證的系統版本、功能差異與權限需求詳見[相容範圍](docs/guide/hardware-data.md#系统兼容范围)（簡體中文）。
@@ -111,7 +111,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 
 建置前需準備以下環境：
 
-- Rust `stable-x86_64-pc-windows-msvc` 工具鏈（1.100.0 及以上）
+- Rust `stable-x86_64-pc-windows-msvc` 或 `stable-aarch64-pc-windows-msvc` 工具鏈（1.100.0 及以上）
 - Node.js 26.13.1 及以上的 26.x 版本（亦支援 24.22.3 及以上的 24.x LTS）與 pnpm 12.18.0
 - Visual Studio Build Tools（選取「使用 C++ 的桌面開發」工作負載）
 

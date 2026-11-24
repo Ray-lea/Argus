@@ -17,12 +17,18 @@ const transferLimit = 256 * 1024 * 1024;
 const versionPattern =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/;
 
-export function filenames(version) {
+export function filenames(version, hasArm64 = false) {
   if (!versionPattern.test(version))
     throw Error(`Invalid release version: ${version}`);
-  return {
+  const base = {
     installer: `Argus_${version}_x64-setup.exe`,
     portable: `Argus_${version}_x64.exe`,
+  };
+  if (!hasArm64) return base;
+  return {
+    ...base,
+    installerArm64: `Argus_${version}_arm64-setup.exe`,
+    portableArm64: `Argus_${version}_arm64.exe`,
   };
 }
 
@@ -180,17 +186,32 @@ export async function buildRelease(root, cache, downloads, feeds) {
   const versions = new Map();
   for (const [channel, manifest] of Object.entries(manifests)) {
     const version = manifest.version;
-    const names = filenames(version);
+    const hasArm64 = Boolean(
+      manifest.platforms?.["windows-aarch64"] ||
+        manifest.platforms?.["windows-aarch64-nsis"],
+    );
+    const names = filenames(version, hasArm64);
     const upstream = `${repo}/releases/download/v${version}`;
-    const windows = ["windows-x86_64", "windows-x86_64-nsis"].map(
+    const windowsX64 = ["windows-x86_64", "windows-x86_64-nsis"].map(
       (key) => manifest.platforms?.[key],
     );
     if (
-      windows.some(
+      windowsX64.some(
         (p) => p?.url !== `${upstream}/${names.installer}` || !p.signature,
       )
     )
-      throw Error(`Invalid installer in ${channel} channel`);
+      throw Error(`Invalid x64 installer in ${channel} channel`);
+    const windowsArm64 = hasArm64
+      ? ["windows-aarch64", "windows-aarch64-nsis"].map(
+          (key) => manifest.platforms?.[key],
+        )
+      : [];
+    if (
+      windowsArm64.some(
+        (p) => p?.url !== `${upstream}/${names.installerArm64}` || !p.signature,
+      )
+    )
+      throw Error(`Invalid arm64 installer in ${channel} channel`);
     const versionCache = join(cache, `v${version}`);
     const output = join(downloads, `v${version}`);
     await Promise.all([
@@ -225,9 +246,13 @@ export async function buildRelease(root, cache, downloads, feeds) {
       versions.set(version, { version, files });
     }
     const sigPath = join(versionCache, `${channel}.sig`);
-    for (const sig of new Set(windows.map((p) => p.signature))) {
+    for (const sig of new Set(windowsX64.map((p) => p.signature))) {
       await writeFile(sigPath, sig);
       verify(root, version, join(versionCache, names.installer), sigPath);
+    }
+    for (const sig of new Set(windowsArm64.map((p) => p.signature))) {
+      await writeFile(sigPath, sig);
+      verify(root, version, join(versionCache, names.installerArm64), sigPath);
     }
     if (manifest.argus) {
       const { releaseNotes, signature } = manifest.argus;
@@ -244,7 +269,9 @@ export async function buildRelease(root, cache, downloads, feeds) {
       ]);
       verify(root, version, notesPath, sigPath);
     }
-    for (const p of windows) p.url = versions.get(version).files.installer.url;
+    const builtFiles = versions.get(version).files;
+    for (const p of windowsX64) p.url = builtFiles.installer.url;
+    for (const p of windowsArm64) p.url = builtFiles.installerArm64.url;
     await writeFile(
       join(feeds, `${channel}.json`),
       JSON.stringify(manifest) + "\n",

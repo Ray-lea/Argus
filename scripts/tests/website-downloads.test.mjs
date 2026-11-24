@@ -18,11 +18,11 @@ async function temporary(t) {
   });
   return path;
 }
-function fixture(beta = "1.1.0-beta.1") {
+function fixture(beta = "1.1.0-beta.1", hasArm64 = false) {
   const bodies = new Map();
   const downloads = [...new Set(["1.0.0", beta])].map(version => ({
     version,
-    files: Object.fromEntries(Object.entries(filenames(version)).map(([kind, name]) => {
+    files: Object.fromEntries(Object.entries(filenames(version, hasArm64)).map(([kind, name]) => {
       const body = Buffer.from(`Fixture ${version} ${kind}`);
       const url = `${downloadOrigin}/v${version}/${name}`;
       bodies.set(url, body);
@@ -59,17 +59,23 @@ test("release building retains both channels through serialization and verifies 
     const comment = `timestamp:0\tversion:${version}`;
     return Buffer.from(`untrusted comment: fixture\n${Buffer.concat([prefix, signed]).toString("base64")}\ntrusted comment: ${comment}\n${sign(null, Buffer.concat([signed, Buffer.from(comment)]), privateKey).toString("base64")}\n`).toString("base64");
   }
-  for (const beta of ["1.1.0-beta.1", "1.0.0"]) {
-    const f = fixture(beta), upstream = new Map();
+  for (const [beta, hasArm64] of [["1.1.0-beta.1", false], ["1.0.0", false], ["1.1.0-beta.1", true]]) {
+    const f = fixture(beta, hasArm64), upstream = new Map();
     upstream.set("https://api.github.com/repos/Ray-lea/Argus/releases/latest", JSON.stringify({ tag_name: "v1.0.0", published_at: "2026-01-01T00:00:00Z" }));
     for (const { version, files } of f.release.downloads) {
       for (const file of Object.values(files)) upstream.set(file.upstream, f.bodies.get(file.url));
       upstream.set(`${repo}/releases/download/v${version}/SHA256SUMS.txt`, Object.values(files).map(file => `${file.sha256}  ${file.name}\n`).join(""));
     }
     for (const [channel, version] of [["latest", "1.0.0"], ["beta", beta]]) {
-      const file = f.release.downloads.find(item => item.version === version).files.installer;
-      const platform = { url: file.upstream, signature: signature(f.bodies.get(file.url), version) };
-      upstream.set(`${repo}/releases/download/v1.0.0/${channel}.json`, JSON.stringify({ version, platforms: { "windows-x86_64": platform, "windows-x86_64-nsis": platform } }));
+      const itemFiles = f.release.downloads.find(item => item.version === version).files;
+      const x64Platform = { url: itemFiles.installer.upstream, signature: signature(f.bodies.get(itemFiles.installer.url), version) };
+      const platforms = { "windows-x86_64": x64Platform, "windows-x86_64-nsis": x64Platform };
+      if (hasArm64) {
+        const arm64Platform = { url: itemFiles.installerArm64.upstream, signature: signature(f.bodies.get(itemFiles.installerArm64.url), version) };
+        platforms["windows-aarch64"] = arm64Platform;
+        platforms["windows-aarch64-nsis"] = arm64Platform;
+      }
+      upstream.set(`${repo}/releases/download/v1.0.0/${channel}.json`, JSON.stringify({ version, platforms }));
     }
     const upstreamCalls = [];
     t.mock.method(globalThis, "fetch", async url => {
@@ -77,7 +83,7 @@ test("release building retains both channels through serialization and verifies 
       assert(upstream.has(url), `Unexpected upstream request: ${url}`);
       return response(upstream.get(url), url);
     });
-    const dist = join(root, beta);
+    const dist = join(root, `${beta}-${hasArm64 ? "dual" : "x64"}`);
     const dir = Object.fromEntries(["downloads", "updates", "www", "packages"].map(name => [name, join(dist, name)]));
     await mkdir(dir.updates, { recursive: true });
     const built = JSON.parse(JSON.stringify(await buildRelease(root, join(dist, "cache"), dir.downloads, dir.updates)));

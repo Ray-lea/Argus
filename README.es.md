@@ -14,7 +14,7 @@ Explore la interfaz interactiva y el recorrido de funciones en el [sitio oficial
 
 [![Última versión](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%C3%9Altima+versi%C3%B3n&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![Descargas](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=Descargas&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![Plataforma](https://img.shields.io/static/v1?label=Plataforma&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
+[![Plataforma](https://img.shields.io/static/v1?label=Plataforma&message=Windows+10+%2F+11+(x64+%C2%B7+ARM64)&color=0078D4)](#system-requirements)
 [![Licencia](https://img.shields.io/static/v1?label=Licencia&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -94,8 +94,8 @@ La [página oficial de descargas](https://argustask.com/es/download/) ofrece la 
 
 | Archivo | Descripción |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **Instalador, recomendado.** Instala para todos los usuarios en `Program Files`. La instalación y las actualizaciones requieren autorización de administrador. Admite actualizaciones integradas. |
-| `Argus_<version>_x64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. No admite actualizaciones automáticas. |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Instalador, recomendado.** Instala para todos los usuarios en `Program Files`. La instalación y las actualizaciones requieren autorización de administrador. Admite actualizaciones integradas. |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. No admite actualizaciones automáticas. |
 | `SHA256SUMS.txt` | Sumas SHA-256 de los archivos de la versión. |
 
 [Política de firma de código](#code-signing-policy) · [Política de privacidad (inglés)](PRIVACY.md#english)
@@ -104,7 +104,7 @@ La [página oficial de descargas](https://argustask.com/es/download/) ofrece la 
 
 ## 💻 Requisitos del sistema
 
-- **Sistema operativo**: Windows 10 22H2 —compilación 19045— o posterior, incluido Windows 11; arquitectura x64.
+- **Sistema operativo**: Windows 10 22H2 —compilación 19045— o posterior, incluido Windows 11; arquitecturas x64 y ARM64.
 - **Gráficos**: dispositivo gráfico y controlador compatibles con DirectX 11.
 
 Las versiones de Windows verificadas, las diferencias entre funciones y los permisos necesarios se detallan en la [guía de compatibilidad](docs/guide/hardware-data.md#系统兼容范围), en chino.
@@ -115,7 +115,7 @@ Las versiones de Windows verificadas, las diferencias entre funciones y los perm
 
 Requisitos:
 
-- Cadena de herramientas Rust `stable-x86_64-pc-windows-msvc`, versión 1.100.0 o posterior.
+- Cadena de herramientas Rust `stable-x86_64-pc-windows-msvc` o `stable-aarch64-pc-windows-msvc`, versión 1.100.0 o posterior.
 - Node.js 26.x desde 26.13.1, o 24.x LTS desde 24.22.3, y pnpm 12.18.0.
 - Visual Studio Build Tools con la carga de trabajo de desarrollo de escritorio con C++.
 

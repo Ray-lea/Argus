@@ -1,6 +1,6 @@
 # 架构
 
-Argus 是 Windows x64 原生应用。`argus-core` 读取系统数据，`argus-app` 调度采样和管理设置，`src-gpui` 在桌面进程内以 GPUI Kit 绘制界面。
+Argus 是 Windows（x64 与 ARM64）原生应用。`argus-core` 读取系统数据，`argus-app` 调度采样和管理设置，`src-gpui` 在桌面进程内以 GPUI Kit 绘制界面。
 
 | 目录 | 职责 |
 |---|---|

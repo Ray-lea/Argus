@@ -426,7 +426,7 @@
   "Drop a file here": "將檔案拖放至此",
   "Only file names are read. Results are simulated in the browser; files stay on the device.": "僅讀取檔案名稱，在瀏覽器內模擬查詢；檔案保留於本機。",
   "Download Argus for Windows": "下載 Argus Windows 版",
-  "Download the Argus Windows x64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "下載 Argus 的 Windows x64 安裝版或免安裝版，檢視系統需求、發行說明與 SHA-256 總和檢查碼。",
+  "Download the Argus Windows x64 or ARM64 installer or portable executable, and view the system requirements, release notes and SHA-256 checksums.": "下載 Argus 的 Windows x64 或 ARM64 安裝版或免安裝版，檢視系統需求、發行說明與 SHA-256 總和檢查碼。",
   "Download Argus": "下載 Argus",
   "A free, open-source task manager for Windows. The installer and the portable edition share settings and history.": "免費且開放原始碼的 Windows 工作管理員。安裝版與免安裝版共用設定及歷程記錄。",
   "After installation": "安裝之後",

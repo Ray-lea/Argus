@@ -14,7 +14,7 @@
 
 [![最新バージョン](https://img.shields.io/github/v/release/Ray-lea/Argus?include_prereleases=&sort=semver&label=%E6%9C%80%E6%96%B0%E3%83%90%E3%83%BC%E3%82%B8%E3%83%A7%E3%83%B3&color=2f80ed)](https://github.com/Ray-lea/Argus/releases)
 [![ダウンロード](https://img.shields.io/github/downloads/Ray-lea/Argus/total?label=%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89&color=2ea44f)](https://github.com/Ray-lea/Argus/releases)
-[![動作環境](https://img.shields.io/static/v1?label=%E5%8B%95%E4%BD%9C%E7%92%B0%E5%A2%83&message=Windows+10+%2F+11+x64&color=0078D4)](#system-requirements)
+[![動作環境](https://img.shields.io/static/v1?label=%E5%8B%95%E4%BD%9C%E7%92%B0%E5%A2%83&message=Windows+10+%2F+11+(x64+%C2%B7+ARM64)&color=0078D4)](#system-requirements)
 [![ライセンス](https://img.shields.io/static/v1?label=%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9&message=AGPL-3.0-or-later&color=A42E2B&logo=gnu&logoColor=white)](LICENSE)
 
 <a href="https://trendshift.io/repositories/310031?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-310031" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/310031/daily" alt="Ray-lea/Argus | Trendshift" width="250" height="55"/></a>
@@ -94,8 +94,8 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 | ファイル | 内容 |
 |---|---|
-| `Argus_<version>_x64-setup.exe` | **インストーラー版（推奨）。** 全ユーザー向けに `Program Files` へインストールします。インストールと更新には管理者の承認が必要です。アプリ内更新に対応します。 |
-| `Argus_<version>_x64.exe` | **ポータブル版。** 単一の実行ファイルから起動し、設定と履歴をインストーラー版と共有します。自動更新には対応していません。 |
+| `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **インストーラー版（推奨）。** 全ユーザー向けに `Program Files` へインストールします。インストールと更新には管理者の承認が必要です。アプリ内更新に対応します。 |
+| `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **ポータブル版。** 単一の実行ファイルから起動し、設定と履歴をインストーラー版と共有します。自動更新には対応していません。 |
 | `SHA256SUMS.txt` | 配布ファイルの SHA-256 チェックサム。 |
 
 [コード署名ポリシー](#code-signing-policy) · [プライバシー ポリシー（英語）](PRIVACY.md#english)
@@ -104,7 +104,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 ## 💻 動作環境
 
-- **OS**：Windows 10 22H2（ビルド 19045）以降、Windows 11 を含む。x64 のみ対応。
+- **OS**：Windows 10 22H2（ビルド 19045）以降、Windows 11 を含む。x64 および ARM64 に対応。
 - **グラフィックス**：DirectX 11 に対応したグラフィックス デバイスとドライバー。
 
 確認済みの Windows バージョン、機能差、権限要件は、[互換性の説明](docs/guide/hardware-data.md#系统兼容范围)（中国語）を参照してください。
@@ -115,7 +115,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 
 必要な環境：
 
-- Rust `stable-x86_64-pc-windows-msvc` ツールチェーン（1.100.0 以降）。
+- Rust `stable-x86_64-pc-windows-msvc` または `stable-aarch64-pc-windows-msvc` ツールチェーン（1.100.0 以降）。
 - Node.js 26.13.1 以降の 26.x、または 24.22.3 以降の 24.x LTS、および pnpm 12.18.0。
 - Visual Studio Build Tools の「C++ によるデスクトップ開発」ワークロード。
 

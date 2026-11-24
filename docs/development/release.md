@@ -8,8 +8,8 @@
 
 | 工作流 | 触发 | 内容 |
 |---|---|---|
-| `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、Clippy、Rust 测试、第三方许可声明是否最新 |
-| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`changelog/zh-CN.md`、其他语言已译完的条目与更新公钥，确认标签在 `main` 上；运行上面的检查；构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；为更新对话框显示的更新内容签名并校验；静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；生成更新清单并发布 GitHub Release |
+| `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、x64 与 ARM64 Clippy、Rust 测试、第三方许可声明是否最新 |
+| `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`changelog/zh-CN.md`、其他语言已译完的条目与更新公钥，确认标签在 `main` 上；运行上面的检查；在 x64 与 ARM64 运行器上分别构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；在各架构原生系统上静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；为更新对话框显示的更新内容签名并校验；生成双架构更新清单并发布 GitHub Release |
 | [`website.yml`](../../.github/workflows/website.yml) | 手动运行（`main`），或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载、更新清单、官网页面和域名跳转。配置见[官网与发行镜像](website.md) |
 
 日常提交与普通分支推送前按改动范围完成相关验证，已覆盖当前改动的结果可复用；纯文档修改核对内容与相关链接即可。正式发布前运行 `start.bat check`，使用 `node scripts/notices.mjs --check` 核对第三方许可声明。
@@ -161,10 +161,10 @@ gh run watch    # 选择刚开始的 Check，等待结束
 
 | 文件 | 说明 |
 |---|---|
-| `Argus_<版本>_x64-setup.exe` | NSIS 安装程序，经管理员授权安装到 Program Files，可原地升级旧版本。卸载时可一并移除特权服务，并检查系统任务管理器是否已恢复。见[安装程序](#安装程序) |
-| `Argus_<版本>_x64.exe` | 免安装版主程序（即 `argus.exe`）。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新。放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限) |
-| `SHA256SUMS.txt` | 上面两个文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
-| `latest.json`、`beta.json` | 应用内更新的清单，只在稳定版上，见[更新通道](#更新通道) |
+| `Argus_<版本>_x64-setup.exe`、`Argus_<版本>_arm64-setup.exe` | x64 与 ARM64 NSIS 安装程序，经管理员授权安装到 Program Files，启动时校验系统原生架构，可原地升级旧版本。卸载时可一并移除特权服务，并检查系统任务管理器是否已恢复。见[安装程序](#安装程序) |
+| `Argus_<版本>_x64.exe`、`Argus_<版本>_arm64.exe` | x64 与 ARM64 免安装版主程序（即对应架构的 `argus.exe`）。与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，不能应用内更新。放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限) |
+| `SHA256SUMS.txt` | 上述四个发布文件的 SHA-256，可用 `sha256sum -c SHA256SUMS.txt` 校验 |
+| `latest.json`、`beta.json` | 应用内更新的双架构清单（含 `windows-x86_64` 与 `windows-aarch64`），只在稳定版上，见[更新通道](#更新通道) |
 
 带预发布后缀的版本标记为 Pre-release。GitHub Release 正文包含中英文[代码签名策略](../../README.md#code-signing-policy)链接。
 
