@@ -62,7 +62,7 @@ jobs:
           cache: true
       - name: Install Rust
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt,clippy --no-self-update
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt,clippy --target aarch64-pc-windows-msvc --no-self-update
           rustup default stable-x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: pnpm install --frozen-lockfile
@@ -92,3 +92,5 @@ jobs:
       # After the builds above, which download the crate sources it reads.
       - name: Third-party notices
         run: node scripts/notices.mjs --check
+      - name: Clippy (ARM64)
+        run: cargo clippy --workspace --all-targets --target aarch64-pc-windows-msvc --locked -- -D warnings

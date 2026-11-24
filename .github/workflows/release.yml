@@ -38,19 +38,21 @@ jobs:
     needs: verify
     uses: ./.github/workflows/check.yml
 
-  publish:
-    name: Build and publish
+  build:
+    name: Build (${{ matrix.arch }})
     needs: check
-    # Stable releases and prereleases share beta.json. Keep every pending tag;
-    # the publisher also checks SemVer because jobs can reach this queue out of order.
-    concurrency:
-      group: release-publication
-      queue: max
-      cancel-in-progress: false
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            toolchain: stable-x86_64-pc-windows-msvc
+          - arch: arm64
+            runner: windows-11-arm
+            toolchain: stable-aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    permissions:
-      contents: write
     defaults:
       run:
         shell: bash
@@ -67,8 +69,8 @@ jobs:
           version: 12.18.0
       - name: Install Rust
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
-          rustup default stable-x86_64-pc-windows-msvc
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update
+          rustup default ${{ matrix.toolchain }}
       - run: pnpm install --frozen-lockfile
       - name: Version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -77,7 +79,14 @@ jobs:
       # NSIS installer, and signs the installer for the in-app updater. Local
       # builds leave the updater artifacts off, so they need no key.
       - name: Install NSIS
-        run: choco install nsis --version=3.13 -y --no-progress
+        shell: pwsh
+        run: |
+          if (Get-Command choco.exe -ErrorAction SilentlyContinue) {
+            choco install nsis --version=3.13 -y --no-progress
+          } else {
+            winget install --id NSIS.NSIS --exact --version 3.13 --accept-package-agreements --accept-source-agreements --silent
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # A release shows its version alone; other builds name their commit
       # (build-support/build-version.rs).
       - name: Build
@@ -86,20 +95,21 @@ jobs:
           ARGUS_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           ARGUS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          node scripts/build.mjs --installer
-          setup=$(ls target/release/bundle/nsis/*-setup.exe)
+          node scripts/build.mjs --installer --arch "${{ matrix.arch }}"
+          setup="target/release/bundle/nsis/Argus_${VERSION}_${{ matrix.arch }}-setup.exe"
           cargo run --locked -p argus-update-signer -- "$VERSION" "$setup"
 
       # A secret that does not match the public key would ship an update that
       # every installed copy rejects.
       - name: Check the update signature
         run: |
-          setup=$(ls target/release/bundle/nsis/*-setup.exe)
+          setup="target/release/bundle/nsis/Argus_${VERSION}_${{ matrix.arch }}-setup.exe"
           node scripts/release.mjs check-signature "$VERSION" "$setup" "$setup.sig"
 
       # The update dialog shows only notes signed with the same key, bound to
       # the version like the installer.
       - name: Sign the release notes
+        if: matrix.arch == 'x64'
         env:
           ARGUS_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           ARGUS_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -113,7 +123,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $setup = (Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1).FullName
+          $setup = (Resolve-Path "target/release/bundle/nsis/Argus_${env:VERSION}_${{ matrix.arch }}-setup.exe").Path
           $dir = Join-Path $env:RUNNER_TEMP "argus-smoke"
           # Installed for all users (the runner is an administrator), so the entry is under HKLM.
           $key = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
@@ -152,16 +162,65 @@ jobs:
           node scripts/uninstall-smoke.mjs $dir
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Collect assets
+      - name: Stage release artifacts
         run: |
-          mkdir assets
-          setup=$(ls target/release/bundle/nsis/*-setup.exe)
-          cp "$setup" assets/
-          cp target/release/argus.exe "assets/Argus_${VERSION}_x64.exe"
+          mkdir staged
+          setup="target/release/bundle/nsis/Argus_${VERSION}_${{ matrix.arch }}-setup.exe"
+          cp "$setup" "$setup.sig" staged/
+          cp target/release/argus.exe "staged/Argus_${VERSION}_${{ matrix.arch }}.exe"
+          if [[ "${{ matrix.arch }}" == "x64" ]]; then
+            cp release-notes.json release-notes.json.sig staged/
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.arch }}
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish release
+    needs: build
+    # Stable releases and prereleases share beta.json. Keep every pending tag;
+    # the publisher also checks SemVer because jobs can reach this queue out of order.
+    concurrency:
+      group: release-publication
+      queue: max
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Collect and verify artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p incoming/x64 incoming/arm64 assets
+          gh run download "$GITHUB_RUN_ID" -n release-x64 -D incoming/x64
+          gh run download "$GITHUB_RUN_ID" -n release-arm64 -D incoming/arm64
+          x64_setup="incoming/x64/Argus_${VERSION}_x64-setup.exe"
+          arm64_setup="incoming/arm64/Argus_${VERSION}_arm64-setup.exe"
+          node scripts/release.mjs check-signature "$VERSION" "$x64_setup" "$x64_setup.sig"
+          node scripts/release.mjs check-signature "$VERSION" "$arm64_setup" "$arm64_setup.sig"
+          node scripts/release.mjs check-signature "$VERSION" incoming/x64/release-notes.json incoming/x64/release-notes.json.sig
+          cp "$x64_setup" "incoming/x64/Argus_${VERSION}_x64.exe" assets/
+          cp "$arm64_setup" "incoming/arm64/Argus_${VERSION}_arm64.exe" assets/
           (cd assets && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           # Update manifests; the beta channel also offers stable releases.
-          node scripts/release.mjs manifest "$VERSION" "$setup" "$setup.sig" \
-            release-notes.json release-notes.json.sig > manifest.json
+          node scripts/release.mjs manifest "$VERSION" \
+            "$x64_setup" "$x64_setup.sig" \
+            --arm64 "$arm64_setup" "$arm64_setup.sig" \
+            incoming/x64/release-notes.json incoming/x64/release-notes.json.sig > manifest.json
           cat manifest.json
 
       - name: Publish release
