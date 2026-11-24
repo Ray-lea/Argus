@@ -20,7 +20,7 @@ SignPath 测试流程使用组织提供的自签名证书，在隔离的 Windows
 
 ## 测试工作流
 
-在 GitHub Actions 中手动运行 **SignPath test signing** 并选择分支与目标架构（`x64` 或 `arm64`）。对应的托管 Windows 运行器从源码构建并提交签名。
+在 GitHub Actions 中手动运行 **SignPath test signing** 并选择分支。托管的 Windows 运行器从源码构建并提交签名。
 
 签名顺序如下：
 

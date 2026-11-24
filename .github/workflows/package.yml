@@ -1,0 +1,124 @@
+# Manual unsigned package builds for real-machine testing without publishing a
+# release or attaching an untrusted test-signing certificate.
+name: Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Target Windows architecture
+        required: false
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - x64
+          - all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}-${{ inputs.arch || 'arm64' }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    name: Build and smoke-test (${{ matrix.arch }})
+    if: inputs.arch == 'all' || (inputs.arch || 'arm64') == matrix.arch
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: windows-11-arm
+            toolchain: stable-aarch64-pc-windows-msvc
+          - arch: x64
+            runner: windows-latest
+            toolchain: stable-x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 12.18.0
+          cache: true
+      - name: Install NSIS
+        run: ./scripts/install-nsis.ps1
+      - name: Install Rust
+        run: |
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: package-${{ matrix.arch }}
+      - run: pnpm install --frozen-lockfile
+      - name: Build application and NSIS installer
+        run: node scripts/build.mjs --installer --arch ${{ matrix.arch }}
+      - name: Install and uninstall silently
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $setupItem = Get-ChildItem "target/release/bundle/nsis/Argus_*_${{ matrix.arch }}-setup.exe" | Select-Object -First 1
+          if (-not $setupItem) { throw "未找到生成的安装包" }
+          $setup = $setupItem.FullName
+          $dir = Join-Path $env:RUNNER_TEMP "argus-smoke"
+          $key = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Argus"
+          $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -WindowStyle Hidden -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "安装程序退出码 $($p.ExitCode)" }
+          foreach ($file in "argus.exe", "uninstall.exe") {
+            if (-not (Test-Path (Join-Path $dir $file))) { throw "安装后缺少 $file" }
+          }
+          $entry = Get-ItemProperty $key
+          if ($entry.DisplayVersion -ne $version) { throw "卸载项的版本是 $($entry.DisplayVersion)" }
+          if ($entry.Publisher -ne "Argus contributors") { throw "卸载项的发布者是 $($entry.Publisher)" }
+          function Assert-UpdateKind($exe, $expected) {
+            $probe = Start-Process $exe -ArgumentList "--argus-updater-check" -WindowStyle Hidden -PassThru
+            if (-not $probe.WaitForExit(30000)) { $probe.Kill(); throw "更新安装类型检查超时：$exe" }
+            if ($probe.ExitCode -ne $expected) { throw "更新安装类型错误：$exe（$($probe.ExitCode)）" }
+          }
+          Assert-UpdateKind (Join-Path $dir "argus.exe") 0
+          $copies = Join-Path $env:RUNNER_TEMP "argus-update-copies"
+          New-Item -ItemType Directory -Path $copies -Force | Out-Null
+          $copy = Join-Path $copies "argus-admin-$([guid]::NewGuid()).exe"
+          Copy-Item (Join-Path $dir "argus.exe") $copy
+          Assert-UpdateKind $copy 1
+          $portable = Join-Path $copies "argus-portable.exe"
+          Copy-Item "target/release/argus.exe" $portable
+          Assert-UpdateKind $portable 1
+          Copy-Item (Join-Path $dir "uninstall.exe") (Join-Path $copies "uninstall.exe")
+          Assert-UpdateKind $portable 1
+          node scripts/uninstall-smoke.mjs $dir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage unsigned packages and SHA-256 checksums
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path staged -Force | Out-Null
+          $setupItem = Get-ChildItem "target/release/bundle/nsis/Argus_*_${{ matrix.arch }}-setup.exe" | Select-Object -First 1
+          $portableName = $setupItem.Name -replace '-setup\.exe$', '.exe'
+          Copy-Item -LiteralPath $setupItem.FullName -Destination (Join-Path "staged" $setupItem.Name)
+          Copy-Item -LiteralPath "target/release/argus.exe" -Destination (Join-Path "staged" $portableName)
+          $sums = Get-ChildItem staged/*.exe | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
+          }
+          [System.IO.File]::WriteAllText((Join-Path (Resolve-Path staged).Path "SHA256SUMS.txt"), ($sums -join "`n") + "`n")
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Argus-${{ matrix.arch }}-${{ github.sha }}
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 14

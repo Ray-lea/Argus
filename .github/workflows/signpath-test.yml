@@ -3,15 +3,6 @@ name: SignPath test signing
 
 on:
   workflow_dispatch:
-    inputs:
-      arch:
-        description: Target Windows architecture
-        required: false
-        default: x64
-        type: choice
-        options:
-          - x64
-          - arm64
 
 permissions:
   contents: read
@@ -28,12 +19,9 @@ env:
 
 jobs:
   sign:
-    name: Build, test-sign and verify (${{ inputs.arch || 'x64' }})
-    runs-on: ${{ inputs.arch == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
+    name: Build, test-sign and verify
+    runs-on: windows-latest
     timeout-minutes: 90
-    env:
-      ARGUS_ARCH: ${{ inputs.arch || 'x64' }}
-      RUST_TOOLCHAIN: ${{ inputs.arch == 'arm64' && 'stable-aarch64-pc-windows-msvc' || 'stable-x86_64-pc-windows-msvc' }}
     defaults:
       run:
         shell: pwsh
@@ -54,14 +42,14 @@ jobs:
       # Every signed binary comes from this clean GitHub-hosted build.
       - name: Install Rust
         run: |
-          rustup toolchain install $env:RUST_TOOLCHAIN --profile minimal --no-self-update
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          rustup default $env:RUST_TOOLCHAIN
+          rustup default stable-x86_64-pc-windows-msvc
       - run: pnpm install --frozen-lockfile
       - name: Build task manager helpers
         run: cargo build -p argus-service --bins --release --locked
       - name: Stage helpers
-        run: node scripts/signpath.mjs --arch $env:ARGUS_ARCH prepare
+        run: node scripts/signpath.mjs prepare
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: helpers
         with:
@@ -85,23 +73,17 @@ jobs:
         timeout-minutes: 3
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/helpers-signed
-          node scripts/signpath.mjs --arch $env:ARGUS_ARCH apply-helpers
+          node scripts/signpath.mjs apply-helpers
       - name: Build application
         # Do not rebuild the helpers after they have been signed.
-        run: node scripts/build.mjs --skip-helpers --arch $env:ARGUS_ARCH
+        run: node scripts/build.mjs --skip-helpers
       - name: Install NSIS
-        run: |
-          if (Get-Command choco.exe -ErrorAction SilentlyContinue) {
-            choco install nsis --version=3.13 -y --no-progress
-          } else {
-            winget install --id NSIS.NSIS --exact --version 3.13 --accept-package-agreements --accept-source-agreements --silent
-          }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        run: ./scripts/install-nsis.ps1
       - name: Prepare NSIS bundle metadata
         # Render the native installer before the main executable is signed.
-        run: node scripts/build.mjs --bundle-only --arch $env:ARGUS_ARCH
+        run: node scripts/build.mjs --bundle-only
       - name: Capture application and uninstaller
-        run: node scripts/signpath.mjs --arch $env:ARGUS_ARCH prepare-application
+        run: node scripts/signpath.mjs prepare-application
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: application
         with:
@@ -125,7 +107,7 @@ jobs:
         timeout-minutes: 5
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/application-signed
-          node scripts/signpath.mjs --arch $env:ARGUS_ARCH build-installer
+          node scripts/signpath.mjs build-installer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: installer
         with:
@@ -149,7 +131,7 @@ jobs:
         timeout-minutes: 3
         run: |
           ./scripts/verify-signpath.ps1 -Directory target/signpath/installer-signed
-          node scripts/signpath.mjs --arch $env:ARGUS_ARCH collect
+          node scripts/signpath.mjs collect
       - name: Install and uninstall on the isolated runner
         run: |
           $ErrorActionPreference = "Stop"

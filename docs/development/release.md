@@ -9,6 +9,7 @@
 | 工作流 | 触发 | 内容 |
 |---|---|---|
 | `check.yml` | 拉取请求；手动运行（Actions 页面或 `gh workflow run check.yml`）；发布时调用 | 提交信息格式（仅拉取请求，含标题）；Biome、文案检查、生成代码检查、脚本测试、rustfmt、x64 与 ARM64 Clippy、Rust 测试、第三方许可声明是否最新 |
+| `package.yml` | 手动运行（`gh workflow run package.yml -f arch=arm64`） | 在 `windows-11-arm` 或 `windows-latest` 上直接构建未签名的测试安装包与免安装程序，执行静默安装／卸载冒烟检查并上传制品，不附带测试证书也不发布 Release |
 | `release.yml` | 推送 `v*` 标签 | 核对标签、版本号、`changelog/zh-CN.md`、其他语言已译完的条目与更新公钥，确认标签在 `main` 上；运行上面的检查；在 x64 与 ARM64 运行器上分别构建并为应用内更新签名，再用仓库里的公钥校验签名和其中的版本号；在各架构原生系统上静默安装，核对卸载项及安装文件、运行副本、免安装下载的更新类型，再静默卸载；为更新对话框显示的更新内容签名并校验；生成双架构更新清单并发布 GitHub Release |
 | [`website.yml`](../../.github/workflows/website.yml) | 手动运行（`main`），或发布完成后由 `release.yml` 调用 | 以已发布的稳定版构建文档和下载页，同步两条更新清单，逐项校验公网下载、更新清单、官网页面和域名跳转。配置见[官网与发行镜像](website.md) |
 
