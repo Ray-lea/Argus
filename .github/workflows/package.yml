@@ -59,6 +59,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: package-${{ matrix.arch }}
+          cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - name: Build application and NSIS installer
         run: node scripts/build.mjs --installer --arch ${{ matrix.arch }}

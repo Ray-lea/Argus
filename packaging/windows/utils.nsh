@@ -1,16 +1,4 @@
-﻿; Native OS machine type (IMAGE_FILE_MACHINE_AMD64 = 0x8664, IMAGE_FILE_MACHINE_ARM64 = 0xAA64).
-!macro ArgusNativeMachine OUT
-  StrCpy $R8 0
-  StrCpy $R9 0
-  System::Call 'kernel32::IsWow64Process2(p -1, *i R8r8, *i R9r9) i .R7'
-  ${If} $R7 = 0
-    StrCpy ${OUT} 0
-  ${Else}
-    IntOp ${OUT} $R9 & 0xFFFF
-  ${EndIf}
-!macroend
-
-; Change shell and registry context based on running
+﻿; Change shell and registry context based on running
 ; architecture and chosen install mode.
 !macro SetContext
   !if "${INSTALLMODE}" == "currentUser"
@@ -19,9 +7,7 @@
     SetShellVarContext all
   !endif
 
-  !insertmacro ArgusNativeMachine $R6
   ${If} ${RunningX64}
-  ${OrIf} $R6 = 0xAA64
     !if "${ARCH}" == "x64"
       SetRegView 64
     !else if "${ARCH}" == "arm64"

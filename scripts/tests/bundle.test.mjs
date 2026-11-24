@@ -66,10 +66,9 @@ test("installer supports native arm64 target metadata and PE machine checks", ()
     { arch: "arm64", binary: "C:/test/argus.exe", output: "C:/test/Argus_1.2.3_arm64-setup.exe", icon: "C:/test/icon.ico", hooks: "C:/test/hooks.nsh", sizeKiB: 10 },
   );
   assert.ok(text.includes('!define ARCH "arm64"'));
-  assert.ok(text.includes("ArgusNativeMachine"));
+  assert.ok(text.includes("${IfNot} ${IsNativeARM64}"));
+  assert.ok(text.includes("${IfNot} ${IsNativeAMD64}"));
   assert.ok(text.includes("ArgusWrongArchArm64"));
-  const utils = fs.readFileSync(path.resolve("packaging/windows/utils.nsh"), "utf8");
-  assert.ok(utils.includes("IsWow64Process2"));
   const pe = Buffer.alloc(0x100);
   pe.writeUInt16LE(0x5a4d, 0);
   pe.writeUInt32LE(0x80, 0x3c);
