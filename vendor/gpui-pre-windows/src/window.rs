@@ -29,6 +29,7 @@ use windows::{
 };
 
 use crate::direct_manipulation::DirectManipulationHandler;
+use crate::frame_clock::{FrameDemand, FrameWake};
 use crate::*;
 use gpui::*;
 
@@ -65,6 +66,8 @@ pub struct WindowsWindowState {
 
     pub callbacks: Callbacks,
     pub frame_signal: Arc<PlatformFrameSignal>,
+    /// What this window needs from the platform's frame clock.
+    pub(crate) frame_demand: Arc<FrameDemand>,
     pub input_handler: Cell<Option<PlatformInputHandler>>,
     pub ime_enabled: Cell<bool>,
     pub pending_surrogate: Cell<Option<u16>>,
@@ -138,6 +141,7 @@ impl WindowsWindowState {
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
         draw_coordinator: Rc<DrawCoordinator>,
+        frame_wake: Arc<FrameWake>,
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
@@ -170,8 +174,10 @@ impl WindowsWindowState {
         let fullscreen = None;
         let initial_placement = None;
 
-        let direct_manipulation = DirectManipulationHandler::new(hwnd, scale_factor)
-            .context("initializing Direct Manipulation")?;
+        let frame_demand = Arc::new(FrameDemand::new(frame_wake));
+        let direct_manipulation =
+            DirectManipulationHandler::new(hwnd, scale_factor, frame_demand.clone())
+                .context("initializing Direct Manipulation")?;
 
         Ok(Self {
             origin: Cell::new(origin),
@@ -188,6 +194,7 @@ impl WindowsWindowState {
             min_size,
             callbacks,
             frame_signal: Arc::new(PlatformFrameSignal::new()),
+            frame_demand,
             input_handler: Cell::new(input_handler),
             ime_enabled: Cell::new(true),
             pending_surrogate: Cell::new(pending_surrogate),
@@ -305,6 +312,7 @@ impl WindowsWindowInner {
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
             context.draw_coordinator.clone(),
+            context.frame_wake.clone(),
         )?;
 
         Ok(Rc::new(Self {
@@ -457,6 +465,7 @@ struct WindowCreateContext {
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
     draw_coordinator: Rc<DrawCoordinator>,
+    frame_wake: Arc<FrameWake>,
     parent_hwnd: Option<HWND>,
 }
 
@@ -485,6 +494,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             draw_coordinator,
+            frame_wake,
         } = creation_info;
         register_window_class(icon);
         let parent_hwnd = if params.kind == WindowKind::Dialog {
@@ -570,6 +580,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             draw_coordinator,
+            frame_wake,
             parent_hwnd,
         };
         let creation_result = unsafe {
@@ -1037,8 +1048,17 @@ impl PlatformWindow for WindowsWindow {
         self.state.is_fullscreen()
     }
 
+    fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
+        let frame_demand = self.state.frame_demand.clone();
+        Some(Rc::new(move || frame_demand.request()))
+    }
+
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
         self.state.callbacks.request_frame.set(Some(callback));
+    }
+
+    fn schedule_frame(&self) {
+        self.state.frame_demand.request();
     }
 
     fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>) {

@@ -11,6 +11,7 @@ mod directx_renderer;
 mod dispatcher;
 mod display;
 mod events;
+mod frame_clock;
 mod frame_trace;
 mod gpu_timing;
 mod keyboard;

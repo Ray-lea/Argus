@@ -1,5 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use gpui::*;
@@ -11,12 +13,17 @@ use windows::Win32::{
     UI::{Input::Pointer::*, WindowsAndMessaging::*},
 };
 
+use crate::frame_clock::FrameDemand;
 use crate::*;
 
 /// Default viewport size in pixels. The actual content size doesn't matter
 /// because we're using the viewport only for gesture recognition, not for
 /// visual output.
 const DEFAULT_VIEWPORT_SIZE: i32 = 1000;
+
+/// How long a touchpad contact keeps frames coming before Direct Manipulation
+/// reports a manipulation for it.
+const CONTACT_POLL_LIMIT: Duration = Duration::from_secs(2);
 
 pub(crate) struct DirectManipulationHandler {
     manager: IDirectManipulationManager,
@@ -26,10 +33,47 @@ pub(crate) struct DirectManipulationHandler {
     window: HWND,
     scale_factor: Rc<Cell<f32>>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    /// The viewport updates only in `update` (`MANUALUPDATE`), called on each
+    /// paint, and the frame clock delivers paints only on request: frames are
+    /// requested while a touchpad contact or its manipulation needs updates.
+    polling: Cell<Option<Polling>>,
+    frame_demand: Arc<FrameDemand>,
+}
+
+/// A touchpad contact that still needs viewport updates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Polling {
+    since: Instant,
+    /// Direct Manipulation has reported a manipulation (running or inertia).
+    manipulated: bool,
+}
+
+/// Polling after an update that left the viewport manipulating or not. A
+/// contact polls until its manipulation ends, or for [`CONTACT_POLL_LIMIT`]
+/// if none starts; a manipulation found without a contact (started outside an
+/// update) polls too.
+fn polling_after_update(
+    polling: Option<Polling>,
+    manipulating: bool,
+    now: Instant,
+) -> Option<Polling> {
+    if manipulating {
+        return Some(Polling {
+            since: polling.map_or(now, |polling| polling.since),
+            manipulated: true,
+        });
+    }
+    polling.filter(|polling| {
+        !polling.manipulated && now.saturating_duration_since(polling.since) < CONTACT_POLL_LIMIT
+    })
+}
+
+fn is_manipulating(status: DIRECTMANIPULATION_STATUS) -> bool {
+    status == DIRECTMANIPULATION_RUNNING || status == DIRECTMANIPULATION_INERTIA
 }
 
 impl DirectManipulationHandler {
-    pub fn new(window: HWND, scale_factor: f32) -> Result<Self> {
+    pub fn new(window: HWND, scale_factor: f32, frame_demand: Arc<FrameDemand>) -> Result<Self> {
         unsafe {
             let manager: IDirectManipulationManager =
                 CoCreateInstance(&DirectManipulationManager, None, CLSCTX_INPROC_SERVER)?;
@@ -71,6 +115,7 @@ impl DirectManipulationHandler {
                     window,
                     Rc::clone(&scale_factor),
                     Rc::clone(&pending_events),
+                    Arc::clone(&frame_demand),
                 )
                 .into();
 
@@ -86,6 +131,8 @@ impl DirectManipulationHandler {
                 window,
                 scale_factor,
                 pending_events,
+                polling: Cell::new(None),
+                frame_demand,
             })
         }
     }
@@ -101,13 +148,25 @@ impl DirectManipulationHandler {
             if GetPointerType(pointer_id, &mut pointer_type).is_ok() && pointer_type == PT_TOUCHPAD
             {
                 self.viewport.SetContact(pointer_id).log_err();
+                self.polling.set(Some(Polling {
+                    since: Instant::now(),
+                    manipulated: false,
+                }));
+                self.frame_demand.request();
             }
         }
     }
 
+    /// Advances the viewport, and asks for the next frame while it needs updates.
     pub fn update(&self) {
         unsafe {
             self.update_manager.Update(None).log_err();
+        }
+        let manipulating = unsafe { self.viewport.GetStatus() }.is_ok_and(is_manipulating);
+        let polling = polling_after_update(self.polling.get(), manipulating, Instant::now());
+        self.polling.set(polling);
+        if polling.is_some() {
+            self.frame_demand.request();
         }
     }
 
@@ -143,6 +202,7 @@ struct DirectManipulationEventHandler {
     last_y_offset: Cell<f32>,
     scroll_phase: Cell<TouchPhase>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    frame_demand: Arc<FrameDemand>,
 }
 
 impl DirectManipulationEventHandler {
@@ -150,6 +210,7 @@ impl DirectManipulationEventHandler {
         window: HWND,
         scale_factor: Rc<Cell<f32>>,
         pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+        frame_demand: Arc<FrameDemand>,
     ) -> Self {
         Self {
             window,
@@ -160,6 +221,7 @@ impl DirectManipulationEventHandler {
             last_y_offset: Cell::new(0.0),
             scroll_phase: Cell::new(TouchPhase::Started),
             pending_events,
+            frame_demand,
         }
     }
 
@@ -213,6 +275,12 @@ impl IDirectManipulationViewportEventHandler_Impl for DirectManipulationEventHan
     ) -> windows_core::Result<()> {
         if current == previous {
             return Ok(());
+        }
+
+        // The next paint's update polls a started manipulation; this reaches
+        // the frame clock if the change arrives outside an update.
+        if is_manipulating(current) {
+            self.frame_demand.request();
         }
 
         // A new gesture interrupted inertia, so end the old sequence.
@@ -358,4 +426,52 @@ impl IDirectManipulationViewportEventHandler_Impl for DirectManipulationEventHan
 fn float_equals(f1: f32, f2: f32) -> bool {
     const EPSILON_SCALE: f32 = 0.00001;
     (f1 - f2).abs() < EPSILON_SCALE * f1.abs().max(f2.abs()).max(EPSILON_SCALE)
+}
+
+#[cfg(test)]
+mod polling_tests {
+    // Not `super::*`: it brings `gpui::test`, which shadows `#[test]`.
+    use super::{CONTACT_POLL_LIMIT, Polling, polling_after_update};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_contact_polls_through_its_gesture_and_inertia_and_stops_after() {
+        let contact = Instant::now();
+        let mut polling = Some(Polling {
+            since: contact,
+            manipulated: false,
+        });
+        // Before Direct Manipulation recognizes the gesture.
+        polling = polling_after_update(polling, false, contact + Duration::from_millis(50));
+        assert!(polling.is_some());
+        // Running, then inertia, longer than the contact limit.
+        for ms in [100, 1_000, 2_500, 4_000] {
+            polling = polling_after_update(polling, true, contact + Duration::from_millis(ms));
+            assert!(polling.is_some_and(|polling| polling.manipulated));
+        }
+        // Ready again: no more frames for the viewport.
+        polling = polling_after_update(polling, false, contact + Duration::from_millis(4_010));
+        assert_eq!(polling, None);
+    }
+
+    #[test]
+    fn a_contact_without_a_manipulation_stops_polling_at_the_limit() {
+        let contact = Instant::now();
+        let polling = Some(Polling {
+            since: contact,
+            manipulated: false,
+        });
+        assert!(polling_after_update(polling, false, contact + CONTACT_POLL_LIMIT / 2).is_some());
+        assert_eq!(
+            polling_after_update(polling, false, contact + CONTACT_POLL_LIMIT),
+            None
+        );
+    }
+
+    #[test]
+    fn a_manipulation_found_without_a_contact_polls() {
+        let now = Instant::now();
+        assert!(polling_after_update(None, true, now).is_some());
+        assert_eq!(polling_after_update(None, false, now), None);
+    }
 }

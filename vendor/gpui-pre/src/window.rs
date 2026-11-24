@@ -2234,6 +2234,9 @@ impl Window {
                 if draw_in_progress() {
                     log::debug!("deferring re-entrant window draw request");
                     deferred_force_render |= request_frame_options.force_render;
+                    // A demand-driven frame source invalidates the window
+                    // again only when asked.
+                    invalidator.wake_platform();
                     #[cfg(feature = "profiler")]
                     profiler::journal::record_reentrant_frame_skipped(window_id, Instant::now());
                     return;
@@ -2393,10 +2396,14 @@ impl Window {
 
                 // Platforms that stop requesting frames for idle windows only
                 // deliver another request after a wakeup. If demand remains
-                // after this frame (the window was re-invalidated mid-draw, or
-                // animations scheduled next-frame callbacks), re-arm the frame
+                // after this frame (the window was re-invalidated mid-draw,
+                // animations scheduled next-frame callbacks, or recent
+                // high-rate input keeps frames presenting), re-arm the frame
                 // source explicitly.
-                if invalidator.is_dirty() || !next_frame_callbacks.borrow().is_empty() {
+                if invalidator.is_dirty()
+                    || !next_frame_callbacks.borrow().is_empty()
+                    || input_rate_tracker.borrow().is_high_rate()
+                {
                     invalidator.wake_platform();
                 }
                 #[cfg(feature = "profiler")]

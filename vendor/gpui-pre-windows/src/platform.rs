@@ -14,7 +14,7 @@ use anyhow::{Context as _, Result, anyhow};
 use futures::channel::oneshot::Receiver;
 use gpui_util::{ResultExt, get_powershell, new_std_command};
 use itertools::Itertools;
-use parking_lot::{Condvar, Mutex, RwLock};
+use parking_lot::RwLock;
 use smallvec::SmallVec;
 use windows::{
     UI::ViewManagement::UISettings,
@@ -36,6 +36,7 @@ use windows::{
     core::*,
 };
 
+use crate::frame_clock::{FrameDemand, FrameWake};
 use crate::*;
 use gpui::*;
 
@@ -43,45 +44,11 @@ use gpui::*;
 struct TrackedWindow {
     handle: SafeHwnd,
     frame_signal: Arc<PlatformFrameSignal>,
-}
-
-/// Visibility changes wake an idle frame clock. An epoch preserves a wake
-/// delivered between checking the window list and entering the wait.
-#[derive(Default)]
-struct FrameWake {
-    epoch: Mutex<u64>,
-    changed: Condvar,
-}
-
-impl FrameWake {
-    fn epoch(&self) -> u64 {
-        *self.epoch.lock()
-    }
-
-    fn wake(&self) {
-        let mut epoch = self.epoch.lock();
-        *epoch = epoch.wrapping_add(1);
-        self.changed.notify_all();
-    }
-
-    fn wait_since(&self, epoch: u64, stop: &AtomicBool, timeout: std::time::Duration) -> bool {
-        let mut current = self.epoch.lock();
-        !self
-            .changed
-            .wait_while_for(
-                &mut current,
-                |current| *current == epoch && !stop.load(Ordering::Acquire),
-                timeout,
-            )
-            .timed_out()
-    }
+    frame_demand: Arc<FrameDemand>,
 }
 
 #[cfg(test)]
 mod recovery_tests;
-
-#[cfg(test)]
-mod idle_tests;
 
 fn for_each_recovery_window(
     windows: &RwLock<SmallVec<[TrackedWindow; 4]>>,
@@ -98,6 +65,11 @@ fn for_each_recovery_window(
 impl TrackedWindow {
     fn as_raw(&self) -> HWND {
         self.handle.as_raw()
+    }
+
+    /// Shown and not minimized: the frame clock serves only these.
+    fn is_presented(&self) -> bool {
+        unsafe { IsWindowVisible(self.as_raw()).as_bool() && !IsIconic(self.as_raw()).as_bool() }
     }
 }
 
@@ -370,6 +342,7 @@ impl WindowsPlatform {
             directx_devices: self.inner.state.directx_devices.borrow().clone().unwrap(),
             invalidate_devices: self.invalidate_devices.clone(),
             draw_coordinator: self.inner.state.draw_coordinator.clone(),
+            frame_wake: self.inner.state.frame_wake.clone(),
         }
     }
 
@@ -497,6 +470,12 @@ impl WindowsPlatform {
             .name("VSyncProvider".to_owned())
             .spawn(move || {
                 let vsync_provider = VSyncProvider::new();
+                // Whether the last vblank invalidated a window. The clock then
+                // waits for the next one too: the window paints in between and
+                // usually asks for its next frame, so a running animation keeps
+                // the clock on its vblank wait instead of sleeping on `frame_wake`
+                // and being woken by every paint.
+                let mut invalidated = false;
                 loop {
                     if stop.load(Ordering::Acquire) {
                         break;
@@ -519,21 +498,27 @@ impl WindowsPlatform {
                             panic!("Device lost: {err}");
                         }
                     }
+                    // Read before the demand: a request or paint after this
+                    // point ends the wait below at once (see `frame_clock`).
                     let epoch = frame_wake.epoch();
                     let Some(windows) = all_windows.upgrade() else {
                         break;
                     };
-                    let visible = windows.read().iter().any(|window| unsafe {
-                        IsWindowVisible(window.as_raw()).as_bool()
-                            && !IsIconic(window.as_raw()).as_bool()
-                    });
-                    if !visible {
+                    let demand = invalidated
+                        || windows.read().iter().any(|window| {
+                            window.is_presented() && window.frame_demand.is_pending()
+                        });
+                    if !demand {
                         for window in windows.read().iter() {
-                            window.frame_signal.take();
+                            if !window.is_presented() {
+                                window.frame_signal.take();
+                            }
                         }
                         drop(windows);
-                        // Keep device-loss checks bounded while idle. Restoring,
-                        // opening a window or shutting down wakes this at once.
+                        // No shown window has anything to draw. A frame
+                        // request, a paint, restoring or opening a window and
+                        // shutting down wake this at once; the timeout keeps
+                        // device-loss checks bounded while idle.
                         frame_wake.wait_since(epoch, &stop, std::time::Duration::from_secs(1));
                         continue;
                     }
@@ -542,17 +527,20 @@ impl WindowsPlatform {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
+                    invalidated = false;
                     for hwnd in windows.read().iter() {
+                        if !hwnd.is_presented() {
+                            hwnd.frame_signal.take();
+                            continue;
+                        }
+                        if !hwnd.frame_demand.take_at_vblank() {
+                            continue;
+                        }
+                        invalidated = true;
+                        if let Some(signal_at) = signal_at {
+                            hwnd.frame_signal.record(signal_at, signal_source);
+                        }
                         unsafe {
-                            if !IsWindowVisible(hwnd.as_raw()).as_bool()
-                                || IsIconic(hwnd.as_raw()).as_bool()
-                            {
-                                hwnd.frame_signal.take();
-                                continue;
-                            }
-                            if let Some(signal_at) = signal_at {
-                                hwnd.frame_signal.record(signal_at, signal_source);
-                            }
                             RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE)
                                 .ok()
                                 .log_err();
@@ -830,6 +818,7 @@ impl Platform for WindowsPlatform {
         self.raw_window_handles.write().push(TrackedWindow {
             handle: handle.into(),
             frame_signal: window.state.frame_signal.clone(),
+            frame_demand: window.state.frame_demand.clone(),
         });
         self.inner.state.frame_wake.wake();
 
@@ -1607,6 +1596,8 @@ pub(crate) struct WindowCreationInfo {
     pub(crate) invalidate_devices: Arc<AtomicBool>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
+    /// Wakes the frame clock when the window asks for a frame.
+    pub(crate) frame_wake: Arc<FrameWake>,
 }
 
 struct PlatformWindowCreateContext {

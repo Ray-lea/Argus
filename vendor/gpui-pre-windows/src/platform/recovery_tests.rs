@@ -1,4 +1,5 @@
 use super::{TrackedWindow, for_each_recovery_window};
+use crate::frame_clock::{FrameDemand, FrameWake};
 use gpui::PlatformFrameSignal;
 use parking_lot::RwLock;
 use smallvec::SmallVec;
@@ -83,6 +84,7 @@ fn synchronous_recovery_allows_window_lifecycle_on_the_receiving_thread() {
     windows.write().push(TrackedWindow {
         handle: HWND(hwnd as _).into(),
         frame_signal: Arc::new(PlatformFrameSignal::new()),
+        frame_demand: Arc::new(FrameDemand::new(Arc::new(FrameWake::default()))),
     });
     let mut writable_in_callback = false;
     for_each_recovery_window(&windows, |window| {

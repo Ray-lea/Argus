@@ -1714,16 +1714,19 @@ impl WindowsWindowInner {
             }
             // Validate the region so a nested message pump doesn't keep
             // re-dispatching WM_PAINT for the still-invalid region in a busy
-            // loop until the in-progress draw unwinds. The vsync thread
-            // re-invalidates every window on each vsync (see
-            // `begin_vsync_thread`), so the deferred frame still gets drawn,
-            // at most one vsync late.
+            // loop until the in-progress draw unwinds, and ask the frame clock
+            // to invalidate the window at the next vblank (see `frame_clock`),
+            // so the deferred frame still gets drawn, at most one vblank late.
             unsafe { ValidateRect(Some(handle), None).ok().log_err() };
+            self.state.frame_demand.request();
             return Some(0);
         };
-        // Acknowledge this paint before drawing. A vsync that invalidates the
-        // window during drawing must remain pending for the next WM_PAINT.
+        // Acknowledge this paint before drawing. A vblank that invalidates the
+        // window during drawing must remain pending for the next WM_PAINT;
+        // while painting, the frame clock invalidates the window at each
+        // vblank whether or not it has asked for a frame yet.
         unsafe { ValidateRect(Some(handle), None).ok().log_err() };
+        let _painting = self.state.frame_demand.paint();
         let mut request_frame = self.state.callbacks.request_frame.take()?;
 
         self.state.direct_manipulation.update();
