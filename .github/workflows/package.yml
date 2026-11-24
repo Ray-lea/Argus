@@ -28,17 +28,10 @@ env:
 jobs:
   package:
     name: Build and smoke-test (${{ matrix.arch }})
-    if: inputs.arch == 'all' || (inputs.arch || 'arm64') == matrix.arch
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: arm64
-            runner: windows-11-arm
-            toolchain: stable-aarch64-pc-windows-msvc
-          - arch: x64
-            runner: windows-latest
-            toolchain: stable-x86_64-pc-windows-msvc
+        include: ${{ fromJSON(inputs.arch == 'all' && '[{"arch":"arm64","runner":"windows-11-arm","toolchain":"stable-aarch64-pc-windows-msvc"},{"arch":"x64","runner":"windows-latest","toolchain":"stable-x86_64-pc-windows-msvc"}]' || inputs.arch == 'x64' && '[{"arch":"x64","runner":"windows-latest","toolchain":"stable-x86_64-pc-windows-msvc"}]' || '[{"arch":"arm64","runner":"windows-11-arm","toolchain":"stable-aarch64-pc-windows-msvc"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     defaults:
