@@ -2339,6 +2339,7 @@ mod tests {
 
 /// A type name without its module paths, generic arguments included:
 /// `a::b::Region<a::c::Page>` reads `Region<Page>`.
+#[cfg(feature = "profiler")]
 fn short_type_name(name: &str) -> String {
     let mut short = String::with_capacity(name.len());
     // Where the path being read starts in `short`.

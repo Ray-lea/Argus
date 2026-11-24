@@ -313,6 +313,18 @@ impl<V: View> ViewElement<V> {
         }
     }
 
+    /// The name draw time profiling attributes this view to.
+    #[cfg(feature = "profiler")]
+    fn profiled_name(&self) -> &'static str {
+        self.view_type_name
+    }
+
+    /// Without the `profiler` feature no name is kept, and none is recorded.
+    #[cfg(not(feature = "profiler"))]
+    fn profiled_name(&self) -> &'static str {
+        ""
+    }
+
     /// Enable caching of this view's rendered subtree, laid out at `style`.
     /// The composer supplies the layout style because caching skips rendering
     /// the contents to measure them.
@@ -503,10 +515,11 @@ impl<V: View> Element for ViewElement<V> {
             // Stateful path: create a reactive boundary.
             #[cfg(feature = "profiler")]
             let start = window.window_profiler.begin_view();
+            let name = self.profiled_name();
             let view = &mut self.view;
             let layout = request_layout_view(
                 entity_id,
-                self.view_type_name,
+                name,
                 self.cached_style.as_ref(),
                 window,
                 cx,
@@ -542,7 +555,7 @@ impl<V: View> Element for ViewElement<V> {
             let start = window.window_profiler.begin_view();
             let prepainted = prepaint_view(
                 entity_id,
-                self.view_type_name,
+                self.profiled_name(),
                 self.weak_view.as_ref(),
                 self.following,
                 global_id,
