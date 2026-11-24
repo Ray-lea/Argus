@@ -169,20 +169,26 @@ fn summary(data: &HashMap<String, Value>, snapshot: &Value, view: &ViewState) ->
             _ => unknown(),
         },
     );
-    row(
-        "settings.sensors.title",
-        switch(settings["kernelSensors"].as_bool()),
-    );
-    row(
-        "settings.about.diagnostics.sensorReadings",
-        match hardware["cpuSensors"]["state"].as_str() {
-            Some(
-                state @ ("pending" | "serviceUnavailable" | "driverUnavailable" | "moduleRejected"
-                | "unsupported" | "noData" | "ready"),
-            ) => label(&format!("performance.cpu.sensorState.{state}")),
-            _ => unknown(),
-        },
-    );
+    let sensors_supported = data
+        .get("info")
+        .and_then(|info| info["kernelSensorsSupported"].as_bool())
+        .unwrap_or(crate::platform::KERNEL_SENSORS_SUPPORTED);
+    if sensors_supported {
+        row(
+            "settings.sensors.title",
+            switch(settings["kernelSensors"].as_bool()),
+        );
+        row(
+            "settings.about.diagnostics.sensorReadings",
+            match hardware["cpuSensors"]["state"].as_str() {
+                Some(
+                    state @ ("pending" | "serviceUnavailable" | "driverUnavailable"
+                    | "moduleRejected" | "unsupported" | "noData" | "ready"),
+                ) => label(&format!("performance.cpu.sensorState.{state}")),
+                _ => unknown(),
+            },
+        );
+    }
     let timestamp = snapshot["timestamp"]
         .as_i64()
         .filter(|&t| t > 0)
@@ -351,6 +357,19 @@ mod tests {
         let second = summary(&data, &snapshot, &view());
         assert!(second.contains("Changed CPU"));
         assert!(!second.contains("Example CPU"));
+        let mut x64_data = data;
+        x64_data.insert(
+            "info".into(),
+            json!({"version":"0.5.0", "build":"0.5.0", "elevated":false, "kernelSensorsSupported":true}),
+        );
+        let x64_report = summary(&x64_data, &snapshot, &view());
+        let mut arm_data = x64_data;
+        arm_data.insert(
+            "info".into(),
+            json!({"version":"0.5.0", "build":"0.5.0", "elevated":false, "kernelSensorsSupported":false}),
+        );
+        let arm_report = summary(&arm_data, &snapshot, &view());
+        assert_eq!(arm_report.lines().count() + 2, x64_report.lines().count());
     }
 
     #[test]

@@ -35,7 +35,12 @@ test("stable and prerelease GitHub notes include both artifact names and the bil
     assert(body.includes("- 版本变更示例。"));
     assert(body.includes("- Example release change."));
     assert.equal(body.split("## 下载文件说明 / Download files").length - 1, 1);
-    for (const file of [`Argus_${version}_x64-setup.exe`, `Argus_${version}_x64.exe`])
+    for (const file of [
+      `Argus_${version}_x64-setup.exe`,
+      `Argus_${version}_arm64-setup.exe`,
+      `Argus_${version}_x64.exe`,
+      `Argus_${version}_arm64.exe`,
+    ])
       assert.equal(body.split(file).length - 1, 2, file);
     assert(body.includes("安装版（推荐）"));
     assert(body.includes("Installer (recommended)"));
@@ -96,4 +101,25 @@ test("signed in-app notes carry every finished translation and leave drafts out"
   const notes = JSON.parse(await readFile(join(f.root, "notes.json"), "utf8"));
   assert.deepEqual(Object.keys(notes.releases[0].translations).sort(), ["de-DE", "en-US"]);
   assert.equal(notes.releases[0].translations["de-DE"], "### Fehlerbehebungen\n\n- Beispielhafte Änderung.");
+});
+
+test("manifest includes both x64 and arm64 platforms when --arm64 is supplied", async t => {
+  const f = await fixture(t, "1.2.3");
+  await writeFile(join(f.root, "Argus_1.2.3_x64-setup.exe.sig"), "sig-x64\n");
+  await writeFile(join(f.root, "Argus_1.2.3_arm64-setup.exe.sig"), "sig-arm64\n");
+  const out = JSON.parse(
+    f.run(
+      "manifest",
+      "1.2.3",
+      "Argus_1.2.3_x64-setup.exe",
+      "Argus_1.2.3_x64-setup.exe.sig",
+      "--arm64",
+      "Argus_1.2.3_arm64-setup.exe",
+      "Argus_1.2.3_arm64-setup.exe.sig",
+    ),
+  );
+  assert.equal(out.platforms["windows-x86_64-nsis"].signature, "sig-x64");
+  assert.equal(out.platforms["windows-x86_64"].url, "https://github.com/fixture/argus/releases/download/v1.2.3/Argus_1.2.3_x64-setup.exe");
+  assert.equal(out.platforms["windows-aarch64-nsis"].signature, "sig-arm64");
+  assert.equal(out.platforms["windows-aarch64"].url, "https://github.com/fixture/argus/releases/download/v1.2.3/Argus_1.2.3_arm64-setup.exe");
 });

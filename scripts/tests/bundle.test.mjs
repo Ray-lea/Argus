@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 import { renderInstaller, validateBuildInfo } from "../bundle.mjs";
+import { parseArchFlag, resolveWindowsTarget, verifyPeArchitecture } from "../lib/windows-target.mjs";
 test("installer escapes paths and carries native updater restart flags", () => {
   const text = renderInstaller(
     {
@@ -40,4 +43,38 @@ test("installer keeps artifact metadata visible and package precedence separate"
     assert.throws(() => validateBuildInfo({...build,...change}, "1.2.3"));
   validateBuildInfo({version:"1.2.3",build:"1.2.3",buildKind:"stable",fileVersion:"1.2.3.0"}, "1.2.3");
   validateBuildInfo({version:"1.2.4-beta.1",build:"1.2.4-beta.1",buildKind:"test",fileVersion:"1.2.4.0"}, "1.2.4-beta.1");
+});
+
+test("installer supports native arm64 target metadata and PE machine checks", () => {
+  assert.deepEqual(parseArchFlag(["--installer", "--arch", "arm64"]), { arch: "arm64", rest: ["--installer"] });
+  assert.deepEqual(resolveWindowsTarget("arm64", "x64"), {
+    arch: "arm64",
+    rustTarget: "aarch64-pc-windows-msvc",
+    peMachine: 0xaa64,
+    hostArch: "x64",
+    cross: true,
+  });
+  assert.deepEqual(resolveWindowsTarget(null, "arm64"), {
+    arch: "arm64",
+    rustTarget: "aarch64-pc-windows-msvc",
+    peMachine: 0xaa64,
+    hostArch: "arm64",
+    cross: false,
+  });
+  const text = renderInstaller(
+    { productName: "Argus", publisher: "Test", version: "1.2.3", homepage: "https://example.com", identifier: "dev.argus.test", copyright: "Test" },
+    { arch: "arm64", binary: "C:/test/argus.exe", output: "C:/test/Argus_1.2.3_arm64-setup.exe", icon: "C:/test/icon.ico", hooks: "C:/test/hooks.nsh", sizeKiB: 10 },
+  );
+  assert.ok(text.includes('!define ARCH "arm64"'));
+  assert.ok(text.includes("ArgusNativeMachine"));
+  assert.ok(text.includes("ArgusWrongArchArm64"));
+  const utils = fs.readFileSync(path.resolve("packaging/windows/utils.nsh"), "utf8");
+  assert.ok(utils.includes("IsWow64Process2"));
+  const pe = Buffer.alloc(0x100);
+  pe.writeUInt16LE(0x5a4d, 0);
+  pe.writeUInt32LE(0x80, 0x3c);
+  pe.writeUInt32LE(0x4550, 0x80);
+  pe.writeUInt16LE(0xaa64, 0x84);
+  verifyPeArchitecture(pe, "arm64");
+  assert.throws(() => verifyPeArchitecture(pe, "x64"));
 });

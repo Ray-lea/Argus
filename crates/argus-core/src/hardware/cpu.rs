@@ -12,8 +12,8 @@ use windows::Win32::System::SystemInformation::{
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
 use windows::Win32::System::Threading::{
-    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount, GetCurrentThread,
-    IsProcessorFeaturePresent, PF_VIRT_FIRMWARE_ENABLED, SetThreadGroupAffinity,
+    ALL_PROCESSOR_GROUPS, GetActiveProcessorCount, GetActiveProcessorGroupCount,
+    IsProcessorFeaturePresent, PF_VIRT_FIRMWARE_ENABLED,
 };
 use windows::core::{PCWSTR, w};
 
@@ -106,8 +106,10 @@ fn core_kinds(intel: bool, classes: &[u8], l3: &[bool]) -> Vec<CoreKind> {
 
 /// Called on a short-lived worker so changing its processor group leaves the
 /// caller's affinity intact, including a default affinity spanning groups.
+#[cfg(target_arch = "x86_64")]
 fn intel_core_type(thread: &CpuThread) -> Option<u8> {
     use std::arch::x86_64::{__cpuid, __cpuid_count};
+    use windows::Win32::System::Threading::{GetCurrentThread, SetThreadGroupAffinity};
     let affinity = GROUP_AFFINITY {
         Group: thread.group,
         Mask: 1usize << thread.processor,
@@ -119,6 +121,11 @@ fn intel_core_type(thread: &CpuThread) -> Option<u8> {
         return None;
     }
     (__cpuid(0).eax >= 0x1a).then(|| (__cpuid_count(0x1a, 0).eax >> 24) as u8)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn intel_core_type(_thread: &CpuThread) -> Option<u8> {
+    None
 }
 
 fn intel_core_classes(
@@ -228,20 +235,58 @@ impl CpuInfo {
 
 const CPU_KEY: PCWSTR = w!(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
 
-fn virtualization_enabled(
-    firmware: bool,
-    cpuid: impl Fn(u32) -> std::arch::x86_64::CpuidResult,
-) -> bool {
+fn virtualization_enabled(firmware: bool, present: bool, leaf: impl Fn(u32) -> [u32; 4]) -> bool {
     if firmware {
         return true;
     }
     // Hyper-V consumes the extensions in its root partition, where Windows
     // can report PF_VIRT_FIRMWARE_ENABLED as false. The Hv#1 interface's
     // CreatePartitions privilege distinguishes that host from ordinary guests.
-    cpuid(1).ecx & (1 << 31) != 0
-        && cpuid(0x4000_0000).eax >= 0x4000_0003
-        && cpuid(0x4000_0001).eax == u32::from_le_bytes(*b"Hv#1")
-        && cpuid(0x4000_0003).ebx & 1 != 0
+    present
+        && leaf(0x4000_0000)[0] >= 0x4000_0003
+        && leaf(0x4000_0001)[0] == u32::from_le_bytes(*b"Hv#1")
+        && leaf(0x4000_0003)[1] & 1 != 0
+}
+
+fn detect_virtualization() -> bool {
+    let firmware = unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool();
+    if firmware {
+        return true;
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::__cpuid;
+        let present = __cpuid(1).ecx & (1 << 31) != 0;
+        virtualization_enabled(false, present, |id| {
+            let r = __cpuid(id);
+            [r.eax, r.ebx, r.ecx, r.edx]
+        })
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        use windows::Wdk::System::SystemInformation::{
+            NtQuerySystemInformation, SYSTEM_INFORMATION_CLASS,
+        };
+        // SYSTEM_HYPERVISOR_DETAIL_INFORMATION: seven 16-byte HV_DETAILS leaves
+        // corresponding to synthetic hypervisor leaves 0x4000_0000..=0x4000_0006.
+        let mut details = [[0u32; 4]; 7];
+        let mut returned = 0u32;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SYSTEM_INFORMATION_CLASS(159),
+                details.as_mut_ptr().cast(),
+                size_of_val(&details) as u32,
+                &mut returned,
+            )
+        };
+        let present = status.0 >= 0 && returned == size_of_val(&details) as u32;
+        virtualization_enabled(false, present, |id| {
+            details
+                .get(id.wrapping_sub(0x4000_0000) as usize)
+                .copied()
+                .unwrap_or_default()
+        })
+    }
 }
 
 pub fn cpu_info() -> CpuInfo {
@@ -250,10 +295,7 @@ pub fn cpu_info() -> CpuInfo {
             .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
             .unwrap_or_default(),
         logical: unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) },
-        virtualization: virtualization_enabled(
-            unsafe { IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED) }.as_bool(),
-            std::arch::x86_64::__cpuid,
-        ),
+        virtualization: detect_virtualization(),
         ..Default::default()
     };
     identify(&mut info);
@@ -367,10 +409,20 @@ pub fn cpu_info() -> CpuInfo {
     info
 }
 
+fn cpuid_base_frequency() -> Option<u32> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::__cpuid;
+        (__cpuid(0).eax >= 0x16).then(|| __cpuid(0x16).eax & 0xffff)
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        None
+    }
+}
+
 fn base_frequency() -> (u32, Option<&'static str>) {
-    use std::arch::x86_64::__cpuid;
-    let cpuid = (__cpuid(0).eax >= 0x16).then(|| __cpuid(0x16).eax & 0xffff);
-    if let Some(mhz) = cpuid.filter(|v| (100..=12000).contains(v)) {
+    if let Some(mhz) = cpuid_base_frequency().filter(|v| (100..=12000).contains(v)) {
         return (mhz, Some("cpuid"));
     }
     match processor_power_info(0)
@@ -472,97 +524,180 @@ pub(super) fn nominal_frequencies(
     frequencies
 }
 
-fn identify(info: &mut CpuInfo) {
-    use std::arch::x86_64::{__cpuid, __cpuid_count};
-    let vendor = __cpuid(0);
-    let bytes: Vec<_> = [vendor.ebx, vendor.edx, vendor.ecx]
-        .into_iter()
-        .flat_map(u32::to_le_bytes)
-        .collect();
-    info.vendor = String::from_utf8_lossy(&bytes).into_owned();
-    if vendor.eax < 1 {
-        return;
-    }
-    let id = __cpuid(1);
-    let family = (id.eax >> 8) & 15;
-    info.family = family
-        + if family == 15 {
-            (id.eax >> 20) & 255
-        } else {
-            0
-        };
-    info.model = (id.eax >> 4) & 15
-        | if matches!(family, 6 | 15) {
-            (id.eax >> 12) & 0xf0
-        } else {
-            0
-        };
-    info.stepping = id.eax & 15;
-    let mut add = |bits: u32, items: &[(u8, &'static str)]| {
-        info.instructions.extend(
-            items
-                .iter()
-                .filter(|(bit, _)| bits & (1 << bit) != 0)
-                .map(|(_, name)| *name),
-        );
-    };
-    add(id.edx, &[(25, "SSE"), (26, "SSE2")]);
-    add(
-        id.ecx,
-        &[
-            (0, "SSE3"),
-            (9, "SSSE3"),
-            (19, "SSE4.1"),
-            (20, "SSE4.2"),
-            (28, "AVX"),
-            (12, "FMA"),
-            (25, "AES"),
-            (29, "F16C"),
-            (23, "POPCNT"),
-            (1, "PCLMULQDQ"),
-        ],
-    );
-    if vendor.eax >= 7 {
-        let bits = __cpuid_count(7, 0);
-        // CPUID.7.0:EDX[15] also covers systems whose topology API omits classes.
-        info.hybrid = bits.edx & (1 << 15) != 0;
-        add(
-            bits.ebx,
-            &[
-                (5, "AVX2"),
-                (3, "BMI1"),
-                (8, "BMI2"),
-                (19, "ADX"),
-                (29, "SHA"),
-                (16, "AVX-512F"),
-                (17, "AVX-512DQ"),
-                (28, "AVX-512CD"),
-                (30, "AVX-512BW"),
-                (31, "AVX-512VL"),
-            ],
-        );
-        add(
-            bits.ecx,
-            &[(11, "AVX-512VNNI"), (9, "VAES"), (10, "VPCLMULQDQ")],
-        );
-        add(
-            bits.edx,
-            &[
-                (23, "AVX-512FP16"),
-                (24, "AMX-TILE"),
-                (22, "AMX-BF16"),
-                (25, "AMX-INT8"),
-            ],
-        );
-        if bits.eax >= 1 {
-            add(
-                __cpuid_count(7, 1).eax,
-                &[(4, "AVX-VNNI"), (5, "AVX-512BF16")],
-            );
+/// Parses Windows' ARM64 processor `Identifier` string, e.g.
+/// `"ARMv8 (64-bit) Family 8 Model D4B Revision 0"`.
+#[cfg_attr(not(target_arch = "aarch64"), allow(dead_code))]
+fn parse_arm64_identifier(text: &str) -> Option<(u32, u32, u32)> {
+    let mut family = None;
+    let mut model = None;
+    let mut revision = None;
+    let mut words = text.split_whitespace();
+    while let Some(word) = words.next() {
+        if word.eq_ignore_ascii_case("Family") {
+            family = words.next().and_then(|v| {
+                v.parse::<u32>()
+                    .ok()
+                    .or_else(|| u32::from_str_radix(v, 16).ok())
+            });
+        } else if word.eq_ignore_ascii_case("Model") {
+            model = words.next().and_then(|v| {
+                u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches("0X"), 16).ok()
+            });
+        } else if word.eq_ignore_ascii_case("Revision") {
+            revision = words.next().and_then(|v| {
+                u32::from_str_radix(v.trim_start_matches("0x").trim_start_matches("0X"), 16).ok()
+            });
         }
     }
-    if __cpuid(0x80000000).eax >= 0x80000001 {
-        add(__cpuid(0x80000001).ecx, &[(5, "LZCNT"), (6, "SSE4a")]);
+    Some((family?, model?, revision?))
+}
+
+#[cfg_attr(not(target_arch = "aarch64"), allow(dead_code))]
+fn arm64_instructions(mut has_feature: impl FnMut(u32) -> bool) -> Vec<&'static str> {
+    // WinNT.h PROCESSOR_FEATURE_ID constants for ARMv8/ARMv9 user-mode extensions.
+    const FEATURES: &[(u32, &[&str])] = &[
+        (29, &["ARMv8", "NEON"]), // PF_ARM_V8_INSTRUCTIONS_AVAILABLE
+        (30, &["AES", "SHA"]),    // PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
+        (31, &["CRC32"]),         // PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE
+        (34, &["LSE"]),           // PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE
+        (43, &["DotProd"]),       // PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
+        (44, &["JSCVT"]),         // PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE
+        (45, &["LRCPC"]),         // PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE
+        (46, &["SVE"]),           // PF_ARM_SVE_INSTRUCTIONS_AVAILABLE
+        (47, &["SVE2"]),          // PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE
+        (62, &["LSE2"]),          // PF_ARM_LSE2_AVAILABLE
+        (64, &["SHA3"]),          // PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE
+        (65, &["SHA512"]),        // PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE
+        (67, &["FP16"]),          // PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE
+        (68, &["BF16"]),          // PF_ARM_V86_BF16_INSTRUCTIONS_AVAILABLE
+        (69, &["I8MM"]),          // PF_ARM_V86_I8MM_INSTRUCTIONS_AVAILABLE
+    ];
+    let mut out = Vec::new();
+    for &(feature, names) in FEATURES {
+        if has_feature(feature) {
+            out.extend_from_slice(names);
+        }
+    }
+    out
+}
+
+fn identify(info: &mut CpuInfo) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::arch::x86_64::{__cpuid, __cpuid_count};
+        let vendor = __cpuid(0);
+        let bytes: Vec<_> = [vendor.ebx, vendor.edx, vendor.ecx]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect();
+        info.vendor = String::from_utf8_lossy(&bytes).into_owned();
+        if vendor.eax >= 1 {
+            let id = __cpuid(1);
+            let family = (id.eax >> 8) & 15;
+            info.family = family
+                + if family == 15 {
+                    (id.eax >> 20) & 255
+                } else {
+                    0
+                };
+            info.model = (id.eax >> 4) & 15
+                | if matches!(family, 6 | 15) {
+                    (id.eax >> 12) & 0xf0
+                } else {
+                    0
+                };
+            info.stepping = id.eax & 15;
+            let mut add = |bits: u32, items: &[(u8, &'static str)]| {
+                info.instructions.extend(
+                    items
+                        .iter()
+                        .filter(|(bit, _)| bits & (1 << bit) != 0)
+                        .map(|(_, name)| *name),
+                );
+            };
+            add(id.edx, &[(25, "SSE"), (26, "SSE2")]);
+            add(
+                id.ecx,
+                &[
+                    (0, "SSE3"),
+                    (9, "SSSE3"),
+                    (19, "SSE4.1"),
+                    (20, "SSE4.2"),
+                    (28, "AVX"),
+                    (12, "FMA"),
+                    (25, "AES"),
+                    (29, "F16C"),
+                    (23, "POPCNT"),
+                    (1, "PCLMULQDQ"),
+                ],
+            );
+            if vendor.eax >= 7 {
+                let bits = __cpuid_count(7, 0);
+                // CPUID.7.0:EDX[15] also covers systems whose topology API omits classes.
+                info.hybrid = bits.edx & (1 << 15) != 0;
+                add(
+                    bits.ebx,
+                    &[
+                        (5, "AVX2"),
+                        (3, "BMI1"),
+                        (8, "BMI2"),
+                        (19, "ADX"),
+                        (29, "SHA"),
+                        (16, "AVX-512F"),
+                        (17, "AVX-512DQ"),
+                        (28, "AVX-512CD"),
+                        (30, "AVX-512BW"),
+                        (31, "AVX-512VL"),
+                    ],
+                );
+                add(
+                    bits.ecx,
+                    &[(11, "AVX-512VNNI"), (9, "VAES"), (10, "VPCLMULQDQ")],
+                );
+                add(
+                    bits.edx,
+                    &[
+                        (23, "AVX-512FP16"),
+                        (24, "AMX-TILE"),
+                        (22, "AMX-BF16"),
+                        (25, "AMX-INT8"),
+                    ],
+                );
+                if bits.eax >= 1 {
+                    add(
+                        __cpuid_count(7, 1).eax,
+                        &[(4, "AVX-VNNI"), (5, "AVX-512BF16")],
+                    );
+                }
+            }
+            if __cpuid(0x80000000).eax >= 0x80000001 {
+                add(__cpuid(0x80000001).ecx, &[(5, "LZCNT"), (6, "SSE4a")]);
+            }
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        use windows::Win32::System::SystemInformation::{GetNativeSystemInfo, SYSTEM_INFO};
+        use windows::Win32::System::Threading::PROCESSOR_FEATURE_ID;
+        info.vendor = reg_string(CPU_KEY, w!("VendorIdentifier"))
+            .map(|s| s.trim().to_owned())
+            .unwrap_or_default();
+        if let Some((family, model, stepping)) =
+            reg_string(CPU_KEY, w!("Identifier")).and_then(|s| parse_arm64_identifier(&s))
+        {
+            info.family = family;
+            info.model = model;
+            info.stepping = stepping;
+        } else {
+            let mut sys = SYSTEM_INFO::default();
+            unsafe { GetNativeSystemInfo(&mut sys) };
+            info.family = u32::from(sys.wProcessorLevel);
+            info.model = u32::from(sys.wProcessorRevision >> 8);
+            info.stepping = u32::from(sys.wProcessorRevision & 0xff);
+        }
+        info.instructions = arm64_instructions(|feature| {
+            unsafe { IsProcessorFeaturePresent(PROCESSOR_FEATURE_ID(feature)) }.as_bool()
+        });
     }
     use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY, RegGetValueW};
     let mut data = [0u8; 64];
@@ -779,7 +914,7 @@ mod tests {
 
     #[test]
     fn virtualization_distinguishes_hyper_v_hosts_from_guests() {
-        assert!(virtualization_enabled(true, |_| panic!(
+        assert!(virtualization_enabled(true, false, |_| panic!(
             "firmware already available"
         )));
         for (present, max_leaf, interface, privileges, expected) in [
@@ -801,23 +936,31 @@ mod tests {
             (true, 0x4000_0001, u32::from_le_bytes(*b"Hv#1"), 1, false),
             (true, 0x4000_000c, 0, 1, false),
         ] {
-            let read = |leaf| {
-                let mut value = std::arch::x86_64::CpuidResult {
-                    eax: 0,
-                    ebx: 0,
-                    ecx: 0,
-                    edx: 0,
-                };
-                match leaf {
-                    1 => value.ecx = u32::from(present) << 31,
-                    0x4000_0000 => value.eax = max_leaf,
-                    0x4000_0001 => value.eax = interface,
-                    0x4000_0003 => value.ebx = privileges,
-                    _ => panic!("unexpected CPUID leaf"),
-                }
-                value
+            let read = |leaf| match leaf {
+                0x4000_0000 => [max_leaf, 0, 0, 0],
+                0x4000_0001 => [interface, 0, 0, 0],
+                0x4000_0003 => [0, privileges, 0, 0],
+                _ => panic!("unexpected hypervisor leaf"),
             };
-            assert_eq!(virtualization_enabled(false, read), expected);
+            assert_eq!(virtualization_enabled(false, present, read), expected);
         }
+    }
+
+    #[test]
+    fn parses_arm64_registry_identifiers_and_feature_sets() {
+        assert_eq!(
+            parse_arm64_identifier("ARMv8 (64-bit) Family 8 Model 001 Revision 100"),
+            Some((8, 0x001, 0x100))
+        );
+        assert_eq!(
+            parse_arm64_identifier("ARMv8 (64-bit) Family 8 Model D4B Revision 0"),
+            Some((8, 0xd4b, 0))
+        );
+        assert_eq!(parse_arm64_identifier("GenuineIntel Family 6"), None);
+        let features = arm64_instructions(|id| matches!(id, 29 | 30 | 34 | 43 | 68));
+        assert_eq!(
+            features,
+            vec!["ARMv8", "NEON", "AES", "SHA", "LSE", "DotProd", "BF16"]
+        );
     }
 }

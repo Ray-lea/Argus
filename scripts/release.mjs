@@ -834,26 +834,56 @@ function cmdReleaseNotes([version, output]) {
 }
 
 /** The manifest the in-app updater reads (latest.json and beta.json). */
-function cmdManifest([version, installer, signature, releaseNotes, releaseNotesSignature]) {
-  if (!version || !installer || !signature || Boolean(releaseNotes) !== Boolean(releaseNotesSignature))
+function cmdManifest(rawArgs) {
+  let arm64Installer = null;
+  let arm64Signature = null;
+  const positional = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    if (rawArgs[i] === "--arm64") {
+      arm64Installer = rawArgs[++i];
+      arm64Signature = rawArgs[++i];
+    } else {
+      positional.push(rawArgs[i]);
+    }
+  }
+  const [version, installer, signature, releaseNotes, releaseNotesSignature] = positional;
+  if (
+    !version ||
+    !installer ||
+    !signature ||
+    Boolean(arm64Installer) !== Boolean(arm64Signature) ||
+    Boolean(releaseNotes) !== Boolean(releaseNotesSignature)
+  )
     fail(
       t(
-        "用法：manifest <版本> <安装包> <签名文件> [<更新内容> <更新内容的签名文件>]",
-        "Usage: manifest <version> <installer> <signature file> [<notes> <notes signature file>]",
+        "用法：manifest <版本> <x64安装包> <x64签名文件> [--arm64 <arm64安装包> <arm64签名文件>] [<更新内容> <更新内容的签名文件>]",
+        "Usage: manifest <version> <x64 installer> <x64 signature> [--arm64 <arm64 installer> <arm64 signature>] [<notes> <notes signature>]",
       ),
     );
   const notes = readNotes(version) ?? fail(noEntry(version));
   const repo = publicRepo() ?? fail(t("找不到 GitHub 仓库地址", "GitHub repository address not found"));
-  const asset = {
-    signature: readFileSync(signature, "utf8").trim(),
-    url: `${repo}/releases/download/v${version}/${encodeURIComponent(basename(installer))}`,
+  const assetFor = (file, sig, expectedSuffix) => {
+    const name = basename(file);
+    if (!name.endsWith(expectedSuffix))
+      fail(t(`安装包名称与架构不符：${name}`, `Installer filename does not match architecture: ${name}`));
+    return {
+      signature: readFileSync(sig, "utf8").trim(),
+      url: `${repo}/releases/download/v${version}/${encodeURIComponent(name)}`,
+    };
   };
+  const x64Asset = assetFor(installer, signature, "_x64-setup.exe");
+  const platforms = { "windows-x86_64-nsis": x64Asset, "windows-x86_64": x64Asset };
+  if (arm64Installer) {
+    const arm64Asset = assetFor(arm64Installer, arm64Signature, "_arm64-setup.exe");
+    platforms["windows-aarch64-nsis"] = arm64Asset;
+    platforms["windows-aarch64"] = arm64Asset;
+  }
   const manifest = {
     version,
     notes: plainNotes(notes),
     pub_date: new Date().toISOString(),
     // The updater looks for `{os}-{arch}-{installer}` first, then `{os}-{arch}`.
-    platforms: { "windows-x86_64-nsis": asset, "windows-x86_64": asset },
+    platforms,
   };
   if (releaseNotes) {
     // Kept as the exact text that was signed; the app parses it after checking.

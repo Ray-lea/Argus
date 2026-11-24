@@ -449,7 +449,11 @@ impl ReleaseSource {
     }
 
     fn artifact(&self, original: &Url, version: &str) -> Result<Url, String> {
-        let file = file_name(version).ok_or_else(|| tr!("updater.invalidVersion"))?;
+        self.artifact_for(original, version, crate::platform::INSTALLER_ARCH)
+    }
+
+    fn artifact_for(&self, original: &Url, version: &str, arch: &str) -> Result<Url, String> {
+        let file = file_name_for(version, arch).ok_or_else(|| tr!("updater.invalidVersion"))?;
         let upstream = format!("{REPO}/releases/download/v{version}/{file}");
         let mirror = format!("{OFFICIAL_DOWNLOADS}/v{version}/{file}");
         let github_url = if original.as_str() == mirror {
@@ -950,11 +954,15 @@ fn updates_dir(app: &Host) -> Option<PathBuf> {
 
 /// A version is only ever part of a file name; anything else stays out.
 fn file_name(version: &str) -> Option<String> {
+    file_name_for(version, crate::platform::INSTALLER_ARCH)
+}
+
+fn file_name_for(version: &str, arch: &str) -> Option<String> {
     (!version.is_empty()
         && version
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')))
-    .then(|| format!("Argus_{version}_x64-setup.exe"))
+    .then(|| format!("Argus_{version}_{arch}-setup.exe"))
 }
 
 /// Saves a verified installer for later. An older one stays until the new one
@@ -1367,30 +1375,34 @@ mod tests {
     #[test]
     fn mirrored_manifests_and_installers_fall_back_to_the_same_upstream_version() {
         let version = "1.2.3-beta.1";
-        let upstream = Url::parse(&format!(
-            "{REPO}/releases/download/v{version}/Argus_{version}_x64-setup.exe"
-        ))
-        .unwrap();
-        let mirror = ReleaseSource::Official
-            .artifact(&upstream, version)
+        for arch in ["x64", "arm64"] {
+            let upstream = Url::parse(&format!(
+                "{REPO}/releases/download/v{version}/Argus_{version}_{arch}-setup.exe"
+            ))
             .unwrap();
-        assert_eq!(mirror.host_str(), Some("dl.argustask.com"));
-        assert_eq!(
-            ReleaseSource::GitHub.artifact(&mirror, version).unwrap(),
-            upstream
-        );
-        assert_eq!(
-            ReleaseSource::Proxy("https://example.org/".into())
-                .artifact(&mirror, version)
-                .unwrap()
-                .as_str(),
-            format!("https://example.org/{upstream}")
-        );
-        assert!(
-            ReleaseSource::Official
-                .artifact(&upstream, "1.2.2")
-                .is_err()
-        );
+            let mirror = ReleaseSource::Official
+                .artifact_for(&upstream, version, arch)
+                .unwrap();
+            assert_eq!(mirror.host_str(), Some("dl.argustask.com"));
+            assert_eq!(
+                ReleaseSource::GitHub
+                    .artifact_for(&mirror, version, arch)
+                    .unwrap(),
+                upstream
+            );
+            assert_eq!(
+                ReleaseSource::Proxy("https://example.org/".into())
+                    .artifact_for(&mirror, version, arch)
+                    .unwrap()
+                    .as_str(),
+                format!("https://example.org/{upstream}")
+            );
+            assert!(
+                ReleaseSource::Official
+                    .artifact_for(&upstream, "1.2.2", arch)
+                    .is_err()
+            );
+        }
         for (channel, file) in [
             (UpdateChannel::Stable, "latest.json"),
             (UpdateChannel::Beta, "beta.json"),
@@ -1424,8 +1436,12 @@ mod tests {
     #[test]
     fn kept_installers_have_plain_names() {
         assert_eq!(
-            file_name("0.2.0-beta.1").as_deref(),
+            file_name_for("0.2.0-beta.1", "x64").as_deref(),
             Some("Argus_0.2.0-beta.1_x64-setup.exe")
+        );
+        assert_eq!(
+            file_name_for("0.2.0-beta.1", "arm64").as_deref(),
+            Some("Argus_0.2.0-beta.1_arm64-setup.exe")
         );
         assert_eq!(file_name("../x"), None);
         assert_eq!(file_name("1.0\\x"), None);

@@ -2300,7 +2300,10 @@ impl Desktop {
             ),
         ];
         out.push(self.perf_stats(stats, specs, true, window));
-        if hw["cpuSensors"].is_null() && values(&hw["thermal"]).is_empty() {
+        if self.kernel_sensors_supported()
+            && hw["cpuSensors"].is_null()
+            && values(&hw["thermal"]).is_empty()
+        {
             out.push(self.perf_note(label("performance.cpu.thermalMissing")));
         }
         out

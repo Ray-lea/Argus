@@ -178,12 +178,29 @@ pub(crate) struct CycleStamp {
     cycles: u64,
 }
 
+#[inline]
+fn read_cycle_counter() -> u64 {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        std::arch::x86_64::_mm_lfence();
+        std::arch::x86_64::_rdtsc()
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        let cycles: u64;
+        core::arch::asm!(
+            "isb sy",
+            "mrs {}, cntvct_el0",
+            out(reg) cycles,
+            options(nomem, nostack, preserves_flags),
+        );
+        cycles
+    }
+}
+
 impl CycleStamp {
     pub fn capture() -> Self {
-        let cycles = unsafe {
-            std::arch::x86_64::_mm_lfence();
-            std::arch::x86_64::_rdtsc()
-        };
+        let cycles = read_cycle_counter();
         Self {
             at: Instant::now(),
             cycles,

@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "無法執行工作管理員還原檢查。請先完成緊急還原，再解除安裝。",
   "ArgusRestoreTaskManager": "請先在 Argus 設定中還原 Windows 工作管理員，再解除安裝。",
   "ArgusPreparing": "正在準備程式檔案…",
-  "ArgusCopyFailed": "程式檔案更新未完成。錯誤碼：{code}。可重試或結束安裝。"
+  "ArgusCopyFailed": "程式檔案更新未完成。錯誤碼：{code}。可重試或結束安裝。",
+  "ArgusWrongArchArm64": "此安裝程式僅適用於 Windows ARM64，無法在目前系統上執行。請改用 x64 安裝程式。",
+  "ArgusWrongArchX64": "目前系統為 Windows ARM64。請改用 ARM64 原生安裝程式。"
 }

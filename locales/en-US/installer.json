@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "Couldn't run the Task Manager recovery check. Complete the emergency recovery first, then uninstall.",
   "ArgusRestoreTaskManager": "Restore Windows Task Manager in Argus settings first, then uninstall.",
   "ArgusPreparing": "Preparing the program file…",
-  "ArgusCopyFailed": "The program file update did not complete. Error code: {code}. Retry or exit setup."
+  "ArgusCopyFailed": "The program file update did not complete. Error code: {code}. Retry or exit setup.",
+  "ArgusWrongArchArm64": "This installer is for Windows ARM64 and cannot run on this PC. Download the x64 installer instead.",
+  "ArgusWrongArchX64": "This PC runs Windows ARM64. Download the native ARM64 installer instead."
 }

@@ -113,6 +113,13 @@ pub(crate) fn double_click_time() -> std::time::Duration {
     let ms = unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
     std::time::Duration::from_millis(u64::from(ms))
 }
+pub(crate) const KERNEL_SENSORS_SUPPORTED: bool = argus_service::driver::SUPPORTED;
+pub(crate) const INSTALLER_ARCH: &str = if cfg!(target_arch = "aarch64") {
+    "arm64"
+} else {
+    "x64"
+};
+
 pub(crate) fn update_targets() -> [String; 2] {
     let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
     [platform.clone(), format!("{platform}-nsis")]

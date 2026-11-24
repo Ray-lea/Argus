@@ -148,16 +148,33 @@ fn main() {
     let _ = collector.sample();
     unsafe { PdhCollectQueryData(query) };
     let mut before = legacy();
-    // The idle thread's cycles against every processor's invariant TSC ticks:
+    let read_cycles = || -> u64 {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::x86_64::_rdtsc()
+        }
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            let cycles: u64;
+            core::arch::asm!(
+                "isb sy",
+                "mrs {}, cntvct_el0",
+                out(reg) cycles,
+                options(nomem, nostack, preserves_flags),
+            );
+            cycles
+        }
+    };
+    // The idle thread's cycles against every processor's invariant cycle ticks:
     // precise, and the idle loop counts as idle, as Windows' time accounting.
-    let mut cycles_before = (idle_cycles(), unsafe { core::arch::x86_64::_rdtsc() });
+    let mut cycles_before = (idle_cycles(), read_cycles());
     println!(" s  argus  legacy-idle  pdh-time  pdh-utility  processes  int+dpc  idle-cycles");
     let mut sums = [0f64; 7];
     for second in 1..=seconds {
         std::thread::sleep(Duration::from_secs(1));
         let snapshot = collector.sample();
         unsafe { PdhCollectQueryData(query) };
-        let cycles_now = (idle_cycles(), unsafe { core::arch::x86_64::_rdtsc() });
+        let cycles_now = (idle_cycles(), read_cycles());
         let capacity = (cycles_now.1 - cycles_before.1) as f64 * cycles_now.0.1 as f64;
         let idle_cycles_used = (cycles_now.0.0 - cycles_before.0.0) as f64;
         cycles_before = cycles_now;

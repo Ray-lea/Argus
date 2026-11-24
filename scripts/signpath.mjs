@@ -5,14 +5,17 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { findNsis } from "./bundle.mjs";
+import { parseArchFlag, resolveWindowsTarget, verifyPeArchitecture } from "./lib/windows-target.mjs";
 import { pathToFileURL } from "node:url";
 
 const root = resolve(import.meta.dirname, "..");
+const { arch: requestedArch, rest: cliArgs } = parseArchFlag(process.argv.slice(2));
+const target = resolveWindowsTarget(requestedArch);
 const stage = join(root, "target", "signpath");
-const release = join(root, "target", "release");
+const release = target.cross ? join(root, "target", target.rustTarget, "release") : join(root, "target", "release");
 const helpers = ["argus-taskmgr-launcher.exe", "argus-taskmgr-recover.exe"];
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
-const installer = `Argus_${version}_x64-setup.exe`;
+const installer = `Argus_${version}_${target.arch}-setup.exe`;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const bytes = (file) => readFileSync(file);
 const directory = (name) => {
@@ -90,10 +93,10 @@ function once(text, pattern, replacement) {
 }
 
 function nsis(mode, output) {
-  const rendered = join(release, "nsis", "x64", "installer.nsi");
+  const rendered = join(release, "nsis", target.arch, "installer.nsi");
   let text = readFileSync(rendered, "utf8");
   if (!text.includes('!define UNINSTALLERSIGNCOMMAND ""')) throw new Error("Unexpected NSIS signing command");
-  const command = `"${process.execPath}" "${join(root, "scripts", "signpath.mjs")}" uninstaller "%1"`;
+  const command = `"${process.execPath}" "${join(root, "scripts", "signpath.mjs")}" --arch ${target.arch} uninstaller "%1"`;
   if (command.includes("'") || output.includes('"')) throw new Error("Unsupported build path quoting");
   text = once(text, /^!define OUTFILE ".*"$/m, `!define OUTFILE "${output.replaceAll("$", () => "$")}"`);
   text = once(text, /; Uninstaller signing command/,
@@ -129,7 +132,9 @@ function prepare() {
   directory("");
   for (const name of helpers) {
     const file = join(release, name);
-    if (peHeaders(bytes(file)).certificateSize !== 0) throw new Error(`Expected unsigned ${name}`);
+    const raw = bytes(file);
+    verifyPeArchitecture(raw, target.arch);
+    if (peHeaders(raw).certificateSize !== 0) throw new Error(`Expected unsigned ${name}`);
     copy(file, join(directory("helpers-unsigned"), name));
   }
 }
@@ -141,6 +146,7 @@ function applyHelpers() {
 
 function prepareApplication() {
   const main = bytes(join(release, "argus.exe"));
+  verifyPeArchitecture(main, target.arch);
   embeddedHelpers(main);
   if (peHeaders(main).certificateSize !== 0) throw new Error("Expected an unsigned main executable");
   copy(join(release, "argus.exe"), join(directory("application-unsigned"), "argus.exe"));
@@ -171,14 +177,14 @@ function collect() {
   const out = directory("artifacts");
   const commit = process.env.GITHUB_SHA;
   if (!/^[a-f0-9]{40}$/.test(commit ?? "")) throw new Error("A complete GitHub commit ID is required");
-  const prefix = `Argus_${version}_signpath-test_${commit.slice(0, 7)}_x64`;
+  const prefix = `Argus_${version}_signpath-test_${commit.slice(0, 7)}_${target.arch}`;
   copy(join(stage, "application-signed", "argus.exe"), join(out, `${prefix}.exe`));
   copy(join(stage, "installer-signed", installer), join(out, `${prefix}-setup.exe`));
   const sums = readdirSync(out).filter((name) => name.endsWith(".exe"))
     .sort().map((name) => `${hash(bytes(join(out, name)))}  ${name}`).join("\n");
   writeFileSync(join(out, "SHA256SUMS.txt"), `${sums}\n`);
   writeFileSync(join(out, "TEST-SIGNING.txt"),
-    `Argus test signing build\nCommit: ${commit}\nPolicy: test-signing\n` +
+    `Argus test signing build (${target.arch})\nCommit: ${commit}\nPolicy: test-signing\n` +
     "The SignPath Foundation self-signed test certificate is not publicly trusted.\n" +
     "This build is not a published release or an application update.\n");
 }
@@ -188,7 +194,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     prepare, "apply-helpers": applyHelpers, "prepare-application": prepareApplication,
     "build-installer": buildInstaller, collect, uninstaller,
   };
-  const command = commands[process.argv[2]];
+  const command = commands[cliArgs[0]];
   if (!command) throw new Error("Unknown SignPath build phase");
-  command(process.argv[3]);
+  command(cliArgs[1]);
 }

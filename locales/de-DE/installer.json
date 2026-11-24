@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "Die Prüfung zur Task-Manager-Wiederherstellung konnte nicht ausgeführt werden. Vor der Deinstallation die Notfallwiederherstellung abschließen.",
   "ArgusRestoreTaskManager": "Vor der Deinstallation den Windows-Task-Manager in den Argus-Einstellungen wiederherstellen.",
   "ArgusPreparing": "Vorbereiten der Programmdatei…",
-  "ArgusCopyFailed": "Die Programmdatei konnte nicht vollständig aktualisiert werden. Fehlercode: {code}. Erneut versuchen oder die Installation beenden."
+  "ArgusCopyFailed": "Die Programmdatei konnte nicht vollständig aktualisiert werden. Fehlercode: {code}. Erneut versuchen oder die Installation beenden.",
+  "ArgusWrongArchArm64": "Dieses Installationsprogramm ist für Windows ARM64 bestimmt und kann auf diesem PC nicht ausgeführt werden. Bitte das x64-Installationsprogramm herunterladen.",
+  "ArgusWrongArchX64": "Auf diesem PC läuft Windows ARM64. Bitte das native ARM64-Installationsprogramm herunterladen."
 }

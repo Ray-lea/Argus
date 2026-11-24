@@ -8,7 +8,7 @@ Argus 静态链接了 Rust 标准库，其许可证为 MIT OR Apache-2.0，
 
 本文件由 scripts/notices.mjs 生成，请勿手动编辑。
 
-Rust 组件（444 个）
+Rust 组件（445 个）
   accesskit 0.24.1（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_consumer 0.38.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
   accesskit_windows 0.34.0（MIT OR Apache-2.0）https://github.com/AccessKit/accesskit
@@ -408,6 +408,7 @@ Rust 组件（444 个）
   windows 0.58.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows 0.61.3（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows 0.62.2（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
+  windows_aarch64_msvc 0.52.6（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows_x86_64_msvc 0.52.6（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
   windows-capture 1.5.0（MIT）https://github.com/NiiightmareXD/windows-capture
   windows-collections 0.2.0（MIT OR Apache-2.0）https://github.com/microsoft/windows-rs
@@ -800,7 +801,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ================================================================================
-适用于：borsh 1.8.1、deranged 0.5.9、futures 0.3.34、futures-channel 0.3.34、futures-core 0.3.34、futures-executor 0.3.34、futures-io 0.3.34、futures-sink 0.3.34、futures-task 0.3.34、futures-util 0.3.34、http 1.5.0、moxcms 0.8.1、notify-types 2.3.0、powerfmt 0.2.1、ppv-lite86 0.2.21、pxfm 0.1.30、reqwest 0.13.5、rustls-pki-types 1.16.0、typenum 1.20.1、unicode-script 0.5.9、web-time 1.1.0、windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1、zerocopy 0.8.63
+适用于：borsh 1.8.1、deranged 0.5.9、futures 0.3.34、futures-channel 0.3.34、futures-core 0.3.34、futures-executor 0.3.34、futures-io 0.3.34、futures-sink 0.3.34、futures-task 0.3.34、futures-util 0.3.34、http 1.5.0、moxcms 0.8.1、notify-types 2.3.0、powerfmt 0.2.1、ppv-lite86 0.2.21、pxfm 0.1.30、reqwest 0.13.5、rustls-pki-types 1.16.0、typenum 1.20.1、unicode-script 0.5.9、web-time 1.1.0、windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_aarch64_msvc 0.52.6、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1、zerocopy 0.8.63
 ================================================================================
 
 Copyright (c) 2016 Alex Crichton
@@ -1324,7 +1325,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ================================================================================
-适用于：windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1
+适用于：windows 0.57.0、windows 0.58.0、windows 0.61.3、windows 0.62.2、windows_aarch64_msvc 0.52.6、windows_x86_64_msvc 0.52.6、windows-collections 0.2.0、windows-collections 0.3.2、windows-core 0.57.0、windows-core 0.58.0、windows-core 0.61.2、windows-core 0.62.2、windows-future 0.2.1、windows-future 0.3.2、windows-link 0.1.3、windows-link 0.2.1、windows-numerics 0.2.0、windows-numerics 0.3.1、windows-registry 0.6.1、windows-result 0.1.2、windows-result 0.2.0、windows-result 0.3.4、windows-result 0.4.1、windows-strings 0.1.0、windows-strings 0.4.2、windows-strings 0.5.1、windows-sys 0.61.2、windows-targets 0.52.6、windows-threading 0.1.0、windows-threading 0.2.1
 ================================================================================
 
 Copyright (c) Microsoft Corporation.

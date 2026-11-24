@@ -66,6 +66,7 @@ impl ClockCounter {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
 pub(super) fn tsc_mhz() -> Option<f32> {
     use std::arch::x86_64::{__cpuid, _mm_lfence, _rdtsc};
     let max = __cpuid(0).eax;
@@ -94,6 +95,11 @@ pub(super) fn tsc_mhz() -> Option<f32> {
         100.0,
         10000.0,
     )
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub(super) fn tsc_mhz() -> Option<f32> {
+    None
 }
 
 pub(super) fn amd_clock(family: u32, status: u64, bus_mhz: f32) -> Option<f32> {

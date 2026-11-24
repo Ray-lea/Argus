@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "No se pudo ejecutar la comprobación de recuperación del Administrador de tareas. Complete la recuperación de emergencia antes de desinstalar.",
   "ArgusRestoreTaskManager": "Restaure el Administrador de tareas de Windows en la configuración de Argus antes de desinstalar.",
   "ArgusPreparing": "Preparando el archivo de programa…",
-  "ArgusCopyFailed": "No se completó la actualización del archivo del programa. Código de error: {code}. Vuelva a intentarlo o salga del instalador."
+  "ArgusCopyFailed": "No se completó la actualización del archivo del programa. Código de error: {code}. Vuelva a intentarlo o salga del instalador.",
+  "ArgusWrongArchArm64": "Este instalador es para Windows ARM64 y no puede ejecutarse en este equipo. Descargue el instalador x64.",
+  "ArgusWrongArchX64": "Este equipo ejecuta Windows ARM64. Descargue el instalador nativo para ARM64."
 }

@@ -1120,7 +1120,9 @@ impl Desktop {
             "privilege" => {
                 cards.push(self.administrator_card(false, window, cx));
                 cards.push(self.service_card(cx));
-                cards.push(self.sensors_card(settings, window, cx));
+                if self.kernel_sensors_supported() {
+                    cards.push(self.sensors_card(settings, window, cx));
+                }
                 cards.push(self.task_manager_card(cx));
             }
             "motion" => {

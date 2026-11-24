@@ -6,7 +6,7 @@
 
 | | 安装版（推荐） | 免安装版 |
 |---|---|---|
-| **文件** | `Argus_{{version}}_x64-setup.exe` | `Argus_{{version}}_x64.exe` |
+| **文件** | x64：`Argus_{{version}}_x64-setup.exe`<br>ARM64：`Argus_{{version}}_arm64-setup.exe` | x64：`Argus_{{version}}_x64.exe`<br>ARM64：`Argus_{{version}}_arm64.exe` |
 | **使用方式** | 安装至 `Program Files`，安装与更新需管理员授权 | 单文件，下载后直接运行 |
 | **版本更新** | 应用内下载并安装 | 仅提示新版本，需手动下载并替换 EXE |
 | **快捷方式与卸载入口** | 安装时自动创建 | 无 |
@@ -21,7 +21,7 @@ The installer is recommended for everyday use, as it is easier to update and mai
 
 | | Installer (recommended) | Portable version |
 |---|---|---|
-| **File** | `Argus_{{version}}_x64-setup.exe` | `Argus_{{version}}_x64.exe` |
+| **File** | x64: `Argus_{{version}}_x64-setup.exe`<br>ARM64: `Argus_{{version}}_arm64-setup.exe` | x64: `Argus_{{version}}_x64.exe`<br>ARM64: `Argus_{{version}}_arm64.exe` |
 | **Setup** | Installs to `Program Files`; installing and updating require administrator permission | Single executable; runs directly after download |
 | **Updates** | Downloaded and installed in the app | Notification only; download and replace the EXE manually |
 | **Shortcuts and uninstall entry** | Created during installation | None |

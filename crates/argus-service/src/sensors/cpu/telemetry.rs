@@ -88,6 +88,7 @@ impl Telemetry {
                 energy: EnergyCounter::default(),
                 efficient: thread.efficient,
             });
+            #[cfg(target_arch = "x86_64")]
             if core.threads.is_empty()
                 && !id.intel
                 && id.family >= 0x17

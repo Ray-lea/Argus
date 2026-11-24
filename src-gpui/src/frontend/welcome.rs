@@ -144,6 +144,27 @@ impl Desktop {
         boolean(&self.data["info"], "taskManager")
     }
 
+    pub(in crate::frontend) fn kernel_sensors_supported(&self) -> bool {
+        self.data
+            .get("info")
+            .and_then(|info| info.get("kernelSensorsSupported"))
+            .and_then(Value::as_bool)
+            .unwrap_or(if self.options.fixture.is_some() {
+                true
+            } else {
+                crate::platform::KERNEL_SENSORS_SUPPORTED
+            })
+    }
+
+    fn onboarding_steps(&self) -> Vec<&'static str> {
+        let sensors = self.kernel_sensors_supported();
+        values(&configuration()["onboardingSteps"])
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|step| sensors || *step != "sensors")
+            .collect()
+    }
+
     pub(in crate::frontend) fn check_welcome(
         &mut self,
         window: &mut Window,
@@ -322,7 +343,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let steps = values(&configuration()["onboardingSteps"]).len();
+        let steps = self.onboarding_steps().len();
         let step = self
             .modal
             .as_ref()
@@ -710,8 +731,8 @@ impl Desktop {
         let id = modal.id;
         let step = modal.args["step"].as_u64().unwrap_or(0) as usize;
         let dir = modal.args["dir"].as_i64().unwrap_or(0) as f32;
-        let steps = values(&configuration()["onboardingSteps"]);
-        let section = steps.get(step).and_then(Value::as_str).unwrap_or("tips");
+        let steps = self.onboarding_steps();
+        let section = steps.get(step).copied().unwrap_or("tips");
         let last = step + 1 >= steps.len();
         let settings = self.data["settings"].clone();
         let mut body = div().flex().flex_col().gap(px(12.));
@@ -1012,7 +1033,8 @@ impl Desktop {
                 } else {
                     widgets::service_state(&status)
                 };
-                let hint = if connected {
+                let sensors_supported = self.kernel_sensors_supported();
+                let hint = if connected && sensors_supported {
                     label("onboarding.privilege.replace")
                 } else if action.is_some() || busy {
                     label("onboarding.privilege.later")
@@ -1042,6 +1064,7 @@ impl Desktop {
                         self.onboarding_list(
                             ["end", "tune", "inspect", "control", "sensors"]
                                 .into_iter()
+                                .filter(|f| sensors_supported || *f != "sensors")
                                 .map(|f| {
                                     label(&format!("onboarding.privilege.features.{f}"))
                                         .into_any_element()
@@ -1086,10 +1109,7 @@ impl Desktop {
                 } else {
                     label("onboarding.sensors.later")
                 };
-                let privilege_step = steps
-                    .iter()
-                    .position(|s| s.as_str() == Some("privilege"))
-                    .unwrap_or(0);
+                let privilege_step = steps.iter().position(|s| *s == "privilege").unwrap_or(0);
                 let control = if !ready {
                     Some(
                         self.btn(

@@ -208,6 +208,37 @@ UninstPage custom un.ArgusPageDone
 !include "${ARGUS_DIR}\installer-ui.nsh"
 
 Function .onInit
+  !insertmacro ArgusNativeMachine $R6
+  !if "${ARCH}" == "arm64"
+    ${If} $R6 != 0xAA64
+      ${If} ${Silent}
+        System::Call 'kernel32::AttachConsole(i -1)i.r0'
+        ${If} $0 <> 0
+          System::Call 'kernel32::GetStdHandle(i -12)i.r0'
+          FileWrite $0 "$(ArgusWrongArchArm64)$\r$\n"
+        ${EndIf}
+      ${Else}
+        MessageBox MB_OK|MB_ICONSTOP "$(ArgusWrongArchArm64)"
+      ${EndIf}
+      SetErrorLevel 216
+      Abort
+    ${EndIf}
+  !else if "${ARCH}" == "x64"
+    ${If} $R6 = 0xAA64
+      ${If} ${Silent}
+        System::Call 'kernel32::AttachConsole(i -1)i.r0'
+        ${If} $0 <> 0
+          System::Call 'kernel32::GetStdHandle(i -12)i.r0'
+          FileWrite $0 "$(ArgusWrongArchX64)$\r$\n"
+        ${EndIf}
+      ${Else}
+        MessageBox MB_OK|MB_ICONSTOP "$(ArgusWrongArchX64)"
+      ${EndIf}
+      SetErrorLevel 216
+      Abort
+    ${EndIf}
+  !endif
+
   InitPluginsDir
   File "/oname=$PLUGINSDIR\argus-version.exe" "${MAINBINARYSRCPATH}"
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -234,7 +265,9 @@ Function .onInit
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     ; Set default install location
     !if "${INSTALLMODE}" == "perMachine"
+      !insertmacro ArgusNativeMachine $R6
       ${If} ${RunningX64}
+      ${OrIf} $R6 = 0xAA64
         !if "${ARCH}" == "x64"
           StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
         !else if "${ARCH}" == "arm64"

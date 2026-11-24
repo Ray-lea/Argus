@@ -36,6 +36,9 @@ use windows::core::{PCWSTR, w};
 use crate::util::{Handle, Result, io, wide, win};
 use crate::{security, util};
 
+/// Embedded PawnIO sensor modules target x86_64 MSR/SMU/LPC interfaces only.
+pub const SUPPORTED: bool = cfg!(target_arch = "x86_64");
+
 pub(crate) const MANAGE_ARG: &str = "--argus-sensor-driver-manage";
 /// Run by the NSIS uninstaller after the other helpers; see `remove_setup_folder`.
 pub(crate) const CLEANUP_ARG: &str = "--argus-sensor-setup-remove";
@@ -1083,6 +1086,11 @@ fn remove_setup_folder_in(root: &Path) -> Result<()> {
 /// Called only when the settings switch is explicitly turned on. Only this
 /// action may migrate a shared driver; saved preferences never trigger UAC.
 pub fn ensure_ready() -> std::result::Result<(), String> {
+    if !SUPPORTED {
+        return Err(argus_core::i18n::text(
+            "performance.cpu.sensorState.unsupported",
+        ));
+    }
     require_service()?;
     if current_plan().map_err(message)? == Plan::Ready {
         return Ok(());

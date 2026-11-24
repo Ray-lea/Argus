@@ -13,7 +13,7 @@ import { t } from "./lib/console-language.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "THIRD-PARTY-NOTICES.txt";
-const TARGET = "x86_64-pc-windows-msvc";
+const TARGETS = ["x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc"];
 const LICENSE_FILE = /^(licen[cs]e|copying|copyright|notice|unlicense)([-_.].*)?$/i;
 const NOT_TEXT = /\.(rs|toml|json|js|ts|html|py|sh)$/i;
 
@@ -39,50 +39,56 @@ function licenseTexts(dir) {
     .filter(Boolean);
 }
 
-/** Crates linked into argus.exe: normal dependencies, without proc macros (compile-time only). */
+/** Crates linked into argus.exe: normal dependencies across supported Windows targets, without proc macros. */
 function crates() {
-  let metadata;
-  try {
-    metadata = JSON.parse(
-      execFileSync(
-        "cargo",
-        ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", TARGET],
-        { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
-      ),
-    );
-  } catch (e) {
-    fail(
-      t(
-        `cargo metadata 失败（需要本地已有依赖源码，先运行 cargo fetch）：${e.stderr ?? e.message}`,
-        `cargo metadata failed (it needs the dependency sources locally; run cargo fetch first): ${e.stderr ?? e.message}`,
-      ),
-    );
-  }
-  const packages = new Map(metadata.packages.map((p) => [p.id, p]));
-  const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
-  const procMacro = (p) => p.targets.some((target) => target.kind.includes("proc-macro"));
-  const app = metadata.packages.find((p) => p.name === "argus" && p.source === null);
-  const seen = new Set();
-  const stack = [app.id];
-  while (stack.length) {
-    const id = stack.pop();
-    if (seen.has(id)) continue;
-    seen.add(id);
-    for (const dep of nodes.get(id).deps) {
-      if (dep.dep_kinds.some((k) => k.kind === null) && !procMacro(packages.get(dep.pkg)))
-        stack.push(dep.pkg);
+  const byId = new Map();
+  for (const target of TARGETS) {
+    let metadata;
+    try {
+      metadata = JSON.parse(
+        execFileSync(
+          "cargo",
+          ["metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", target],
+          { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] },
+        ),
+      );
+    } catch (e) {
+      fail(
+        t(
+          `cargo metadata 失败（需要本地已有依赖源码，先运行 cargo fetch）：${e.stderr ?? e.message}`,
+          `cargo metadata failed (it needs the dependency sources locally; run cargo fetch first): ${e.stderr ?? e.message}`,
+        ),
+      );
+    }
+    const packages = new Map(metadata.packages.map((p) => [p.id, p]));
+    const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
+    const procMacro = (p) => p.targets.some((t) => t.kind.includes("proc-macro"));
+    const app = metadata.packages.find((p) => p.name === "argus" && p.source === null);
+    const seen = new Set();
+    const stack = [app.id];
+    while (stack.length) {
+      const id = stack.pop();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const dep of nodes.get(id).deps) {
+        if (dep.dep_kinds.some((k) => k.kind === null) && !procMacro(packages.get(dep.pkg)))
+          stack.push(dep.pkg);
+      }
+    }
+    for (const id of seen) {
+      const p = packages.get(id);
+      if (p.source !== null || !metadata.workspace_members.includes(p.id)) {
+        byId.set(`${p.name}@${p.version}`, p);
+      }
     }
   }
-  return [...seen]
-    .map((id) => packages.get(id))
-    .filter((p) => p.source !== null || !metadata.workspace_members.includes(p.id))
-    .map((p) => ({
-      name: p.name,
-      version: p.version,
-      license: p.license ?? (p.license_file ? `见 ${p.license_file}` : "未声明"),
-      url: p.repository ?? `https://crates.io/crates/${p.name}`,
-      texts: licenseTexts(dirname(p.manifest_path)),
-    }));
+  return [...byId.values()].map((p) => ({
+    name: p.name,
+    version: p.version,
+    license: p.license ?? (p.license_file ? `见 ${p.license_file}` : "未声明"),
+    url: p.repository ?? `https://crates.io/crates/${p.name}`,
+    texts: licenseTexts(dirname(p.manifest_path)),
+  }));
 }
 
 function vendored() {

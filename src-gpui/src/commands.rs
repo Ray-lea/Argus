@@ -131,6 +131,8 @@ pub struct AppInfo {
     /// tells what it lacks beside the installed version. Not a development
     /// build: it is no download either.
     portable: bool,
+    /// Whether embedded PawnIO CPU/board sensor modules support this target.
+    kernel_sensors_supported: bool,
 }
 
 pub fn app_info(app: crate::native_runtime::Host) -> AppInfo {
@@ -144,6 +146,7 @@ pub fn app_info(app: crate::native_runtime::Host) -> AppInfo {
         updated: std::env::args().any(|a| a == updater::UPDATED_ARG),
         task_manager: state.task_manager_start,
         portable: !cfg!(debug_assertions) && updater::status(&app).portable,
+        kernel_sensors_supported: crate::platform::KERNEL_SENSORS_SUPPORTED,
     }
 }
 

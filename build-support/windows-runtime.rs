@@ -41,6 +41,7 @@ pub fn configure() {
 fn override_msvcrt_lib() {
     let machine: &[u8] = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
         Ok("x86_64") => &[0x64, 0x86],
+        Ok("aarch64") => &[0x64, 0xAA],
         Ok("x86") => &[0x4C, 0x01],
         _ => return,
     };

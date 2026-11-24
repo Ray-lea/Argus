@@ -309,9 +309,11 @@ pub fn run() -> anyhow::Result<()> {
     }
     if !options.test {
         state.rules.set_rules(saved.rules.clone());
-        state
-            .sampler
-            .send(Control::SetKernelSensors(saved.kernel_sensors));
+        if platform::KERNEL_SENSORS_SUPPORTED {
+            state
+                .sampler
+                .send(Control::SetKernelSensors(saved.kernel_sensors));
+        }
     }
     state.sampler.send(saved.background_intervals());
     state.sampler.send(Control::Subscribe(Channel::new({

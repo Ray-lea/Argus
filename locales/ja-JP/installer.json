@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "タスク マネージャーの復旧確認を実行できませんでした。先に緊急復旧を完了してからアンインストールしてください。",
   "ArgusRestoreTaskManager": "先に Argus の設定で Windows タスク マネージャーを復元してからアンインストールしてください。",
   "ArgusPreparing": "プログラムファイルを準備中…",
-  "ArgusCopyFailed": "プログラム ファイルの更新が完了しませんでした。エラー コード：{code}。再試行するか、インストーラーを終了してください。"
+  "ArgusCopyFailed": "プログラム ファイルの更新が完了しませんでした。エラー コード：{code}。再試行するか、インストーラーを終了してください。",
+  "ArgusWrongArchArm64": "このインストーラーは Windows ARM64 用であり、この PC では実行できません。x64 版のインストーラーを使用してください。",
+  "ArgusWrongArchX64": "この PC は Windows ARM64 で動作しています。ネイティブの ARM64 版インストーラーを使用してください。"
 }

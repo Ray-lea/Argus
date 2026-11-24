@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "Impossible de lancer la vérification de récupération du Gestionnaire des tâches. Terminez la récupération d’urgence avant de désinstaller.",
   "ArgusRestoreTaskManager": "Restaurez le Gestionnaire des tâches Windows dans les paramètres d’Argus avant de désinstaller.",
   "ArgusPreparing": "Préparation du fichier programme…",
-  "ArgusCopyFailed": "La mise à jour du fichier programme n’est pas terminée. Code d’erreur : {code}. Réessayez ou quittez l’installateur."
+  "ArgusCopyFailed": "La mise à jour du fichier programme n’est pas terminée. Code d’erreur : {code}. Réessayez ou quittez l’installateur.",
+  "ArgusWrongArchArm64": "Cet installateur est destiné à Windows ARM64 et ne peut pas s’exécuter sur ce PC. Téléchargez l’installateur x64.",
+  "ArgusWrongArchX64": "Ce PC exécute Windows ARM64. Téléchargez l’installateur natif ARM64."
 }

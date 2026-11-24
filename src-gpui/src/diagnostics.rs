@@ -24,8 +24,9 @@ use windows::core::{PCWSTR, w};
 /// One line about the system Argus runs on.
 pub fn log_environment(elevated: bool) {
     log::info!(
-        "environment: {}, renderer {}, {} ({}), language {}",
+        "environment: {}, arch {}, renderer {}, {} ({}), language {}",
         windows_version().unwrap_or("unknown"),
+        std::env::consts::ARCH,
         "GPUI",
         if elevated {
             "administrator"

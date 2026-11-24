@@ -195,6 +195,7 @@ struct Identity {
     thermal: u32,
 }
 impl Identity {
+    #[cfg(target_arch = "x86_64")]
     fn current() -> Option<Self> {
         use std::arch::x86_64::__cpuid;
         let vendor = __cpuid(0);
@@ -223,6 +224,11 @@ impl Identity {
             model,
             thermal: if vendor.eax >= 6 { __cpuid(6).eax } else { 0 },
         })
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn current() -> Option<Self> {
+        None
     }
 }
 

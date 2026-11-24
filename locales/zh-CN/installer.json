@@ -39,5 +39,7 @@
   "ArgusRecoveryFailed": "无法运行任务管理器恢复检查。请先完成应急恢复，再卸载。",
   "ArgusRestoreTaskManager": "请先在 Argus 设置中恢复 Windows 任务管理器，再卸载。",
   "ArgusPreparing": "正在准备程序文件…",
-  "ArgusCopyFailed": "程序文件更新未完成。错误代码：{code}。可重试或退出安装。"
+  "ArgusCopyFailed": "程序文件更新未完成。错误代码：{code}。可重试或退出安装。",
+  "ArgusWrongArchArm64": "此安装程序仅适用于 Windows ARM64，无法在当前系统上运行。请改用 x64 安装程序。",
+  "ArgusWrongArchX64": "当前系统为 Windows ARM64。请改用 ARM64 原生安装程序。"
 }

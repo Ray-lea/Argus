@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installerStrings } from "./lib/installer-locales.mjs";
 import { cleanupTestProfile } from "./lib/owned-test.mjs";
+import { parseArchFlag, resolveWindowsTarget, verifyPeArchitecture } from "./lib/windows-target.mjs";
 const root = resolve(import.meta.dirname, "..");
 export function validateBuildInfo(info, version) {
   if (info?.version !== version || !["stable", "test"].includes(info.buildKind))
@@ -68,7 +69,7 @@ export function renderInstaller(metadata, paths) {
     bundle_id: metadata.identifier,
     copyright: metadata.copyright,
     out_file: paths.output,
-    arch: "x64",
+    arch: paths.arch ?? "x64",
     allow_downgrades: "false",
     display_language_selector: "false",
     uninstaller_sign_cmd: "",
@@ -84,16 +85,38 @@ export function renderInstaller(metadata, paths) {
     },
   );
 }
-export function bundle() {
-  if (process.platform !== "win32" || process.arch !== "x64")
-    throw Error("Native installer packaging currently supports Windows x64.");
+function readCrossVersionInfo(binary, version) {
+  const escaped = binary.replaceAll("'", "''");
+  const result = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-Command",
+      `$v = (Get-Item -LiteralPath '${escaped}').VersionInfo; @{ build = $v.ProductVersion; fileVersion = $v.FileVersion } | ConvertTo-Json -Compress`,
+    ],
+    { encoding: "utf8", windowsHide: true, timeout: 10000 },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw Error(`Executable version resource check failed (${result.status})`);
+  const parsed = JSON.parse(result.stdout);
+  const buildKind = parsed.build?.includes("+") || version.includes("-") ? "test" : "stable";
+  return validateBuildInfo({ version, build: parsed.build, buildKind, fileVersion: parsed.fileVersion }, version);
+}
+
+export function bundle(argv = process.argv.slice(2)) {
+  if (process.platform !== "win32")
+    throw Error("Native installer packaging currently supports Windows.");
+  const { arch: requestedArch } = parseArchFlag(argv);
+  const target = resolveWindowsTarget(requestedArch);
   const metadata = JSON.parse(readFileSync(join(root, "resources/app.json"), "utf8"));
   const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
   if (version !== metadata.version) throw Error("Application version metadata differs");
-  const binary = join(root, "target/release/argus.exe");
-  const build = readBuildInfo(binary, version);
-  const output = join(root, `target/release/bundle/nsis/${metadata.productName}_${build.build}_x64-setup.exe`);
-  const directory = join(root, "target/release/nsis/x64");
+  const profileDir = target.cross ? join(root, "target", target.rustTarget, "release") : join(root, "target/release");
+  const binary = join(profileDir, "argus.exe");
+  verifyPeArchitecture(readFileSync(binary), target.arch);
+  const build = target.cross ? readCrossVersionInfo(binary, version) : readBuildInfo(binary, version);
+  const output = join(profileDir, `bundle/nsis/${metadata.productName}_${build.build}_${target.arch}-setup.exe`);
+  const directory = join(profileDir, `nsis/${target.arch}`);
   mkdirSync(directory, { recursive: true });
   mkdirSync(dirname(output), { recursive: true });
   for (const name of ["utils.nsh"])
@@ -104,6 +127,7 @@ export function bundle() {
     script,
     "\uFEFF" +
       renderInstaller(metadata, {
+        arch: target.arch,
         build,
         binary,
         output,
