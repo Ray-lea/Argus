@@ -57,7 +57,13 @@
     "totals": "Acumulados",
     "location": "Ubicación del archivo",
     "commandLine": "Línea de comandos",
+    "openFiles": "Archivos abiertos",
     "version": "Versión del archivo"
+  },
+  "openFiles": {
+    "loading": "Buscando archivos abiertos…",
+    "empty": "No se encontraron archivos de disco",
+    "denied": "Los archivos abiertos no están disponibles con los permisos actuales. Intente ejecutar Argus como administrador."
   },
   "parent": "Proceso padre",
   "parentLink": "{name} ({pid})",

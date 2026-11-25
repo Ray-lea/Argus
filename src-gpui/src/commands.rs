@@ -165,6 +165,13 @@ pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }
 
+pub fn process_open_files(
+    pid: u32,
+    create_time: i64,
+) -> argus_core::handles::ProcessOpenFilesReport {
+    argus_service::find_process_open_files(pid, create_time)
+}
+
 /// Reads a disk's details, on the caller's worker thread. The read reaches the
 /// disk's storage driver: it is made with the marker on disk (`disk_reads`),
 /// so that a read which brings the system down is not made again by itself at

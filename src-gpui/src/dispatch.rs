@@ -74,6 +74,11 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
             argument::<Option<String>>(&args, "path")?,
         ))
         .expect("serializable command response")),
+        "process_open_files" => Ok(serde_json::to_value(crate::commands::process_open_files(
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+        ))
+        .expect("serializable command response")),
         "disk_details" => Ok(
             serde_json::to_value(crate::commands::disk_details(argument::<u32>(
                 &args, "index",

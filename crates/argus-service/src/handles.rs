@@ -10,7 +10,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use argus_core::actions::ActionError;
-use argus_core::handles::{self, Cursor, HandleLocker, HandleReport, HandleSummary, ScanEvent};
+use argus_core::handles::{
+    self, Cursor, HandleLocker, HandleReport, HandleSummary, ProcessOpenFile,
+    ProcessOpenFilesReport, ScanEvent,
+};
 use argus_core::tr;
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::HANDLE;
@@ -38,8 +41,25 @@ static SCANNING: Mutex<()> = Mutex::new(());
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WorkerRequest {
+    #[serde(default)]
     paths: Vec<String>,
+    /// When set with `create_time`, list open disk files for that process.
+    #[serde(default)]
+    pid: Option<u32>,
+    #[serde(default)]
+    create_time: Option<i64>,
     after: Option<Cursor>,
+}
+
+impl WorkerRequest {
+    fn process_target(&self) -> Option<(u32, i64)> {
+        match (self.pid, self.create_time) {
+            (Some(pid), Some(create_time)) if pid != 0 && create_time > 0 => {
+                Some((pid, create_time))
+            }
+            _ => None,
+        }
+    }
 }
 
 fn error_text(error: ActionError) -> String {
@@ -62,6 +82,15 @@ fn unavailable(message: String) -> HandleReport {
     }
 }
 
+fn spawn_worker_command(exe: &std::path::Path, request: &WorkerRequest) -> Command {
+    let mut command = Command::new(exe);
+    command
+        .env(argus_core::i18n::ENV, argus_core::i18n::locale().tag())
+        .arg(WORKER_ARG)
+        .arg(serde_json::to_string(request).expect("serialize handle request"));
+    command
+}
+
 /// Local fallback, also used inside the privileged service. Never invokes UAC.
 pub fn scan_local(paths: Vec<String>) -> HandleReport {
     if let Err(error) = handles::validate_paths(&paths) {
@@ -73,16 +102,59 @@ pub fn scan_local(paths: Vec<String>) -> HandleReport {
     let Ok(exe) = std::env::current_exe() else {
         return unavailable(tr!("service.handles.noHelper"));
     };
-    run(
-        paths,
-        |request| {
-            let mut command = Command::new(&exe);
-            command
-                .env(argus_core::i18n::ENV, argus_core::i18n::locale().tag())
-                .arg(WORKER_ARG)
-                .arg(serde_json::to_string(request).expect("serialize handle request"));
-            command
+    run_lockers(
+        WorkerRequest {
+            paths,
+            pid: None,
+            create_time: None,
+            after: None,
         },
+        |request| spawn_worker_command(&exe, request),
+        TOTAL,
+        QUERY,
+    )
+}
+
+/// Enumerate disk files opened by one process; same Job/timeout as [`scan_local`].
+pub fn scan_process_local(pid: u32, create_time: i64) -> ProcessOpenFilesReport {
+    if pid == 0 || create_time <= 0 {
+        return ProcessOpenFilesReport {
+            summary: HandleSummary {
+                elevated: argus_core::privilege::is_elevated(),
+                error: Some(error_text(ActionError::Refused)),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+    }
+    let Ok(_guard) = SCANNING.try_lock() else {
+        return ProcessOpenFilesReport {
+            summary: HandleSummary {
+                elevated: argus_core::privilege::is_elevated(),
+                error: Some(tr!("service.handles.busy")),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+    };
+    let Ok(exe) = std::env::current_exe() else {
+        return ProcessOpenFilesReport {
+            summary: HandleSummary {
+                elevated: argus_core::privilege::is_elevated(),
+                error: Some(tr!("service.handles.noHelper")),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+    };
+    run_process_files(
+        WorkerRequest {
+            paths: Vec::new(),
+            pid: Some(pid),
+            create_time: Some(create_time),
+            after: None,
+        },
+        |request| spawn_worker_command(&exe, request),
         TOTAL,
         QUERY,
     )
@@ -97,7 +169,11 @@ pub(crate) fn worker(argument: &str) -> u32 {
     let Ok(request) = serde_json::from_str::<WorkerRequest>(argument) else {
         return 87;
     };
-    if handles::validate_paths(&request.paths).is_err() {
+    let process = request.process_target();
+    if process.is_none() && handles::validate_paths(&request.paths).is_err() {
+        return 87;
+    }
+    if process.is_some() && !request.paths.is_empty() {
         return 87;
     }
     let mut gate = [0];
@@ -119,7 +195,12 @@ pub(crate) fn worker(argument: &str) -> u32 {
     if !emit(ScanEvent::Ready) {
         return 109;
     }
-    if let Err(error) = handles::scan(&request.paths, request.after, &mut emit) {
+    let result = if let Some((pid, create_time)) = process {
+        handles::enumerate_process_open_files(pid, create_time, request.after, &mut emit)
+    } else {
+        handles::scan(&request.paths, request.after, &mut emit)
+    };
+    if let Err(error) = result {
         emit(ScanEvent::Error(error));
     }
     0
@@ -235,8 +316,8 @@ impl Drop for Worker {
     }
 }
 
-fn run(
-    paths: Vec<String>,
+fn run_lockers(
+    mut base: WorkerRequest,
     mut command: impl FnMut(&WorkerRequest) -> Command,
     budget: Duration,
     query_timeout: Duration,
@@ -247,10 +328,8 @@ fn run(
     let mut found: BTreeMap<(u32, i64), HandleLocker> = BTreeMap::new();
     let mut after = None;
     'restart: for attempt in 0..=MAX_RESTARTS {
-        let mut worker = match Worker::spawn(command(&WorkerRequest {
-            paths: paths.clone(),
-            after,
-        })) {
+        base.after = after;
+        let mut worker = match Worker::spawn(command(&base)) {
             Ok(worker) => worker,
             Err(error) => {
                 report.summary.error = Some(tr!(
@@ -356,6 +435,136 @@ fn run(
     report
 }
 
+fn run_process_files(
+    mut base: WorkerRequest,
+    mut command: impl FnMut(&WorkerRequest) -> Command,
+    budget: Duration,
+    query_timeout: Duration,
+) -> ProcessOpenFilesReport {
+    let deadline = Instant::now() + budget;
+    let mut report = ProcessOpenFilesReport::default();
+    report.summary.elevated = argus_core::privilege::is_elevated();
+    let mut found: BTreeMap<String, ProcessOpenFile> = BTreeMap::new();
+    let mut after = None;
+    'restart: for attempt in 0..=MAX_RESTARTS {
+        base.after = after;
+        let mut worker = match Worker::spawn(command(&base)) {
+            Ok(worker) => worker,
+            Err(error) => {
+                report.summary.error = Some(tr!(
+                    "service.handles.startFailed",
+                    error = crate::util::message(error)
+                ));
+                break;
+            }
+        };
+        let mut activity = Instant::now();
+        let mut cursor = None;
+        let mut checked = 0;
+        let mut denied = 0;
+        let mut skipped = 0;
+        loop {
+            let now = Instant::now();
+            let timeout = if cursor.is_some() {
+                query_timeout
+            } else {
+                STARTUP
+            };
+            if now >= deadline || now.duration_since(activity) > timeout {
+                report.summary.checked += checked;
+                report.summary.denied_processes += denied;
+                report.summary.skipped += skipped;
+                report.summary.truncated = true;
+                if cursor.is_some() && now.duration_since(activity) > timeout {
+                    report.summary.timeouts += 1;
+                }
+                if now < deadline
+                    && let Some(current) = cursor
+                    && attempt < MAX_RESTARTS
+                {
+                    after = Some(current);
+                    continue 'restart;
+                }
+                report.summary.error = Some(tr!("service.handles.timeLimit"));
+                break 'restart;
+            }
+            match worker.read() {
+                Ok(events) => {
+                    for event in events {
+                        activity = Instant::now();
+                        match event {
+                            ScanEvent::Ready => {}
+                            ScanEvent::Progress {
+                                cursor: current,
+                                checked: c,
+                                denied: d,
+                                skipped: s,
+                            } => {
+                                report.summary.available = true;
+                                cursor = Some(current);
+                                checked = c;
+                                denied = d;
+                                skipped = s;
+                            }
+                            ScanEvent::Found(locker) => {
+                                let key = locker.path.to_ascii_lowercase();
+                                if let Some(existing) = found.get_mut(&key) {
+                                    existing.count += locker.count;
+                                } else if found.len() < handles::MAX_OPEN_FILES {
+                                    found.insert(
+                                        key,
+                                        ProcessOpenFile {
+                                            path: locker.path,
+                                            count: locker.count,
+                                        },
+                                    );
+                                } else {
+                                    report.summary.checked += checked;
+                                    report.summary.denied_processes += denied;
+                                    report.summary.skipped += skipped;
+                                    report.summary.truncated = true;
+                                    break 'restart;
+                                }
+                            }
+                            ScanEvent::Done(summary) => {
+                                report.summary.available = true;
+                                report.summary.elevated = summary.elevated;
+                                report.summary.checked += summary.checked;
+                                report.summary.denied_processes += summary.denied_processes;
+                                report.summary.skipped += summary.skipped;
+                                report.summary.truncated |= summary.truncated;
+                                break 'restart;
+                            }
+                            ScanEvent::Error(error) => {
+                                report.summary.checked += checked;
+                                report.summary.denied_processes += denied;
+                                report.summary.skipped += skipped;
+                                report.summary.error = Some(error_text(error));
+                                break 'restart;
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    report.summary.checked += checked;
+                    report.summary.denied_processes += denied;
+                    report.summary.skipped += skipped;
+                    report.summary.error = Some(tr!("service.handles.helperExited"));
+                    break 'restart;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    report.files = found.into_values().collect();
+    report.files.sort_by(|a, b| {
+        a.path
+            .to_ascii_lowercase()
+            .cmp(&b.path.to_ascii_lowercase())
+    });
+    report
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,8 +650,13 @@ mod tests {
     #[test]
     fn watchdog_retains_hits_and_resumes_after_a_stalled_handle() {
         let start = Instant::now();
-        let report = run(
-            vec![r"C:\fixture".into()],
+        let report = run_lockers(
+            WorkerRequest {
+                paths: vec![r"C:\fixture".into()],
+                pid: None,
+                create_time: None,
+                after: None,
+            },
             |r| fixture(r, "resume"),
             Duration::from_secs(5),
             Duration::from_millis(100),
@@ -460,6 +674,8 @@ mod tests {
     fn dropping_a_worker_terminates_its_process() {
         let request = WorkerRequest {
             paths: vec![r"C:\fixture".into()],
+            pid: None,
+            create_time: None,
             after: None,
         };
         let worker = Worker::spawn(fixture(&request, "hang")).unwrap();
@@ -486,8 +702,13 @@ mod tests {
 
     #[test]
     fn stalled_startup_has_a_total_deadline() {
-        let report = run(
-            vec![r"C:\fixture".into()],
+        let report = run_lockers(
+            WorkerRequest {
+                paths: vec![r"C:\fixture".into()],
+                pid: None,
+                create_time: None,
+                after: None,
+            },
             |r| fixture(r, "hang"),
             Duration::from_millis(250),
             Duration::from_millis(100),

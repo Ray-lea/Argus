@@ -581,6 +581,25 @@ impl Desktop {
             heading(label("details.section.commandLine")),
             sheet.command_line.into_iter().collect(),
         ));
+        if !picked.group {
+            let open_files = self
+                .data
+                .get(&format!("open-files:{key}"))
+                .and_then(|report| report["files"].as_array())
+                .map(|files| {
+                    files
+                        .iter()
+                        .filter_map(|file| file["path"].as_str())
+                        .filter(|path| !path.is_empty())
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            sections.push((
+                heading(label("details.section.openFiles")),
+                open_files,
+            ));
+        }
         sections.push((
             heading(label("details.section.version")),
             lines(&sheet.version),

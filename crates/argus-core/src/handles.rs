@@ -36,6 +36,8 @@ use crate::util::{AlignedBuf, OwnedHandle, filetime_ticks, from_wide, ticks_to_u
 pub const MAX_LOCKERS: usize = 128;
 pub const MAX_PATH_BYTES: usize = 8192;
 pub const MAX_HANDLES: usize = 200_000;
+/// Cap for process→open-files listings shown in the details pane.
+pub const MAX_OPEN_FILES: usize = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Cursor {
@@ -87,6 +89,22 @@ impl HandleSummary {
 #[serde(rename_all = "camelCase")]
 pub struct HandleReport {
     pub lockers: Vec<HandleLocker>,
+    pub summary: HandleSummary,
+}
+
+/// One distinct disk path held open by a process (handle count may be > 1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessOpenFile {
+    pub path: String,
+    pub count: usize,
+}
+
+/// Result of enumerating disk files opened by one process instance.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessOpenFilesReport {
+    pub files: Vec<ProcessOpenFile>,
     pub summary: HandleSummary,
 }
 
@@ -243,6 +261,97 @@ fn object_text(handle: HANDLE, class: i32) -> Option<String> {
         return Some(unsafe { text.to_string_lossy() });
     }
     None
+}
+
+/// File object type index from a known File handle in this process.
+fn file_object_type(me: u32, anchor: HANDLE) -> Result<u32, ActionError> {
+    let mut buffer = AlignedBuf::with_capacity(64 * 1024);
+    match nt::process_handles(
+        unsafe { GetCurrentProcess() },
+        0,
+        MAX_PROCESS_TABLE_BYTES,
+        &mut buffer,
+    ) {
+        Ok(own) => own
+            .iter()
+            .find(|e| e.handle == anchor.0 as usize)
+            .map(|e| e.object_type)
+            .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType"))),
+        Err(_) => {
+            let mut table = AlignedBuf::with_capacity(1024 * 1024);
+            let returned = nt::query_system_information(
+                nt::SYSTEM_EXTENDED_HANDLE_INFORMATION,
+                &mut table,
+            )
+            .map_err(|s| nt_error(s.0))?;
+            let entries = nt::handle_entries(&table, returned)
+                .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
+            entries
+                .iter()
+                .find(|e| e.pid == me as usize && e.handle == anchor.0 as usize)
+                .map(|e| u32::from(e.object_type))
+                .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType")))
+        }
+    }
+}
+
+struct DiskFileProbe {
+    handle: OwnedHandle,
+    path: String,
+}
+
+/// Duplicate a foreign handle and, when it is a named disk File, keep it open.
+fn probe_disk_file(
+    process: HANDLE,
+    handle: usize,
+    summary: &mut HandleSummary,
+) -> Option<DiskFileProbe> {
+    let mut duplicate = HANDLE::default();
+    if unsafe {
+        DuplicateHandle(
+            process,
+            HANDLE(handle as *mut _),
+            GetCurrentProcess(),
+            &mut duplicate,
+            0,
+            false,
+            DUPLICATE_SAME_ACCESS,
+        )
+    }
+    .is_err()
+    {
+        summary.skipped += 1;
+        return None;
+    }
+    let duplicate = OwnedHandle(duplicate);
+    // A handle can be reused after enumeration. Recheck its type before any
+    // file query, and avoid pipes/devices whose name queries can block.
+    let Some(kind) = object_text(duplicate.0, 2) else {
+        summary.skipped += 1;
+        return None;
+    };
+    if kind != "File" {
+        return None;
+    }
+    let file_type = unsafe { GetFileType(duplicate.0) };
+    if file_type != FILE_TYPE_DISK {
+        if file_type.0 == 0 {
+            summary.skipped += 1;
+        }
+        return None;
+    }
+    let Some(path) = object_text(duplicate.0, 1) else {
+        summary.skipped += 1;
+        return None;
+    };
+    if path.is_empty() {
+        return None;
+    }
+    summary.checked += 1;
+    Some(DiskFileProbe {
+        handle: duplicate,
+        path,
+    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -548,63 +657,27 @@ pub fn scan(
             }) {
                 return Ok(());
             }
-            let mut duplicate = HANDLE::default();
-            if unsafe {
-                DuplicateHandle(
-                    process.0,
-                    HANDLE(handle as *mut _),
-                    GetCurrentProcess(),
-                    &mut duplicate,
-                    0,
-                    false,
-                    DUPLICATE_SAME_ACCESS,
-                )
-            }
-            .is_err()
-            {
-                summary.skipped += 1;
-                continue;
-            }
-            let duplicate = OwnedHandle(duplicate);
-            // A handle can be reused after enumeration. Recheck its type before any
-            // file query, and avoid pipes/devices whose name queries can block.
-            let Some(kind) = object_text(duplicate.0, 2) else {
-                summary.skipped += 1;
+            let Some(probe) = probe_disk_file(process.0, handle, &mut summary) else {
                 continue;
             };
-            if kind != "File" {
-                continue;
-            }
-            let file_type = unsafe { GetFileType(duplicate.0) };
-            if file_type != FILE_TYPE_DISK {
-                if file_type.0 == 0 {
-                    summary.skipped += 1;
-                }
-                continue;
-            }
-            let Some(path) = object_text(duplicate.0, 1) else {
-                summary.skipped += 1;
-                continue;
-            };
-            summary.checked += 1;
             let mut identity = None;
             let mut identity_read = false;
             let matched = targets.iter().any(|target| {
                 if target.directory {
-                    return beneath(&path, &target.name);
+                    return beneath(&probe.path, &target.name);
                 }
                 // Only query file IDs on the target's volume, so hard-link aliases
                 // match without probing unrelated network filesystem handles.
-                if !beneath(&path, &target.volume) {
+                if !beneath(&probe.path, &target.volume) {
                     return false;
                 }
                 if !identity_read {
-                    identity = file_identity(duplicate.0);
+                    identity = file_identity(probe.handle.0);
                     identity_read = true;
                 }
                 match (target.identity, identity) {
                     (Some(a), Some(b)) => a == b,
-                    _ => eq_path(&path, &target.name),
+                    _ => eq_path(&probe.path, &target.name),
                 }
             });
             if matched {
@@ -613,7 +686,7 @@ pub fn scan(
                     break 'processes;
                 }
                 hit_pids.insert(pid);
-                let path = resolver.to_dos(&path).unwrap_or(path);
+                let path = resolver.to_dos(&probe.path).unwrap_or(probe.path);
                 if !emit(ScanEvent::Found(HandleLocker {
                     pid,
                     create_time: ticks_to_unix_ms(instance.created),
@@ -624,6 +697,153 @@ pub fn scan(
                     return Ok(());
                 }
             }
+        }
+    }
+    emit(ScanEvent::Done(summary));
+    Ok(())
+}
+
+/// Lists disk files opened by one process instance (`create_time` is Unix ms).
+/// Run only inside the disposable handle worker, like [`scan`].
+pub fn enumerate_process_open_files(
+    pid: u32,
+    create_time: i64,
+    after: Option<Cursor>,
+    mut emit: impl FnMut(ScanEvent) -> bool,
+) -> Result<(), ActionError> {
+    if pid == 0 || create_time <= 0 {
+        return Err(ActionError::Refused);
+    }
+    let start = Instant::now();
+    let me = std::process::id();
+    let anchor = OwnedHandle(unsafe {
+        CreateFileW(
+            PCWSTR(wide("NUL").as_ptr()),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            Default::default(),
+            None,
+        )
+    }?);
+    let file_type = file_object_type(me, anchor.0)?;
+    let mut processes = AlignedBuf::with_capacity(1024 * 1024);
+    nt::query_system_information(SystemProcessInformation, &mut processes)
+        .map_err(|s| nt_error(s.0))?;
+    let Some(instance) = ProcessIter::new(&processes).find_map(|p| {
+        let id = p.info.unique_process_id.0 as usize as u32;
+        (id == pid && ticks_to_unix_ms(p.info.create_time) == create_time).then(|| Instance {
+            created: p.info.create_time,
+            name: unsafe { p.info.image_name.to_string_lossy() },
+            handles: p.info.handle_count as usize,
+        })
+    }) else {
+        return Err(ActionError::NotFound);
+    };
+    drop(processes);
+
+    let mut summary = HandleSummary {
+        available: true,
+        elevated: crate::privilege::is_elevated(),
+        ..Default::default()
+    };
+    if !emit(ScanEvent::Progress {
+        cursor: whole_process(pid),
+        checked: summary.checked,
+        denied: summary.denied_processes,
+        skipped: summary.skipped,
+    }) {
+        return Ok(());
+    }
+    let access = PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION;
+    let Some(process) = open_instance(pid, instance.created, access) else {
+        summary.denied_processes = 1;
+        summary.available = false;
+        emit(ScanEvent::Done(summary));
+        return Ok(());
+    };
+
+    let mut buffer = AlignedBuf::with_capacity(64 * 1024);
+    let handles = match nt::process_handles(
+        process.0,
+        instance.handles,
+        MAX_PROCESS_TABLE_BYTES,
+        &mut buffer,
+    ) {
+        Ok(entries) => {
+            let mut handles: Vec<usize> = entries
+                .iter()
+                .filter(|e| {
+                    e.object_type == file_type
+                        && after.is_none_or(|after| {
+                            Cursor {
+                                pid,
+                                handle: e.handle as u64,
+                            } > after
+                        })
+                })
+                .map(|e| e.handle)
+                .collect();
+            handles.sort_unstable();
+            handles
+        }
+        Err(status) if status.0 == nt::STATUS_INFO_LENGTH_MISMATCH => {
+            // Fall back to the system-wide table filtered by this PID.
+            match listing(me, anchor.0, after)? {
+                Listing::Table(mut processes) => processes.remove(&pid).unwrap_or_default(),
+                Listing::PerProcess { .. } => {
+                    summary.truncated = true;
+                    emit(ScanEvent::Done(summary));
+                    return Ok(());
+                }
+            }
+        }
+        Err(_) => {
+            summary.denied_processes = 1;
+            summary.available = false;
+            emit(ScanEvent::Done(summary));
+            return Ok(());
+        }
+    };
+
+    let resolver = PathResolver::new();
+    let mut emitted = 0usize;
+    for handle in handles {
+        if start.elapsed() > Duration::from_secs(12)
+            || summary.checked + summary.skipped >= MAX_HANDLES
+        {
+            summary.truncated = true;
+            break;
+        }
+        if !emit(ScanEvent::Progress {
+            cursor: Cursor {
+                pid,
+                handle: handle as u64,
+            },
+            checked: summary.checked,
+            denied: summary.denied_processes,
+            skipped: summary.skipped,
+        }) {
+            return Ok(());
+        }
+        let Some(probe) = probe_disk_file(process.0, handle, &mut summary) else {
+            continue;
+        };
+        let path = resolver.to_dos(&probe.path).unwrap_or(probe.path);
+        if emitted >= MAX_OPEN_FILES {
+            summary.truncated = true;
+            break;
+        }
+        emitted += 1;
+        if !emit(ScanEvent::Found(HandleLocker {
+            pid,
+            create_time,
+            name: instance.name.chars().take(256).collect(),
+            path: path.chars().take(1024).collect(),
+            count: 1,
+        })) {
+            return Ok(());
         }
     }
     emit(ScanEvent::Done(summary));

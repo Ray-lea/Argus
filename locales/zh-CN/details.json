@@ -45,7 +45,13 @@
     "totals": "累计",
     "location": "文件位置",
     "commandLine": "命令行",
+    "openFiles": "打开的文件",
     "version": "文件版本"
+  },
+  "openFiles": {
+    "loading": "正在查找打开的文件…",
+    "empty": "未发现磁盘文件",
+    "denied": "当前权限无法读取打开的文件，可用管理员权限重试。"
   },
   "parent": "父进程",
   "parentLink": "{name}（{pid}）",

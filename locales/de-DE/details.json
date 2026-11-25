@@ -54,7 +54,13 @@
     "totals": "Gesamtwerte",
     "location": "Dateispeicherort",
     "commandLine": "Befehlszeile",
+    "openFiles": "Geöffnete Dateien",
     "version": "Dateiversion"
+  },
+  "openFiles": {
+    "loading": "Geöffnete Dateien werden ermittelt…",
+    "empty": "Keine Festplattendateien gefunden",
+    "denied": "Geöffnete Dateien sind mit den aktuellen Berechtigungen nicht verfügbar. Versuchen Sie, Argus als Administrator auszuführen."
   },
   "parent": "Übergeordneter Prozess",
   "parentLink": "{name} ({pid})",

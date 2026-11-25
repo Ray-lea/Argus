@@ -259,14 +259,31 @@ impl Desktop {
         let Some(picked) = self.details_pick(key) else {
             return;
         };
-        let process = picked
+        let details_args = picked
             .process
             .map(|p| json!({"pid":p["pid"],"path":p["path"]}));
-        if let Some(args) = process {
+        let open_files_args = (!picked.group)
+            .then(|| picked.process)
+            .flatten()
+            .and_then(|process| {
+                let create_time = process["createTime"].as_i64().filter(|&t| t > 0)?;
+                let pid = process["pid"].as_u64().map(|pid| pid as u32)?;
+                Some(json!({"pid": pid, "createTime": create_time}))
+            });
+        if let Some(args) = details_args {
             self.request(
                 "process_details",
                 args,
                 Some(&format!("details:{key}")),
+                window,
+                cx,
+            );
+        }
+        if let Some(args) = open_files_args {
+            self.request(
+                "process_open_files",
+                args,
+                Some(&format!("open-files:{key}")),
                 window,
                 cx,
             );
@@ -637,12 +654,88 @@ impl Desktop {
             );
         }
 
+        if !picked.group {
+            body = body.child(self.details_open_files(key, &mono, cx));
+        }
+
         if !sheet.version.is_empty() {
             body = body
                 .child(self.details_section_title(label("details.section.version")))
                 .child(self.details_fact_rows(sheet.version, cx));
         }
         body.into_any_element()
+    }
+
+    fn details_open_files(
+        &self,
+        key: &str,
+        mono: &SharedString,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let cache = format!("open-files:{key}");
+        let report = self.data.get(&cache);
+        let mut section = div()
+            .child(self.details_section_title(label("details.section.openFiles")));
+        match report {
+            None => {
+                section = section.child(
+                    div()
+                        .mt(px(6.))
+                        .text_color(p.muted)
+                        .text_size(theme::font(12.))
+                        .child(label("details.openFiles.loading")),
+                );
+            }
+            Some(report) => {
+                let files = report["files"].as_array().cloned().unwrap_or_default();
+                let denied = report["summary"]["deniedProcesses"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    > 0
+                    && files.is_empty();
+                if denied {
+                    section = section.child(
+                        div()
+                            .mt(px(6.))
+                            .text_color(p.muted)
+                            .text_size(theme::font(12.))
+                            .child(label("details.openFiles.denied")),
+                    );
+                } else if files.is_empty() {
+                    section = section.child(
+                        div()
+                            .mt(px(6.))
+                            .text_color(p.muted)
+                            .text_size(theme::font(12.))
+                            .child(label("details.openFiles.empty")),
+                    );
+                } else {
+                    let mut list = div()
+                        .id("process-open-files")
+                        .mt(px(6.))
+                        .max_h(px(220.))
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.));
+                    for (index, file) in files.iter().take(512).enumerate() {
+                        let path = file["path"].as_str().unwrap_or_default();
+                        if path.is_empty() {
+                            continue;
+                        }
+                        list = list.child(self.details_path_row(
+                            &format!("open-file-{index}"),
+                            path,
+                            mono,
+                            cx,
+                        ));
+                    }
+                    section = section.child(list);
+                }
+            }
+        }
+        section.into_any_element()
     }
 
     /// Facts as the pane shows them: name and value in two columns.

@@ -55,7 +55,7 @@ const REMOVE_ARG: &str = "--argus-service-remove";
 /// installed service in the same elevation.
 const REFRESH_ARG: &str = "--argus-service-refresh";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const PROTOCOL: u32 = 12;
+const PROTOCOL: u32 = 13;
 
 /// Handle service/helper modes before starting the native UI, its singleton or sampler.
 pub fn run_mode() -> Option<i32> {
@@ -120,6 +120,52 @@ fn remove_for_uninstall() -> i32 {
             _ => 1,
         },
     }
+}
+
+/// Open-files queries are read-only; fall back to a local worker like
+/// [`find_handle_lockers`] when the privileged service is unavailable.
+pub fn find_process_open_files(
+    pid: u32,
+    create_time: i64,
+) -> argus_core::handles::ProcessOpenFilesReport {
+    let service = install::running_pid()
+        .map_err(util::message)
+        .and_then(|running| {
+            running
+                .map(|running| {
+                    pipe::request_with_timeout(
+                        PIPE_NAME,
+                        running,
+                        Operation::FindProcessOpenFiles { pid, create_time },
+                        std::time::Duration::from_secs(20),
+                    )
+                    .map_err(util::message)
+                })
+                .transpose()
+        });
+    let fallback = match service {
+        Ok(Some(Reply::ProcessOpenFiles(mut report))) if report.summary.available => {
+            report.summary.via_service = true;
+            return report;
+        }
+        Ok(Some(Reply::ProcessOpenFiles(report))) => Fallback::ServiceFailed(
+            report
+                .summary
+                .error
+                .unwrap_or_else(|| tr!("service.handles.unavailable")),
+        ),
+        Ok(None) => Fallback::NoService,
+        Ok(Some(Reply::Error(argus_core::actions::ActionError::Os(message)))) => {
+            Fallback::ServiceFailed(message)
+        }
+        Ok(Some(Reply::Error(_))) => Fallback::Note(tr!("service.handles.serviceIncompleteLocal")),
+        Ok(_) => Fallback::Note(tr!("service.handles.serviceOutdated")),
+        Err(error) => Fallback::Note(tr!("service.handles.serviceUnavailable", error = error)),
+    };
+    let mut report = handles::scan_process_local(pid, create_time);
+    report.summary.service_asked = !matches!(fallback, Fallback::NoService);
+    report.summary.error = fallback.error(report.summary.error.take());
+    report
 }
 
 /// Handle queries are read-only, so a failed service query can safely fall

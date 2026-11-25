@@ -63,6 +63,10 @@ pub enum Operation {
     FindHandles {
         paths: Vec<String>,
     },
+    FindProcessOpenFiles {
+        pid: u32,
+        create_time: i64,
+    },
     ApplyRule {
         pid: u32,
         create_time: i64,
@@ -150,6 +154,7 @@ pub enum Reply {
     DiskDetails(Box<argus_core::hardware::disk_details::DiskDetails>),
     Sensors(Box<argus_core::hardware::CpuSensors>),
     Handles(argus_core::handles::HandleReport),
+    ProcessOpenFiles(argus_core::handles::ProcessOpenFilesReport),
     Priority(Priority),
     Error(ActionError),
 }
@@ -163,6 +168,11 @@ impl Operation {
                 }
             }
             Self::FindHandles { paths } => argus_core::handles::validate_paths(paths)?,
+            Self::FindProcessOpenFiles { pid, create_time } => {
+                if *pid == 0 || *create_time <= 0 {
+                    return Err(ActionError::Refused);
+                }
+            }
             Self::ApplyRule {
                 pid, create_time, ..
             }
@@ -249,6 +259,9 @@ pub fn execute(operation: Operation, context: &Context, client_pid: u32) -> Repl
         Operation::RestoreTaskManager => crate::taskmgr::restore().map_err(ActionError::Os),
         Operation::FindHandles { paths } => {
             return Reply::Handles(crate::handles::scan_local(paths));
+        }
+        Operation::FindProcessOpenFiles { pid, create_time } => {
+            return Reply::ProcessOpenFiles(crate::handles::scan_process_local(pid, create_time));
         }
         Operation::NetworkSnapshot => return Reply::Network(context.network.snapshot()),
         Operation::SensorSnapshot {} => {
