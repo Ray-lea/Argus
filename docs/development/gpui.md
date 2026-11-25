@@ -199,7 +199,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `cargo test -p argus --test image_atlas_edges` 在始终隐藏的窗口中读取 GPU 绘制结果，检查放大、缩小、半透明及单纹素图片的四条边。测试图块周围放置高对比度颜色，验证线性采样保持在图块边界内，防止概况带遮罩边缘混入相邻图标。
 
-README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 1600×1000 像素的无损 PNG。隔离实例使用 125% 界面缩放直接绘制文字和图标，按捕获边框校准客户区尺寸，导出过程保留原生像素。
+README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 1600×1000 像素的无损 PNG。隔离实例使用 125% 界面缩放直接绘制文字和图标，按捕获边框校准客户区尺寸，导出过程保留原生像素。预览展示名称、PID、CPU、内存、磁盘读写、网络和 GPU 列，并检查各列在硬件详情面板旁完整显示，无需横向滚动。
 
 `pnpm test:startup` 在独立 Windows 桌面运行开发脚本，检查默认启动和 `--hidden` 的窗口可见性。`pnpm test:hold` 以隐藏的隔离实例运行开发脚本，检查暂停期间的文件变更不触发重建、解除后只重建一次，以及此后的变更立即重建；它在 `vendor/` 下短暂写入一个不参与构建的标记文件。
 

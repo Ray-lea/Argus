@@ -222,7 +222,12 @@ try {
   await sleep(2500);
   if (preview) {
     // Render larger native glyphs rather than enlarging a captured bitmap.
-    send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name", preference: { uiScale: 125 } });
+    // Keep the five resource categories visible beside the hardware pane.
+    send({ page: "processes", view: "apps", navPosition: "top", details: true, sort: "name",
+      preference: { uiScale: 125, processColumns: {
+        selected: ["name", "pid", "cpu", "mem", "diskRead", "diskWrite", "net", "gpu"],
+        overrides: { name: 304 },
+      } } });
     await capture("preview-sizing");
     const header = readFileSync(resolve(output, "preview-sizing.png"));
     // WGC includes the nonclient edge. Adjust the physical client dimensions
@@ -263,6 +268,10 @@ try {
       assert(state?.sort === "name" && state.descending === false, "README preview must use ascending name order");
       const conditions = events.findLast(e => e.event === "ui-conditions" && e.label === theme);
       assert.equal(conditions?.processes, fixture.snapshot.processes.length, "README preview fixture missing");
+      send({ inspectColumns: theme });
+      for (let i = 0; i < 100 && !events.some(e => e.event === "ui-process-columns" && e.label === theme); i++) await sleep(50);
+      const columns = events.findLast(e => e.event === "ui-process-columns" && e.label === theme);
+      assert.equal(columns?.state.scroll.maxX, 0, "README preview columns must fit without horizontal scrolling");
     }
   } else if (live) {
     if (process.argv.includes("--exercise-updates")) {
