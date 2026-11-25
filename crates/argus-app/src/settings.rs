@@ -97,8 +97,8 @@ impl From<Theme> for String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
 pub enum TrayIcon {
-    Logo,
     #[default]
+    Logo,
     Load,
     Share,
     Number,
@@ -108,9 +108,10 @@ impl From<String> for TrayIcon {
     fn from(name: String) -> Self {
         match name.as_str() {
             "logo" => TrayIcon::Logo,
+            "load" => TrayIcon::Load,
             "share" => TrayIcon::Share,
             "number" => TrayIcon::Number,
-            _ => TrayIcon::Load,
+            _ => Self::default(),
         }
     }
 }
@@ -1074,7 +1075,7 @@ mod tests {
     fn tray_choices_round_trip_and_unknown_names_read_as_defaults() {
         // Settings saved before the tray choices existed.
         let settings: Settings = serde_json::from_str(r#"{"closeToTray": false}"#).unwrap();
-        assert_eq!(settings.tray_icon, TrayIcon::Load);
+        assert_eq!(settings.tray_icon, TrayIcon::Logo);
         assert!(settings.tray_card);
         assert_eq!(settings.tray_menu, TrayMenu::Panel);
         // Names from a newer version keep the other settings.
@@ -1082,7 +1083,7 @@ mod tests {
             r#"{"trayIcon": "sparkline", "trayMenu": "wheel", "closeToTray": false}"#,
         )
         .unwrap();
-        assert_eq!(settings.tray_icon, TrayIcon::Load);
+        assert_eq!(settings.tray_icon, TrayIcon::Logo);
         assert_eq!(settings.tray_menu, TrayMenu::Panel);
         assert!(!settings.close_to_tray);
         for icon in [

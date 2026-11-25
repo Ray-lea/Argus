@@ -14,6 +14,7 @@ use crate::frontend::shift;
 use crate::frontend::widgets::Tone;
 use crate::settings::{
     DeskLayout, DeskStyle, DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor,
+    TrayIcon,
 };
 
 /// A component of the page: its key (`components.*` texts), its icon and
@@ -257,20 +258,25 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let looks = ["logo", "load", "share", "number"];
-        let look = text(settings, "trayIcon");
-        let icon = self.segments(
+        let look: String = TrayIcon::from(text(settings, "trayIcon").to_owned()).into();
+        let icon = self.select(
             "setting-trayIcon",
+            label("components.tray.icon.title"),
             looks
                 .iter()
-                .map(|value| {
-                    (
-                        label(&format!("components.tray.icon.{value}")),
-                        None,
-                        Action::Invoke("set_tray".into(), json!({ "icon": value })),
-                        look == *value || (look.is_empty() && *value == "load"),
-                    )
-                })
+                .map(|value| label(&format!("components.tray.icon.{value}")))
                 .collect(),
+            looks.iter().position(|value| *value == look),
+            false,
+            move |this, index, window, cx| {
+                this.request(
+                    "set_tray",
+                    json!({ "icon": looks[index] }),
+                    Some("settings"),
+                    window,
+                    cx,
+                );
+            },
             cx,
         );
         let menus = ["panel", "menu"];
