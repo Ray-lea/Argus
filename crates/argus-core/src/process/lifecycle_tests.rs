@@ -198,3 +198,24 @@ fn native_observation_time_survives_cached_rows_and_late_replies() {
     fresh_counters(&mut tracker, requested);
     assert!(tracker.sample_started().unwrap() >= requested);
 }
+
+#[test]
+fn extra_counters_come_only_with_the_rows_asked_for() {
+    let child = ChildProcess::start(false);
+    let pid = child.0.id();
+    let mut tracker = ProcessTracker::new(MetaStore::new());
+    tracker.set_extra_counters(ExtraCounters::processes(vec![pid]));
+    let rows = fresh_counters(&mut tracker, Instant::now());
+    let carried: Vec<u32> = rows
+        .iter()
+        .filter(|row| row.extra.is_some())
+        .map(|row| row.pid)
+        .collect();
+    assert_eq!(carried, [pid]);
+    tracker.set_extra_counters(ExtraCounters::All);
+    let rows = fresh_counters(&mut tracker, Instant::now());
+    assert!(rows.iter().all(|row| row.extra.is_some()));
+    tracker.set_extra_counters(ExtraCounters::Off);
+    let rows = fresh_counters(&mut tracker, Instant::now());
+    assert!(rows.iter().all(|row| row.extra.is_none()));
+}

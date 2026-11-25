@@ -42,6 +42,6 @@ mod webview;
 
 pub use collector::{Collector, Snapshot};
 pub use meta::MetaStore;
-pub use process::{ProcessExtra, ProcessRow};
+pub use process::{ExtraCounters, ProcessExtra, ProcessRow};
 pub use system::SystemStats;
 pub use webview::{WebViewInfo, WebViewRole};

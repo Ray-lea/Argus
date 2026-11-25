@@ -127,9 +127,9 @@ pub struct ProcessRow {
     pub app_window: bool,
     /// Windows component identity for display grouping, not an action safety check.
     pub windows_process: bool,
-    /// The counters only optional columns show, while one of them is
-    /// (`ProcessTracker::set_extra_counters`): for every process, they make
-    /// serializing a snapshot about half as costly again. Boxed: inline,
+    /// The counters only optional columns and the details pane show, for
+    /// the rows asked for (`ProcessTracker::set_extra_counters`): for every
+    /// process, they make serializing a snapshot about half as costly again. Boxed: inline,
     /// they would add about 250 bytes to every row that sampling moves and
     /// sorts, shown or not.
     #[serde(flatten)]
@@ -249,6 +249,50 @@ impl ProcessExtra {
             io_other_ops_total: p.other_operation_count.max(0) as u64,
             peak_threads: p.number_of_threads_high_watermark,
             ..Self::default()
+        }
+    }
+}
+
+/// Which process rows carry `ProcessExtra`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ExtraCounters {
+    #[default]
+    Off,
+    /// The rows of these PIDs, sorted: the processes a details pane shows,
+    /// which costs next to nothing next to every row's.
+    Processes(Vec<u32>),
+    /// Every row's, for a column.
+    All,
+}
+
+impl ExtraCounters {
+    /// The rows of `pids`, or none for no PIDs.
+    pub fn processes(mut pids: Vec<u32>) -> Self {
+        pids.sort_unstable();
+        pids.dedup();
+        if pids.is_empty() {
+            Self::Off
+        } else {
+            Self::Processes(pids)
+        }
+    }
+
+    fn covers(&self, pid: u32) -> bool {
+        match self {
+            Self::Off => false,
+            Self::Processes(pids) => pids.binary_search(&pid).is_ok(),
+            Self::All => true,
+        }
+    }
+
+    /// Whether rows that carried none under `previous` carry them now.
+    pub fn adds_to(&self, previous: &Self) -> bool {
+        match (self, previous) {
+            (Self::Off, _) | (_, Self::All) => false,
+            (Self::All, _) | (Self::Processes(_), Self::Off) => true,
+            (Self::Processes(now), Self::Processes(before)) => {
+                now.iter().any(|pid| before.binary_search(pid).is_err())
+            }
         }
     }
 }
@@ -424,8 +468,8 @@ pub(crate) struct ProcessTracker {
     last_aligned: bool,
     last_systime: i64,
     native_disk: bool,
-    /// Rows carry `ProcessExtra`.
-    extra: bool,
+    /// The rows that carry `ProcessExtra`.
+    extra: ExtraCounters,
     previous_cycles: Option<SystemCycles>,
     cycle_clock: CycleClock,
     /// Total and per-processor usage from idle cycles over the latest
@@ -451,7 +495,7 @@ impl ProcessTracker {
             last_aligned: false,
             last_systime: 0,
             native_disk: crate::disk_process::standard_supported(),
-            extra: false,
+            extra: ExtraCounters::Off,
             previous_cycles: None,
             cycle_clock: CycleClock::new(),
             cycle_usage: None,
@@ -464,10 +508,10 @@ impl ProcessTracker {
         self.cycle_usage.as_ref()
     }
 
-    /// Whether rows carry the counters only optional columns show
-    /// (`ProcessRow::extra`), from the next sample on.
-    pub fn set_extra_counters(&mut self, enabled: bool) {
-        self.extra = enabled;
+    /// Which rows carry the counters only optional columns and the details
+    /// pane show (`ProcessRow::extra`), from the next sample on.
+    pub fn set_extra_counters(&mut self, rows: ExtraCounters) {
+        self.extra = rows;
     }
 
     /// When the latest accepted native counter query started.
@@ -500,7 +544,7 @@ impl ProcessTracker {
                 ..Default::default()
             }
         });
-        if self.extra {
+        if self.extra != ExtraCounters::Off {
             let now = ticks_to_unix_ms(filetime_ticks(unsafe { GetSystemTimePreciseAsFileTime() }));
             count_lineage(&mut rows, now, unsafe { GetTickCount64() });
         }
@@ -789,6 +833,7 @@ impl ProcessTracker {
                     || kernel_process(pid, entry.parent, &entry.name, entry.path.is_some()),
                 extra: self
                     .extra
+                    .covers(pid)
                     .then(|| Box::new(ProcessExtra::of(p, &totals, &rates, private_ws))),
             };
             crate::disk_process::fill(&mut row, disk, disk_rates);
@@ -890,9 +935,11 @@ impl ProcessTracker {
 /// owner is no parent of later processes. A creation time of 0 is system
 /// startup; a negative one is unknown.
 fn count_lineage(rows: &mut [ProcessRow], now: i64, uptime: u64) {
+    // Only rows carrying the counters keep a count: for the details pane's
+    // few, the lookup stays that small.
     let started: HashMap<u32, i64> = rows
         .iter()
-        .filter(|row| row.create_time >= 0)
+        .filter(|row| row.extra.is_some() && row.create_time >= 0)
         .map(|row| (row.pid, row.create_time))
         .collect();
     let mut children: HashMap<u32, u32> = HashMap::new();
@@ -1309,6 +1356,23 @@ mod tests {
         assert_eq!(extra(&rows[0]).runtime, Some(60_000));
         assert_eq!(extra(&rows[1]).runtime, Some(9_000));
         assert_eq!(extra(&rows[5]).runtime, None);
+    }
+
+    #[test]
+    fn extra_counters_cover_the_rows_asked_for_and_tell_when_rows_join() {
+        let shown = ExtraCounters::processes(vec![30, 10, 30]);
+        assert_eq!(shown, ExtraCounters::Processes(vec![10, 30]));
+        assert!(shown.covers(10) && shown.covers(30) && !shown.covers(20));
+        assert_eq!(ExtraCounters::processes(Vec::new()), ExtraCounters::Off);
+        assert!(!ExtraCounters::Off.covers(4) && ExtraCounters::All.covers(4));
+
+        assert!(shown.adds_to(&ExtraCounters::Off));
+        assert!(shown.adds_to(&ExtraCounters::processes(vec![10])));
+        assert!(!ExtraCounters::processes(vec![30]).adds_to(&shown));
+        assert!(!shown.adds_to(&ExtraCounters::All));
+        assert!(ExtraCounters::All.adds_to(&shown));
+        assert!(!ExtraCounters::All.adds_to(&ExtraCounters::All));
+        assert!(!ExtraCounters::Off.adds_to(&ExtraCounters::Off));
     }
 
     #[test]

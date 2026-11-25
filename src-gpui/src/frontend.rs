@@ -416,6 +416,9 @@ struct Desktop {
     interval: u64,
     paused: bool,
     control_paused: bool,
+    /// The process rows last asked to carry the optional counters
+    /// (`sync_extra_counters`).
+    extra_counters: RefCell<argus_core::ExtraCounters>,
     pointer_in_table: bool,
     held_order: bool,
     horizontal: f32,
@@ -614,6 +617,7 @@ impl Desktop {
             interval: prefs.get("interval", 1000),
             paused: false,
             control_paused: false,
+            extra_counters: RefCell::default(),
             pointer_in_table: false,
             held_order: false,
             horizontal: 0.,
@@ -873,7 +877,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let view =
                     cx.new(|cx| Desktop::new(host.clone(), options.clone(), prefs, window, cx));
                 // The rows carry the counters of the saved columns from the start.
-                view.read(cx).sync_extra_counters();
+                view.read(cx).sync_extra_counters(true);
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);

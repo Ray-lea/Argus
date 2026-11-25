@@ -658,7 +658,7 @@ impl Desktop {
         // Columns set as a whole (by a test control) still tell the sampler
         // which counters the rows need.
         if key == columns::PREFERENCE {
-            self.sync_extra_counters();
+            self.sync_extra_counters(true);
         }
         cx.notify();
     }

@@ -537,6 +537,8 @@ impl Desktop {
                 .spawn(async move { drop(previous) })
                 .detach();
         }
+        // A group gains and loses members, a selected process exits.
+        self.sync_extra_counters(false);
         if self.page == "processes" {
             // The list the column widths measure: built with the rows off
             // the UI thread when it was due, else here with each sample that
@@ -778,6 +780,11 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // What the details pane shows may change.
+        let shows_details = matches!(
+            action,
+            Action::Page(_) | Action::Select(_) | Action::Details(_)
+        );
         match action {
             Action::Sort(key) => {
                 if !tables::sortable(&self.page, &key) {
@@ -1042,6 +1049,9 @@ impl Desktop {
             Action::History(command) => self.history_command(command, window, cx),
             Action::CloseOverlay => self.close_overlay(window, cx),
             Action::Confirm => self.confirm_dialog(window, cx),
+        }
+        if shows_details {
+            self.sync_extra_counters(true);
         }
         cx.notify();
     }

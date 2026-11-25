@@ -161,10 +161,11 @@ pub fn set_paused(state: State<'_, AppState>, paused: bool) {
     state.sampler.send(Control::SetPaused(paused));
 }
 
-/// Whether the process rows carry the counters only some optional columns
-/// show (`argus_core::ProcessExtra`).
-pub fn set_extra_counters(state: State<'_, AppState>, enabled: bool) {
-    state.sampler.send(Control::SetExtraCounters(enabled));
+/// Which process rows carry the counters only some optional columns and the
+/// details pane show (`argus_core::ProcessExtra`); with `fill`, rows that
+/// join are sampled at once.
+pub fn set_extra_counters(state: State<'_, AppState>, rows: argus_core::ExtraCounters, fill: bool) {
+    state.sampler.send(Control::SetExtraCounters { rows, fill });
 }
 
 pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {

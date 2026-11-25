@@ -12,8 +12,6 @@ pub(super) enum Look {
     Faint,
     /// Text with a hint, by its element's id.
     Hinted(String, String),
-    /// Followed by a quiet part, which copies along.
-    Quiet(String),
     /// A link that selects the process row with this key.
     Link(String),
 }
@@ -22,11 +20,19 @@ pub(super) struct Fact {
     pub label: String,
     pub text: String,
     pub look: Look,
+    /// A quiet part after the text, such as a peak or a count of requests,
+    /// which copies along.
+    pub quiet: Option<String>,
 }
 
 impl Fact {
     fn new(label: String, text: String, look: Look) -> Self {
-        Self { label, text, look }
+        Self {
+            label,
+            text,
+            look,
+            quiet: None,
+        }
     }
     fn plain(label: String, text: String) -> Self {
         Self::new(label, text, Look::Plain)
@@ -34,15 +40,34 @@ impl Fact {
     fn selectable(id: &'static str, label: String, text: String) -> Self {
         Self::new(label, text, Look::Selectable(id))
     }
+    /// Followed by `quiet`, when there is one.
+    fn quiet(mut self, quiet: Option<String>) -> Self {
+        self.quiet = quiet;
+        self
+    }
     /// The text as it copies: a quiet part follows the reading.
     fn copied(&self) -> String {
-        match &self.look {
-            Look::Quiet(quiet) if quiet.starts_with([' ', '（', '(']) => {
+        match &self.quiet {
+            Some(quiet) if quiet.starts_with([' ', '（', '(']) => {
                 format!("{}{quiet}", self.text)
             }
-            Look::Quiet(quiet) => format!("{} {quiet}", self.text),
-            _ => self.text.clone(),
+            Some(quiet) => format!("{} {quiet}", self.text),
+            None => self.text.clone(),
         }
+    }
+}
+
+/// Events per second, with the unit.
+fn event_rate(count: f64) -> String {
+    tr!("details.eventRate", value = theme::count(count))
+}
+
+/// A quiet count of operations: per second, or since the start.
+fn operations(count: f64, rate: bool) -> String {
+    if rate {
+        tr!("details.operationRate", value = theme::count(count))
+    } else {
+        tr!("details.operations", value = theme::count(count))
     }
 }
 
@@ -60,6 +85,10 @@ pub(super) struct Sheet {
 
 fn column(key: &str) -> String {
     label(&format!("processes.column.{key}.label"))
+}
+
+fn title(key: &str) -> String {
+    label(&format!("processes.column.{key}.title"))
 }
 
 /// Text in sections, as "Copy details" puts it: the heading lines, then
@@ -221,6 +250,11 @@ impl Desktop {
                 .map(|v| v.to_string())
                 .unwrap_or_else(missing)
         };
+        let reading = |field: &str, shown: fn(f64) -> String| {
+            model::process_metric(process, field)
+                .map(shown)
+                .unwrap_or_else(missing)
+        };
         let pending = boolean(process, "countersPending");
         let on_off = |key: &str, on: &'static str, off: &'static str| {
             if pending {
@@ -237,11 +271,19 @@ impl Desktop {
             ),
             parent,
             Fact::selectable(
+                "details-children",
+                column("children"),
+                reading("children", theme::count),
+            ),
+            Fact::selectable(
                 "details-started",
                 label("details.started"),
-                model::process_metric(process, "createTime")
-                    .map(date_time)
-                    .unwrap_or_else(missing),
+                reading("createTime", date_time),
+            ),
+            Fact::selectable(
+                "details-runtime",
+                column("runtime"),
+                reading("runtime", cpu_time),
             ),
             Fact::selectable(
                 "details-user",
@@ -305,40 +347,62 @@ impl Desktop {
                 .reduce(|a, b| a + b)
         };
         let memory = |field: &str| measured(field).map(theme::memory).unwrap_or_else(missing);
-        let mut facts = vec![
-            Fact::plain(label("details.privateWs"), memory("privateWs")),
-            Fact::plain(label("details.workingSet"), memory("workingSet")),
-        ];
+        let bytes = |value: f64| theme::bytes(value, false);
+        let percent = |field: &str| {
+            measured(field)
+                .map(|value| format!("{}%", theme::cpu(value)))
+                .unwrap_or_else(missing)
+        };
         // Peaks and address ranges are a single process's.
-        if !group {
-            facts.push(Fact::plain(
-                column("peakWorkingSet"),
-                memory("peakWorkingSet"),
-            ));
-        }
-        facts.push(Fact::plain(label("details.commit"), memory("commit")));
-        if !group {
-            facts.push(Fact::plain(
-                column("virtualSize"),
-                measured("virtualSize")
-                    .map(|value| theme::bytes(value, false))
+        let peak = |field: &str, shown: &dyn Fn(f64) -> String| {
+            measured(field)
+                .filter(|_| !group)
+                .map(|value| tr!("details.peak", value = shown(value)))
+        };
+        let mut facts = vec![
+            Fact::plain(column("cpuKernel"), percent("cpuKernel")),
+            Fact::plain(column("cpuUser"), percent("cpuUser")),
+            Fact::plain(
+                label("details.contextSwitches"),
+                measured("contextSwitchRate")
+                    .map(event_rate)
                     .unwrap_or_else(missing),
-            ));
+            ),
+            Fact::plain(label("details.privateWs"), memory("privateWs")),
+            Fact::plain(label("details.workingSet"), memory("workingSet"))
+                .quiet(peak("peakWorkingSet", &theme::memory)),
+            Fact::plain(column("sharedWs"), memory("sharedWs")),
+            Fact::plain(label("details.commit"), memory("commit"))
+                .quiet(peak("peakCommit", &theme::memory)),
+        ];
+        if !group {
+            facts.push(
+                Fact::plain(
+                    column("virtualSize"),
+                    measured("virtualSize").map(bytes).unwrap_or_else(missing),
+                )
+                .quiet(peak("peakVirtualSize", &bytes)),
+            );
         }
-        for field in ["diskRead", "diskWrite"] {
-            let (value, tip) = match measured(field) {
-                Some(rate) => (
-                    byte_rate(rate),
-                    label(&format!("processes.column.{field}.title")),
-                ),
-                None => (missing(), self.missing_disk_hint(false)),
-            };
-            facts.push(Fact::new(
+        for field in ["pagedPool", "nonPagedPool"] {
+            facts.push(Fact::plain(
                 column(field),
-                value,
-                Look::Hinted(format!("details-{field}"), tip),
+                measured(field).map(bytes).unwrap_or_else(missing),
             ));
         }
+        facts.push(
+            Fact::plain(
+                label("details.pageFaults"),
+                measured("pageFaultRate")
+                    .map(event_rate)
+                    .unwrap_or_else(missing),
+            )
+            .quiet(
+                measured("hardFaultRate")
+                    .map(|count| tr!("details.hardFaultRate", value = theme::count(count))),
+            ),
+        );
+        facts.extend(self.details_disk_facts(members, false));
         let io = ["ioRead", "ioWrite", "ioOther"]
             .into_iter()
             .filter_map(&measured)
@@ -348,6 +412,20 @@ impl Desktop {
             io.map(byte_rate).unwrap_or_else(missing),
             Look::Hinted("details-io".into(), label("processes.column.io.title")),
         ));
+        for (field, count) in [
+            ("ioRead", "ioReadOps"),
+            ("ioWrite", "ioWriteOps"),
+            ("ioOther", "ioOtherOps"),
+        ] {
+            facts.push(
+                Fact::new(
+                    column(field),
+                    measured(field).map(byte_rate).unwrap_or_else(missing),
+                    Look::Hinted(format!("details-{field}"), title(field)),
+                )
+                .quiet(measured(count).map(|count| operations(count, true))),
+            );
+        }
         if !values(&self.snapshot["hardware"]["gpus"]).is_empty() {
             let busiest = members
                 .iter()
@@ -358,14 +436,10 @@ impl Desktop {
                 .and_then(|b| b["gpuEngine"].as_str())
                 .filter(|engine| !engine.is_empty());
             let usage = format!("{}%", theme::cpu(sum("gpu").min(100.)));
-            facts.push(match engine {
-                Some(engine) => Fact::new(
-                    label("common.resource.gpu"),
-                    usage,
-                    Look::Quiet(tr!("details.gpuEngine", engine = engine)),
-                ),
-                None => Fact::plain(label("common.resource.gpu"), usage),
-            });
+            facts.push(
+                Fact::plain(label("common.resource.gpu"), usage)
+                    .quiet(engine.map(|engine| tr!("details.gpuEngine", engine = engine))),
+            );
             for (key, field) in [
                 ("details.gpuDedicated", "gpuDedicated"),
                 ("details.gpuShared", "gpuShared"),
@@ -414,12 +488,15 @@ impl Desktop {
                 (None, _) => missing(),
             },
         ));
-        facts.push(Fact::plain(
-            label("details.threads"),
-            measured("threads")
-                .map(theme::count)
-                .unwrap_or_else(missing),
-        ));
+        facts.push(
+            Fact::plain(
+                label("details.threads"),
+                measured("threads")
+                    .map(theme::count)
+                    .unwrap_or_else(missing),
+            )
+            .quiet(peak("peakThreads", &theme::count)),
+        );
         facts.push(Fact::plain(
             label("details.handles"),
             measured("handles")
@@ -429,8 +506,8 @@ impl Desktop {
         facts
     }
 
-    /// Counts since the start: processor time, I/O transferred and page
-    /// faults, added up over an app group's members.
+    /// Counts since the start: processor time, context switches, page
+    /// faults, disk and I/O transferred, added up over an app group's members.
     fn details_total_facts(&self, members: &[&Value]) -> Vec<Fact> {
         let measured = |field: &str| {
             members
@@ -448,7 +525,7 @@ impl Desktop {
             )
         };
         let transferred = |value: f64| theme::bytes(value, false);
-        vec![
+        let mut facts = vec![
             reading(
                 "details-cpu-time",
                 label("details.cpuTime"),
@@ -468,30 +545,84 @@ impl Desktop {
                 cpu_time,
             ),
             reading(
-                "details-io-read",
-                column("ioRead"),
-                "ioReadTotal",
-                transferred,
-            ),
-            reading(
-                "details-io-write",
-                column("ioWrite"),
-                "ioWriteTotal",
-                transferred,
-            ),
-            reading(
-                "details-io-other",
-                column("ioOther"),
-                "ioOtherTotal",
-                transferred,
+                "details-context-switches",
+                label("details.contextSwitches"),
+                "contextSwitches",
+                theme::count,
             ),
             reading(
                 "details-page-faults",
                 column("pageFaults"),
                 "pageFaults",
                 theme::count,
+            )
+            .quiet(
+                measured("hardFaults")
+                    .map(|count| tr!("details.hardFaults", value = theme::count(count))),
             ),
-        ]
+        ];
+        facts.extend(self.details_disk_facts(members, true));
+        for (id, field) in [
+            ("details-io-read", "ioRead"),
+            ("details-io-write", "ioWrite"),
+            ("details-io-other", "ioOther"),
+        ] {
+            facts.push(
+                reading(id, column(field), &format!("{field}Total"), transferred).quiet(
+                    measured(&format!("{field}OpsTotal")).map(|count| operations(count, false)),
+                ),
+            );
+        }
+        facts
+    }
+
+    /// Disk reads and writes, per second or since the start, each with its
+    /// requests; a missing reading tells why in its hint.
+    fn details_disk_facts(&self, members: &[&Value], totals: bool) -> Vec<Fact> {
+        let measured = |field: &str| {
+            members
+                .iter()
+                .filter_map(|m| model::process_metric(m, field))
+                .reduce(|a, b| a + b)
+        };
+        // The counters these rows carry only on request have come.
+        let requested = measured("contextSwitches").is_some();
+        ["diskRead", "diskWrite"]
+            .into_iter()
+            .map(|field| {
+                let (bytes, count) = if totals {
+                    (format!("{field}Total"), format!("{field}OpsTotal"))
+                } else {
+                    (field.to_owned(), format!("{field}Ops"))
+                };
+                let (text, tip, quiet) = match (measured(&bytes), measured(&count)) {
+                    (Some(value), count) => {
+                        let text = if totals {
+                            theme::bytes(value, false)
+                        } else {
+                            byte_rate(value)
+                        };
+                        let tip = if count.is_none() && requested {
+                            self.missing_disk_hint(true)
+                        } else {
+                            title(&bytes)
+                        };
+                        (text, tip, count.map(|count| operations(count, !totals)))
+                    }
+                    // Totals not sent yet for a row just selected: no reason to give.
+                    (None, _) if totals && !requested => {
+                        (label("format.missing"), title(&bytes), None)
+                    }
+                    (None, _) => (label("format.missing"), self.missing_disk_hint(false), None),
+                };
+                Fact::new(
+                    column(field),
+                    text,
+                    Look::Hinted(format!("details-{bytes}"), tip),
+                )
+                .quiet(quiet)
+            })
+            .collect()
     }
 
     /// The row's details as text, as the pane lists them ("Copy details").

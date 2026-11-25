@@ -59,8 +59,13 @@ pub enum Control {
         tray: Duration,
     },
     SetKernelSensors(bool),
-    /// Whether process rows carry the counters only optional columns show.
-    SetExtraCounters(bool),
+    /// Which process rows carry the counters only optional columns and the
+    /// details pane show. With `fill`, rows that join are sampled at once
+    /// rather than after an interval.
+    SetExtraCounters {
+        rows: argus_core::ExtraCounters,
+        fill: bool,
+    },
     SetPaused(bool),
     /// Take a sample now (e.g. right after ending a process, or on show).
     Refresh,
@@ -331,7 +336,7 @@ impl Sampler {
                 let mut sensors = SensorClient::spawn();
                 let mut power = PowerTracker::default();
                 let mut kernel_sensors = false;
-                let mut extra_counters = false;
+                let mut extra_counters = argus_core::ExtraCounters::Off;
                 let mut subscriber: Option<Channel<Snapshot>> = None;
                 let mut window: Option<Probe> = None;
                 let mut history: Option<HistoryRecorder> = None;
@@ -359,11 +364,10 @@ impl Sampler {
                             }
                             true
                         }
-                        // Turned on, the columns fill at once rather than after an interval.
-                        Ok(Control::SetExtraCounters(enabled)) => {
-                            let added = enabled && !extra_counters;
-                            extra_counters = enabled;
-                            collector.set_extra_counters(enabled);
+                        Ok(Control::SetExtraCounters { rows, fill }) => {
+                            let added = fill && rows.adds_to(&extra_counters);
+                            collector.set_extra_counters(rows.clone());
+                            extra_counters = rows;
                             if !added {
                                 continue;
                             }

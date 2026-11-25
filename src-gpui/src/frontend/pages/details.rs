@@ -1,5 +1,6 @@
 //! The process details pane: the selected row looked up in the snapshot, or this computer's parts.
 use super::*;
+use argus_core::ExtraCounters;
 use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
 use sheet::{Fact, Look};
@@ -246,6 +247,39 @@ impl Desktop {
             members: process.into_iter().collect(),
             group: false,
         })
+    }
+
+    /// Tells the sampler which process rows need the counters only some
+    /// optional columns and this pane show: every row's for such a column,
+    /// else those of the processes the pane shows. With `fill`, rows that
+    /// join are sampled at once; not for the pane while paused, as that
+    /// would move the list held still.
+    pub(in crate::frontend) fn sync_extra_counters(&self, fill: bool) {
+        let rows = if columns::Preferences::load(&self.prefs).needs_extra_counters() {
+            ExtraCounters::All
+        } else if self.page == "processes" && self.details_shown() {
+            let key = self.selected.get("processes").cloned().unwrap_or_default();
+            ExtraCounters::processes(
+                self.details_pick(&key)
+                    .map(|picked| {
+                        picked
+                            .members
+                            .iter()
+                            .filter_map(|member| member["pid"].as_u64())
+                            .filter_map(|pid| u32::try_from(pid).ok())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            )
+        } else {
+            ExtraCounters::Off
+        };
+        if *self.extra_counters.borrow() == rows {
+            return;
+        }
+        let fill = fill && (rows == ExtraCounters::All || !(self.paused || self.control_paused));
+        self.extra_counters.replace(rows.clone());
+        crate::commands::set_extra_counters(self.host.state(), rows, fill);
     }
 
     /// Starts following a newly selected row's slow details; the timeline
@@ -663,12 +697,6 @@ impl Desktop {
                         .child(fact.text)
                         .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
                         .into_any_element(),
-                    Look::Quiet(quiet) => div()
-                        .child(fact.text)
-                        .child(div().text_color(p.faint).child(quiet))
-                        .flex()
-                        .flex_wrap()
-                        .into_any_element(),
                     Look::Link(key) => {
                         let accent = p.accent;
                         Button::new("details-parent")
@@ -683,6 +711,16 @@ impl Desktop {
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .into_any_element()
                     }
+                };
+                let value = match fact.quiet {
+                    // Wrapped as a whole after the reading when the pane is narrow.
+                    Some(quiet) => div()
+                        .flex()
+                        .flex_wrap()
+                        .child(value)
+                        .child(div().text_color(p.faint).child(quiet))
+                        .into_any_element(),
+                    None => value,
                 };
                 (fact.label, value)
             })

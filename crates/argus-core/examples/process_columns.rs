@@ -56,7 +56,7 @@ fn native_counters() -> [u64; 11] {
 fn main() {
     let mut collector = Collector::new(MetaStore::new());
     // The counters only optional columns show, checked with the rest.
-    collector.set_extra_counters(true);
+    collector.set_extra_counters(argus_core::ExtraCounters::All);
     let mut timings = Vec::new();
     let mut result = None;
     for _ in 0..12 {

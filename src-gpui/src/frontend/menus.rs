@@ -970,6 +970,7 @@ impl Desktop {
             // left press does.
             if self.page == "processes" && before.as_ref() != Some(&row.key) {
                 self.details_track(&row.key, window, cx);
+                self.sync_extra_counters(true);
             }
         } else if row.user.is_none() {
             return;
