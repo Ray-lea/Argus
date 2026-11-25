@@ -830,8 +830,8 @@ impl Desktop {
             self.after_close(closed, cancelled, window, cx);
         }
         if self.modal.is_none() {
-            // A scrim still fading out finishes on its own clock: it runs
-            // longer than the dialog's fade.
+            // The Mica scrim goes with the last dialog. The solid-window
+            // scrim can finish its fade using the separate leaving clock.
             self.scrim.shown.set(None);
             self.notify_scrim(cx);
             self.focus.focus(window, cx);
@@ -2355,11 +2355,74 @@ pub(super) struct ScrimState {
     pub leaving: Cell<Option<Instant>>,
 }
 
+impl ScrimState {
+    /// Returns the fraction of the theme's dim and whether it needs another frame.
+    fn sample(&self, now: Instant, fade: bool) -> (f32, bool) {
+        if !fade {
+            return (if self.shown.get().is_some() { 1. } else { 0. }, false);
+        }
+        let (start, leaving) = match (self.shown.get(), self.leaving.get()) {
+            (_, Some(start)) => (start, true),
+            (Some(start), None) => (start, false),
+            (None, None) => return (0., false),
+        };
+        let t = (now.saturating_duration_since(start).as_secs_f32() / 0.167).min(1.);
+        (if leaving { 1. - t } else { t }, t < 1.)
+    }
+}
+
+#[cfg(test)]
+mod scrim_tests {
+    use super::ScrimState;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn fixed_dim_lasts_until_the_last_panel_is_removed() {
+        let state = ScrimState::default();
+        let shown = Instant::now();
+        let end = shown + Duration::from_secs(1);
+        assert_eq!(state.sample(shown, false), (0., false));
+        state.shown.set(Some(shown));
+        assert_eq!(state.sample(shown, false), (1., false));
+        state.leaving.set(Some(end));
+        for ms in [0, 50, 99] {
+            assert_eq!(
+                state.sample(end + Duration::from_millis(ms), false),
+                (1., false)
+            );
+        }
+        state.shown.set(None);
+        assert_eq!(
+            state.sample(end + Duration::from_millis(100), false),
+            (0., false)
+        );
+    }
+
+    #[test]
+    fn solid_window_finishes_its_fade_after_the_panel_is_gone() {
+        let state = ScrimState::default();
+        let shown = Instant::now();
+        state.shown.set(Some(shown));
+        let halfway = Duration::from_micros(83_500);
+        assert_eq!(state.sample(shown + halfway, true), (0.5, true));
+        let closing = shown + Duration::from_secs(1);
+        assert_eq!(state.sample(closing, true), (1., false));
+        state.leaving.set(Some(closing));
+        assert_eq!(state.sample(closing + halfway, true), (0.5, true));
+        state.shown.set(None);
+        let (tail, moving) = state.sample(closing + Duration::from_millis(100), true);
+        assert!(moving && tail > 0. && tail < 0.5);
+        assert_eq!(
+            state.sample(closing + Duration::from_millis(167), true),
+            (0., false)
+        );
+    }
+}
+
 /// The dim behind dialogs, a layer of its own over the desktop and its chart
-/// layer, so the moving curves dim with everything else; the caption buttons
-/// stay above it. It fades in over 167 ms when the first dialog shows and out
-/// over 167 ms, both linearly, once the last starts leaving; the fade out
-/// outlasts the dialog's own.
+/// layer. On Mica it stays at the theme opacity until the last panel is gone:
+/// fading black over low-alpha card fills can briefly brighten them on screen.
+/// On a solid window the dim fades in and out over 167 ms.
 pub(super) struct Scrim {
     pub state: Rc<ScrimState>,
     /// The part behind the caption buttons, drawn by the title row under
@@ -2370,29 +2433,13 @@ pub(super) struct Scrim {
 
 impl Render for Scrim {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let reduce = cx.reduce_motion();
-        let progress = |since: Instant| {
-            if reduce {
-                1.
-            } else {
-                (since.elapsed().as_secs_f32() / 0.167).min(1.)
-            }
-        };
-        let level = match (self.state.shown.get(), self.state.leaving.get()) {
-            (_, Some(leaving)) => 1. - progress(leaving),
-            (Some(shown), None) => progress(shown),
-            (None, None) => 0.,
-        };
-        let settled = match (self.state.shown.get(), self.state.leaving.get()) {
-            (_, Some(leaving)) => progress(leaving) >= 1.,
-            (Some(shown), None) => progress(shown) >= 1.,
-            (None, None) => true,
-        };
+        let fade = !cx.reduce_motion() && !crate::platform::supports_backdrop();
+        let (level, moving) = self.state.sample(Instant::now(), fade);
         let color = theme::token("scrim", Palette::current(cx).dark).opacity(level);
         if self.captions {
             // A cached view of its own inside the title row: its fade draws
             // only it, while the desktop around it replays.
-            if !settled {
+            if moving {
                 window.request_isolated_animation_frame();
             }
             return div()
@@ -2400,7 +2447,7 @@ impl Render for Scrim {
                 .when(level > 0., |d| d.bg(color))
                 .into_any_element();
         }
-        if !settled {
+        if moving {
             window.request_animation_frame();
         }
         // The caption buttons stay above the dim: the toolbar row stops short
