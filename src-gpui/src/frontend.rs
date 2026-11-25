@@ -872,6 +872,8 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 let on_top = prefs.get(caption::KEEP_ON_TOP, false) && !options.test;
                 let view =
                     cx.new(|cx| Desktop::new(host.clone(), options.clone(), prefs, window, cx));
+                // The rows carry the counters of the saved columns from the start.
+                view.read(cx).sync_extra_counters();
                 // Apply platform integration after the component root is constructed.
                 window.defer(cx, move |window, cx| {
                     crate::platform::attach_window(&host, &options, window, cx);

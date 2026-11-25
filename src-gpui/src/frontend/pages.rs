@@ -655,6 +655,11 @@ impl Desktop {
             _ => {}
         }
         self.prefs.set(key, value);
+        // Columns set as a whole (by a test control) still tell the sampler
+        // which counters the rows need.
+        if key == columns::PREFERENCE {
+            self.sync_extra_counters();
+        }
         cx.notify();
     }
     /// Shows a process in the list: clears the search, unfolds its category, group

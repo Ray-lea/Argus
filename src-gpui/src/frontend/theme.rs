@@ -503,7 +503,7 @@ pub fn heat_alpha(field: &str, value: f64) -> f32 {
         return (level * heat["opacity"].as_f64().unwrap()) as f32;
     }
     let kind = match field {
-        "cpu" | "gpu" => "percent",
+        "cpu" | "cpuKernel" | "cpuUser" | "gpu" => "percent",
         "mem" | "workingSet" | "commit" | "gpuDedicated" | "gpuShared" => "memory",
         "io" | "ioRead" | "ioWrite" | "ioOther" | "diskRead" | "diskWrite" | "net"
         | "netReceived" | "netSent" => "rate",

@@ -105,7 +105,7 @@ fn envelope(field: &Field, bits: bool) -> Vec<Cow<'static, str>> {
 fn figures_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
     match field.kind {
         CellKind::Percent => &["100%", "8.8%"],
-        CellKind::Memory if field.key.starts_with("io") && field.key.ends_with("Total") => {
+        CellKind::Memory if crate::frontend::columns::byte_count(field.key) => {
             &["888.8 GB", "8888 KB"]
         }
         CellKind::Memory => &["88.8 GB", "8.88 GB", "888.8 MB"],
@@ -262,6 +262,7 @@ fn numeric(kind: CellKind) -> bool {
     matches!(
         kind,
         CellKind::Count
+            | CellKind::EventRate
             | CellKind::Identifier
             | CellKind::Pid
             | CellKind::Duration

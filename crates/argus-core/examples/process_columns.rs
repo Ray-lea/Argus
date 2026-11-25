@@ -11,7 +11,7 @@ use windows::Win32::{
     },
 };
 
-fn native_counters() -> [u64; 7] {
+fn native_counters() -> [u64; 11] {
     let process = unsafe { GetCurrentProcess() };
     let (mut created, mut exited, mut kernel, mut user) = (
         FILETIME::default(),
@@ -46,11 +46,17 @@ fn native_counters() -> [u64; 7] {
         io.ReadTransferCount,
         io.WriteTransferCount,
         io.OtherTransferCount,
+        io.ReadOperationCount,
+        io.WriteOperationCount,
+        io.OtherOperationCount,
+        memory.PeakPagefileUsage as u64,
     ]
 }
 
 fn main() {
     let mut collector = Collector::new(MetaStore::new());
+    // The counters only optional columns show, checked with the rest.
+    collector.set_extra_counters(true);
     let mut timings = Vec::new();
     let mut result = None;
     for _ in 0..12 {
@@ -70,6 +76,7 @@ fn main() {
         assert!(own.cpu_time >= split && own.cpu_time - split <= 1);
         assert!(own.counters.virtual_size >= own.commit);
         let counters = &own.counters;
+        let extra = own.extra.as_ref().expect("optional counters requested");
         let sampled = [
             counters.cpu_user_time,
             counters.cpu_kernel_time,
@@ -78,6 +85,10 @@ fn main() {
             counters.io_read_total,
             counters.io_write_total,
             counters.io_other_total,
+            extra.io_read_ops_total,
+            extra.io_write_ops_total,
+            extra.io_other_ops_total,
+            extra.peak_commit,
         ];
         for index in 0..sampled.len() {
             assert!(
@@ -94,9 +105,14 @@ fn main() {
             Some(own.counters.io_read_total)
         );
         assert!(json.get("counters").is_none());
+        assert_eq!(
+            json["ioReadOpsTotal"].as_u64(),
+            Some(extra.io_read_ops_total)
+        );
+        assert!(json.get("extra").is_none());
         result = Some(
-            serde_json::json!({"processCount":sample.processes.len(),"counters":own.counters,
-                "nativeBefore":before,"nativeAfter":after,"validatedFields":["cpuUserTime","cpuKernelTime","peakWorkingSet","pageFaults","ioReadTotal","ioWriteTotal","ioOtherTotal"]}),
+            serde_json::json!({"processCount":sample.processes.len(),"counters":own.counters,"extra":extra,
+                "nativeBefore":before,"nativeAfter":after,"validatedFields":["cpuUserTime","cpuKernelTime","peakWorkingSet","pageFaults","ioReadTotal","ioWriteTotal","ioOtherTotal","ioReadOpsTotal","ioWriteOpsTotal","ioOtherOpsTotal","peakCommit"]}),
         );
     }
     timings.sort_by(f64::total_cmp);

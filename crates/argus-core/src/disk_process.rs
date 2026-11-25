@@ -24,20 +24,74 @@ const DISK_BYTES: usize = 5 * size_of::<u64>();
 /// hundred milliseconds late or early: exactly 30 s dropped about every other.
 const MAX_INTERVAL_MS: u64 = 35_000;
 
-/// Bytes per second between two cumulative (read, written) readings of one
-/// process instance, `secs` apart. None without both readings, across a
-/// counter reset or over an interval too long to trust.
+/// One process instance's disk counters: bytes read and written, and the
+/// read and write requests when the source reports them. Cumulative, or per
+/// second between two cumulative readings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DiskCounts {
+    pub read: u64,
+    pub written: u64,
+    /// None from a privileged service built before it reported requests.
+    pub operations: Option<(u64, u64)>,
+}
+
+impl DiskCounts {
+    pub(crate) const fn new(read: u64, written: u64, reads: u64, writes: u64) -> Self {
+        Self {
+            read,
+            written,
+            operations: Some((reads, writes)),
+        }
+    }
+
+    /// The counts since `previous`, `ms` milliseconds earlier, per second:
+    /// bytes rounded down, requests to the nearest. None across a reset of
+    /// the byte counters; requests stay unknown across a reset of theirs.
+    fn per_second_since(self, previous: Self, ms: f64) -> Option<Self> {
+        let bytes =
+            |now: u64, before: u64| Some((now.checked_sub(before)? as f64 * 1000. / ms) as u64);
+        let requests = |now: u64, before: u64| {
+            Some((now.checked_sub(before)? as f64 * 1000. / ms).round() as u64)
+        };
+        Some(Self {
+            read: bytes(self.read, previous.read)?,
+            written: bytes(self.written, previous.written)?,
+            operations: self.operations.zip(previous.operations).and_then(
+                |((reads, writes), (r, w))| Some((requests(reads, r)?, requests(writes, w)?)),
+            ),
+        })
+    }
+}
+
+/// Per-second counts between two cumulative readings of one process
+/// instance, `secs` apart. None without both readings, across a counter
+/// reset or over an interval too long to trust.
 pub(crate) fn interval_rates(
-    previous: Option<(u64, u64)>,
-    current: Option<(u64, u64)>,
+    previous: Option<DiskCounts>,
+    current: Option<DiskCounts>,
     secs: Option<f64>,
-) -> Option<(u64, u64)> {
-    let ((r, w), (read, written)) = previous.zip(current)?;
+) -> Option<DiskCounts> {
+    let (before, now) = previous.zip(current)?;
     let secs = secs.filter(|s| *s > 0.0 && *s * 1000.0 <= MAX_INTERVAL_MS as f64)?;
-    Some((
-        (read.checked_sub(r)? as f64 / secs) as u64,
-        (written.checked_sub(w)? as f64 / secs) as u64,
-    ))
+    now.per_second_since(before, secs * 1000.)
+}
+
+/// A process's disk columns: over a valid interval its rates, and while the
+/// row carries the optional columns' counters, its cumulative counts.
+pub fn fill(process: &mut ProcessRow, totals: Option<DiskCounts>, rates: Option<DiskCounts>) {
+    process.disk_read = rates.map(|r| r.read);
+    process.disk_write = rates.map(|r| r.written);
+    let Some(extra) = process.extra.as_mut() else {
+        return;
+    };
+    let requests = rates.and_then(|r| r.operations);
+    extra.disk_read_ops = requests.map(|r| r.0);
+    extra.disk_write_ops = requests.map(|r| r.1);
+    extra.disk_read_total = totals.map(|t| t.read);
+    extra.disk_write_total = totals.map(|t| t.written);
+    let requests = totals.and_then(|t| t.operations);
+    extra.disk_read_ops_total = requests.map(|r| r.0);
+    extra.disk_write_ops_total = requests.map(|r| r.1);
 }
 
 pub(crate) fn standard_supported() -> bool {
@@ -77,7 +131,7 @@ pub(crate) fn standard_counters(
     buf: &AlignedBuf,
     returned: usize,
     process: &SystemProcessInformation,
-) -> Option<(u64, u64)> {
+) -> Option<DiskCounts> {
     if returned > buf.len() {
         return None;
     }
@@ -108,7 +162,7 @@ fn standard_trailer(
     threads: usize,
     name: usize,
     name_bytes: usize,
-) -> Option<(u64, u64)> {
+) -> Option<DiskCounts> {
     let offset =
         HEADER_BYTES.checked_add(threads.checked_mul(size_of::<SystemThreadInformation>())?)?;
     let name_offset = name.checked_sub(base)?;
@@ -117,22 +171,54 @@ fn standard_trailer(
     {
         return None;
     }
-    let counters = record.get(offset..offset + DISK_BYTES)?;
-    Some((
-        u64::from_le_bytes(counters[..8].try_into().ok()?),
-        u64::from_le_bytes(counters[8..16].try_into().ok()?),
-    ))
+    disk_counts(record.get(offset..offset + DISK_BYTES)?)
+}
+
+/// PROCESS_DISK_COUNTERS: bytes read and written, then read, write and
+/// flush requests. Flushes are not shown.
+fn disk_counts(counters: &[u8]) -> Option<DiskCounts> {
+    let at = |index: usize| {
+        Some(u64::from_le_bytes(
+            counters.get(index * 8..index * 8 + 8)?.try_into().ok()?,
+        ))
+    };
+    Some(DiskCounts::new(at(0)?, at(1)?, at(2)?, at(3)?))
 }
 
 /// PID, creation time (Unix ms), cumulative disk bytes read/written. No paths,
 /// command lines, SIDs or other variable-length process metadata cross IPC.
 pub type DiskCounter = (u32, i64, u64, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiskSnapshot {
     /// Monotonic boot time, shared across callers and service restarts.
     pub sampled_at_ms: u64,
     pub counters: Vec<DiskCounter>,
+    /// Cumulative read and write requests of each process in `counters`, in
+    /// the same order. A privileged service built before it sent them leaves
+    /// this empty, and the hosts of that time ignore it, so the protocol
+    /// stays as it was.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<(u64, u64)>,
+}
+
+impl DiskSnapshot {
+    /// Each process instance's counts, with requests when the snapshot has
+    /// them for every process.
+    fn counts(&self) -> impl Iterator<Item = ((u32, i64), DiskCounts)> + '_ {
+        let operations = (self.operations.len() == self.counters.len()).then_some(&self.operations);
+        self.counters
+            .iter()
+            .enumerate()
+            .map(move |(i, &(pid, created, read, written))| {
+                let counts = DiskCounts {
+                    read,
+                    written,
+                    operations: operations.map(|all| all[i]),
+                };
+                ((pid, created), counts)
+            })
+    }
 }
 
 /// Why a full process information query gave no counters, in fixed words and
@@ -192,20 +278,26 @@ impl DiskQuery {
         // Only bytes returned by the kernel are inspected; each record and
         // extension is bounded again below before reading fixed numeric fields.
         let bytes = unsafe { std::slice::from_raw_parts(self.buf.as_ptr(), len) };
+        let (counters, operations) = decode(bytes)?;
         Ok(DiskSnapshot {
             sampled_at_ms,
-            counters: decode(bytes)?,
+            counters,
+            operations,
         })
     }
 }
 
-fn decode(bytes: &[u8]) -> Result<Vec<DiskCounter>, DiskFailure> {
+/// Each process's counters and, in the same order, its read and write requests.
+type Decoded = (Vec<DiskCounter>, Vec<(u64, u64)>);
+
+fn decode(bytes: &[u8]) -> Result<Decoded, DiskFailure> {
     use DiskFailure::Truncated;
     let u32_at =
         |b: &[u8], at: usize| Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
     let u64_at =
         |b: &[u8], at: usize| Some(u64::from_le_bytes(b.get(at..at + 8)?.try_into().ok()?));
     let mut counters = Vec::new();
+    let mut operations = Vec::new();
     let mut offset = 0;
     loop {
         let remaining = bytes.get(offset..).ok_or(Truncated)?;
@@ -241,15 +333,12 @@ fn decode(bytes: &[u8]) -> Result<Vec<DiskCounter>, DiskFailure> {
             }
             let created = u64_at(record, offset_of!(SystemProcessInformation, create_time))
                 .ok_or(Truncated)? as i64;
-            counters.push((
-                pid,
-                ticks_to_unix_ms(created),
-                u64_at(disk, 0).ok_or(Truncated)?,
-                u64_at(disk, 8).ok_or(Truncated)?,
-            ));
+            let counts = disk_counts(disk).ok_or(Truncated)?;
+            counters.push((pid, ticks_to_unix_ms(created), counts.read, counts.written));
+            operations.push(counts.operations.ok_or(Truncated)?);
         }
         if next == 0 {
-            return Ok(counters);
+            return Ok((counters, operations));
         }
         offset = offset.checked_add(next).ok_or(Truncated)?;
     }
@@ -258,7 +347,9 @@ fn decode(bytes: &[u8]) -> Result<Vec<DiskCounter>, DiskFailure> {
 #[derive(Default)]
 pub struct DiskRates {
     previous: Option<DiskSnapshot>,
-    values: HashMap<(u32, i64), (u64, u64)>,
+    /// Each process instance's counts in the latest snapshot and, over a
+    /// valid interval, its rates.
+    values: HashMap<(u32, i64), (DiskCounts, Option<DiskCounts>)>,
 }
 
 impl DiskRates {
@@ -277,43 +368,37 @@ impl DiskRates {
             .is_none_or(|p| p.sampled_at_ms != frame.sampled_at_ms)
         {
             self.values.clear();
-            if let Some(previous) = &self.previous
-                && let Some(elapsed) = frame.sampled_at_ms.checked_sub(previous.sampled_at_ms)
-                && (1..=MAX_INTERVAL_MS).contains(&elapsed)
-            {
-                let old: HashMap<_, _> = previous
-                    .counters
-                    .iter()
-                    .map(|&(pid, created, read, written)| ((pid, created), (read, written)))
-                    .collect();
-                // The clock is read before each query: a process missing from
-                // the previous snapshot but created after that read did all of
-                // its I/O since. Coarse ticks can only defer one to the next.
-                let taken = previous.sampled_at_ms as i64 + wall_offset;
-                for &(pid, created, read, written) in &frame.counters {
-                    let (r, w) = match old.get(&(pid, created)) {
-                        Some(&counters) => counters,
-                        None if created > taken => (0, 0),
-                        None => continue,
+            let interval = self.previous.as_ref().and_then(|previous| {
+                let elapsed = frame.sampled_at_ms.checked_sub(previous.sampled_at_ms)?;
+                (1..=MAX_INTERVAL_MS).contains(&elapsed).then(|| {
+                    let old: HashMap<_, _> = previous.counts().collect();
+                    // The clock is read before each query: a process missing
+                    // from the previous snapshot but created after that read
+                    // did all of its I/O since. Coarse ticks can only defer
+                    // one to the next.
+                    let taken = previous.sampled_at_ms as i64 + wall_offset;
+                    (old, taken, elapsed as f64)
+                })
+            });
+            for (key, now) in frame.counts() {
+                let rates = interval.as_ref().and_then(|(old, taken, elapsed)| {
+                    let before = match old.get(&key) {
+                        Some(&before) => before,
+                        None if key.1 > *taken => DiskCounts {
+                            operations: now.operations.map(|_| (0, 0)),
+                            ..DiskCounts::default()
+                        },
+                        None => return None,
                     };
-                    let (Some(read), Some(written)) = (read.checked_sub(r), written.checked_sub(w))
-                    else {
-                        continue;
-                    };
-                    let rate = |bytes: u64| {
-                        ((u128::from(bytes) * 1000) / u128::from(elapsed)).min(u64::MAX as u128)
-                            as u64
-                    };
-                    self.values
-                        .insert((pid, created), (rate(read), rate(written)));
-                }
+                    now.per_second_since(before, *elapsed)
+                });
+                self.values.insert(key, (now, rates));
             }
             self.previous = Some(frame.clone());
         }
         for process in processes {
             let value = self.values.get(&(process.pid, process.create_time));
-            process.disk_read = value.map(|v| v.0);
-            process.disk_write = value.map(|v| v.1);
+            fill(process, value.map(|v| v.0), value.and_then(|v| v.1));
         }
     }
 }
@@ -326,12 +411,15 @@ mod tests {
     fn standard_trailer_cannot_read_image_names_or_unreturned_allocation_space() {
         let offset = HEADER_BYTES + 2 * size_of::<SystemThreadInformation>();
         let mut bytes = vec![0; offset + DISK_BYTES + 24];
-        bytes[offset..offset + 8].copy_from_slice(&4096_u64.to_le_bytes());
-        bytes[offset + 8..offset + 16].copy_from_slice(&8192_u64.to_le_bytes());
+        for (index, value) in [4096_u64, 8192, 3, 5, 7].into_iter().enumerate() {
+            let at = offset + index * 8;
+            bytes[at..at + 8].copy_from_slice(&value.to_le_bytes());
+        }
         let base = 0x1000;
+        // Flushes (the fifth counter) are not shown.
         assert_eq!(
             standard_trailer(&bytes, base, 2, base + offset + DISK_BYTES, 24),
-            Some((4096, 8192))
+            Some(DiskCounts::new(4096, 8192, 3, 5))
         );
         assert_eq!(standard_trailer(&bytes, base, 2, base + offset, 24), None);
         assert_eq!(
@@ -362,8 +450,14 @@ mod tests {
         // General I/O deliberately differs from disk I/O.
         let at = offset_of!(SystemProcessInformation, read_transfer_count);
         bytes[at..at + 8].copy_from_slice(&999_999_u64.to_le_bytes());
-        bytes[extension..extension + 8].copy_from_slice(&read.to_le_bytes());
-        bytes[extension + 8..extension + 16].copy_from_slice(&written.to_le_bytes());
+        // One request per 4 KiB, and a flush that is not read.
+        for (index, value) in [read, written, read / 4096, written / 4096, 1]
+            .into_iter()
+            .enumerate()
+        {
+            let at = extension + index * 8;
+            bytes[at..at + 8].copy_from_slice(&value.to_le_bytes());
+        }
         bytes
     }
 
@@ -375,17 +469,41 @@ mod tests {
         let length = bytes.len() as u32;
         bytes[..4].copy_from_slice(&length.to_le_bytes());
         bytes.extend(record(19, 0, 0, 0));
-        assert_eq!(
-            decode(&bytes).unwrap(),
-            [(17, 1000, 4096, 8192), (19, 1000, 0, 0)]
-        );
+        let (counters, operations) = decode(&bytes).unwrap();
+        assert_eq!(counters, [(17, 1000, 4096, 8192), (19, 1000, 0, 0)]);
+        assert_eq!(operations, [(1, 2), (0, 0)]);
         assert!(
             !serde_json::to_string(&DiskSnapshot {
                 sampled_at_ms: 1,
-                counters: decode(&bytes).unwrap()
+                counters,
+                operations,
             })
             .unwrap()
             .contains("999999")
+        );
+    }
+
+    #[test]
+    fn snapshots_without_requests_cross_both_ways() {
+        // What a privileged service built before requests were reported sends.
+        let old: DiskSnapshot =
+            serde_json::from_str(r#"{"sampled_at_ms":1,"counters":[[17,10,4096,0]]}"#).unwrap();
+        assert!(old.operations.is_empty());
+        // What a host of that time reads from a newer service.
+        #[derive(serde::Deserialize)]
+        #[allow(dead_code)]
+        struct Earlier {
+            sampled_at_ms: u64,
+            counters: Vec<DiskCounter>,
+        }
+        let newer = serde_json::to_string(&DiskSnapshot {
+            operations: vec![(1, 0)],
+            ..old
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Earlier>(&newer).unwrap().counters,
+            [(17, 10, 4096, 0)]
         );
     }
 
@@ -399,7 +517,10 @@ mod tests {
             bytes.extend(record(19, 2, 1024, 2048));
             assert_eq!(
                 decode(&bytes).unwrap(),
-                [(17, 1000, 4096, 8192), (19, 1000, 1024, 2048)]
+                (
+                    vec![(17, 1000, 4096, 8192), (19, 1000, 1024, 2048)],
+                    vec![(1, 2), (0, 0)]
+                )
             );
         }
     }
@@ -435,8 +556,8 @@ mod tests {
         }
         assert_eq!(decode(&bytes), Err(TooMany));
         assert_eq!(
-            decode(&bytes[one.len()..]).map(|c| c.len()),
-            Ok(MAX_PROCESSES)
+            decode(&bytes[one.len()..]).map(|(c, o)| (c.len(), o.len())),
+            Ok((MAX_PROCESSES, MAX_PROCESSES))
         );
     }
 
@@ -481,11 +602,11 @@ mod tests {
         };
         assert_eq!(
             standard_counters(&buf, 2 * record, info(0)),
-            Some((4096, 0))
+            Some(DiskCounts::new(4096, 0, 0, 0))
         );
         assert_eq!(
             standard_counters(&buf, 2 * record, info(1)),
-            Some((8192, 0))
+            Some(DiskCounts::new(8192, 0, 0, 0))
         );
         // The name would extend past the bytes the kernel returned.
         assert_eq!(standard_counters(&buf, 2 * record - 1, info(1)), None);
@@ -494,31 +615,110 @@ mod tests {
 
     #[test]
     fn interval_rates_need_two_readings_and_a_trustworthy_interval() {
+        let bytes = |read, written| Some(DiskCounts::new(read, written, 0, 0));
         // First sample, or a process the trailer does not cover.
-        assert_eq!(interval_rates(None, Some((4096, 0)), Some(1.0)), None);
-        assert_eq!(interval_rates(Some((0, 0)), None, Some(1.0)), None);
-        assert_eq!(interval_rates(Some((0, 0)), Some((4096, 0)), None), None);
+        assert_eq!(interval_rates(None, bytes(4096, 0), Some(1.0)), None);
+        assert_eq!(interval_rates(bytes(0, 0), None, Some(1.0)), None);
+        assert_eq!(interval_rates(bytes(0, 0), bytes(4096, 0), None), None);
         // A process started since the last sample counts from zero.
         assert_eq!(
-            interval_rates(Some((0, 0)), Some((4096, 8192)), Some(2.0)),
-            Some((2048, 4096))
+            interval_rates(bytes(0, 0), bytes(4096, 8192), Some(2.0)),
+            bytes(2048, 4096)
         );
         assert_eq!(
-            interval_rates(Some((4096, 8192)), Some((4096, 8192)), Some(0.5)),
-            Some((0, 0))
+            interval_rates(bytes(4096, 8192), bytes(4096, 8192), Some(0.5)),
+            bytes(0, 0)
         );
         // A counter reset, no time between readings, or too long a gap.
-        assert_eq!(
-            interval_rates(Some((4096, 0)), Some((0, 0)), Some(1.0)),
-            None
-        );
-        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(0.0)), None);
-        assert_eq!(interval_rates(Some((0, 0)), Some((1, 1)), Some(35.5)), None);
+        assert_eq!(interval_rates(bytes(4096, 0), bytes(0, 0), Some(1.0)), None);
+        assert_eq!(interval_rates(bytes(0, 0), bytes(1, 1), Some(0.0)), None);
+        assert_eq!(interval_rates(bytes(0, 0), bytes(1, 1), Some(35.5)), None);
         // The 30 s background cadence, a little late.
         assert_eq!(
-            interval_rates(Some((0, 0)), Some((61, 61)), Some(30.5)),
-            Some((2, 2))
+            interval_rates(bytes(0, 0), bytes(61, 61), Some(30.5)),
+            bytes(2, 2)
         );
+    }
+
+    #[test]
+    fn request_rates_round_and_stay_unknown_without_both_readings() {
+        let counts = |reads, writes| DiskCounts::new(0, 0, reads, writes);
+        // Bytes round down as before; requests to the nearest whole one.
+        assert_eq!(
+            interval_rates(
+                Some(DiskCounts::new(0, 0, 10, 10)),
+                Some(DiskCounts::new(4097, 0, 13, 10)),
+                Some(2.0)
+            ),
+            Some(DiskCounts::new(2048, 0, 2, 0))
+        );
+        // A reset of the requests alone leaves the bytes' rates.
+        assert_eq!(
+            interval_rates(Some(counts(5, 5)), Some(counts(4, 6)), Some(1.0)),
+            Some(DiskCounts {
+                operations: None,
+                ..DiskCounts::default()
+            })
+        );
+        let unknown = DiskCounts {
+            operations: None,
+            ..DiskCounts::default()
+        };
+        assert_eq!(
+            interval_rates(Some(unknown), Some(counts(4, 6)), Some(1.0)),
+            Some(unknown)
+        );
+    }
+
+    #[test]
+    fn processes_get_totals_at_once_and_rates_after_an_interval() {
+        let mut rates = DiskRates::default();
+        let mut process = ProcessRow {
+            pid: 17,
+            create_time: 10,
+            extra: Some(crate::process::ProcessExtra::default()),
+            ..ProcessRow::default()
+        };
+        let extra = |process: &ProcessRow| process.extra.clone().unwrap();
+        let frame = |ms, read, reads, operations: bool| DiskSnapshot {
+            sampled_at_ms: ms,
+            counters: vec![(17, 10, read, 0)],
+            operations: if operations {
+                vec![(reads, 0)]
+            } else {
+                Vec::new()
+            },
+        };
+        rates.apply_with(
+            &frame(1000, 4096, 1, true),
+            std::slice::from_mut(&mut process),
+            0,
+        );
+        assert_eq!(extra(&process).disk_read_total, Some(4096));
+        assert_eq!(extra(&process).disk_read_ops_total, Some(1));
+        assert_eq!(extra(&process).disk_write_ops_total, Some(0));
+        assert_eq!(
+            (process.disk_read, extra(&process).disk_read_ops),
+            (None, None)
+        );
+        rates.apply_with(
+            &frame(2000, 12288, 3, true),
+            std::slice::from_mut(&mut process),
+            0,
+        );
+        assert_eq!(process.disk_read, Some(8192));
+        assert_eq!(extra(&process).disk_read_ops, Some(2));
+        assert_eq!(extra(&process).disk_write_ops, Some(0));
+        // An older service: bytes as before, requests unknown.
+        rates.apply_with(
+            &frame(3000, 16384, 0, false),
+            std::slice::from_mut(&mut process),
+            0,
+        );
+        assert_eq!(process.disk_read, Some(4096));
+        assert_eq!(extra(&process).disk_read_total, Some(16384));
+        assert_eq!(extra(&process).disk_read_ops, None);
+        assert_eq!(extra(&process).disk_read_ops_total, None);
     }
 
     #[test]
@@ -529,11 +729,16 @@ mod tests {
                 &DiskSnapshot {
                     sampled_at_ms: ms,
                     counters: vec![(17, created, read, written)],
+                    operations: Vec::new(),
                 },
                 &mut [],
                 0,
             );
-            rates.values.get(&(17, created)).copied()
+            rates
+                .values
+                .get(&(17, created))
+                .and_then(|(_, rates)| *rates)
+                .map(|rates| (rates.read, rates.written))
         };
         assert_eq!(apply(1000, 10, 5000, 7000), None);
         assert_eq!(apply(3000, 10, 9000, 8000), Some((2000, 500)));
@@ -551,6 +756,14 @@ mod tests {
         let frame = |ms, counters| DiskSnapshot {
             sampled_at_ms: ms,
             counters,
+            operations: Vec::new(),
+        };
+        let rate = |rates: &DiskRates, key| {
+            rates
+                .values
+                .get(&key)
+                .and_then(|(_, rates)| *rates)
+                .map(|rates| (rates.read, rates.written))
         };
         // Snapshot clock 1000 ms is wall time 5000 ms.
         rates.apply_with(&frame(1000, vec![(17, 4000, 100, 100)]), &mut [], 4000);
@@ -566,10 +779,10 @@ mod tests {
             &mut [],
             4000,
         );
-        assert_eq!(rates.values.get(&(17, 4000)), Some(&(1000, 0)));
+        assert_eq!(rate(&rates, (17, 4000)), Some((1000, 0)));
         // Created after the previous snapshot: all of its bytes are new.
-        assert_eq!(rates.values.get(&(18, 5500)), Some(&(2048, 0)));
+        assert_eq!(rate(&rates, (18, 5500)), Some((2048, 0)));
         // Created before it yet missing from it: no baseline to trust.
-        assert_eq!(rates.values.get(&(19, 4500)), None);
+        assert_eq!(rate(&rates, (19, 4500)), None);
     }
 }

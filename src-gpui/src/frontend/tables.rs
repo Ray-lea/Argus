@@ -33,6 +33,8 @@ enum CellKind {
     Percent,
     Memory,
     Rate,
+    /// Events per second.
+    EventRate,
     Name,
     Protocol,
     ConnectionState,
@@ -236,6 +238,7 @@ fn process_fields(preferences: &columns::Preferences, sources: columns::Sources)
                 Format::Memory => CellKind::Memory,
                 Format::AddressSpace => CellKind::AddressSpace,
                 Format::Rate => CellKind::Rate,
+                Format::EventRate => CellKind::EventRate,
                 Format::Network => CellKind::NetworkRate,
                 Format::Duration => CellKind::Duration,
                 Format::Timestamp => CellKind::Timestamp,
@@ -348,7 +351,7 @@ fn cell(row: &Row, field: &Field) -> String {
                     .unwrap_or_default()
             }
         }
-        CellKind::Count => row
+        CellKind::Count | CellKind::EventRate => row
             .metric(field.key)
             .map(theme::count)
             .unwrap_or_else(missing),
@@ -359,7 +362,7 @@ fn cell(row: &Row, field: &Field) -> String {
         CellKind::Memory => row
             .metric(field.key)
             .map(|value| {
-                if field.key.starts_with("io") && field.key.ends_with("Total") {
+                if columns::byte_count(field.key) {
                     theme::bytes(value, false)
                 } else {
                     theme::memory(value)
@@ -520,8 +523,8 @@ pub(super) struct NativeTable {
     selected_row: Option<usize>,
     near: Option<usize>,
     near_due: bool,
-    /// Why disk readings are missing, as of a sample.
-    disk_hint: RefCell<Option<(u64, String)>>,
+    /// Why disk readings are missing, as of a sample: bytes, then requests.
+    disk_hint: RefCell<[Option<(u64, String)>; 2]>,
     /// A process header being dragged: its column follows the pointer while
     /// the others make room, gliding to their new places (`flip`).
     header_drag: Option<HeaderDrag>,
@@ -836,7 +839,7 @@ impl NativeTable {
             selected_row: None,
             near: None,
             near_due: false,
-            disk_hint: RefCell::new(None),
+            disk_hint: RefCell::default(),
             header_drag: None,
             flips: Default::default(),
             header_band: Rc::new(Cell::new(Bounds::default())),

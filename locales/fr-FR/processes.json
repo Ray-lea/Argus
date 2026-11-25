@@ -25,7 +25,8 @@
     "update": "La version du service privilégié est incompatible. Mettez-le à jour dans les paramètres pour afficher les mesures du disque.",
     "start": "Le service privilégié est arrêté. Démarrez-le dans les paramètres pour afficher les mesures du disque.",
     "service": "Impossible de lire les données du disque. Vérifiez l’état du service privilégié dans les paramètres.",
-    "unavailable": "Les mesures du disque sont indisponibles pour ce processus."
+    "unavailable": "Les mesures du disque sont indisponibles pour ce processus.",
+    "requests": "Le service privilégié est trop ancien pour indiquer les lectures et écritures disque. Mettez-le à jour dans les paramètres pour les afficher."
   },
   "serviceHost": "Hôte de service : {names}",
   "webView": {
@@ -247,6 +248,114 @@
     "gpuShared": {
       "label": "Mémoire GPU partagée",
       "title": "Mémoire GPU partagée résidente actuelle attribuée au processus. Les groupes additionnent les compteurs des membres."
+    },
+    "peakThreads": {
+      "label": "Threads maximum",
+      "title": "Nombre maximal de threads simultanés d’un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "children": {
+      "label": "Processus enfants",
+      "title": "Processus en cours d’exécution démarrés par ce processus. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "runtime": {
+      "label": "Durée d’exécution",
+      "title": "Temps écoulé depuis le démarrage d’un processus. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "cpuKernel": {
+      "label": "CPU noyau",
+      "title": "Part de l’utilisation du CPU en mode noyau, répartie selon le rapport entre temps CPU noyau et utilisateur sur le dernier intervalle d’actualisation ; les groupes affichent le total des membres."
+    },
+    "cpuUser": {
+      "label": "CPU utilisateur",
+      "title": "Part de l’utilisation du CPU en mode utilisateur, répartie selon le rapport entre temps CPU noyau et utilisateur sur le dernier intervalle d’actualisation ; les groupes affichent le total des membres."
+    },
+    "contextSwitchRate": {
+      "label": "Changements de contexte/s",
+      "title": "Changements de contexte par seconde des threads du processus ; les groupes affichent le total des membres."
+    },
+    "contextSwitches": {
+      "label": "Changements de contexte",
+      "title": "Changements de contexte accumulés des threads actuels du processus, sans les threads terminés ; les groupes affichent le total des membres."
+    },
+    "sharedWs": {
+      "label": "Plage de travail partagée",
+      "title": "Partie de la plage de travail que d’autres processus peuvent partager : la plage de travail moins la plage de travail privée. Les groupes additionnent leurs membres."
+    },
+    "peakCommit": {
+      "label": "Taille de validation maximale",
+      "title": "Mémoire privée engagée maximale d’un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "peakVirtualSize": {
+      "label": "Espace d’adressage virtuel maximal",
+      "title": "Maximum des plages d’adresses réservées et validées d’un processus depuis le démarrage. Développez un groupe d’applications pour afficher ses processus."
+    },
+    "pagedPool": {
+      "label": "Réserve paginée",
+      "title": "Mémoire de la réserve paginée du noyau imputée au processus ; les groupes affichent le total des membres."
+    },
+    "nonPagedPool": {
+      "label": "Réserve non paginée",
+      "title": "Mémoire de la réserve non paginée du noyau imputée au processus, toujours résidente en mémoire physique ; les groupes affichent le total des membres."
+    },
+    "pageFaultRate": {
+      "label": "Défauts de page/s",
+      "title": "Défauts de page par seconde, y compris les défauts logiciels et matériels ; les groupes affichent le total des membres."
+    },
+    "hardFaults": {
+      "label": "Défauts de page matériels",
+      "title": "Défauts de page matériels accumulés : ceux résolus par une lecture sur le disque. Les groupes affichent le total des membres."
+    },
+    "hardFaultRate": {
+      "label": "Défauts de page matériels/s",
+      "title": "Défauts de page résolus depuis le disque par seconde. Des valeurs élevées et durables indiquent en général un manque de mémoire physique. Les groupes affichent le total des membres."
+    },
+    "diskReadOps": {
+      "label": "Lectures disque/s",
+      "title": "Demandes de lecture disque par seconde ; exclut le réseau et autres appareils I/O."
+    },
+    "diskWriteOps": {
+      "label": "Écritures disque/s",
+      "title": "Demandes d’écriture disque par seconde ; exclut le réseau et autres appareils I/O."
+    },
+    "diskReadTotal": {
+      "label": "Total lu sur disque",
+      "title": "Nombre total d’octets lus sur le disque au cours de la durée de vie du processus."
+    },
+    "diskWriteTotal": {
+      "label": "Total écrit sur disque",
+      "title": "Nombre total d’octets écrits sur le disque au cours de la durée de vie du processus."
+    },
+    "diskReadOpsTotal": {
+      "label": "Total lectures disque",
+      "title": "Nombre total de demandes de lecture disque au cours de la durée de vie du processus."
+    },
+    "diskWriteOpsTotal": {
+      "label": "Total écritures disque",
+      "title": "Nombre total de demandes d’écriture disque au cours de la durée de vie du processus."
+    },
+    "ioReadOps": {
+      "label": "Lectures I/O/s",
+      "title": "Opérations de lecture I/O par seconde, y compris les fichiers, le réseau et les périphériques."
+    },
+    "ioWriteOps": {
+      "label": "Écritures I/O/s",
+      "title": "Opérations d’écriture I/O par seconde, y compris les fichiers, le réseau et les périphériques."
+    },
+    "ioOtherOps": {
+      "label": "Autres opérations I/O/s",
+      "title": "Opérations I/O autres que les lectures et écritures par seconde, comme les demandes de contrôle de périphérique."
+    },
+    "ioReadOpsTotal": {
+      "label": "Total lectures I/O",
+      "title": "Nombre total d’opérations de lecture I/O au cours de la durée de vie du processus."
+    },
+    "ioWriteOpsTotal": {
+      "label": "Total écritures I/O",
+      "title": "Nombre total d’opérations d’écriture I/O au cours de la durée de vie du processus."
+    },
+    "ioOtherOpsTotal": {
+      "label": "Total autres opérations I/O",
+      "title": "Nombre total d’autres opérations I/O au cours de la durée de vie du processus."
     }
   },
   "noMatch": "Aucun processus ne correspond à « {query} »",

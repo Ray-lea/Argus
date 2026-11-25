@@ -161,6 +161,12 @@ pub fn set_paused(state: State<'_, AppState>, paused: bool) {
     state.sampler.send(Control::SetPaused(paused));
 }
 
+/// Whether the process rows carry the counters only some optional columns
+/// show (`argus_core::ProcessExtra`).
+pub fn set_extra_counters(state: State<'_, AppState>, enabled: bool) {
+    state.sampler.send(Control::SetExtraCounters(enabled));
+}
+
 pub fn process_details(pid: u32, path: Option<String>) -> ProcessDetails {
     details::query(pid, path.as_deref())
 }

@@ -25,7 +25,8 @@
     "update": "La versión del servicio privilegiado es incompatible. Actualícelo en Configuración para ver las lecturas de disco.",
     "start": "El servicio privilegiado está detenido. Inícielo en Configuración para ver las lecturas de disco.",
     "service": "No se pudieron leer los datos del disco. Compruebe el servicio privilegiado en Configuración.",
-    "unavailable": "No hay lecturas de disco disponibles para este proceso."
+    "unavailable": "No hay lecturas de disco disponibles para este proceso.",
+    "requests": "El servicio privilegiado es demasiado antiguo para informar de las lecturas y escrituras de disco. Actualícelo en Configuración para verlas."
   },
   "serviceHost": "Host de servicio: {names}",
   "webView": {
@@ -247,6 +248,114 @@
     "gpuShared": {
       "label": "Memoria compartida de GPU",
       "title": "Lectura actual de memoria compartida de GPU residente atribuida al proceso; los grupos muestran la suma de sus miembros."
+    },
+    "peakThreads": {
+      "label": "Máximo de subprocesos",
+      "title": "Máximo de subprocesos simultáneos de un proceso desde el inicio. Expanda un grupo de aplicaciones para ver sus procesos."
+    },
+    "children": {
+      "label": "Procesos secundarios",
+      "title": "Procesos en ejecución iniciados por este proceso. Expanda un grupo de aplicaciones para ver sus procesos."
+    },
+    "runtime": {
+      "label": "Tiempo en ejecución",
+      "title": "Tiempo transcurrido desde el inicio de un proceso. Expanda un grupo de aplicaciones para ver sus procesos."
+    },
+    "cpuKernel": {
+      "label": "CPU del kernel",
+      "title": "Parte de uso de CPU en modo de kernel, según la proporción de tiempo de CPU de kernel y de usuario en el último intervalo de actualización; los grupos muestran la suma de sus miembros."
+    },
+    "cpuUser": {
+      "label": "CPU de usuario",
+      "title": "Parte de uso de CPU en modo de usuario, según la proporción de tiempo de CPU de kernel y de usuario en el último intervalo de actualización; los grupos muestran la suma de sus miembros."
+    },
+    "contextSwitchRate": {
+      "label": "Cambios de contexto/s",
+      "title": "Cambios de contexto por segundo de los subprocesos del proceso; los grupos muestran la suma de sus miembros."
+    },
+    "contextSwitches": {
+      "label": "Cambios de contexto",
+      "title": "Cambios de contexto acumulados de los subprocesos actuales del proceso, sin los subprocesos que ya terminaron; los grupos muestran la suma de sus miembros."
+    },
+    "sharedWs": {
+      "label": "Conjunto de trabajo compartido",
+      "title": "Parte del conjunto de trabajo que otros procesos pueden compartir: el conjunto de trabajo menos el privado. Los grupos suman sus miembros."
+    },
+    "peakCommit": {
+      "label": "Máximo tamaño de confirmación",
+      "title": "Memoria privada confirmada máxima de un proceso desde el inicio. Expanda un grupo de aplicaciones para ver sus procesos."
+    },
+    "peakVirtualSize": {
+      "label": "Máximo espacio de direcciones virtuales",
+      "title": "Máximo de rangos de direcciones virtuales reservados y confirmados de un proceso desde el inicio. Expanda un grupo de aplicaciones para ver sus procesos."
+    },
+    "pagedPool": {
+      "label": "Grupo paginado",
+      "title": "Memoria del grupo paginado del kernel atribuida al proceso; los grupos muestran la suma de sus miembros."
+    },
+    "nonPagedPool": {
+      "label": "Grupo no paginado",
+      "title": "Memoria del grupo no paginado del kernel atribuida al proceso, siempre residente en memoria física; los grupos muestran la suma de sus miembros."
+    },
+    "pageFaultRate": {
+      "label": "Errores de página/s",
+      "title": "Fallos de página por segundo, incluidos fallos leves y graves; los grupos muestran la suma de sus miembros."
+    },
+    "hardFaults": {
+      "label": "Errores de página graves",
+      "title": "Fallos de página graves acumulados: los que se resuelven leyendo del disco. Los grupos muestran la suma de sus miembros."
+    },
+    "hardFaultRate": {
+      "label": "Errores de página graves/s",
+      "title": "Fallos de página resueltos desde el disco por segundo. Unos valores altos y persistentes suelen indicar falta de memoria física. Los grupos muestran la suma de sus miembros."
+    },
+    "diskReadOps": {
+      "label": "Lecturas de disco/s",
+      "title": "Solicitudes de lectura de disco por segundo; no incluye la red ni las operaciones I/O de otros dispositivos."
+    },
+    "diskWriteOps": {
+      "label": "Escrituras de disco/s",
+      "title": "Solicitudes de escritura en disco por segundo; no incluye la red ni las operaciones I/O de otros dispositivos."
+    },
+    "diskReadTotal": {
+      "label": "Lectura acumulada de disco",
+      "title": "Total de bytes leídos del disco durante la vida útil del proceso."
+    },
+    "diskWriteTotal": {
+      "label": "Escritura acumulada de disco",
+      "title": "Total de bytes escritos en el disco durante la vida útil del proceso."
+    },
+    "diskReadOpsTotal": {
+      "label": "Lecturas de disco acumuladas",
+      "title": "Total de solicitudes de lectura de disco durante la vida útil del proceso."
+    },
+    "diskWriteOpsTotal": {
+      "label": "Escrituras de disco acumuladas",
+      "title": "Total de solicitudes de escritura en disco durante la vida útil del proceso."
+    },
+    "ioReadOps": {
+      "label": "Lecturas de I/O/s",
+      "title": "Operaciones de lectura de I/O por segundo, incluidos archivos, redes y dispositivos."
+    },
+    "ioWriteOps": {
+      "label": "Escrituras de I/O/s",
+      "title": "Operaciones de escritura de I/O por segundo, incluidos archivos, redes y dispositivos."
+    },
+    "ioOtherOps": {
+      "label": "Otras operaciones de I/O/s",
+      "title": "Operaciones de I/O distintas de lecturas y escrituras por segundo, como solicitudes de control de dispositivos."
+    },
+    "ioReadOpsTotal": {
+      "label": "Lecturas de I/O acumuladas",
+      "title": "Total de operaciones de lectura de I/O durante la vida útil del proceso."
+    },
+    "ioWriteOpsTotal": {
+      "label": "Escrituras de I/O acumuladas",
+      "title": "Total de operaciones de escritura de I/O durante la vida útil del proceso."
+    },
+    "ioOtherOpsTotal": {
+      "label": "Otras operaciones de I/O acumuladas",
+      "title": "Total de otras operaciones de I/O durante la vida útil del proceso."
     }
   },
   "noMatch": "Ningún proceso coincide con “{query}”",

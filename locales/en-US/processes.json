@@ -25,7 +25,8 @@
     "update": "The privileged service is incompatible. Update it in Settings for disk readings.",
     "start": "The privileged service is stopped. Start it in Settings for disk readings.",
     "service": "Couldn’t read disk data. Check the privileged service in Settings.",
-    "unavailable": "Disk readings are unavailable for this process."
+    "unavailable": "Disk readings are unavailable for this process.",
+    "requests": "The privileged service is too old to report disk reads and writes. Update it in Settings to view them."
   },
   "serviceHost": "Service host: {names}",
   "webView": {
@@ -245,6 +246,114 @@
     "gpuShared": {
       "label": "Shared GPU memory",
       "title": "Current resident shared GPU memory attributed to the process. Groups sum member counters."
+    },
+    "peakThreads": {
+      "label": "Peak threads",
+      "title": "Most threads one process has had at once since startup. Expand an app group to view its processes."
+    },
+    "children": {
+      "label": "Child processes",
+      "title": "Running processes started by this process. Expand an app group to view its processes."
+    },
+    "runtime": {
+      "label": "Running time",
+      "title": "Time since one process started. Expand an app group to view its processes."
+    },
+    "cpuKernel": {
+      "label": "Kernel CPU",
+      "title": "The kernel-mode part of CPU usage, split by the ratio of kernel to user CPU time in the latest refresh interval; groups show the member total."
+    },
+    "cpuUser": {
+      "label": "User CPU",
+      "title": "The user-mode part of CPU usage, split by the ratio of kernel to user CPU time in the latest refresh interval; groups show the member total."
+    },
+    "contextSwitchRate": {
+      "label": "Context switches/s",
+      "title": "Context switches of the process’s threads per second; groups show the member total."
+    },
+    "contextSwitches": {
+      "label": "Context switches",
+      "title": "Accumulated context switches of the process’s current threads, excluding threads that have exited; groups show the member total."
+    },
+    "sharedWs": {
+      "label": "Shared working set",
+      "title": "The part of the working set other processes can share: the working set minus the private working set. Groups sum their members."
+    },
+    "peakCommit": {
+      "label": "Peak commit size",
+      "title": "Peak private committed memory of one process since startup. Expand an app group to view its processes."
+    },
+    "peakVirtualSize": {
+      "label": "Peak virtual address space",
+      "title": "Peak reserved and committed address ranges of one process since startup. Expand an app group to view its processes."
+    },
+    "pagedPool": {
+      "label": "Paged pool",
+      "title": "Kernel paged pool memory charged to the process; groups show the member total."
+    },
+    "nonPagedPool": {
+      "label": "Non-paged pool",
+      "title": "Kernel non-paged pool memory charged to the process, always resident in physical memory; groups show the member total."
+    },
+    "pageFaultRate": {
+      "label": "Page faults/s",
+      "title": "Page faults per second, including soft and hard faults; groups show the member total."
+    },
+    "hardFaults": {
+      "label": "Hard faults",
+      "title": "Accumulated hard faults: page faults resolved by reading from disk. Groups show the member total."
+    },
+    "hardFaultRate": {
+      "label": "Hard faults/s",
+      "title": "Page faults resolved from disk per second. Persistently high values usually mean physical memory is short. Groups show the member total."
+    },
+    "diskReadOps": {
+      "label": "Disk read ops/s",
+      "title": "Disk read requests per second; excludes network and other device I/O."
+    },
+    "diskWriteOps": {
+      "label": "Disk write ops/s",
+      "title": "Disk write requests per second; excludes network and other device I/O."
+    },
+    "diskReadTotal": {
+      "label": "Total disk read",
+      "title": "Total bytes read from disk over the process lifetime."
+    },
+    "diskWriteTotal": {
+      "label": "Total disk write",
+      "title": "Total bytes written to disk over the process lifetime."
+    },
+    "diskReadOpsTotal": {
+      "label": "Total disk read ops",
+      "title": "Total disk read requests over the process lifetime."
+    },
+    "diskWriteOpsTotal": {
+      "label": "Total disk write ops",
+      "title": "Total disk write requests over the process lifetime."
+    },
+    "ioReadOps": {
+      "label": "I/O read ops/s",
+      "title": "I/O read operations per second, including files, network and devices."
+    },
+    "ioWriteOps": {
+      "label": "I/O write ops/s",
+      "title": "I/O write operations per second, including files, network and devices."
+    },
+    "ioOtherOps": {
+      "label": "Other I/O ops/s",
+      "title": "I/O operations other than reads and writes per second, such as device control requests."
+    },
+    "ioReadOpsTotal": {
+      "label": "Total I/O read ops",
+      "title": "Total I/O read operations over the process lifetime."
+    },
+    "ioWriteOpsTotal": {
+      "label": "Total I/O write ops",
+      "title": "Total I/O write operations over the process lifetime."
+    },
+    "ioOtherOpsTotal": {
+      "label": "Total other I/O ops",
+      "title": "Total other I/O operations over the process lifetime."
     }
   },
   "noMatch": "No processes match “{query}”",

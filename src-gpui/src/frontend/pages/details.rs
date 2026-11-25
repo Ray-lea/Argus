@@ -690,18 +690,24 @@ impl Desktop {
         self.details_facts(rows)
     }
 
-    /// Why a process shows no disk reading.
-    pub(in crate::frontend) fn missing_disk_hint(&self) -> String {
-        let measured = values(&self.snapshot["processes"])
-            .iter()
-            .any(|p| !p["diskRead"].is_null() || !p["diskWrite"].is_null());
+    /// Why a process shows no disk reading, of `requests` or of bytes.
+    pub(in crate::frontend) fn missing_disk_hint(&self, requests: bool) -> String {
+        let processes = values(&self.snapshot["processes"]);
+        let measured = |keys: &[&str]| {
+            processes
+                .iter()
+                .any(|p| keys.iter().any(|key| !p[*key].is_null()))
+        };
+        let bytes = measured(&["diskRead", "diskWrite", "diskReadTotal"]);
         let elevated = self
             .data
             .get("info")
             .is_some_and(|info| boolean(info, "elevated"));
         let service = self.data.get("privilege").filter(|s| s.is_object());
         let reason = match service {
-            _ if measured => "pending",
+            // A privileged service from before requests were reported.
+            _ if requests && bytes && !measured(&["diskReadOpsTotal"]) => "requests",
+            _ if bytes => "pending",
             None => "unavailable",
             _ if elevated => "unavailable",
             Some(service) if text(service, "state") == "notInstalled" => "enable",

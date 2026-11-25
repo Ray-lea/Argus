@@ -183,7 +183,9 @@ impl CellSpec {
                 let reading = row.metric(field.key);
                 let dim = match field.kind {
                     CellKind::Percent => reading.is_none_or(|v| v < 0.05),
-                    CellKind::Rate | CellKind::NetworkRate => reading.is_none_or(|v| v < 1.),
+                    CellKind::Rate | CellKind::NetworkRate | CellKind::EventRate => {
+                        reading.is_none_or(|v| v < 1.)
+                    }
                     CellKind::Power => reading.is_none_or(|v| columns::power_level(v) == 0),
                     _ => false,
                 };
@@ -586,17 +588,19 @@ impl NativeTable {
         match (self.page.as_str(), field.key) {
             // Why a process has no disk reading. Working it out reads every
             // process, so once a sample, as the interface's memo.
-            ("processes", "diskRead" | "diskWrite") if row.metric(field.key).is_none() => {
+            ("processes", key) if columns::disk(key) && row.metric(key).is_none() => {
                 let owner = self.owner.upgrade()?;
                 let app = owner.read(cx);
+                let requests = columns::disk_requests(key);
                 let mut cached = self.disk_hint.borrow_mut();
-                if cached
+                let memo = &mut cached[usize::from(requests)];
+                if memo
                     .as_ref()
                     .is_none_or(|(sample, _)| *sample != app.sequence)
                 {
-                    *cached = Some((app.sequence, app.missing_disk_hint()));
+                    *memo = Some((app.sequence, app.missing_disk_hint(requests)));
                 }
-                cached.as_ref().map(|(_, hint)| hint.clone())
+                memo.as_ref().map(|(_, hint)| hint.clone())
             }
             // Keep the full class name available when a manual width truncates it;
             // custom values instead explain where they sit between the classes.

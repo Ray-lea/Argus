@@ -331,7 +331,7 @@ impl Desktop {
                     byte_rate(rate),
                     label(&format!("processes.column.{field}.title")),
                 ),
-                None => (missing(), self.missing_disk_hint()),
+                None => (missing(), self.missing_disk_hint(false)),
             };
             facts.push(Fact::new(
                 column(field),

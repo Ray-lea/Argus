@@ -18,6 +18,8 @@ pub(super) enum Format {
     Memory,
     AddressSpace,
     Rate,
+    /// Events per second, as whole numbers.
+    EventRate,
     Network,
     Duration,
     Timestamp,
@@ -70,32 +72,59 @@ pub(super) const DEFINITIONS: &[Definition] = &[
     column("sessionId", "general", Identifier, 80., false),
     column("createTime", "general", Timestamp, 160., false),
     column("threads", "general", Count, 76., true),
+    column("peakThreads", "general", Count, 100., false),
     column("handles", "general", Count, 86., true),
+    column("children", "general", Count, 90., false),
+    column("runtime", "general", Duration, 110., false),
     column("suspended", "general", Boolean, 90., false),
     column("efficiency", "general", Boolean, 100., false),
     column("power", "general", Power, 120., true),
     column("powerTrend", "general", Power, 140., true),
     column("cpu", "cpu", Percent, 70., true),
+    column("cpuKernel", "cpu", Percent, 90., true),
+    column("cpuUser", "cpu", Percent, 90., true),
     column("cpuTime", "cpu", Duration, 100., true),
     column("cpuUserTime", "cpu", Duration, 115., true),
     column("cpuKernelTime", "cpu", Duration, 115., true),
     column("basePriority", "cpu", Identifier, 100., false),
+    column("contextSwitchRate", "cpu", EventRate, 130., true),
+    column("contextSwitches", "cpu", Count, 120., true),
     column("mem", "memory", Memory, 96., true),
     column("workingSet", "memory", Memory, 110., true),
+    column("sharedWs", "memory", Memory, 120., true),
     column("peakWorkingSet", "memory", Memory, 125., false),
     column("commit", "memory", Memory, 110., true),
+    column("peakCommit", "memory", Memory, 125., false),
     column("virtualSize", "memory", AddressSpace, 150., false),
+    column("peakVirtualSize", "memory", AddressSpace, 160., false),
+    column("pagedPool", "memory", Memory, 100., true),
+    column("nonPagedPool", "memory", Memory, 110., true),
     column("pageFaults", "memory", Count, 110., true),
+    column("pageFaultRate", "memory", EventRate, 120., true),
+    column("hardFaults", "memory", Count, 110., true),
+    column("hardFaultRate", "memory", EventRate, 130., true),
     column("memoryPriority", "memory", Text, 120., false),
     column("diskRead", "io", Rate, 104., true),
     column("diskWrite", "io", Rate, 104., true),
+    column("diskReadOps", "io", EventRate, 130., true),
+    column("diskWriteOps", "io", EventRate, 130., true),
+    column("diskReadTotal", "io", Memory, 130., true),
+    column("diskWriteTotal", "io", Memory, 130., true),
+    column("diskReadOpsTotal", "io", Count, 140., true),
+    column("diskWriteOpsTotal", "io", Count, 140., true),
     column("io", "io", Rate, 92., true),
     column("ioRead", "io", Rate, 110., true),
     column("ioWrite", "io", Rate, 110., true),
     column("ioOther", "io", Rate, 110., true),
+    column("ioReadOps", "io", EventRate, 140., true),
+    column("ioWriteOps", "io", EventRate, 140., true),
+    column("ioOtherOps", "io", EventRate, 140., true),
     column("ioReadTotal", "io", Memory, 130., true),
     column("ioWriteTotal", "io", Memory, 130., true),
     column("ioOtherTotal", "io", Memory, 130., true),
+    column("ioReadOpsTotal", "io", Count, 150., true),
+    column("ioWriteOpsTotal", "io", Count, 150., true),
+    column("ioOtherOpsTotal", "io", Count, 150., true),
     column("ioPriority", "io", Text, 110., false),
     column("net", "network", Network, 92., true),
     column("netReceived", "network", Network, 110., true),
@@ -155,6 +184,65 @@ impl Sources {
 
 pub(super) fn definition(key: &str) -> Option<&'static Definition> {
     DEFINITIONS.iter().find(|column| column.key == key)
+}
+
+/// The columns of counters the process rows carry only while one of them is
+/// selected (`argus_core::ProcessExtra`): serialized for every process, they
+/// make reading each sample about half as costly again.
+const EXTRA_COUNTERS: [&str; 27] = [
+    "peakThreads",
+    "children",
+    "runtime",
+    "cpuKernel",
+    "cpuUser",
+    "contextSwitchRate",
+    "contextSwitches",
+    "sharedWs",
+    "peakCommit",
+    "peakVirtualSize",
+    "pagedPool",
+    "nonPagedPool",
+    "pageFaultRate",
+    "hardFaults",
+    "hardFaultRate",
+    "diskReadOps",
+    "diskWriteOps",
+    "diskReadTotal",
+    "diskWriteTotal",
+    "diskReadOpsTotal",
+    "diskWriteOpsTotal",
+    "ioReadOps",
+    "ioWriteOps",
+    "ioOtherOps",
+    "ioReadOpsTotal",
+    "ioWriteOpsTotal",
+    "ioOtherOpsTotal",
+];
+
+/// Memory columns shown in bytes to the kilobyte rather than in megabytes:
+/// transfer totals, and kernel pools, which are often a few kilobytes.
+pub(super) fn byte_count(key: &str) -> bool {
+    matches!(
+        key,
+        "ioReadTotal"
+            | "ioWriteTotal"
+            | "ioOtherTotal"
+            | "diskReadTotal"
+            | "diskWriteTotal"
+            | "pagedPool"
+            | "nonPagedPool"
+    )
+}
+
+/// The disk columns, which explain a missing reading by the disk source.
+pub(super) fn disk(key: &str) -> bool {
+    key.starts_with("disk")
+}
+
+/// The disk columns counting requests, which an older privileged service
+/// does not report.
+pub(super) fn disk_requests(key: &str) -> bool {
+    disk(key) && key.contains("Ops")
 }
 
 /// A text column's value as the table shows it, which is also what it sorts by.
@@ -300,6 +388,14 @@ impl Preferences {
         }
     }
 
+    /// Whether a selected column shows one of the counters the rows carry
+    /// only on request.
+    pub(super) fn needs_extra_counters(&self) -> bool {
+        self.selected
+            .iter()
+            .any(|key| EXTRA_COUNTERS.contains(&key.as_str()))
+    }
+
     pub(super) fn visible(&self, sources: Sources) -> Vec<&'static Definition> {
         self.ordered_selected()
             .into_iter()
@@ -384,7 +480,7 @@ impl Preferences {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULTS, DEFINITIONS, Preferences, Sources};
+    use super::{DEFAULTS, DEFINITIONS, EXTRA_COUNTERS, Preferences, Sources};
     use serde_json::json;
     use std::collections::HashSet;
 
@@ -500,6 +596,29 @@ mod tests {
         for key in ["gpu", "gpuEngine", "gpuDedicated", "gpuShared"] {
             assert!(shown.contains(&key));
         }
+    }
+
+    #[test]
+    fn extra_counters_are_requested_only_for_their_columns() {
+        // The collector's optional counters, by the names the rows carry.
+        let carried = serde_json::to_value(argus_core::ProcessExtra::default()).unwrap();
+        let carried = carried
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<HashSet<_>>();
+        assert_eq!(carried, EXTRA_COUNTERS.into_iter().collect::<HashSet<_>>());
+        for key in EXTRA_COUNTERS {
+            assert!(super::definition(key).is_some(), "{key}");
+            assert!(!DEFAULTS.contains(&key), "{key}");
+        }
+        let mut prefs = Preferences::default();
+        assert!(!prefs.needs_extra_counters());
+        prefs.set_selected("diskReadOps", true);
+        assert!(prefs.needs_extra_counters());
+        prefs.set_selected("diskReadOps", false);
+        assert!(!prefs.needs_extra_counters());
     }
 
     #[test]

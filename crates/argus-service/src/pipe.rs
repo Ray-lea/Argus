@@ -1419,6 +1419,7 @@ pub(crate) mod tests {
                     counters: (0..512)
                         .map(|pid| (pid + 42, 1, serial * 100, serial * 200))
                         .collect(),
+                    operations: vec![(serial, serial); 512],
                 })
             })
         };
@@ -1591,7 +1592,7 @@ pub(crate) mod tests {
                     wait_disk();
                     Ok(DiskSnapshot {
                         sampled_at_ms: 1,
-                        counters: vec![],
+                        ..Default::default()
                     })
                 }),
             ),

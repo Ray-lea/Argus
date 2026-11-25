@@ -483,6 +483,7 @@ mod tests {
                 (u32::MAX, i64::MAX, u64::MAX, u64::MAX);
                 argus_core::disk_process::MAX_PROCESSES
             ],
+            operations: vec![(u64::MAX, u64::MAX); argus_core::disk_process::MAX_PROCESSES],
         }));
         let bytes = serde_json::to_vec(&reply).unwrap();
         assert!(bytes.len() < MAX_REPLY);

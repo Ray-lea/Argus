@@ -25,7 +25,8 @@
     "update": "特权服务版本不兼容，请在设置中更新后查看磁盘读数。",
     "start": "特权服务已停止，请在设置中启动后查看磁盘读数。",
     "service": "未能读取磁盘数据，请在设置中检查特权服务状态。",
-    "unavailable": "暂无此进程的磁盘读数。"
+    "unavailable": "暂无此进程的磁盘读数。",
+    "requests": "特权服务版本较旧，不提供磁盘读写次数。请在设置中更新后查看。"
   },
   "serviceHost": "服务主机：{names}",
   "webView": {
@@ -239,6 +240,114 @@
     "gpuShared": {
       "label": "共享 GPU 内存",
       "title": "进程当前的共享 GPU 内存驻留读数；分组显示成员计数合计。"
+    },
+    "peakThreads": {
+      "label": "线程峰值",
+      "title": "单进程自启动以来同时存在的最多线程数；展开应用分组查看各进程。"
+    },
+    "children": {
+      "label": "子进程",
+      "title": "由该进程启动、仍在运行的进程数；展开应用分组查看各进程。"
+    },
+    "runtime": {
+      "label": "运行时长",
+      "title": "单进程自启动以来经过的时间；展开应用分组查看各进程。"
+    },
+    "cpuKernel": {
+      "label": "内核 CPU",
+      "title": "CPU 占用中内核态的部分，按本次刷新间隔内核态与用户态 CPU 时间之比拆分；分组显示成员合计。"
+    },
+    "cpuUser": {
+      "label": "用户 CPU",
+      "title": "CPU 占用中用户态的部分，按本次刷新间隔内核态与用户态 CPU 时间之比拆分；分组显示成员合计。"
+    },
+    "contextSwitchRate": {
+      "label": "每秒上下文切换",
+      "title": "进程各线程每秒的上下文切换次数；分组显示成员合计。"
+    },
+    "contextSwitches": {
+      "label": "上下文切换次数",
+      "title": "进程现有线程累计的上下文切换次数，不含已退出的线程；分组显示成员合计。"
+    },
+    "sharedWs": {
+      "label": "共享工作集",
+      "title": "工作集中可与其他进程共享的部分，即工作集减去专用工作集；分组为成员之和。"
+    },
+    "peakCommit": {
+      "label": "提交大小峰值",
+      "title": "单进程自启动以来专用已提交内存的峰值；展开应用分组查看各进程。"
+    },
+    "peakVirtualSize": {
+      "label": "虚拟地址空间峰值",
+      "title": "单进程自启动以来预留与已提交虚拟地址范围的峰值；展开应用分组查看各进程。"
+    },
+    "pagedPool": {
+      "label": "分页池",
+      "title": "记在该进程名下的内核分页池内存；分组显示成员合计。"
+    },
+    "nonPagedPool": {
+      "label": "非分页池",
+      "title": "记在该进程名下的内核非分页池内存，始终驻留物理内存；分组显示成员合计。"
+    },
+    "pageFaultRate": {
+      "label": "每秒缺页次数",
+      "title": "每秒缺页次数，包含软缺页与硬缺页；分组显示成员合计。"
+    },
+    "hardFaults": {
+      "label": "硬缺页次数",
+      "title": "累计硬缺页次数，即需从磁盘读入页面的缺页；分组显示成员合计。"
+    },
+    "hardFaultRate": {
+      "label": "每秒硬缺页次数",
+      "title": "每秒需从磁盘读入页面的缺页次数，持续偏高通常表示物理内存不足；分组显示成员合计。"
+    },
+    "diskReadOps": {
+      "label": "每秒磁盘读取次数",
+      "title": "每秒向磁盘发出的读取请求数，不包含网络及其他设备 I/O。"
+    },
+    "diskWriteOps": {
+      "label": "每秒磁盘写入次数",
+      "title": "每秒向磁盘发出的写入请求数，不包含网络及其他设备 I/O。"
+    },
+    "diskReadTotal": {
+      "label": "累计磁盘读取",
+      "title": "进程生存期内累计从磁盘读取的字节数。"
+    },
+    "diskWriteTotal": {
+      "label": "累计磁盘写入",
+      "title": "进程生存期内累计写入磁盘的字节数。"
+    },
+    "diskReadOpsTotal": {
+      "label": "累计磁盘读取次数",
+      "title": "进程生存期内累计的磁盘读取请求数。"
+    },
+    "diskWriteOpsTotal": {
+      "label": "累计磁盘写入次数",
+      "title": "进程生存期内累计的磁盘写入请求数。"
+    },
+    "ioReadOps": {
+      "label": "每秒 I/O 读取次数",
+      "title": "每秒 I/O 读取操作数，含文件、网络和设备访问。"
+    },
+    "ioWriteOps": {
+      "label": "每秒 I/O 写入次数",
+      "title": "每秒 I/O 写入操作数，含文件、网络和设备访问。"
+    },
+    "ioOtherOps": {
+      "label": "每秒其他 I/O 次数",
+      "title": "每秒读写以外的 I/O 操作数，如设备控制请求。"
+    },
+    "ioReadOpsTotal": {
+      "label": "累计 I/O 读取次数",
+      "title": "进程生存期内累计的 I/O 读取操作数。"
+    },
+    "ioWriteOpsTotal": {
+      "label": "累计 I/O 写入次数",
+      "title": "进程生存期内累计的 I/O 写入操作数。"
+    },
+    "ioOtherOpsTotal": {
+      "label": "累计其他 I/O 次数",
+      "title": "进程生存期内累计的其他 I/O 操作数。"
     }
   },
   "noMatch": "没有与“{query}”匹配的进程",

@@ -25,7 +25,8 @@
     "update": "Die Version des privilegierten Dienstes ist inkompatibel. Für Datenträgerwerte den Dienst in den Einstellungen aktualisieren.",
     "start": "Der privilegierte Dienst ist beendet. Für Datenträgerwerte den Dienst in den Einstellungen starten.",
     "service": "Datenträgerwerte konnten nicht gelesen werden. Den Status des privilegierten Dienstes in den Einstellungen prüfen.",
-    "unavailable": "Für diesen Prozess sind keine Datenträgerwerte verfügbar."
+    "unavailable": "Für diesen Prozess sind keine Datenträgerwerte verfügbar.",
+    "requests": "Der privilegierte Dienst ist zu alt, um Lese- und Schreibvorgänge auf Datenträgern zu melden. Aktualisieren Sie ihn in den Einstellungen, um sie anzuzeigen."
   },
   "serviceHost": "Diensthost: {names}",
   "webView": {
@@ -245,6 +246,114 @@
     "gpuShared": {
       "label": "Gemeinsamer GPU-Speicher",
       "title": "Aktueller residenter gemeinsam genutzter GPU-Speicher, der dem Prozess zugeordnet ist. Gruppen summieren die Mitgliederzähler."
+    },
+    "peakThreads": {
+      "label": "Maximale Threads",
+      "title": "Höchste gleichzeitige Threadanzahl eines Prozesses seit dem Start. Erweitern Sie eine App-Gruppe, um ihre Prozesse anzuzeigen."
+    },
+    "children": {
+      "label": "Untergeordnete Prozesse",
+      "title": "Laufende Prozesse, die von diesem Prozess gestartet wurden. Erweitern Sie eine App-Gruppe, um ihre Prozesse anzuzeigen."
+    },
+    "runtime": {
+      "label": "Laufzeit",
+      "title": "Zeit seit dem Start eines Prozesses. Erweitern Sie eine App-Gruppe, um ihre Prozesse anzuzeigen."
+    },
+    "cpuKernel": {
+      "label": "Kernel-CPU",
+      "title": "Kernelmodus-Anteil der CPU-Auslastung, aufgeteilt nach dem Verhältnis von Kernel- zu Benutzer-CPU-Zeit im letzten Aktualisierungsintervall; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "cpuUser": {
+      "label": "Benutzer-CPU",
+      "title": "Benutzermodus-Anteil der CPU-Auslastung, aufgeteilt nach dem Verhältnis von Kernel- zu Benutzer-CPU-Zeit im letzten Aktualisierungsintervall; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "contextSwitchRate": {
+      "label": "Kontextwechsel/s",
+      "title": "Kontextwechsel der Threads des Prozesses pro Sekunde; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "contextSwitches": {
+      "label": "Kontextwechsel",
+      "title": "Kumulierte Kontextwechsel der aktuellen Threads des Prozesses, ohne beendete Threads; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "sharedWs": {
+      "label": "Freigegebener Arbeitssatz",
+      "title": "Der Teil des Arbeitssatzes, den andere Prozesse mitnutzen können: Arbeitssatz abzüglich des privaten Arbeitssatzes. Gruppen summieren ihre Mitglieder."
+    },
+    "peakCommit": {
+      "label": "Maximale zugesicherte Größe",
+      "title": "Höchster privater zugesicherter Speicher eines Prozesses seit dem Start. Erweitern Sie eine App-Gruppe, um ihre Prozesse anzuzeigen."
+    },
+    "peakVirtualSize": {
+      "label": "Maximaler virtueller Adressraum",
+      "title": "Höchstwert der reservierten und zugesicherten Adressbereiche eines Prozesses seit dem Start. Erweitern Sie eine App-Gruppe, um ihre Prozesse anzuzeigen."
+    },
+    "pagedPool": {
+      "label": "Ausgelagerter Pool",
+      "title": "Dem Prozess zugerechneter Speicher im ausgelagerten Kernelpool; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "nonPagedPool": {
+      "label": "Nicht ausgelagerter Pool",
+      "title": "Dem Prozess zugerechneter Speicher im nicht ausgelagerten Kernelpool, stets im physischen Speicher; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "pageFaultRate": {
+      "label": "Seitenfehler/s",
+      "title": "Seitenfehler pro Sekunde, einschließlich Soft- und Hard-Fehler; Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "hardFaults": {
+      "label": "Hard-Seitenfehler",
+      "title": "Kumulierte Hard-Seitenfehler: Seitenfehler, für die vom Datenträger gelesen wird. Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "hardFaultRate": {
+      "label": "Hard-Seitenfehler/s",
+      "title": "Vom Datenträger aufgelöste Seitenfehler pro Sekunde. Dauerhaft hohe Werte deuten meist auf zu wenig physischen Speicher hin. Gruppen zeigen die Summe ihrer Mitglieder."
+    },
+    "diskReadOps": {
+      "label": "Datenträger-Lesevorgänge/s",
+      "title": "Leseanforderungen an Datenträger pro Sekunde, ohne Netzwerk- und sonstige Geräte-I/O."
+    },
+    "diskWriteOps": {
+      "label": "Datenträger-Schreibvorgänge/s",
+      "title": "Schreibanforderungen an Datenträger pro Sekunde, ohne Netzwerk- und sonstige Geräte-I/O."
+    },
+    "diskReadTotal": {
+      "label": "Insgesamt vom Datenträger gelesen",
+      "title": "Während der Prozesslaufzeit insgesamt vom Datenträger gelesene Bytes."
+    },
+    "diskWriteTotal": {
+      "label": "Insgesamt auf Datenträger geschrieben",
+      "title": "Während der Prozesslaufzeit insgesamt auf Datenträger geschriebene Bytes."
+    },
+    "diskReadOpsTotal": {
+      "label": "Datenträger-Lesevorgänge gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt gestellte Leseanforderungen an Datenträger."
+    },
+    "diskWriteOpsTotal": {
+      "label": "Datenträger-Schreibvorgänge gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt gestellte Schreibanforderungen an Datenträger."
+    },
+    "ioReadOps": {
+      "label": "I/O-Lesevorgänge/s",
+      "title": "I/O-Lesevorgänge pro Sekunde, einschließlich Dateien, Netzwerk und Geräte."
+    },
+    "ioWriteOps": {
+      "label": "I/O-Schreibvorgänge/s",
+      "title": "I/O-Schreibvorgänge pro Sekunde, einschließlich Dateien, Netzwerk und Geräte."
+    },
+    "ioOtherOps": {
+      "label": "Sonstige I/O-Vorgänge/s",
+      "title": "I/O-Vorgänge außer Lesen und Schreiben pro Sekunde, etwa Gerätesteuerungsanforderungen."
+    },
+    "ioReadOpsTotal": {
+      "label": "I/O-Lesevorgänge gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt ausgeführte I/O-Lesevorgänge."
+    },
+    "ioWriteOpsTotal": {
+      "label": "I/O-Schreibvorgänge gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt ausgeführte I/O-Schreibvorgänge."
+    },
+    "ioOtherOpsTotal": {
+      "label": "Sonstige I/O-Vorgänge gesamt",
+      "title": "Während der Prozesslaufzeit insgesamt ausgeführte sonstige I/O-Vorgänge."
     }
   },
   "noMatch": "Keine Prozesse stimmen mit „{query}“ überein.",

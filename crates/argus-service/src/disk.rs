@@ -199,7 +199,15 @@ impl DiskClient {
     }
 
     pub fn enrich(&mut self, snapshot: &mut Snapshot, interval: Duration) {
-        if snapshot.processes.iter().any(|p| p.disk_read.is_some()) {
+        // Native counters: rates from the second sample on, and totals from
+        // the first while the optional columns' counters are on.
+        let native = |p: &argus_core::ProcessRow| {
+            p.disk_read.is_some()
+                || p.extra
+                    .as_ref()
+                    .is_some_and(|extra| extra.disk_read_total.is_some())
+        };
+        if snapshot.processes.iter().any(native) {
             self.rates = DiskRates::default();
             return;
         }
@@ -219,8 +227,7 @@ impl DiskClient {
         } else {
             self.rates = DiskRates::default();
             for process in &mut snapshot.processes {
-                process.disk_read = None;
-                process.disk_write = None;
+                argus_core::disk_process::fill(process, None, None);
             }
         }
     }
@@ -271,54 +278,19 @@ mod tests {
 
     fn process(pid: u32, disk: Option<u64>) -> argus_core::ProcessRow {
         argus_core::ProcessRow {
-            listed_by_roster: false,
-            counters_pending: false,
-            sequence_number: None,
-            instance_key: None,
-            stale: false,
-            sample_reused: false,
-            counters: Default::default(),
             pid,
-            ppid: 0,
             create_time: 10,
             name: "example.exe".into(),
-            path: None,
-            description: None,
-            company: None,
-            version: None,
-            facts: Default::default(),
-            icon: None,
-            web_view: None,
-            windows_process: false,
-            cpu: 0.0,
-            cpu_time: 0,
-            private_ws: 0,
-            working_set: 0,
-            commit: 0,
-            io_read: 0,
-            io_write: 0,
-            io_other: 0,
             disk_read: disk,
             disk_write: disk,
-            gpu: 0.0,
-            gpu_engine: None,
-            gpu_engines: Vec::new(),
             gpu_dedicated: Some(0),
             gpu_shared: Some(0),
-            net_sent: 0,
-            net_received: 0,
-            power: None,
-            power_trend: None,
             threads: 1,
             handles: 1,
             session_id: 1,
             base_priority: 8,
-            suspended: false,
-            frozen: false,
-            efficiency: false,
-            io_priority: None,
-            memory_priority: None,
-            app_window: false,
+            extra: Some(argus_core::ProcessExtra::default()),
+            ..Default::default()
         }
     }
 
@@ -353,6 +325,7 @@ mod tests {
             frame: Some(Arc::new(DiskSnapshot {
                 sampled_at_ms,
                 counters: vec![(17, 10, bytes, bytes)],
+                operations: vec![(bytes / 4096, bytes / 4096)],
             })),
             failure: None,
             received: Instant::now().checked_sub(age),
@@ -434,11 +407,13 @@ mod tests {
         let frame = DiskSnapshot {
             sampled_at_ms: 5,
             counters: vec![(17, 10, 1, 2)],
+            operations: vec![(3, 4)],
         };
         let Ok(back) = from_service(Ok(crate::Reply::Disk(Some(frame)))) else {
             panic!("a snapshot is a snapshot");
         };
         assert_eq!(back.counters, [(17, 10, 1, 2)]);
+        assert_eq!(back.operations, [(3, 4)]);
     }
 
     #[test]
@@ -448,6 +423,15 @@ mod tests {
         client.enrich(&mut rows, Duration::from_secs(1));
         assert_eq!(rows.processes[0].disk_read, Some(4096));
         assert_eq!(rows.processes[1].disk_read, None);
+        // The first native sample has totals but no rates yet.
+        let mut first = process(19, None);
+        first.extra.as_mut().unwrap().disk_read_total = Some(0);
+        let mut rows = snapshot(vec![first]);
+        client.enrich(&mut rows, Duration::from_secs(1));
+        assert_eq!(
+            rows.processes[0].extra.as_ref().unwrap().disk_read_total,
+            Some(0)
+        );
         assert!(calls.recv_timeout(Duration::from_millis(100)).is_err());
         drop(gate);
     }
@@ -459,17 +443,27 @@ mod tests {
         let sample = |client: &mut DiskClient| {
             let mut rows = snapshot(vec![process(17, None)]);
             client.enrich(&mut rows, Duration::from_secs(1));
-            (rows.processes[0].disk_read, rows.processes[0].disk_write)
+            let p = &rows.processes[0];
+            let extra = p.extra.as_ref().unwrap();
+            (
+                p.disk_read,
+                p.disk_write,
+                extra.disk_read_ops,
+                extra.disk_read_total,
+            )
         };
-        // The first snapshot is only a baseline.
+        // The first snapshot is only a baseline for the rates.
         cache(&client, 1000, 0, Duration::ZERO);
-        assert_eq!(sample(&mut client), (None, None));
+        assert_eq!(sample(&mut client), (None, None, None, Some(0)));
         calls.recv_timeout(Duration::from_secs(2)).unwrap();
         cache(&client, 2000, 4096, Duration::ZERO);
-        assert_eq!(sample(&mut client), (Some(4096), Some(4096)));
+        assert_eq!(
+            sample(&mut client),
+            (Some(4096), Some(4096), Some(1), Some(4096))
+        );
         // Older than two intervals plus the request timeout: not reused.
         cache(&client, 3000, 8192, Duration::from_secs(5));
-        assert_eq!(sample(&mut client), (None, None));
+        assert_eq!(sample(&mut client), (None, None, None, None));
         drop(gate);
     }
 }

@@ -259,9 +259,19 @@ impl Desktop {
             self.rebuild_rows(false, cx);
         }
         self.prefs.set(PREFERENCE, preferences);
+        self.sync_extra_counters();
         // Automatic widths turned on measure the open list from the start.
         self.refresh_width_rows(None, cx);
         cx.notify();
+    }
+
+    /// Tells the sampler whether the process rows need the counters only
+    /// some optional columns show, which it leaves out otherwise.
+    pub(in crate::frontend) fn sync_extra_counters(&self) {
+        crate::commands::set_extra_counters(
+            self.host.state(),
+            Preferences::load(&self.prefs).needs_extra_counters(),
+        );
     }
 
     /// Column `key` sized automatically again: with automatic widths on, it
