@@ -72,8 +72,8 @@ impl Render for Lifted {
 
 impl Desktop {
     /// The process header's menu: the column under the pointer sorted or
-    /// hidden; every column by category, checked in place; then the dialog,
-    /// automatic widths and the defaults. `at` places it other than at the pointer.
+    /// hidden; then the dialog, automatic widths and the defaults. `at`
+    /// places it other than at the pointer.
     pub(in crate::frontend) fn process_header_menu(
         &mut self,
         column: Option<String>,
@@ -82,7 +82,6 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         let preferences = Preferences::load(&self.prefs);
-        let shown = |key: &str| preferences.selected.iter().any(|saved| saved == key);
         let mut items = Vec::new();
         if self.view == "tree" {
             let searching = !self.query.trim().is_empty();
@@ -157,32 +156,8 @@ impl Desktop {
             );
             items.push(MenuItem::separator());
         }
-        for category in CATEGORIES {
-            let children = DEFINITIONS
-                .iter()
-                .filter(|column| column.category == category)
-                .map(|column| {
-                    MenuItem::new(
-                        column_label(column.key),
-                        Action::Preference("toggleProcessColumn".into(), json!(column.key)),
-                    )
-                    .checked(shown(column.key))
-                    .disabled(column.key == "name")
-                    .stay()
-                })
-                .collect::<Vec<_>>();
-            let checked = children.iter().filter(|item| item.checked).count();
-            items.push(
-                MenuItem::new(
-                    label(&format!("processes.columns.category.{category}")),
-                    Action::CloseOverlay,
-                )
-                .icon(category_icon(category))
-                .detail(format!("{checked}/{}", children.len()))
-                .submenu(children),
-            );
-        }
-        items.push(MenuItem::separator());
+        // Columns are chosen in the dialog alone: a category's list grew
+        // too long for a menu, which does not scroll.
         items.push(
             MenuItem::new(
                 label("processes.columns.chooseMore"),

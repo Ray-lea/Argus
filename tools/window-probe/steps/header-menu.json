@@ -1,17 +1,16 @@
 {
-  "about": "用键盘操作进程页 CPU 列的表头菜单：打开菜单，进入“CPU”分类的子菜单并勾选“CPU 时间”，逐步核对菜单的焦点、展开的子菜单与勾选状态。",
+  "about": "用键盘操作进程页 CPU 列的表头菜单：打开菜单，核对各项（排序、隐藏与宽度，然后是“选择列…”“自动宽度”“全宽”和“恢复默认列”，菜单不再按分类列出各列），移到“选择列…”并按 Enter 打开对话框，逐步核对菜单的焦点与开合。",
   "steps": [
     { "note": "Process page, sorted by name: the header menu of the CPU column." },
     { "control": { "page": "processes", "sort": "name", "pointerOutside": true }, "wait": 1500 },
     { "control": { "headerMenu": "cpu" }, "wait": 500, "inspect": "menu", "label": "opened",
-      "expect": { "state.open": true, "state.keyboard": true, "state.focus.item.label": "升序排序" } },
-    { "note": "Down to the CPU category, into its submenu, and check CPU time there." },
-    { "control": { "keys": ["down", "down", "down", "down", "right"] }, "wait": 600, "inspect": "menu", "label": "submenu",
-      "expect": { "state.focus.in": "submenu", "state.focus.item.label": "CPU" }, "capture": "menu-submenu" },
-    { "control": { "keys": ["down", "enter"] }, "wait": 500, "inspect": "menu", "label": "checked",
-      "expect": { "state.open": true, "state.focus.item.label": "CPU 时间", "state.focus.item.checked": true } },
-    { "control": { "keys": ["escape", "escape"] }, "wait": 400, "inspect": "menu", "label": "closed",
-      "expect": { "state.open": false } },
-    { "crop": { "from": "menu-submenu", "name": "menu-submenu-zoom", "region": [480, 230, 520, 420], "scale": 2 } }
+      "expect": { "state.open": true, "state.keyboard": true, "state.focus.item.label": "升序排序", "state.items.4": "", "state.items.5": "选择列…", "state.items.8": "恢复默认列" },
+      "capture": "menu-opened" },
+    { "note": "Down past the disabled width item to the column dialog, which Enter opens." },
+    { "control": { "keys": ["down", "down", "down"] }, "wait": 400, "inspect": "menu", "label": "choose",
+      "expect": { "state.focus.item.label": "选择列…" } },
+    { "control": { "keys": ["enter"] }, "wait": 900, "inspect": "menu", "label": "dialog",
+      "expect": { "state.open": false }, "capture": "menu-dialog" },
+    { "control": { "keys": ["escape"] }, "wait": 400 }
   ]
 }
