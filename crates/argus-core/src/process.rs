@@ -129,9 +129,11 @@ pub struct ProcessRow {
     pub windows_process: bool,
     /// The counters only optional columns show, while one of them is
     /// (`ProcessTracker::set_extra_counters`): for every process, they make
-    /// serializing a snapshot about half as costly again.
+    /// serializing a snapshot about half as costly again. Boxed: inline,
+    /// they would add about 250 bytes to every row that sampling moves and
+    /// sorts, shown or not.
     #[serde(flatten)]
-    pub extra: Option<ProcessExtra>,
+    pub extra: Option<Box<ProcessExtra>>,
 }
 
 /// Additional columns from the same system snapshot, without per-process queries.
@@ -787,7 +789,7 @@ impl ProcessTracker {
                     || kernel_process(pid, entry.parent, &entry.name, entry.path.is_some()),
                 extra: self
                     .extra
-                    .then(|| ProcessExtra::of(p, &totals, &rates, private_ws)),
+                    .then(|| Box::new(ProcessExtra::of(p, &totals, &rates, private_ws))),
             };
             crate::disk_process::fill(&mut row, disk, disk_rates);
             rows.push(row);
@@ -1280,7 +1282,7 @@ mod tests {
             pid,
             ppid,
             create_time,
-            extra: Some(ProcessExtra::default()),
+            extra: Some(Box::default()),
             ..ProcessRow::default()
         };
         let mut rows = [

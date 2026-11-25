@@ -289,7 +289,7 @@ mod tests {
             handles: 1,
             session_id: 1,
             base_priority: 8,
-            extra: Some(argus_core::ProcessExtra::default()),
+            extra: Some(Box::default()),
             ..Default::default()
         }
     }

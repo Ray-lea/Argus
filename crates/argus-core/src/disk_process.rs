@@ -676,7 +676,7 @@ mod tests {
         let mut process = ProcessRow {
             pid: 17,
             create_time: 10,
-            extra: Some(crate::process::ProcessExtra::default()),
+            extra: Some(Box::default()),
             ..ProcessRow::default()
         };
         let extra = |process: &ProcessRow| process.extra.clone().unwrap();
