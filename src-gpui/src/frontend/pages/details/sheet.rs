@@ -595,10 +595,7 @@ impl Desktop {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            sections.push((
-                heading(label("details.section.openFiles")),
-                open_files,
-            ));
+            sections.push((heading(label("details.section.openFiles")), open_files));
         }
         sections.push((
             heading(label("details.section.version")),

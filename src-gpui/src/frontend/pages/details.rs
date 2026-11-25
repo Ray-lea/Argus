@@ -262,14 +262,15 @@ impl Desktop {
         let details_args = picked
             .process
             .map(|p| json!({"pid":p["pid"],"path":p["path"]}));
-        let open_files_args = (!picked.group)
-            .then(|| picked.process)
-            .flatten()
-            .and_then(|process| {
-                let create_time = process["createTime"].as_i64().filter(|&t| t > 0)?;
-                let pid = process["pid"].as_u64().map(|pid| pid as u32)?;
-                Some(json!({"pid": pid, "createTime": create_time}))
-            });
+        let open_files_args =
+            (!picked.group)
+                .then(|| picked.process)
+                .flatten()
+                .and_then(|process| {
+                    let create_time = process["createTime"].as_i64().filter(|&t| t > 0)?;
+                    let pid = process["pid"].as_u64().map(|pid| pid as u32)?;
+                    Some(json!({"pid": pid, "createTime": create_time}))
+                });
         if let Some(args) = details_args {
             self.request(
                 "process_details",
@@ -666,17 +667,12 @@ impl Desktop {
         body.into_any_element()
     }
 
-    fn details_open_files(
-        &self,
-        key: &str,
-        mono: &SharedString,
-        cx: &Context<Self>,
-    ) -> AnyElement {
+    fn details_open_files(&self, key: &str, mono: &SharedString, cx: &Context<Self>) -> AnyElement {
         let p = self.palette;
         let cache = format!("open-files:{key}");
         let report = self.data.get(&cache);
-        let mut section = div()
-            .child(self.details_section_title(label("details.section.openFiles")));
+        let mut section =
+            div().child(self.details_section_title(label("details.section.openFiles")));
         match report {
             None => {
                 section = section.child(
@@ -689,10 +685,7 @@ impl Desktop {
             }
             Some(report) => {
                 let files = report["files"].as_array().cloned().unwrap_or_default();
-                let denied = report["summary"]["deniedProcesses"]
-                    .as_u64()
-                    .unwrap_or(0)
-                    > 0
+                let denied = report["summary"]["deniedProcesses"].as_u64().unwrap_or(0) > 0
                     && files.is_empty();
                 if denied {
                     section = section.child(

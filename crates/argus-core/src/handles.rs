@@ -279,11 +279,9 @@ fn file_object_type(me: u32, anchor: HANDLE) -> Result<u32, ActionError> {
             .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownFileType"))),
         Err(_) => {
             let mut table = AlignedBuf::with_capacity(1024 * 1024);
-            let returned = nt::query_system_information(
-                nt::SYSTEM_EXTENDED_HANDLE_INFORMATION,
-                &mut table,
-            )
-            .map_err(|s| nt_error(s.0))?;
+            let returned =
+                nt::query_system_information(nt::SYSTEM_EXTENDED_HANDLE_INFORMATION, &mut table)
+                    .map_err(|s| nt_error(s.0))?;
             let entries = nt::handle_entries(&table, returned)
                 .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
             entries
