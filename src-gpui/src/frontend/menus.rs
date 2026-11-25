@@ -238,7 +238,9 @@ fn menu_origin(at: Point<Pixels>, menu: Size<Pixels>, viewport: Size<Pixels>) ->
 }
 
 /// A submenu beside its owner, toward the free side, its first item level
-/// with the owner. `sub` is its size as placed (`ENTER_SCALE`).
+/// with the owner. `sub` is its width as placed (`ENTER_SCALE`) and its
+/// height once grown, so that a long one moved up from the bottom stays
+/// inside the window.
 fn submenu_origin(
     menu: Point<Pixels>,
     menu_size: Size<Pixels>,
@@ -722,7 +724,7 @@ impl Desktop {
                 origin,
                 layout.size,
                 layout.tops[sub.owner],
-                placed(sub_layout.size),
+                gpui_kit::size(placed(sub_layout.size).width, sub_layout.size.height),
                 viewport,
             );
             let sub_opacity = entered(sub.opened, reduce);
