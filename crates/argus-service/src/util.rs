@@ -35,9 +35,30 @@ pub fn message(code: u32) -> String {
         1460 => tr!("service.timeout"),
         _ => tr!(
             "service.osError",
-            error = std::io::Error::from_raw_os_error(code as i32),
-            code = code
+            error = system_text(code),
+            code = shown_code(code)
         ),
+    }
+}
+
+/// The system's description of `code`, without the "(os error N)" that the
+/// message adds once, readably.
+fn system_text(code: u32) -> String {
+    let text = std::io::Error::from_raw_os_error(code as i32).to_string();
+    match text.strip_suffix(&format!(" (os error {})", code as i32)) {
+        Some(text) => text.trim_end().to_owned(),
+        None => text,
+    }
+}
+
+/// Win32 errors as the decimal number Windows documents them by; HRESULTs
+/// and NTSTATUS values in hex, as `0x80004005` rather than a signed or
+/// ten-digit decimal number.
+fn shown_code(code: u32) -> String {
+    if code > 0xFFFF {
+        format!("0x{code:08X}")
+    } else {
+        code.to_string()
     }
 }
 
@@ -145,6 +166,20 @@ mod tests {
                 ))),
                 expected
             );
+        }
+    }
+
+    #[test]
+    fn a_native_failure_shows_its_code_once_and_hresults_in_hex() {
+        assert_eq!(shown_code(5), "5");
+        assert_eq!(shown_code(1813), "1813");
+        assert_eq!(shown_code(0x80004005), "0x80004005");
+        assert_eq!(shown_code(0xC0000022), "0xC0000022");
+        for code in [5, 2, 1813, 0x80004005, 0x80070005] {
+            let text = system_text(code);
+            assert!(!text.is_empty());
+            assert!(!text.contains("os error"), "{text}");
+            assert!(!text.contains(&(code as i32).to_string()), "{text}");
         }
     }
 }
