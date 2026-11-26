@@ -1392,7 +1392,13 @@ mod tests {
         assert!(result.is_err());
         let line = trace.summary(&Err(FOREIGN_DRIVER));
         assert!(line.contains("image location policy") && line.contains("outside supported roots"));
-        assert!(line.contains("Private Person") && line.contains("Secret Folder"));
+        // The rejected path is kept, with the account's profile folder named
+        // `<user>` as every logged path is (`diagnostics::path`).
+        assert!(
+            line.contains("<user>") && line.contains("Secret Folder"),
+            "{line}"
+        );
+        assert!(!line.contains("Private Person"), "{line}");
         assert!(line.contains("image_path="));
         let mut trace = Inspection::default();
         assert!(
