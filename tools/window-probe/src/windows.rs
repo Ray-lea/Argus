@@ -890,7 +890,8 @@ pub fn run(args: &[String]) -> Result<()> {
     unsafe {
         windows::Win32::System::WinRT::RoInitialize(
             windows::Win32::System::WinRT::RO_INIT_MULTITHREADED,
-        )?;
+        )
+        .context("Windows Runtime")?;
     }
     anyhow::ensure!(
         args.len() >= 2 && args.iter().any(|a| a == "--hidden"),
@@ -931,7 +932,7 @@ pub fn run(args: &[String]) -> Result<()> {
     } {
         let _ = child.kill();
         let _ = child.wait();
-        return Err(error.into());
+        return Err(anyhow::Error::from(error).context("owned test into its job object"));
     }
     let monitor = ForegroundMonitor::start(root, job.clone());
     if std::env::var_os("ARGUS_PROBE_HIGH_PRIORITY").is_some() {
@@ -942,7 +943,7 @@ pub fn run(args: &[String]) -> Result<()> {
             )?;
         }
     }
-    resume_owned_child(root)?;
+    resume_owned_child(root).context("resume the owned test")?;
     // Keep the owned background test comparable to a foreground application.
     // An explicit control bit prevents Windows from automatically selecting EcoQoS.
     let power = PROCESS_POWER_THROTTLING_STATE {
@@ -975,19 +976,33 @@ pub fn run(args: &[String]) -> Result<()> {
                 Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
                 ..Default::default()
             };
-            unsafe {
+            // Reading the state back needs Windows 11 (build 22000): Windows
+            // Server 2022 takes the setting but answers ERROR_INVALID_PARAMETER.
+            let read = unsafe {
                 GetProcessInformation(
                     windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
                     ProcessPowerThrottling,
                     (&mut actual as *mut PROCESS_POWER_THROTTLING_STATE).cast(),
                     size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
-                )?;
+                )
+            };
+            match read {
+                Err(error) if error.code() == windows::Win32::Foundation::E_INVALIDARG => {
+                    println!(
+                        "{}",
+                        serde_json::json!({"event":"power-throttling","supported":true,"verified":false})
+                    );
+                }
+                Err(error) => {
+                    return Err(anyhow::Error::from(error)
+                        .context("reading the owned process power throttling"));
+                }
+                Ok(()) => anyhow::ensure!(
+                    actual.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
+                        && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
+                    "owned process power throttling remains enabled"
+                ),
             }
-            anyhow::ensure!(
-                actual.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
-                    && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
-                "owned process power throttling remains enabled"
-            );
         }
     }
     let affinity = if std::env::var_os("ARGUS_PROBE_PERFORMANCE_CORES").is_some() {
@@ -1012,7 +1027,7 @@ pub fn run(args: &[String]) -> Result<()> {
     #[cfg(feature = "capture")]
     {
         use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
-        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
+        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.context("DXGI adapters")?;
         let mut adapters = Vec::new();
         let mut index = 0;
         while let Ok(adapter) = unsafe { factory.EnumAdapters1(index) } {
