@@ -229,7 +229,7 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 
 `stat` 与 `diff` 比较工作区，`--rev <提交>` 改为比较该提交。上游一侧取分支中与被比较一侧清单版本相同的提交，`--upstream <引用>` 可直接指定。路径相对 `vendor/` 或仓库根目录，不给路径时比较两个包。比较不计重命名：从上游文件移出的代码计为本地文件的新增行。
 
-本地新增的类型、函数和整段逻辑放在独立的文件中（如 `gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs`），上游文件只保留接入点。升级时只有上游文件中的补丁可能与上游的改动冲突，其规模即 `stat` 中 `M` 一类的行数。
+本地新增的类型、函数和整段逻辑放在独立的文件中（如 `gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs`，`gpui-pre/src` 下的 `window/argus_*.rs`、`view/argus_splice.rs`、`scene/argus_*.rs`），上游文件只保留接入点。升级时只有上游文件中的补丁可能与上游的改动冲突，其规模即 `stat` 中 `M` 一类的行数。
 
 ### 升级上游
 

@@ -5,7 +5,7 @@
 ## 改动补丁
 
 - 改 vendored 代码要同步对应的 `ARGUS-PATCHES.md`。上游已经实现了某个本地补丁的功能时，采用上游的实现并删除该补丁及其记录。
-- 本地新增的类型、函数和整段逻辑写进独立的文件（`gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs` 等，在上游文件里以 `#[path]` 声明为子模块，子模块可以使用父模块的私有项），上游文件里只留接入点：升级时只有上游文件里的补丁会与上游的改动冲突。改动后用 `stat` 核对上游文件（`M`）的补丁量没有无谓地增加。把现有补丁移出上游文件时只做移动：除可见性（`pub(super)`）与导入外不改代码，并逐字核对移出与移入的部分。
+- 本地新增的类型、函数和整段逻辑写进独立的文件（`gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs` 等，在上游文件里以 `#[path]` 声明为子模块；`gpui-pre` 里放在与上游文件同名的目录下，命名为 `argus_*.rs`，如 `src/window/argus_frames.rs`、`src/scene/argus_transform.rs`，上游类型的新方法写成另一个 `impl` 块。子模块可以使用父模块的私有项），上游文件里只留接入点：升级时只有上游文件里的补丁会与上游的改动冲突。改动后用 `stat` 核对上游文件（`M`）的补丁量没有无谓地增加。把现有补丁移出上游文件时只做移动：除可见性（`pub(super)`）与导入外不改代码，并逐字核对移出与移入的部分。
 - `gpui-pre` 自带的测试无法从 crates.io 的包编译（缺少上游仓库的资源）。检查 vendored 行为的测试写在应用一侧（`src-gpui/tests` 或 `src-gpui` 的单元测试）；`cargo test -p gpui-pre-windows --lib` 可以运行。
 - 改动视图缓存、重放、悬停或提示的绘制后，运行 `cargo test -p argus --test view_replay`、`node scripts/ui-smoke.mjs <标识>` 的 `--interactions`、`--snapshots` 与 `--retained --require-chart-layers`，并运行相关的步骤文件。除像素外还要核对行为：图标动效是否仍播放、单元格提示何时出现、提示消失后是否还在逐帧绘制。帧数下降先确认是哪些内容不再绘制，再认定为节省。
 - 视图重放的时间变长之后，上游靠频繁重绘掩盖的问题会暴露出来（提示隐藏后留下的请求、指针离开后残留的悬停底色）。对这类改动，合入前请一次独立的只读审阅。
