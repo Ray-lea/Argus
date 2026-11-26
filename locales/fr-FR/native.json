@@ -254,7 +254,7 @@
     "standardAccount": "Ce compte n’a pas d’identité d’administrateur, le démarrage automatique de l’administrateur n’est donc pas disponible. Le service privilégié peut effectuer des actions administratives prises en charge.",
     "fallback": "Le démarrage automatique en tant qu’administrateur n’a pas abouti. Argus fonctionne avec des droits standard. Utilisez « Réparer l’autorisation » dans Paramètres.",
     "notReady": "L’autorisation de démarrage de l’administrateur n’est pas prête.",
-    "taskRejected": "Le Planificateur de tâches Windows n’a pas pu créer la tâche de démarrage en tant qu’administrateur ; ce démarrage n’est donc pas activé. La protection des tâches planifiées d’un logiciel de sécurité peut en être responsable. Vérifiez le journal de blocage correspondant ; s’il identifie une opération d’Argus, autorisez cette modification et réessayez. Si aucun enregistrement correspondant n’existe, fournissez le journal de diagnostic Argus.",
+    "taskRejected": "Le Planificateur de tâches Windows n’a pas pu créer la tâche de démarrage en tant qu’administrateur ; ce démarrage n’est donc pas activé. La protection des tâches planifiées dans un logiciel de sécurité tel que 360 peut en être responsable. Vérifiez le journal de blocage correspondant ; s’il identifie une opération d’Argus, autorisez cette modification et réessayez. Si aucun enregistrement correspondant n’existe, fournissez le journal de diagnostic Argus.",
     "revokedRestartFailed": "L’autorisation de démarrage en tant qu’administrateur a été révoquée. Ce processus conserve ses droits d’administrateur ; quittez puis rouvrez Argus pour l’exécuter avec des droits standard."
   }
 }

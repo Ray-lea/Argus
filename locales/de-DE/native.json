@@ -253,7 +253,7 @@
     "standardAccount": "Dieses Konto hat keine Administratoridentität, daher ist der automatische Administratorstart nicht verfügbar. Der privilegierte Dienst kann unterstützte Verwaltungsaktionen ausführen.",
     "fallback": "Der automatische Administratorstart wurde nicht abgeschlossen. Argus läuft mit Standardrechten. Verwenden Sie „Berechtigung reparieren“ in den Einstellungen.",
     "notReady": "Die Administrator-Startautorisierung ist nicht bereit.",
-    "taskRejected": "Die Windows-Aufgabenplanung konnte die Aufgabe für den Administratorstart nicht erstellen, daher ist der Administratorstart nicht aktiviert. Möglicherweise ist der Aufgabenschutz einer Sicherheitssoftware dafür verantwortlich. Überprüfen Sie das entsprechende Blockprotokoll. Wenn es einen Vorgang von Argus identifiziert, lassen Sie diese Änderung zu und versuchen Sie es erneut. Wenn kein passender Datensatz vorhanden ist, stellen Sie das Argus-Diagnoseprotokoll bereit.",
+    "taskRejected": "Die Windows-Aufgabenplanung konnte die Aufgabe für den Administratorstart nicht erstellen, daher ist der Administratorstart nicht aktiviert. Möglicherweise ist der Aufgabenschutz in Sicherheitssoftware wie 360 dafür verantwortlich. Überprüfen Sie das entsprechende Blockprotokoll. Wenn es einen Vorgang von Argus identifiziert, lassen Sie diese Änderung zu und versuchen Sie es erneut. Wenn kein passender Datensatz vorhanden ist, stellen Sie das Argus-Diagnoseprotokoll bereit.",
     "revokedRestartFailed": "Die Freigabe für den Administratorstart wurde widerrufen. Dieser Prozess hat weiterhin Administratorrechte. Argus beenden und erneut öffnen, um es mit Standardrechten auszuführen."
   }
 }

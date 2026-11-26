@@ -253,7 +253,7 @@
     "standardAccount": "This account has no administrator identity, so automatic administrator startup is unavailable. The privileged service can perform supported administrative actions.",
     "fallback": "Automatic administrator startup did not finish. Argus is running with standard permissions. Repair authorization in Settings.",
     "notReady": "Administrator startup authorization is not ready.",
-    "taskRejected": "Windows Task Scheduler could not create the administrator startup task, so administrator startup is not enabled. Scheduled task protection in security software may be responsible. Check the corresponding block log; if it identifies an Argus operation, allow this change and retry. If no matching record exists, provide the Argus diagnostic log.",
+    "taskRejected": "Windows Task Scheduler could not create the administrator startup task, so administrator startup is not enabled. Scheduled task protection in security software such as 360 may be responsible. Check the corresponding block log; if it identifies an Argus operation, allow this change and retry. If no matching record exists, provide the Argus diagnostic log.",
     "revokedRestartFailed": "Administrator startup authorization was revoked. This process still has administrator permissions; exit and reopen Argus to run with standard permissions."
   }
 }
