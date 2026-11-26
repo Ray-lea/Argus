@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders } from "../lib/live-tests.mjs";
+import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders, unmet } from "../lib/live-tests.mjs";
 
 /** Every `#[ignore]` test function of a source tree, by name. */
 function ignoredFunctions(directory, found = new Set()) {
@@ -42,4 +42,46 @@ test("outcomes come from libtest's lines; a test that never ran is missing", () 
     { test: "c", result: "failed" },
     { test: "d", result: "missing" },
   ]);
+});
+
+test("a child's output between a test's name and its result does not hide the result", () => {
+  const group = { tests: ["a", "b", "c"] };
+  // As libtest prints it when the tests start processes that write to the console.
+  const output = [
+    "running 3 tests",
+    "test a ... ",
+    "helper: report written",
+    "ok",
+    "test b ... child line",
+    "test c ... ok",
+    "",
+    "failures:",
+    "",
+    "---- b stdout ----",
+    "thread 'b' panicked at x.rs:1:1:",
+    "",
+    "failures:",
+    "    b",
+    "",
+    "test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s",
+  ].join("\r\n");
+  assert.deepEqual(
+    outcomes(group, output).map((o) => o.result),
+    ["passed", "failed", "passed"],
+  );
+  // The process died during `b`: it crashed, and what came after never started.
+  const crash = "running 3 tests\ntest a ... ok\ntest b ... \n";
+  assert.deepEqual(
+    outcomes(group, crash).map((o) => o.result),
+    ["passed", "crashed", "missing"],
+  );
+});
+
+test("groups that this machine cannot run say why", () => {
+  const facts = { elevated: true, uac: false, values: { account: "a" }, missing: { secondVolume: "no second volume" } };
+  assert.match(unmet({ requires: ["standard rights"] }, facts), /elevated/);
+  assert.match(unmet({ requires: ["UAC"] }, facts), /UAC/);
+  assert.equal(unmet({ env: { X: "{secondVolume}" } }, facts), "no second volume");
+  assert.equal(unmet({ env: { X: "{account}" } }, facts), null);
+  assert.equal(unmet({ requires: ["UAC"] }, { ...facts, uac: true }), null);
 });

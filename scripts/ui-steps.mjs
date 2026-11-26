@@ -3,7 +3,11 @@
 // the regression check for interface changes that the unit tests cannot see.
 //
 //   node scripts/ui-steps.mjs [NAME…] [--release | --executable PATH] [--probe PATH]
-//     [--language TAG] [--theme dark|light] [--list]
+//     [--language TAG] [--theme dark|light] [--skip-recordings] [--list]
+//
+// --skip-recordings reports step files that record frames as skipped: where
+// Windows.Graphics.Capture refuses windows (hosted CI runners), stills still
+// come from PrintWindow but nothing can record.
 //
 // NAME is a step file without `.json`; none runs them all. Each run writes
 // target/native-validation/steps-<name>, and the outcome of all of them goes
@@ -31,8 +35,9 @@ const names = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--release") passed.push(argv[i]);
   else if (PASSED.includes(argv[i])) passed.push(argv[i], argv[++i]);
-  else if (argv[i] !== "--list") names.push(argv[i]);
+  else if (argv[i] !== "--list" && argv[i] !== "--skip-recordings") names.push(argv[i]);
 }
+const skipRecordings = argv.includes("--skip-recordings");
 const directory = "tools/window-probe/steps";
 const all = readdirSync(directory).filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -5)).sort();
 for (const name of names) assert(all.includes(name), `${name}: no such step file in ${directory}`);
@@ -110,7 +115,13 @@ const outcomes = [];
 for (const name of chosen) {
   const file = `${directory}/${name}.json`;
   const plan = JSON.parse(readFileSync(file, "utf8"));
-  const limit = (runSeconds(parseSteps(Array.isArray(plan) ? plan : plan.steps)) + 120) * 1000;
+  const steps = parseSteps(Array.isArray(plan) ? plan : plan.steps);
+  if (skipRecordings && steps.some((step) => step.record)) {
+    outcomes.push({ name, result: "skipped", unexpected: false, reason: "records frames" });
+    console.log(`${"skipped".padEnd(14)} ${name} (records frames)`);
+    continue;
+  }
+  const limit = (runSeconds(steps) + 120) * 1000;
   const switches = runOptions(plan).parity;
   const started = Date.now();
   let failures = await run(`steps-${name}`, file, limit);
@@ -126,6 +137,6 @@ const output = resolve("target/native-validation/steps");
 mkdirSync(output, { recursive: true });
 writeFileSync(resolve(output, "summary.json"), JSON.stringify({ arguments: argv, outcomes }, null, 2));
 const count = (result) => outcomes.filter((outcome) => outcome.result === result).length;
-console.log(`${outcomes.length} step files: ${count("passed")} passed, ${count("failed")} failed, ${count("known failure")} known failures, ${count("fixed")} listed as failing but passed`);
+console.log(`${outcomes.length} step files: ${count("passed")} passed, ${count("failed")} failed, ${count("known failure")} known failures, ${count("fixed")} listed as failing but passed${count("skipped") ? `, ${count("skipped")} skipped` : ""}`);
 if (existsSync(resolve(output, "summary.json"))) console.log(`summary: ${resolve(output, "summary.json")}`);
 process.exit(outcomes.some((outcome) => outcome.unexpected) ? 1 : 0);

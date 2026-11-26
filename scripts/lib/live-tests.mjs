@@ -54,8 +54,15 @@ export const GROUPS = [
     name: "scheduled tasks",
     about: "administrator-startup tasks registered, checked and removed",
     cargo: ["-p", "argus-service", "--lib"],
-    tests: ["admin::task::tests::ordinary_user_revokes_tasks_without_runtime_directories", "admin::task::tests::vm_registration_security"],
+    tests: ["admin::task::tests::vm_registration_security"],
     env: { ARGUS_VM_TEST: "1", ARGUS_VM_ACCOUNT: "{account}" },
+  },
+  {
+    name: "scheduled tasks as a standard user",
+    about: "a standard account revoking its own administrator-startup tasks",
+    cargo: ["-p", "argus-service", "--lib"],
+    tests: ["admin::task::tests::ordinary_user_revokes_tasks_without_runtime_directories"],
+    requires: ["standard rights"],
   },
   {
     name: "privileged helpers",
@@ -69,10 +76,19 @@ export const GROUPS = [
   },
   {
     name: "desktop shell",
-    about: "programs started under the desktop shell with the account's own rights",
+    about: "a program started as a child of the desktop shell",
     cargo: ["-p", "argus-app", "--lib"],
-    tests: ["tasks::tests::live_shell_child", "tasks::tests::live_shell_helper"],
+    tests: ["tasks::tests::live_shell_child"],
+  },
+  {
+    // With UAC off the shell itself is elevated, and the helper refuses to run
+    // a program "at standard rights" with it (exit code 0x20000101).
+    name: "standard rights from an elevated process",
+    about: "the helper that starts programs at standard rights under the desktop shell",
+    cargo: ["-p", "argus-app", "--lib"],
+    tests: ["tasks::tests::live_shell_helper"],
     env: { ARGUS_TASKS_HOST: "{argus}" },
+    requires: ["UAC"],
   },
   {
     name: "process watch",
@@ -123,12 +139,39 @@ export function cargoArgs(group) {
 }
 
 /**
- * The outcome of each listed test in libtest's output (`test NAME ... ok`).
- * A listed test that never ran — renamed, or the run stopped before it — is
- * `missing`, which fails like a failure does.
+ * Why a group cannot run on this machine, or null. `facts` says what the
+ * machine offers: `elevated`, `uac` (UAC on), and the placeholder values.
+ */
+export function unmet(group, facts) {
+  for (const need of group.requires ?? []) {
+    if (need === "standard rights" && facts.elevated) return "needs a process at standard rights; this one is elevated";
+    if (need === "UAC" && !facts.uac) return "needs UAC: with it off the desktop shell runs elevated";
+  }
+  for (const name of placeholders([group])) if (facts.values[name] === undefined) return facts.missing?.[name] ?? `no value for {${name}}`;
+  return null;
+}
+
+/**
+ * The outcome of each listed test in libtest's output. A test's own output
+ * (from child processes it starts) can come between `test NAME ... ` and its
+ * `ok`, so a started test counts as passed unless it is in the failures list
+ * or the run ended without its `test result:` line (a crash: `crashed`). A
+ * listed test that never started — renamed, or the process died before it —
+ * is `missing`. Both fail like a failure does.
  */
 export function outcomes(group, output) {
-  const seen = new Map();
-  for (const match of output.matchAll(/^test (\S+) \.\.\. (ok|FAILED|ignored)/gm)) seen.set(match[1], match[2]);
-  return group.tests.map((test) => ({ test, result: seen.get(test) === "ok" ? "passed" : seen.has(test) ? "failed" : "missing" }));
+  const started = new Map();
+  for (const match of output.matchAll(/^test (\S+) \.\.\. ?(ok|FAILED|ignored)?/gm)) started.set(match[1], match[2] ?? null);
+  // The second "failures:" block lists the names, indented four spaces.
+  const failed = new Set();
+  for (const block of output.matchAll(/^failures:\r?\n((?: {4}\S+\r?\n?)+)/gm))
+    for (const name of block[1].split(/\r?\n/)) if (name.trim()) failed.add(name.trim());
+  const finished = /^test result: /m.test(output);
+  return group.tests.map((test) => {
+    if (!started.has(test)) return { test, result: "missing" };
+    const same = started.get(test);
+    if (same === "FAILED" || failed.has(test)) return { test, result: "failed" };
+    if (same === "ok" || finished) return { test, result: "passed" };
+    return { test, result: "crashed" };
+  });
 }
