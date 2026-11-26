@@ -33,10 +33,27 @@ pub struct Package {
 pub struct Paths {
     id: String,
 }
+/// Test identities may keep their folders below a root of their own, so that a
+/// sandbox without access to the real application-data folders can run them.
+const TEST_DATA_ROOT: &str = "ARGUS_TEST_DATA_ROOT";
 impl Paths {
     fn directory(&self, base: &str) -> Result<PathBuf> {
+        self.directory_in(base, |name| std::env::var_os(name))
+    }
+    /// `<base>\<identifier>`, or `<ARGUS_TEST_DATA_ROOT>\<base>\<identifier>`
+    /// for a test identity when that root is set; other identities never move.
+    fn directory_in(
+        &self,
+        base: &str,
+        variable: impl Fn(&str) -> Option<std::ffi::OsString>,
+    ) -> Result<PathBuf> {
+        if self.id.starts_with("dev.argus.taskmanager.test.")
+            && let Some(root) = variable(TEST_DATA_ROOT).filter(|root| !root.is_empty())
+        {
+            return Ok(PathBuf::from(root).join(base).join(&self.id));
+        }
         Ok(PathBuf::from(
-            std::env::var_os(base)
+            variable(base)
                 .ok_or_else(|| anyhow::anyhow!("application data directory unavailable"))?,
         )
         .join(&self.id))
@@ -242,5 +259,47 @@ impl AutoLaunch {
     }
     pub fn disable(&self) -> Result<()> {
         crate::commands::autostart::disable(&self.product).map_err(anyhow::Error::msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Paths;
+    use std::{ffi::OsString, path::PathBuf};
+
+    fn lookup(root: Option<&str>) -> impl Fn(&str) -> Option<OsString> {
+        let root = root.map(OsString::from);
+        move |name| match name {
+            "APPDATA" => Some(r"C:\Users\a\AppData\Roaming".into()),
+            "ARGUS_TEST_DATA_ROOT" => root.clone(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn only_test_identities_follow_the_test_data_root() {
+        let test = Paths {
+            id: "dev.argus.taskmanager.test.shots".into(),
+        };
+        let real = Paths {
+            id: "dev.argus.taskmanager".into(),
+        };
+        assert_eq!(
+            test.directory_in("APPDATA", lookup(Some(r"D:\work\target\test-profiles")))
+                .unwrap(),
+            PathBuf::from(r"D:\work\target\test-profiles\APPDATA\dev.argus.taskmanager.test.shots")
+        );
+        assert_eq!(
+            real.directory_in("APPDATA", lookup(Some(r"D:\work\target\test-profiles")))
+                .unwrap(),
+            PathBuf::from(r"C:\Users\a\AppData\Roaming\dev.argus.taskmanager")
+        );
+        for root in [None, Some("")] {
+            assert_eq!(
+                test.directory_in("APPDATA", lookup(root)).unwrap(),
+                PathBuf::from(r"C:\Users\a\AppData\Roaming\dev.argus.taskmanager.test.shots")
+            );
+        }
+        assert!(test.directory_in("LOCALAPPDATA", lookup(None)).is_err());
     }
 }

@@ -13,6 +13,18 @@ test("owned profile cleanup rejects real identities and path traversal", () => {
   assert.throws(() => testDirectories("dev.argus.taskmanager.test.run-1", {}));
 });
 
+test("a test data root holds both folders of the test identity", () => {
+  const own = resolve("target", "test-profiles");
+  const environment = { APPDATA: resolve("roaming"), LOCALAPPDATA: resolve("local"), ARGUS_TEST_DATA_ROOT: own };
+  assert.deepEqual(testDirectories("dev.argus.taskmanager.test.run-1", environment), [
+    join(own, "APPDATA", "dev.argus.taskmanager.test.run-1"),
+    join(own, "LOCALAPPDATA", "dev.argus.taskmanager.test.run-1"),
+  ]);
+  // Without the real roots, as in a sandbox that has none.
+  assert.equal(testDirectories("dev.argus.taskmanager.test.run-1", { ARGUS_TEST_DATA_ROOT: own }).length, 2);
+  assert.throws(() => testDirectories("dev.argus.taskmanager", environment));
+});
+
 test("cleanup keeps the diagnostics logs of the removed profile", () => {
   const root = mkdtempSync(join(tmpdir(), "argus-owned-test-"));
   try {

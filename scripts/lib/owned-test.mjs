@@ -3,11 +3,15 @@ import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync }
 import { dirname, join, resolve } from "node:path";
 
 // Only direct children of the two application-data roots, with a test identity.
+// With ARGUS_TEST_DATA_ROOT set, a test instance keeps them under that folder
+// instead (`<root>\APPDATA\<identifier>`, `<root>\LOCALAPPDATA\<identifier>`):
+// the instance reads the same variable, so it is passed on to the child.
 export function testDirectories(identifier, environment = process.env) {
   assert(/^dev\.argus\.taskmanager\.test\.[a-z0-9-]+$/.test(identifier), "isolated test identifier required");
+  const own = environment.ARGUS_TEST_DATA_ROOT;
   return ["APPDATA", "LOCALAPPDATA"].map((key) => {
-    assert(environment[key], `${key} required`);
-    const root = resolve(environment[key]);
+    assert(own || environment[key], `${key} required`);
+    const root = own ? resolve(own, key) : resolve(environment[key]);
     const path = resolve(root, identifier);
     assert.equal(dirname(path), root);
     return path;

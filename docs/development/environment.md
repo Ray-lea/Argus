@@ -51,6 +51,7 @@
 | `ARGUS_TEST_HISTORY` | `1` | 允许测试实例记录历史。带 `--test` 或 `--fixture` 的实例默认不写历史；`perf-native.mjs --history` 自动设置 |
 | `ARGUS_TEST_TRAY_DELAY_MS` | 1–10000 的整数 | 故障注入：每次托盘调用改为等待该毫秒数后报告成功。仅限带 `--test` 与独立测试标识的实例；`resilience-native.mjs --tray-delay` 自动设置 |
 | `ARGUS_TEST_BACKDROP_BUILD` | Windows 构建号 | 仅开发构建的独立测试实例：以该构建号判定系统背景材质的支持情况。`backdrop-fallback.json` 自带此设置 |
+| `ARGUS_TEST_DATA_ROOT` | 文件夹路径 | 独立测试标识（`dev.argus.taskmanager.test.<标签>`）的配置与本地数据改放在 `<路径>\APPDATA\<标识>` 与 `<路径>\LOCALAPPDATA\<标识>`，不写入真实的 `%APPDATA%`、`%LOCALAPPDATA%`；其他标识不受影响。在启动测试脚本前设置，脚本据此写入设置、清理目录并传给实例，用于无法写入用户目录的沙箱（如 `target\test-profiles`）。在此之前的构建不认这个变量，与旧构建对照时不要设置 |
 
 ## 语言
 
