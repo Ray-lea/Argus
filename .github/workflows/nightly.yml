@@ -1,0 +1,310 @@
+# Every night on main: the full check, unsigned packages for both
+# architectures, and the tests a development machine must not run, because
+# they change the machine: installing and upgrading Argus, the privileged
+# service and Task Manager replacement as an administrator, the live
+# collector tests, and the interface checks with real windows. Hosted runners
+# are thrown away after each job. Pushes stay unchecked (see check.yml); when
+# main has not changed since the last successful nightly, only the security
+# audits run. What each job covers: docs/development/release.md#nightly.
+name: Nightly
+
+on:
+  schedule:
+    # 02:23 in UTC+8, away from the full hour when scheduled runs queue up.
+    - cron: "23 18 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run everything even when main has not changed
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  changes:
+    name: Changes since the last nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nightly.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // ""')
+          echo "main is at $GITHUB_SHA; the last successful nightly ran on ${last:-nothing yet}"
+          if [[ "$FORCE" == "true" || "$last" != "$GITHUB_SHA" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  check:
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    uses: ./.github/workflows/check.yml
+
+  # New advisories appear without any change here; check.yml audits otherwise.
+  audit:
+    name: Security audits
+    needs: changes
+    if: needs.changes.outputs.changed != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 12.18.0
+      - name: npm security audit
+        run: pnpm audit --audit-level low
+      - name: Rust security audit
+        run: |
+          cargo install cargo-audit --version 0.23.0 --locked
+          cargo audit
+
+  package:
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    uses: ./.github/workflows/package.yml
+    with:
+      arch: all
+      retention-days: 7
+
+  upgrade:
+    name: Upgrade from the latest release
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Tonight's installer and the latest release's
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -n "Argus-x64-$GITHUB_SHA" -D new
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' -D old
+          ls new old
+      - name: Install the release, then tonight's over it
+        run: node scripts/upgrade-smoke.mjs old/*_x64-setup.exe new/*_x64-setup.exe --output target/nightly/upgrade
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-upgrade
+          path: target/nightly/upgrade
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # windows-2022 is the generation of Windows 10 (build 20348, before 24H2).
+  privileged:
+    name: Service and Task Manager replacement (${{ matrix.runner }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-2022]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install tonight's build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # PowerShell, not bash: Git Bash rewrites /S and /D=... into paths.
+        run: |
+          $ErrorActionPreference = "Stop"
+          gh run download $env:GITHUB_RUN_ID -n "Argus-x64-$env:GITHUB_SHA" -D new
+          $setup = (Get-ChildItem new/*_x64-setup.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "argus"
+          $p = Start-Process $setup -ArgumentList "/S", "/D=$dir" -WindowStyle Hidden -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "安装程序退出码 $($p.ExitCode)" }
+          "ARGUS_EXE=$(Join-Path $dir 'argus.exe')" >> $env:GITHUB_ENV
+      - name: Install, update, repair and remove the service; replace and restore Task Manager
+        run: node scripts/privileged-smoke.mjs $env:ARGUS_EXE --output target/nightly/privileged
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-privileged-${{ matrix.runner }}
+          path: target/nightly/privileged
+          if-no-files-found: ignore
+          retention-days: 7
+
+  live:
+    name: Live tests (${{ matrix.runner }})
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            toolchain: stable-x86_64-pc-windows-msvc
+          - runner: windows-2022
+            toolchain: stable-x86_64-pc-windows-msvc
+          - runner: windows-11-arm
+            toolchain: stable-aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Install Rust
+        run: |
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --no-self-update
+          rustup default ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: nightly-live-${{ matrix.runner }}
+      - name: Ignored tests that need a real machine
+        run: node scripts/live-tests.mjs --output target/nightly/live-tests
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-live-${{ matrix.runner }}
+          path: target/nightly/live-tests
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Release builds already compile for ARM64; this runs the tests there.
+  arm64:
+    name: Tests on ARM64
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-aarch64-pc-windows-msvc --profile minimal --no-self-update
+          rustup default stable-aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: nightly-arm64-tests
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  # Software rendering (no GPU) and other fonts: captures compare only with
+  # the same runner's, never with ones taken on a development machine.
+  ui:
+    name: Interface checks (${{ matrix.runner }})
+    needs: changes
+    if: needs.changes.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-2022]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      # The step files use windows up to 1400x900; the runner's screen is 1024x768.
+      - name: Display resolution
+        shell: pwsh
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop; "set to 1920x1080" } catch { "unchanged: $_" }
+          Get-CimInstance Win32_VideoController | Format-List Name, CurrentHorizontalResolution, CurrentVerticalResolution
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+          rustup default stable-x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: nightly-ui-${{ matrix.runner }}
+      - name: Build the development program and the window probe
+        run: |
+          cargo build --locked -p argus --bin argus
+          cargo build --locked --release -p argus-window-probe --features capture
+      - name: Smoke check
+        run: node scripts/ui-smoke.mjs nightly-smoke --dev
+      - name: Step files
+        if: always()
+        run: node scripts/ui-steps.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-ui-${{ matrix.runner }}
+          path: |
+            target/native-validation
+            !target/native-validation/**/argus.exe
+          if-no-files-found: ignore
+          retention-days: 7
+
+  summary:
+    name: Summary
+    needs: [changes, check, audit, package, upgrade, privileged, live, arm64, ui]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          {
+            echo "### Nightly on ${GITHUB_SHA::8}"
+            echo
+            echo "| job | result |"
+            echo "|---|---|"
+            echo "$NEEDS" | jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,5 +1,6 @@
 # Manual unsigned package builds for real-machine testing without publishing a
-# release or attaching an untrusted test-signing certificate.
+# release or attaching an untrusted test-signing certificate. The nightly
+# workflow calls it for both architectures.
 name: Package
 
 on:
@@ -14,6 +15,16 @@ on:
           - arm64
           - x64
           - all
+  workflow_call:
+    inputs:
+      arch:
+        required: false
+        default: all
+        type: string
+      retention-days:
+        required: false
+        default: 14
+        type: number
 
 permissions:
   contents: read
@@ -115,4 +126,4 @@ jobs:
           name: Argus-${{ matrix.arch }}-${{ github.sha }}
           path: staged/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ inputs.retention-days || 14 }}
