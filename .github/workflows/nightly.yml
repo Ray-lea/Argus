@@ -265,6 +265,10 @@ jobs:
         run: |
           try { Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop; "set to 1920x1080" } catch { "unchanged: $_" }
           Get-CimInstance Win32_VideoController | Format-List Name, CurrentHorizontalResolution, CurrentVerticalResolution
+          # What the capture paths depend on: the job's session and its compositor.
+          "job session: $((Get-Process -Id $PID).SessionId)"
+          Get-Process dwm, explorer -ErrorAction SilentlyContinue | Format-Table Name, Id, SessionId
+          query user 2>&1
       - name: Install Rust
         run: |
           rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
@@ -278,9 +282,11 @@ jobs:
           cargo build --locked --release -p argus-window-probe --features capture
       - name: Smoke check
         run: node scripts/ui-smoke.mjs nightly-smoke --dev
+      # Windows.Graphics.Capture refuses windows on hosted runners: the probe
+      # takes stills with PrintWindow instead, and nothing can record frames.
       - name: Step files
         if: always()
-        run: node scripts/ui-steps.mjs
+        run: node scripts/ui-steps.mjs --skip-recordings
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

@@ -27,9 +27,9 @@
 | 打包 | `windows-latest`、`windows-11-arm` | 调用 `package.yml` 构建两种架构的未签名安装包与免安装程序并做安装冒烟，制品保留 7 天，可直接交给他人试用 |
 | 升级 | `windows-latest` | `scripts/upgrade-smoke.mjs`：装上最新的正式版并运行一次，让它保存设置、写下历史；再用当晚的安装包覆盖安装并运行，核对设置未被重置、日志里没有 panic、错误或设置与历史读写失败、新版本继续写历史；最后卸载 |
 | 特权服务与任务管理器替换 | `windows-latest`、`windows-2022` | `scripts/privileged-smoke.mjs`：为当前账户安装特权服务，更新；删掉授权记录后修复；开启任务管理器替换并确认 `taskmgr.exe` 打开 Argus，再恢复；最后用卸载程序的命令删除服务，确认注册与服务文件都已清除 |
-| 实机测试 | `windows-latest`、`windows-2022`、`windows-11-arm` | `scripts/live-tests.mjs` 按组运行标了 `#[ignore]`、需要真实机器的测试（实时采集、计划任务、回收站、自有子进程、跨卷移动历史、非活动桌面上的窗口激活），组的清单在 `scripts/lib/live-tests.mjs` |
+| 实机测试 | `windows-latest`、`windows-2022`、`windows-11-arm` | `scripts/live-tests.mjs` 按组运行标了 `#[ignore]`、需要真实机器的测试（实时采集、计划任务、回收站、自有子进程、跨卷移动历史、非活动桌面上的窗口激活），组的清单在 `scripts/lib/live-tests.mjs`。运行器以管理员身份运行且关闭了 UAC，需要标准权限或 UAC 的组记为跳过并写明原因（它们在开启 UAC 的虚拟机里以标准账户运行）；`windows-11-arm` 只有一个卷，跨卷的组同样跳过 |
 | ARM64 测试 | `windows-11-arm` | 在 ARM64 上原生运行 `cargo test --workspace` |
-| 界面检查 | `windows-latest`、`windows-2022` | 开发构建的 `ui-smoke` 与全部步骤文件。运行器没有显卡，靠软件渲染，字体也与开发机不同：结果只与同一运行器上一次的结果比较，不与开发机的截图比较 |
+| 界面检查 | `windows-latest`、`windows-2022` | 开发构建的 `ui-smoke` 与步骤文件。运行器没有显卡，靠软件渲染，字体也与开发机不同：结果只与同一运行器上一次的结果比较，不与开发机的截图比较。窗口捕获（Windows.Graphics.Capture）在运行器上拒绝测试窗口，探针改用 `PrintWindow` 截取静态画面；录制帧的步骤文件记为跳过（`ui-steps.mjs --skip-recordings`） |
 
 `windows-2022` 是 Windows 10 那一代的系统（内部版本 20348，早于 24H2），用来覆盖旧版任务栏与旧系统上的采集路径。各任务的报告、日志与截图作为制品保留 7 天，任务摘要列出各任务的结果。
 
