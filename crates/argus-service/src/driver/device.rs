@@ -27,6 +27,14 @@ impl State {
         }
     }
 
+    /// The driver creates `\Device\PawnIO` only in `AddDevice` for its
+    /// `Root\PawnIO` node. Without that node (the official uninstall keeps the
+    /// service and driver package; Device Manager can remove it too) starting
+    /// the service exposes no device. See `missing_node_plan`.
+    pub(super) fn missing(&self) -> bool {
+        self.nodes == 0
+    }
+
     pub(super) fn check(&self, service_running: bool) -> Result<()> {
         if self.needs_restart {
             return Err(REBOOT_REQUIRED);
@@ -109,6 +117,15 @@ mod tests {
         state.note(DN_HAS_PROBLEM, CM_PROB_DISABLED);
         assert_eq!(state.check(false), Err(DEVICE_DISABLED));
         assert_eq!(state.check(true), Err(DEVICE_DISABLED));
+    }
+
+    #[test]
+    fn only_an_absent_node_is_missing_and_a_disabled_one_is_kept() {
+        assert!(State::default().missing());
+        let mut state = State::default();
+        state.note(DN_HAS_PROBLEM, CM_PROB_DISABLED);
+        assert!(!state.missing());
+        assert_eq!(state.check(false), Err(DEVICE_DISABLED));
     }
 
     #[test]
