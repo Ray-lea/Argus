@@ -268,7 +268,9 @@ jobs:
           # What the capture paths depend on: the job's session and its compositor.
           "job session: $((Get-Process -Id $PID).SessionId)"
           Get-Process dwm, explorer -ErrorAction SilentlyContinue | Format-Table Name, Id, SessionId
-          query user 2>&1
+          # query exits 1 when it lists no one: what it prints is the diagnosis.
+          query session 2>&1 | Out-String
+          exit 0
       - name: Install Rust
         run: |
           rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
