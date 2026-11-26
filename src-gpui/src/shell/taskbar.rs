@@ -1060,8 +1060,8 @@ pub(crate) struct Geometry {
     /// The taskbar's buttons are centred (Windows 11).
     pub centred: bool,
     /// The widgets button shows (Windows 11, the primary display's
-    /// taskbar): at the start of a centred taskbar, beside the tray
-    /// otherwise.
+    /// taskbar, turned on and not disabled by group policy): at the start
+    /// of a centred taskbar, beside the tray otherwise.
     pub widgets: bool,
     pub scale: f32,
     pub stand_in: bool,
@@ -1168,15 +1168,19 @@ fn windows11() -> bool {
     super::os_build().is_some_and(|build| build >= 22000)
 }
 
-/// A DWORD of the shell's taskbar settings, as a flag; none when unset.
-fn explorer_flag(name: PCWSTR) -> Option<bool> {
+/// A DWORD value; none when unset.
+fn registry_dword(
+    hive: windows::Win32::System::Registry::HKEY,
+    key: PCWSTR,
+    name: PCWSTR,
+) -> Option<u32> {
     use windows::Win32::System::Registry::*;
     let mut value = 0u32;
     let mut bytes = 4;
     unsafe {
         RegGetValueW(
-            HKEY_CURRENT_USER,
-            w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+            hive,
+            key,
             name,
             RRF_RT_REG_DWORD,
             None,
@@ -1186,15 +1190,39 @@ fn explorer_flag(name: PCWSTR) -> Option<bool> {
         .ok()
         .ok()?;
     }
-    Some(value != 0)
+    Some(value)
 }
 
-/// Whether the taskbar shows the widgets button: turned on (or never
-/// turned off) with the widgets installed. Whether they are installed is
-/// looked up once.
+/// A DWORD of the shell's taskbar settings, as a flag; none when unset.
+fn explorer_flag(name: PCWSTR) -> Option<bool> {
+    registry_dword(
+        windows::Win32::System::Registry::HKEY_CURRENT_USER,
+        w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+        name,
+    )
+    .map(|value| value != 0)
+}
+
+/// Whether the taskbar's setting (`TaskbarDa`, none when never changed)
+/// and the "Allow widgets" group policy (`AllowNewsAndInterests`, none when
+/// not configured) leave the widgets button showing. The policy disabled
+/// hides the button but leaves the setting as it was, and greys it out in
+/// Settings; enabled, it lets the setting decide.
+fn widgets_allowed(setting: Option<bool>, policy: Option<u32>) -> bool {
+    setting != Some(false) && policy != Some(0)
+}
+
+/// Whether the taskbar shows the widgets button: allowed by the setting and
+/// the group policy, with the widgets installed. Whether they are installed
+/// is looked up once.
 fn widgets_shown() -> bool {
     static INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    explorer_flag(w!("TaskbarDa")) != Some(false)
+    let policy = registry_dword(
+        windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
+        w!(r"SOFTWARE\Policies\Microsoft\Dsh"),
+        w!("AllowNewsAndInterests"),
+    );
+    widgets_allowed(explorer_flag(w!("TaskbarDa")), policy)
         && *INSTALLED.get_or_init(|| {
             std::env::var_os("LOCALAPPDATA").is_some_and(|local| {
                 std::path::Path::new(&local)
@@ -1216,8 +1244,22 @@ fn widgets_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Geometry, place, unsqueezed};
+    use super::{Geometry, place, unsqueezed, widgets_allowed};
     use crate::settings::TaskbarPlace;
+
+    #[test]
+    fn a_policy_that_disables_widgets_hides_the_button_the_setting_still_shows() {
+        // Never changed, or turned on, with no policy: shown.
+        assert!(widgets_allowed(None, None));
+        assert!(widgets_allowed(Some(true), None));
+        // Disabled by policy, the setting kept as it was: hidden.
+        assert!(!widgets_allowed(None, Some(0)));
+        assert!(!widgets_allowed(Some(true), Some(0)));
+        // Enabled by policy, the setting decides.
+        assert!(widgets_allowed(None, Some(1)));
+        assert!(!widgets_allowed(Some(false), Some(1)));
+        assert!(!widgets_allowed(Some(false), None));
+    }
 
     #[test]
     fn narrowed_task_buttons_follow_the_tray_as_it_grows() {
