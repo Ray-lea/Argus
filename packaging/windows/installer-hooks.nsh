@@ -42,11 +42,11 @@
 
   ; An update replaces argus.exe, and the refresh above argus.ico, under the
   ; same names. Explorer caches icons by path and index, so the shortcuts on
-  ; the desktop, in Start and pinned to the taskbar, the taskbar button and
-  ; the Apps list would keep the previous version's icon. SHCNE_ASSOCCHANGED
-  ; makes the shell drop its icon cache; SHCNF_FLUSHNOWAIT starts delivering
-  ; it before returning without waiting on a window that does not respond.
-  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x3000, p 0, p 0)'
+  ; the desktop and pinned to the taskbar, and the taskbar button, would keep
+  ; the previous version's icon until Explorer restarts. The new argus.exe
+  ; makes the shell drop that cache and the taskbar reread its pinned items:
+  ; SHCNE_ASSOCCHANGED from this 32-bit installer itself has no effect.
+  ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --argus-refresh-icons'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
