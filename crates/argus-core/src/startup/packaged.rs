@@ -13,16 +13,16 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_DWORD, REG_OPTION_NON_VOLATILE,
     REG_VALUE_TYPE, RegCreateKeyExW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
-use windows::Win32::System::WinRT::{
-    RO_INIT_MULTITHREADED, RoActivateInstance, RoInitialize, RoUninitialize,
-};
+use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
 use windows::Win32::UI::Shell::SHLoadIndirectString;
-use windows::core::{HSTRING, Interface, PCWSTR, RuntimeName};
+use windows::core::{HSTRING, PCWSTR};
 
 use super::{Key, StartupItem};
 use crate::actions::ActionError;
 use crate::meta::MetaStore;
-use crate::util::{from_wide, wide};
+// Apartment-local activation: this module's temporary apartments can unload
+// the DLLs a cached factory would point into.
+use crate::util::{activate, from_wide, wide};
 
 const SYSTEM_APP_DATA: &str = r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData";
 
@@ -59,12 +59,6 @@ impl Drop for Apartment {
             unsafe { RoUninitialize() };
         }
     }
-}
-
-fn activate<T: Interface + RuntimeName>() -> windows::core::Result<T> {
-    // Projection constructors cache factories for the process, but this module's
-    // temporary apartments can unload their DLLs. Keep activation apartment-local.
-    unsafe { RoActivateInstance(&HSTRING::from(T::NAME)) }?.cast()
 }
 
 #[derive(Debug)]

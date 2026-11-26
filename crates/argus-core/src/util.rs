@@ -16,6 +16,21 @@ impl Drop for OwnedHandle {
     }
 }
 
+/// A new instance of a Windows Runtime class, activated in the calling
+/// thread's apartment. The projections' constructors (`XmlDocument::new`)
+/// cache the class factory for the whole process; once the apartment that
+/// created it ends (a worker thread exits), COM may unload the factory's DLL,
+/// and the next thread to construct one through the cache crashes. Here every
+/// call asks the apartment it runs in.
+pub(crate) fn activate<T: windows::core::Interface + windows::core::RuntimeName>()
+-> windows::core::Result<T> {
+    use windows::core::Interface as _;
+    unsafe {
+        windows::Win32::System::WinRT::RoActivateInstance(&windows::core::HSTRING::from(T::NAME))
+    }?
+    .cast()
+}
+
 /// Null-terminated UTF-16 copy of `s`.
 pub(crate) fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()

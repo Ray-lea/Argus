@@ -12,7 +12,7 @@ use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
 use windows::core::{HSTRING, PCWSTR, PWSTR};
 
-use crate::util::{from_wide, wide};
+use crate::util::{activate, from_wide, wide};
 
 // Declared here instead of enabling a `windows` feature, which would rebuild the
 // `windows` crate and everything sharing it. kernel32 has them since Windows 8.
@@ -130,8 +130,10 @@ fn executable(full_name: &str, app: &str) -> Option<Box<str>> {
     }
     let xml =
         std::fs::read_to_string(Path::new(&from_wide(&path)).join("AppxManifest.xml")).ok()?;
-    let document = XmlDocument::new().ok()?;
-    let settings = XmlLoadSettings::new().ok()?;
+    // Not `XmlDocument::new()`: its process-wide factory cache outlives the
+    // apartment of a metadata store that has been dropped (`util::activate`).
+    let document = activate::<XmlDocument>().ok()?;
+    let settings = activate::<XmlLoadSettings>().ok()?;
     settings.SetProhibitDtd(true).ok()?;
     settings.SetResolveExternals(false).ok()?;
     document
