@@ -1109,7 +1109,7 @@ function NumberBox({
   );
 }
 
-// "显示或隐藏 Argus" (settings.rs `hotkey_card`): its keys, Change and the
+// "显示或隐藏 Argus" (settings/hotkey.rs `hotkey_card`): its keys, Change and the
 // switch. Change opens a drawer under them that records the next combination,
 // saved once its keys are let go; Esc cancels, Backspace turns it off.
 const defaultHotkey = ["Ctrl", "Alt", "Esc"];
@@ -1332,7 +1332,7 @@ export function Settings({
     setValues((v) => ({ ...v, [key]: value }));
   const intervals = [500, 1000, 2000, 5000].map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }));
   const slow = backgroundIntervals.map((ms) => ({ value: ms, label: `每 ${ms / 1000} 秒` }));
-  // Under 5 s only after a warning (settings.rs `background_select`).
+  // Under 5 s only after a warning (settings/data.rs `background_select`).
   const minimized = (ms: number) =>
     ms >= 5000
       ? set("minimized", ms)

@@ -29,7 +29,7 @@ export function localRect(el: Element) {
 export const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 // The screen's refresh rate, from the median of 16 frames (60 until measured):
-// the curve choices name their frame rates with it (settings.rs `chart_select`).
+// the curve choices name their frame rates with it (settings/animation.rs `chart_select`).
 export function useRefreshRate() {
   const [hz, setHz] = useState(60);
   useEffect(() => {
@@ -340,7 +340,7 @@ export function Select<T extends string | number>({
 }
 
 /*
- * One feature, one card (settings.rs `feature`): what it is and its state on
+ * One feature, one card (settings/cards.rs `feature`): what it is and its state on
  * top; below a hairline, what it reports beside what can be done, stacked
  * where the buttons need the width.
  */
