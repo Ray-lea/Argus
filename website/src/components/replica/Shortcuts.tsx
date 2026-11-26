@@ -4,7 +4,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { Icon, type UiIcon } from "./icons";
 import { Button } from "./widgets";
 
-// Keys as keycaps: chords split by " / ", keys by "+" (settings.rs `shortcut_keys`).
+// Keys as keycaps: chords split by " / ", keys by "+" (settings/shortcuts.rs `shortcut_keys`).
 export function Keys({ keys }: { keys: string }) {
   return (
     <span className="a-shortcut-keys" translate="no">
@@ -101,7 +101,7 @@ function Card({ icon, title, keys, body, badge }: { icon: UiIcon; title: string;
   );
 }
 
-// "快捷键说明" (settings.rs `shortcuts_dialog`): the common keys as cards, the
+// "快捷键说明" (settings/shortcuts.rs `shortcuts_dialog`): the common keys as cards, the
 // pages, the keys of the lists and of the history chart in groups that fold
 // (opened on the history page), and the system's own shortcut.
 export default function Shortcuts({

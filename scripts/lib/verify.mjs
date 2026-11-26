@@ -20,7 +20,7 @@ export const STEP_RULES = [
   [/^src-gpui\/src\/frontend\/pages\/performance\/disk_details/, ["disk-details-layout", "disk-details-held", "disk-counters-unavailable"]],
   [/^src-gpui\/src\/frontend\/pages\/performance/, ["performance-menus", "cpu-cores", "device-order", "gpu-low-power"]],
   [/^src-gpui\/src\/frontend\/(charts|gpu_usage|hundred)|^crates\/argus-view-logic\/src\/gpu_usage\.rs$/, ["performance-menus", "cpu-cores", "gpu-low-power", "desk-live"]],
-  [/^src-gpui\/src\/frontend\/pages\/(settings|section_rail)\.rs$/, ["section-rail", "service-damaged", "hardware-acceleration", "history-settings"]],
+  [/^src-gpui\/src\/frontend\/pages\/(settings\/|section_rail\.rs$)/, ["section-rail", "service-damaged", "hardware-acceleration", "history-settings"]],
   [/^src-gpui\/src\/frontend\/pages\/components\.rs$/, ["tray-icon", "monitor-metrics", "section-rail", "tray-flyouts"]],
   [/^src-gpui\/src\/frontend\/pages\/vitals\.rs$/, ["vitals-visibility"]],
   [/^src-gpui\/src\/frontend\/pages\/details/, ["process-copy", "process-facts", "process-counters", "power-columns"]],

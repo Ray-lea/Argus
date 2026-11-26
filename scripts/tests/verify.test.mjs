@@ -64,6 +64,8 @@ test("vendored GPUI is checked through Argus and the step files that cover it", 
 test("a frontend file runs its step files; one no rule names runs localization", () => {
   assert.deepEqual(stepFilesFor("src-gpui/src/frontend/star.rs"), ["star-reminder"]);
   assert.deepEqual(stepFilesFor("src-gpui/src/frontend/something_new.rs"), ["localization"]);
+  // Every file of a page split into a folder runs that page's step files.
+  assert.deepEqual(stepFilesFor("src-gpui/src/frontend/pages/settings/hotkey.rs"), ["section-rail", "service-damaged", "hardware-acceleration", "history-settings"]);
   assert.deepEqual(stepFilesFor("tools/window-probe/steps/header-menu.json"), ["header-menu"]);
   assert.deepEqual(stepFilesFor("tools/window-probe/steps/known-failures.json"), []);
   assert.deepEqual(stepFilesFor("crates/argus-core/src/util.rs"), []);

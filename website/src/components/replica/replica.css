@@ -3434,7 +3434,7 @@ button.a-th:active {
   border-radius: 6px;
   background: var(--a-layer);
 }
-/* The cards' glyph is 20 px (settings.rs `glyph`). */
+/* The cards' glyph is 20 px (settings/cards.rs `glyph`). */
 .a-setting > .ico {
   flex: none;
   width: 20px;
@@ -3469,7 +3469,7 @@ button.a-th:active {
   font-variant-numeric: tabular-nums;
 }
 /* The appearance boxes: 4.5em of the 13 px text across, the line and 12 px
-   high (settings.rs `appearance_setting`), 6 px from their unit. */
+   high (settings/language.rs `appearance_setting`), 6 px from their unit. */
 .a-setting-controls > .a-number[inputmode="numeric"] {
   width: calc(58.5px * var(--a-text));
   height: calc(18.2px * var(--a-text) + 12px);
@@ -3591,7 +3591,7 @@ button.a-th:active {
 .a-pill.is-warn::before {
   background: var(--a-io);
 }
-/* A feature card (settings.rs `feature`): the head as a setting's, its state
+/* A feature card (settings/cards.rs `feature`): the head as a setting's, its state
    on the right; under a hairline the note and the buttons, 52 px in. */
 .a-feature {
   display: flex;
@@ -3649,7 +3649,7 @@ button.a-th:active {
   padding: 0 16px 12px 52px;
   color: var(--a-ink-3);
 }
-/* The hotkey card's drawer (settings.rs `hotkey_card`): it comes down 6 px
+/* The hotkey card's drawer (settings/hotkey.rs `hotkey_card`): it comes down 6 px
    while fading in; the keys show dashed while the shortcut is off. */
 .a-hotkey {
   overflow: hidden;
@@ -4118,7 +4118,7 @@ button.a-th:active {
   color: var(--a-ink-3);
   font-size: calc(12px * var(--a-text));
 }
-/* "快捷键说明" (settings.rs `shortcuts_dialog`), 780 px wide. */
+/* "快捷键说明" (settings/shortcuts.rs `shortcuts_dialog`), 780 px wide. */
 .a-dialog.is-shortcuts {
   width: min(780px, 100%);
 }
