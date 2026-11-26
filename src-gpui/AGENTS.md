@@ -38,6 +38,7 @@
 ## 约束
 
 - 前端仅使用 GPUI 与应用数据，窗口和操作系统集成放在 platform 及宿主模块；平台能力与前端分离，macOS 不可用的采集或操作不能返回模拟成功。
+- 不依赖 GPUI 的逻辑（进程行与分组、列定义、偏好存储、区域格式、历史曲线的分桶、任务栏监控的排版）在 `crates/argus-view-logic`，`src-gpui` 原路径的同名模块只重新导出，新的纯逻辑模块也放在那里；该 crate 不引入 `gpui` 或 `gpui_kit`。改这些逻辑时先运行 `cargo test -p argus-view-logic`，它不重编界面 crate。
 - UI 文案用 locales，主题与应用元数据用 resources；硬件信息必须来自实际快照，缺失数据保持未知。
 - 图标只用组件库随附的 Lucide，不新增自绘 SVG。图标动效只做一次性的整体变换，结束时回到未变换的静止状态（旋转后的栅格比静止时模糊），不做循环动效。
 - 磁盘详情只经 `commands::disk_details` 读取，不要在别处直接调用 `argus_service::disk_details`。

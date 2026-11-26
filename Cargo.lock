@@ -236,6 +236,7 @@ dependencies = [
  "argus-app",
  "argus-core",
  "argus-service",
+ "argus-view-logic",
  "base64 0.23.1",
  "embed-resource",
  "futures-util",
@@ -310,6 +311,20 @@ dependencies = [
  "minisign",
  "minisign-verify",
  "semver",
+]
+
+[[package]]
+name = "argus-view-logic"
+version = "0.6.0"
+dependencies = [
+ "argus-app",
+ "argus-core",
+ "log",
+ "serde",
+ "serde_json",
+ "smol",
+ "time",
+ "windows 0.62.2",
 ]
 
 [[package]]

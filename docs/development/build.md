@@ -8,7 +8,9 @@ GPUI 提供应用的 Windows manifest，声明普通权限、PerMonitorV2 DPI �
 
 开发脚本从 `target/native-dev/runs` 启动副本，编译器可继续更新构建产物。项目检查使用独立目录 `target/rust-analyzer`。更改链接器、`RUSTFLAGS` 或工具链会触发依赖重编译。
 
-开发配置对依赖、`argus` 与 `argus-core` 使用 `opt-level = 2`，兼顾表格滚动与采样性能。项目代码保留行号以供回溯。`cargo test` 继承开发配置。
+开发配置对依赖、`argus`、`argus-view-logic` 与 `argus-core` 使用 `opt-level = 2`，兼顾表格滚动与采样性能。项目代码保留行号以供回溯。`cargo test` 继承开发配置，只有 `argus-view-logic` 的测试按 `opt-level = 0` 编译。
+
+界面中不依赖 GPUI 的逻辑在 `argus-view-logic`（见[原生界面](../architecture/frontend.md)），它的测试不经过界面 crate：改动其中一个函数体后，`cargo test -p argus-view-logic --lib --no-run` 约 4 秒，界面 crate 里同样的改动后 `cargo test -p argus --lib --no-run` 约 22 秒。开发构建（`cargo build -p argus`）在改动该 crate 的函数体后约 15 秒，界面 crate 的增量编译几乎全部复用；同一函数在界面 crate 里时约 68 秒（增量编译，i5-13500HX，机器同时有其他负载）。单独构建该 crate 时，依赖按它自己的特性组合另编一份，首次约 2 分钟，之后复用。
 
 开发构建的 DirectX 着色器启用优化并保留调试信息。性能对照使用发行构建，统一窗口尺寸、画质和显示条件。
 
