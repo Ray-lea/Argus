@@ -53,6 +53,15 @@ use scene_split::{
 #[path = "retained_frame.rs"]
 mod retained_frame;
 use retained_frame::{Base, FrameReport, Last};
+#[path = "batch_constants.rs"]
+mod batch_constants;
+use batch_constants::BatchConstants;
+#[path = "composed_present.rs"]
+mod composed_present;
+use composed_present::{FlatBitmap, composed_present_requested};
+#[path = "path_targets.rs"]
+mod path_targets;
+use path_targets::{PathTargets, path_target_trace};
 
 pub(crate) const DISABLE_DIRECT_COMPOSITION: &str = "GPUI_DISABLE_DIRECT_COMPOSITION";
 
@@ -168,26 +177,6 @@ struct DirectXResources {
     viewport: D3D11_VIEWPORT,
 }
 
-struct PathTargets {
-    resolved: ID3D11Texture2D,
-    srv: Option<ID3D11ShaderResourceView>,
-    msaa: ID3D11Texture2D,
-    rtv: Option<ID3D11RenderTargetView>,
-}
-
-impl PathTargets {
-    fn new(device: &ID3D11Device, width: u32, height: u32) -> Result<Self> {
-        let (resolved, srv) = create_path_intermediate_texture(device, width, height)?;
-        let (msaa, rtv) = create_path_intermediate_msaa_texture_and_view(device, width, height)?;
-        Ok(Self {
-            resolved,
-            srv,
-            msaa,
-            rtv,
-        })
-    }
-}
-
 struct DirectXRenderPipelines {
     uploaded_revision: Option<u64>,
     shadow_pipeline: PipelineState<Shadow>,
@@ -242,23 +231,6 @@ struct DirectComposition {
     overlay: Option<CompositionOverlay>,
     overlay_unavailable: bool,
     charts: chart_composition::ChartComposition,
-}
-
-struct FlatBitmap {
-    surface: IDCompositionSurface,
-    size: (u32, u32),
-    /// A bitmap's first update covers all of it.
-    drawn: bool,
-}
-
-/// Whether frames reach the screen through a DirectComposition bitmap rather
-/// than by flipping the swap chain (`ARGUS_GPUI_COMPOSED_PRESENT`). The
-/// compositor always draws a bitmap itself; a flip chain it may hand to a
-/// hardware overlay plane, whose blending with what lies behind a translucent
-/// window is the display driver's.
-fn composed_present_requested() -> bool {
-    static REQUESTED: OnceLock<bool> = OnceLock::new();
-    *REQUESTED.get_or_init(|| std::env::var_os("ARGUS_GPUI_COMPOSED_PRESENT").is_some())
 }
 
 impl DirectXRendererDevices {
@@ -452,59 +424,6 @@ impl DirectXRenderer {
             };
             device_context.PSSetShaderResources(2, Some(slice::from_ref(&prefix)));
         }
-        Ok(())
-    }
-
-    /// Copies the frame into the bitmap of the flat visual and commits it, in
-    /// place of a flip. The render target is then never presented, as while a
-    /// chart tree is shown, and keeps the last frame for partial paints.
-    fn present_composed(&mut self) -> Result<()> {
-        let devices = self.devices.as_ref().context("devices missing")?;
-        let resources = self.resources.as_ref().context("resources missing")?;
-        let source = resources
-            .render_target
-            .as_ref()
-            .context("render target missing")?;
-        let comp = self
-            .direct_composition
-            .as_mut()
-            .context("composition missing")?;
-        let visual = comp.swap_visual.as_ref().context("flat visual missing")?;
-        let size = (self.width, self.height);
-        if comp.flat.as_ref().is_none_or(|flat| flat.size != size) {
-            let surface = unsafe {
-                comp.comp_device.CreateSurface(
-                    size.0,
-                    size.1,
-                    RENDER_TARGET_FORMAT,
-                    DXGI_ALPHA_MODE_PREMULTIPLIED,
-                )?
-            };
-            unsafe { visual.SetContent(&surface)? };
-            if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
-                println!(
-                    "{{\"event\":\"gpu-composed-present\",\"width\":{},\"height\":{}}}",
-                    size.0, size.1
-                );
-            }
-            comp.flat = Some(FlatBitmap {
-                surface,
-                size,
-                drawn: false,
-            });
-        }
-        let flat = comp.flat.as_mut().context("flat bitmap missing")?;
-        match resources.present_dirty.as_deref().filter(|_| flat.drawn) {
-            Some(rects) => {
-                for rect in rects {
-                    chart_composition::copy_scene(&flat.surface, devices, source, Some(*rect))?;
-                }
-            }
-            None => chart_composition::copy_scene(&flat.surface, devices, source, None)?,
-        }
-        flat.drawn = true;
-        unsafe { comp.comp_device.Commit()? };
-        self.note_presented();
         Ok(())
     }
 
@@ -1260,24 +1179,6 @@ impl DirectXRenderer {
         )
     }
 
-    fn release_path_targets(&mut self) {
-        if let Some(resources) = self.resources.as_mut()
-            && resources.paths.take().is_some()
-            && let Some(devices) = &self.devices
-        {
-            // The path sprite's SRV may still be bound after its last draw.
-            unsafe {
-                devices
-                    .device_context
-                    .VSSetShaderResources(0, Some(&[None]));
-                devices
-                    .device_context
-                    .PSSetShaderResources(0, Some(&[None]));
-            }
-            path_target_trace("release", self.width, self.height);
-        }
-    }
-
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
         if paths.is_empty() {
             return Ok(());
@@ -1926,139 +1827,6 @@ struct BatchParams {
 
 const _: () = assert!(std::mem::size_of::<BatchParams>() == 16);
 
-// D3D11.1 constant-buffer windows are aligned to 16 shader constants (256 bytes).
-// Keep each buffer within the 4096-constant shader limit, regardless of scene size.
-const CONSTANTS_PER_BATCH: usize = 16;
-const BATCHES_PER_BUFFER: usize =
-    D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT as usize / CONSTANTS_PER_BATCH;
-#[derive(Clone, Copy)]
-#[repr(C, align(16))]
-struct BatchSlot {
-    start_index: u32,
-    padding: [u32; CONSTANTS_PER_BATCH * 4 - 1],
-}
-struct BatchConstants {
-    legacy: Option<ID3D11Buffer>,
-    context: Option<ID3D11DeviceContext1>,
-    buffers: Vec<Option<ID3D11Buffer>>,
-    indices: Vec<u32>,
-    staging: Vec<BatchSlot>,
-    active: usize,
-}
-impl BatchConstants {
-    fn new(device: &ID3D11Device) -> Result<Self> {
-        let legacy = create_constant_buffer::<BatchParams>(device)?;
-        let mut options = D3D11_FEATURE_DATA_D3D11_OPTIONS::default();
-        let offsetting = unsafe {
-            device.CheckFeatureSupport(
-                D3D11_FEATURE_D3D11_OPTIONS,
-                (&mut options as *mut D3D11_FEATURE_DATA_D3D11_OPTIONS).cast(),
-                std::mem::size_of_val(&options) as u32,
-            )
-        }
-        .is_ok()
-            && options.ConstantBufferOffsetting.as_bool();
-        let context = if offsetting {
-            unsafe { device.GetImmediateContext() }
-                .ok()
-                .and_then(|context| context.cast().ok())
-        } else {
-            None
-        };
-        if std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some() {
-            println!(
-                "{{\"event\":\"gpu-batch-constants\",\"offsetting\":{}}}",
-                context.is_some()
-            );
-        }
-        Ok(Self {
-            legacy,
-            context,
-            buffers: Vec::new(),
-            indices: Vec::new(),
-            staging: Vec::new(),
-            active: 0,
-        })
-    }
-    fn prepare(
-        &mut self,
-        device: &ID3D11Device,
-        context: &ID3D11DeviceContext,
-        batches: &[PrimitiveBatch],
-    ) -> Result<()> {
-        if self.context.is_none() {
-            return Ok(());
-        }
-        let indices = batches
-            .iter()
-            .map(|batch| match batch {
-                PrimitiveBatch::Shadows(range)
-                | PrimitiveBatch::Quads(range)
-                | PrimitiveBatch::Underlines(range) => range.start as u32,
-                PrimitiveBatch::MonochromeSprites { range, .. }
-                | PrimitiveBatch::SubpixelSprites { range, .. }
-                | PrimitiveBatch::PolychromeSprites { range, .. } => range.start as u32,
-                PrimitiveBatch::Paths(_) | PrimitiveBatch::Surfaces(_) => 0,
-            })
-            .collect::<Vec<_>>();
-        if self.indices == indices {
-            return Ok(());
-        }
-        self.staging.clear();
-        self.staging
-            .extend(indices.iter().map(|&start_index| BatchSlot {
-                start_index,
-                padding: [0; CONSTANTS_PER_BATCH * 4 - 1],
-            }));
-        for (index, slots) in self.staging.chunks(BATCHES_PER_BUFFER).enumerate() {
-            if self.buffers.len() <= index {
-                self.buffers
-                    .push(create_constant_buffer::<[BatchSlot; BATCHES_PER_BUFFER]>(
-                        device,
-                    )?);
-            }
-            update_buffer(
-                context,
-                self.buffers[index]
-                    .as_ref()
-                    .context("batch constant buffer missing")?,
-                slots,
-            )?;
-        }
-        self.indices = indices;
-        Ok(())
-    }
-    fn bind(&self, context: &ID3D11DeviceContext, first_instance: u32) -> Result<()> {
-        if let Some(context1) = &self.context {
-            anyhow::ensure!(
-                self.indices.get(self.active) == Some(&first_instance),
-                "batch constant index mismatch"
-            );
-            let buffer = &self.buffers[self.active / BATCHES_PER_BUFFER];
-            let first = ((self.active % BATCHES_PER_BUFFER) * CONSTANTS_PER_BATCH) as u32;
-            let count = CONSTANTS_PER_BATCH as u32;
-            unsafe {
-                context1.VSSetConstantBuffers1(
-                    1,
-                    1,
-                    Some(buffer as *const Option<ID3D11Buffer>),
-                    Some(&first),
-                    Some(&count),
-                );
-            }
-            Ok(())
-        } else {
-            update_batch_start(
-                context,
-                self.legacy
-                    .as_ref()
-                    .context("batch constant buffer missing")?,
-                first_instance,
-            )
-        }
-    }
-}
-
 struct PipelineState<T> {
     draw_calls: std::cell::Cell<u64>,
     upload_bytes: std::cell::Cell<u64>,
@@ -2366,15 +2134,6 @@ fn create_resources(
         MaxDepth: 1.0,
     };
     Ok((render_target, render_target_view, viewport))
-}
-
-fn path_target_trace(action: &str, width: u32, height: u32) {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    if *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some()) {
-        let bytes =
-            u64::from(width) * u64::from(height) * 4 * u64::from(1 + PATH_MULTISAMPLE_COUNT);
-        println!("{{\"event\":\"gpu-path-targets\",\"action\":\"{action}\",\"bytes\":{bytes}}}");
-    }
 }
 
 #[inline]
