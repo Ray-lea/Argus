@@ -18,7 +18,7 @@
       {"name":"WaaSMedicSvc","displayName":"Windows Update Medic Service","description":"Enables remediation and protection of Windows Update components.","state":"stopped","startType":"manual","pid":0,"path":"C:\\WINDOWS\\system32\\svchost.exe -k wusvcs -p","account":"LocalSystem","canStop":false,"shared":true},
       {"name":"WinDefend","displayName":"Microsoft Defender Antivirus Service","description":"Helps protect users from malware and other potentially unwanted software.","state":"running","startType":"auto","pid":4100,"path":"\"C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\MsMpEng.exe\"","account":"LocalSystem","canStop":false,"shared":false},
       {"name":"wuauserv","displayName":"Windows Update","description":"Enables the detection, download, and installation of updates for Windows and other programs.","state":"running","startType":"manual","pid":10480,"path":"C:\\WINDOWS\\system32\\svchost.exe -k netsvcs -p","account":"LocalSystem","canStop":true,"shared":true}
-    ]}},"wait":1000,"inspect":"columns","label":"services-wide","capture":"services-wide",
+    ]}},"inspect":"columns","label":"services-wide","capture":"services-wide",
       "expect":{"state.page":"services","state.scroll.maxX":0,"state.visible.5.key":"description","state.visible.5.resizable":false}},
     { "probe": "size 1100 800", "wait": 1200, "inspect": "columns", "label": "services-narrow", "capture": "services-narrow", "expect": { "state.scroll.maxX": 0 } },
     { "probe": "size 1600 900", "wait": 1200 },
@@ -26,7 +26,7 @@
     { "control": { "query": "" }, "wait": 600 },
 
     { "note": "Startup: drag the name column narrower; the command column follows the edge and keeps the room once it is let go." },
-    { "control": { "page": "startup", "pointerOutside": true }, "wait": 1200, "inspect": "columns", "label": "startup-wide", "capture": "startup-wide",
+    { "control": { "page": "startup", "pointerOutside": true }, "inspect": "columns", "label": "startup-wide", "capture": "startup-wide",
       "expect": { "state.page": "startup", "state.scroll.maxX": 0, "state.visible.4.key": "command", "state.visible.4.resizable": false } },
     { "control": { "pointer": { "at": "header:name", "fraction": [1, 0.5], "dx": 4, "event": "hover" } }, "wait": 1100, "capture": "edge-hint" },
     { "record": { "name": "drag", "ms": 1400 }, "wait": 200 },
@@ -53,8 +53,8 @@
       "expect": { "state.listWidths": {} }, "capture": "restored" },
 
     { "note": "Interface zoom: 125 % and 150 %." },
-    { "control": { "contentZoom": 1.25, "pointerOutside": true }, "wait": 1500, "inspect": "columns", "label": "startup-125", "capture": "startup-125", "expect": { "state.scroll.maxX": 0 } },
-    { "control": { "page": "services" }, "wait": 1200, "inspect": "columns", "label": "services-125", "capture": "services-125", "expect": { "state.scroll.maxX": 0 } },
-    { "control": { "contentZoom": 1.5 }, "wait": 1500, "inspect": "columns", "label": "services-150", "capture": "services-150", "expect": { "state.scroll.maxX": 0 } }
+    { "control": { "contentZoom": 1.25, "pointerOutside": true }, "inspect": "columns", "label": "startup-125", "capture": "startup-125", "expect": { "state.scroll.maxX": 0 } },
+    { "control": { "page": "services" }, "inspect": "columns", "label": "services-125", "capture": "services-125", "expect": { "state.scroll.maxX": 0 } },
+    { "control": { "contentZoom": 1.5 }, "inspect": "columns", "label": "services-150", "capture": "services-150", "expect": { "state.scroll.maxX": 0 } }
   ]
 }

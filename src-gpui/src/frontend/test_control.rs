@@ -3,12 +3,64 @@
 //! what the interface laid out. Never reachable outside test mode.
 use super::*;
 impl Desktop {
+    /// Prints `ui-settled` once the instance has nothing left to do: no
+    /// command awaiting its answer and no shown window with a frame to draw
+    /// or present, at three checks in a row 16 ms apart; or after `within` ms
+    /// with `settled: false`. A hidden window (the tray's flyouts made ahead
+    /// of use, the main window in the tray) draws nothing until shown, so its
+    /// demand does not count. Nor does a timer that will change the interface
+    /// later (a hover card's delay, a tooltip's): the steps wait for those
+    /// themselves.
+    fn settle(&mut self, label: String, within: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let started = Instant::now();
+        let within = std::time::Duration::from_millis(within);
+        cx.spawn_in(window, async move |this, cx| {
+            let mut quiet = 0;
+            loop {
+                smol::Timer::after(std::time::Duration::from_millis(16)).await;
+                let Ok(busy) = this.update_in(cx, |this, window, cx| {
+                    let main = window.window_handle();
+                    let drawing =
+                        |window: &Window| window.is_visible() && window.has_frame_demand();
+                    !this.pending.is_empty()
+                        || drawing(window)
+                        || cx.windows().into_iter().any(|other| {
+                            other != main
+                                && other
+                                    .update(cx, |_, window, _| drawing(window))
+                                    .unwrap_or(false)
+                        })
+                }) else {
+                    return;
+                };
+                quiet = if busy { 0 } else { quiet + 1 };
+                let waited = started.elapsed();
+                if quiet >= 3 || waited >= within {
+                    println!(
+                        "{}",
+                        json!({"event":"ui-settled","label":label,"settled":quiet >= 3,
+                            "ms":waited.as_millis() as u64})
+                    );
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(in crate::frontend) fn test_control(
         &mut self,
         control: &Value,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Asked on its own line after the controls it waits for, which are
+        // then already applied; answering it changes nothing.
+        if let Some(label) = control["settle"].as_str() {
+            let within = control["within"].as_u64().unwrap_or(5000);
+            self.settle(label.to_owned(), within, window, cx);
+            return;
+        }
         if self.options.fixture.is_some()
             && let Some(fields) = control["formValues"].as_object()
         {

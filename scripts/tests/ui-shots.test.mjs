@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, summary, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
+import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
 import { windowProbe } from "../lib/window-probe.mjs";
 
 test("results name each inspection and every image a run wrote", () => {
@@ -122,5 +122,25 @@ test("a listed failure is expected, and its passing is not", () => {
 });
 
 test("the run lasts as long as its waits and recordings", () => {
-  assert.equal(runSeconds(parseSteps([{ wait: 2000 }, { record: { name: "r", ms: 1500 } }])), 65);
+  assert.equal(runSeconds(parseSteps([{ wait: 2000 }, { record: { name: "r", ms: 1500 } }])), 67);
+});
+
+test("steps settle after what can change the window, with a fixture or where they ask", () => {
+  const [control, waited, inspect, quiet, asked] = parseSteps([
+    { control: { page: "about" } },
+    { wait: 300 },
+    { inspect: "layout", label: "x" },
+    { control: { keys: ["down"] }, settle: false },
+    { capture: "c", settle: true },
+  ]);
+  assert.equal(settles(control, false), true);
+  assert.equal(settles(waited, false), true);
+  assert.equal(settles(inspect, false), false);
+  assert.equal(settles(quiet, false), false);
+  assert.equal(settles(control, true), false, "live data keeps the window busy");
+  assert.equal(settles(asked, true), true);
+  assert.throws(() => parseSteps([{ wait: 1, settle: "yes" }]), /settle is true or false/);
+  // A drag keeps its pace: only the hover before it and the release settle.
+  const drag = parseSteps([{ drag: { at: "header:cpu", dx: 10, steps: 2 } }]);
+  assert.deepEqual(drag.map((step) => settles(step, false)), [true, false, false, false, true]);
 });

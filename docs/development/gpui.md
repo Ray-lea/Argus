@@ -34,7 +34,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `node scripts/ui-shots.mjs <标签> <步骤文件>` 按步骤驱动一个隔离、不激活的测试窗口，用于核对新界面和做回归检查。默认使用开发构建 `target/debug/argus.exe` 和模拟快照 `tools/window-probe/fixtures/desktop.json`；`--release` 换成发布构建，`--live` 改用实时数据（此时按键、单击与拖动不生效），`--fixture` 指定其他快照，`--theme`、`--language` 设定外观与语言，`--width`、`--height` 指定客户区物理尺寸。探针需先以 `cargo build --release -p argus-window-probe --features capture` 构建；工作树里没有自己的探针时，`ui-shots`、`ui-smoke`、`perf-native` 等脚本使用主工作区构建的探针，并打印其路径（工作树改动了探针本身时，在工作树里构建它）。截图、录制帧、拼图和 `results.json` 写入 `target/native-validation/<标签>`，测试标识的数据目录在结束时删除，其中的诊断日志先复制到输出目录的 `logs/`；有断言未满足时以退出码 1 结束。测试实例因 panic 中止（退出码 `0xc0000409`）时，失败信息附带日志中的 `panic at` 一行。实例运行的是复制到输出目录的程序，结束后删除这份副本；要留作之后对照的基准程序时加 `--keep-executable`。
 
-`results.json` 的字段：`inspections` 以 `label` 为键，值为该检查的回复（如 `inspections.open.state.focus`）；`captures` 是按顺序写出的图片文件名；`results` 是逐步记录（`step`、有 `label` 时的 `label` 与 `inspect`），中途失败的步骤及其后的步骤不在其中；`failures` 是未满足的断言与错误，`events` 是探针与实例的全部事件，`stderr`、`exitCode` 是探针的输出与退出码。
+`results.json` 的字段：`inspections` 以 `label` 为键，值为该检查的回复（如 `inspections.open.state.focus`）；`captures` 是按顺序写出的图片文件名；`unsettled` 列出等到上限仍未空闲的步骤（`step-<序号>`，启动时为 `start`）；`results` 是逐步记录（`step`、有 `label` 时的 `label` 与 `inspect`，等待空闲的步骤另有 `settled.ms`），中途失败的步骤及其后的步骤不在其中；`failures` 是未满足的断言与错误，`events` 是探针与实例的全部事件，`stderr`、`exitCode` 是探针的输出与退出码。
 
 步骤文件是步骤数组，或 `{ "about": "…", "window": [宽, 高], "run": {...}, "steps": [...] }`。`about` 说明这组步骤检查什么，仓库里的步骤文件都要有；`run` 写明这组步骤运行所需的条件，运行时不必另加参数：`"live": true` 表示使用实时数据，`"env"` 为测试实例的环境变量（仅限 `ARGUS_` 开头的名称）；`"settings"` 为实例启动时已保存的设置，按顶层键覆盖每次运行写入的设置与模拟快照中的设置，用于检查启动时按设置执行的行为（如 `desk-start.json` 以已开启的桌面监控启动）；`"parity"` 列出一组环境变量，表示设了它们之后每张截图都应与不设时逐像素相同，由 `ui-steps.mjs` 负责对照。一个步骤可组合以下几项，按表中顺序执行：
 
@@ -44,7 +44,8 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `control` | 发送测试控制，见下表 |
 | `probe` | 发送探针命令，如 `size 1200 900` |
 | `record` | `{ "name", "ms", "crop"? }`：录制这段时间内呈现的每一帧 |
-| `wait` | 等待毫秒数 |
+| `wait` | 等待毫秒数：用于空闲判断看不到的变化，见下文 |
+| `settle` | `true` 或 `false`：是否在这一步之后等实例空闲，覆盖下文的默认 |
 | `inspect` | `columns`、`menu`、`layout` 或 `vitals`，配合 `label` 命名，结果写入 `results.json` |
 | `expect` | 以点分路径核对 `inspect` 的结果，如 `{ "state.focus.item.label": "CPU 时间" }` |
 | `expectNot` | 以点分路径给出 `inspect` 的结果不应等于的值，如 `{ "state.scroll.y": 0 }`：只知道状态必须已经离开某个值时使用 |
@@ -56,9 +57,11 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 录制的捕获表面与桌面一样大，窗口在录制中变大时每帧仍是完整画面，帧时间写在录制目录的 `index.json`。探针命令 `size` 在窗口处理完尺寸变化后输出 `resized` 事件，其中的 `qpc100ns` 与帧时间同一时钟，可用来计算缩放后多久才呈现新尺寸的画面。
 
-`drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
+使用模拟快照时，带 `control`、`probe`、`record` 或 `wait` 的步骤结束后，脚本发送测试控制 `settle` 并等待实例空闲：没有等待回复的命令，实例的各个窗口都没有待绘制或待呈现的帧，连续三次检查（间隔 16 ms）如此，至多等 5 秒（启动时 60 秒，开发构建的首帧要先编译着色器）。所以绘制与动画不需要固定等待：机器繁忙时多等，空闲时立刻继续。空闲判断看不到的变化仍要先 `wait` 足够的时间：定时器（悬停卡片、单元格提示与长按的延时、搜索、通知的显示时长、滚动后组名的淡出），后台线程的工作（连接等列表的行、文件图标），以及切换主题后由 DWM 完成的系统背景过渡。实时数据下采样与移动的曲线让窗口一直忙碌，步骤默认不等待空闲，只在写了 `"settle": true` 的步骤上等待。不认识 `settle` 的旧构建（`--executable` 指定的对照程序）不回答，脚本在首次无回复后改为每步固定停顿 600 ms。
 
-`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（57 个文件约 19 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
+`drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。按下与各次移动不等待空闲，保持指针的节奏。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
+
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（63 个文件，开发构建约 18 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
 
 不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
@@ -170,6 +173,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 | `dumpRows` | 输出 `rows`：当前页各行的键、标题、层级、成员数与读数，用于核对标题与排序 |
 | `scrollTrace` | 毫秒数：这段时间内每个滚动条在每一帧输出 `scroll` 事件（偏移、范围与滑块位置），同时记录 `wheel` 的派发时刻 |
 | `delayProcessQuery` | 毫秒数（最长 30 秒）：延迟下一次进程计数的回复；仅开发构建 |
+| `settle`（配 `within`） | 实例空闲后输出 `ui-settled`（`settled`、`ms`）：没有等待回复的命令，各窗口都没有待绘制或待呈现的帧（`Window::has_frame_demand`），连续三次检查如此；超过 `within` 毫秒（默认 5000）仍不空闲时以 `settled: false` 回答。定时器不计在内 |
 | `exit` | `true`：退出实例 |
 
 `ui-layout` 的顶层字段按界面的部分分组：`page`、`device`、`vitals`、`visibility`、`processTree`、`selectedRow`、`userGroups`、`performance`、`history`、`sections`、`dialog`、`toasts`、`tray`、`monitors`、`star`、`animations`、`graphics`、`nativeWindow`、`aboutScroll`、`skippedRequest`、`diagnosticCopy`、`lastCopy`、`tableCsv`、`systemBackdrop`、`backgroundAlpha`，以及视口的 `width`、`height`、`scaleFactor` 与 `remSize`。各组的字段见用到它们的步骤文件的 `about`。模拟快照下的复制操作（菜单、快捷键与详细信息面板的复制按钮）不写入系统剪贴板，最近一次复制的文字记在 `lastCopy`。模拟快照下选择导出时，`tableCsv` 记录默认文件名（`name`）和完整 CSV 文本（`content`），供核对文件名、表头、筛选与行顺序。

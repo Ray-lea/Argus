@@ -4,19 +4,19 @@
   "steps": [
     {"note":"A GPU that has powered down: the readings its driver gives are absent, and the specs name the power state with the reason in a hint. In use again, the row leaves and the readings return."},
     {"probe":"size 1600 1054","wait":700},
-    {"control":{"page":"performance","deviceKind":"gpu","pointerOutside":true},"wait":900,"inspect":"layout","label":"awake","capture":"gpu-awake"},
+    {"control":{"page":"performance","deviceKind":"gpu","pointerOutside":true},"inspect":"layout","label":"awake","capture":"gpu-awake"},
     {"control":{"sample":{"at":-1000,"set":{"/hardware/gpus/0/lowPower":true,"/hardware/gpus/0/util":0,"/hardware/gpus/0/engines":[0,0,0,0,0,0],"/hardware/gpus/0/temperature":null,"/hardware/gpus/0/boardPower":null,"/hardware/gpus/0/boardPowerLimit":null,"/hardware/gpus/0/powerSource":null,"/hardware/gpus/0/clockMhz":null,"/hardware/gpus/0/clockMaxMhz":null,"/hardware/gpus/0/memoryClockMhz":null}}},"wait":400},
     {"control":{"sample":{"at":0,"set":{}}},"wait":1300},
-    {"control":{"pointerOutside":true},"wait":300,"inspect":"layout","label":"asleep","capture":"gpu-asleep"},
+    {"control":{"pointerOutside":true},"inspect":"layout","label":"asleep","capture":"gpu-asleep"},
     {"control":{"pointer":{"at":"gpu-power-state","event":"hover"}},"wait":1200,"capture":"gpu-asleep-hint"},
     {"control":{"pointerOutside":true,"theme":"light"},"wait":900,"capture":"gpu-asleep-light"},
     {"control":{"pointer":{"at":"gpu-power-state","event":"hover"}},"wait":1200,"capture":"gpu-asleep-light-hint"},
     {"note":"The smallest window with large text, scrolled to the specs: the row and its hint."},
     {"control":{"pointerOutside":true,"theme":"dark","fontSize":20},"probe":"size 800 560","wait":1200},
-    {"control":{"wheel":{"x":520,"y":420,"lines":-100}},"wait":900,"capture":"gpu-asleep-small"},
+    {"control":{"wheel":{"x":520,"y":420,"lines":-100}},"capture":"gpu-asleep-small"},
     {"control":{"pointer":{"at":"gpu-power-state","event":"hover"}},"wait":1200,"capture":"gpu-asleep-small-hint"},
     {"control":{"pointerOutside":true,"fontSize":13},"probe":"size 1600 1054","wait":1200},
     {"control":{"sample":{"at":0,"set":{"/hardware/gpus/0/lowPower":false,"/hardware/gpus/0/util":37,"/hardware/gpus/0/engines":[37,2,0,0,0,0],"/hardware/gpus/0/temperature":54,"/hardware/gpus/0/boardPower":41.5,"/hardware/gpus/0/boardPowerLimit":115,"/hardware/gpus/0/powerSource":"nvml","/hardware/gpus/0/clockMhz":2100,"/hardware/gpus/0/clockMaxMhz":3105,"/hardware/gpus/0/memoryClockMhz":7001}}},"wait":1300},
-    {"control":{"pointerOutside":true},"wait":300,"inspect":"layout","label":"in-use","capture":"gpu-in-use"}
+    {"control":{"pointerOutside":true},"inspect":"layout","label":"in-use","capture":"gpu-in-use"}
   ]
 }

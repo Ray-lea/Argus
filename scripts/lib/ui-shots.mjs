@@ -10,13 +10,14 @@ export const INSPECTIONS = {
   vitals: ["inspectVitals", "ui-vitals"],
 };
 
-const KINDS = ["note", "control", "probe", "record", "wait", "inspect", "expect", "expectNot", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
+const KINDS = ["note", "control", "probe", "record", "wait", "settle", "inspect", "expect", "expectNot", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
 const NAME = /^[\w.-]+$/;
 
 /**
  * A pointer drag spelled out: hover over `at`, press, move by `dx`, `dy` in
  * `steps` even steps `interval` ms apart, release. A `record` on the drag
- * starts with the press. Presses act only with a fixture.
+ * starts with the press. Presses act only with a fixture. The pointer keeps
+ * its pace: only the hover before and the release settle.
  */
 function expandDrag({ drag, ...rest }, where) {
   assert(drag && typeof drag.at === "string", `${where}: drag needs at`);
@@ -25,10 +26,22 @@ function expandDrag({ drag, ...rest }, where) {
   const pointer = (event, fraction) => ({ pointer: { event, dx: dx * fraction, dy: dy * fraction } });
   return [
     { control: { pointer: { at, event: "hover" } }, wait: 150 },
-    { control: pointer("down", 0), wait: 80, ...(rest.record ? { record: rest.record } : {}) },
-    ...Array.from({ length: steps }, (_, i) => ({ control: pointer("move", (i + 1) / steps), wait: interval })),
-    { control: pointer("up", 1), wait: rest.wait ?? 400 },
+    { control: pointer("down", 0), wait: 80, settle: false, ...(rest.record ? { record: rest.record } : {}) },
+    ...Array.from({ length: steps }, (_, i) => ({ control: pointer("move", (i + 1) / steps), wait: interval, settle: false })),
+    { control: pointer("up", 1), ...(rest.wait ? { wait: rest.wait } : {}) },
   ];
+}
+
+/**
+ * Whether the script waits for the instance to settle after a step: after
+ * anything that can change the window (a control, a probe command, a
+ * recording or a wait), and only with a fixture, unless the step says. With
+ * live data, samples and moving curves keep a window busy: steps there settle
+ * only where they ask to.
+ */
+export function settles(step, live) {
+  if (typeof step.settle === "boolean") return step.settle;
+  return !live && ["control", "probe", "record", "wait"].some((kind) => kind in step);
 }
 
 const region = (value, where) => {
@@ -62,6 +75,7 @@ export function parseSteps(value) {
     if ("control" in step) assert(step.control && typeof step.control === "object", `${where}: control must be an object`);
     if ("probe" in step) assert(typeof step.probe === "string" && !/^(stop|record)\b/.test(step.probe), `${where}: probe takes a command other than stop or record`);
     if ("wait" in step) assert(Number.isFinite(step.wait) && step.wait >= 0, `${where}: wait is milliseconds`);
+    if ("settle" in step) assert(typeof step.settle === "boolean", `${where}: settle is true or false`);
     if ("inspect" in step) {
       assert(step.inspect in INSPECTIONS, `${where}: inspect one of ${Object.keys(INSPECTIONS).join(", ")}`);
       step.label ??= `step-${index + 1}`;
@@ -203,9 +217,12 @@ export function pickFrames(count, every, limit) {
   return Array.from({ length: limit }, (_, i) => picked[Math.round((i * (picked.length - 1)) / (limit - 1))]);
 }
 
-/** How long the probe lets the test run: every wait and recording, plus room to start and stop. */
+/**
+ * How long the probe lets the test run: every wait and recording, room for
+ * each step to settle, and to start and stop.
+ */
 export function runSeconds(steps) {
-  const ms = steps.reduce((sum, step) => sum + (step.wait ?? 0) + (step.record?.ms ?? 0) + 500, 0);
+  const ms = steps.reduce((sum, step) => sum + (step.wait ?? 0) + (step.record?.ms ?? 0) + 1500, 0);
   return Math.ceil(ms / 1000) + 60;
 }
 

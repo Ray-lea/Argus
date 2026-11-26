@@ -3,9 +3,9 @@
   "window": [1240, 900],
   "steps": [
     {"control":{"page":"settings","settingsSection":"motion","uiMotion":"on","windowMotion":"on","motion":"fluid"},"wait":500,"inspect":"layout","label":"all-on","expect":{"animations.ui":true,"animations.window":true,"animations.charts":"Fluid"}},
-    {"control":{"clickAnchor":"window-motion"},"wait":300,"inspect":"layout","label":"window-off","expect":{"animations.ui":true,"animations.window":false,"animations.charts":"Fluid"},"capture":"window-off"},
-    {"control":{"clickAnchor":"ui-motion"},"wait":300,"inspect":"layout","label":"ui-off","expect":{"animations.ui":false,"animations.window":false,"animations.charts":"Fluid"}},
-    {"control":{"clickAnchor":"window-motion","motion":"balanced"},"wait":300,"inspect":"layout","label":"window-only","expect":{"animations.ui":false,"animations.window":true,"animations.charts":"Balanced"}},
+    {"control":{"clickAnchor":"window-motion"},"inspect":"layout","label":"window-off","expect":{"animations.ui":true,"animations.window":false,"animations.charts":"Fluid"},"capture":"window-off"},
+    {"control":{"clickAnchor":"ui-motion"},"inspect":"layout","label":"ui-off","expect":{"animations.ui":false,"animations.window":false,"animations.charts":"Fluid"}},
+    {"control":{"clickAnchor":"window-motion","motion":"balanced"},"inspect":"layout","label":"window-only","expect":{"animations.ui":false,"animations.window":true,"animations.charts":"Balanced"}},
     {"probe":"hide","wait":300},
     {"probe":"mark window-on-before"},
     {"record":{"name":"window-on-show","ms":650},"wait":60},

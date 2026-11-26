@@ -3,14 +3,14 @@
   "window": [1100, 900],
   "steps": [
     {"note":"the desktop monitor's readings on the components page"},
-    {"control":{"page":"components"},"wait":700},
+    {"control":{"page":"components"}},
     {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
-    {"control":{"wheel":{"x":550,"y":500,"lines":-8}},"wait":700,"capture":"metrics-before"},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-8}},"capture":"metrics-before"},
     {"note":"three clicks in quick succession: each counts, nothing else on the page moves"},
     {"record":{"name":"clicks","ms":2000},"wait":700},
-    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"},"wait":60},
-    {"control":{"clickAnchor":"desktopMetrics-gpu-gpuMemory"},"wait":60},
-    {"control":{"clickAnchor":"desktopMetrics-gpu-gpu"},"wait":1500},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"}},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-gpuMemory"}},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-gpu"}},
     {"capture":"metrics-after"},
     {"inspect":"layout","label":"chosen","expect":{
       "monitors.desktop.rows.0.metric":"cpu",
@@ -26,10 +26,10 @@
       {"info":{"id":"7001","name":"NVIDIA GeForce RTX 4060 Laptop GPU","dedicatedTotal":8589934592,"sharedTotal":0,"engines":[]},"util":14.3,"utilSource":"windows","engines":[],"dedicatedUsed":3221225472,"sharedUsed":0,"temperature":52,"clockMhz":1972,"boardPower":26},
       {"info":{"id":"7002","name":"Intel(R) UHD Graphics","dedicatedTotal":134217728,"sharedTotal":0,"engines":[]},"util":6.2,"utilSource":"windows","engines":[],"dedicatedUsed":0,"sharedUsed":0}
     ]}}},"wait":900},
-    {"control":{"wheel":{"x":550,"y":500,"lines":-12}},"wait":700},
-    {"control":{"clickAnchor":"desktopMetrics-disk-0-diskTemperature"},"wait":300},
-    {"control":{"clickAnchor":"desktopMetrics-network-0-network"},"wait":300},
-    {"control":{"clickAnchor":"desktopMetrics-gpu-1-gpu"},"wait":1500},
+    {"control":{"wheel":{"x":550,"y":500,"lines":-12}}},
+    {"control":{"clickAnchor":"desktopMetrics-disk-0-diskTemperature"}},
+    {"control":{"clickAnchor":"desktopMetrics-network-0-network"}},
+    {"control":{"clickAnchor":"desktopMetrics-gpu-1-gpu"}},
     {"capture":"metrics-devices"},
     {"inspect":"layout","label":"devices","expect":{
       "monitors.desktop.rows.3.metric":"gpuMemory",
@@ -43,12 +43,12 @@
     {"control":{"theme":"light"},"wait":900,"capture":"metrics-light"},
     {"note":"the taskbar monitor's styles: a card each with its look, a click chooses one; four in a row, or two by two with less room"},
     {"control":{"theme":"dark","clickAnchor":"components-nav-planned"},"wait":900,"capture":"styles-dark"},
-    {"control":{"clickAnchor":"taskbarStyle-curves"},"wait":700,"inspect":"layout","label":"style-chosen","expect":{"monitors.taskbarStyle":"curves"},"capture":"styles-chosen-dark"},
+    {"control":{"clickAnchor":"taskbarStyle-curves"},"inspect":"layout","label":"style-chosen","expect":{"monitors.taskbarStyle":"curves"},"capture":"styles-chosen-dark"},
     {"control":{"theme":"light","pointerOutside":true},"wait":900,"capture":"styles-light"},
     {"probe":"size 700 760","wait":700},
-    {"control":{"wheel":{"x":350,"y":400,"lines":-200}},"wait":900,"capture":"styles-narrow-light"},
+    {"control":{"wheel":{"x":350,"y":400,"lines":-200}},"capture":"styles-narrow-light"},
     {"probe":"size 1100 900","wait":700},
-    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900},
-    {"control":{"contentZoom":1.5},"wait":900,"capture":"metrics-150"}
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true}},
+    {"control":{"contentZoom":1.5},"capture":"metrics-150"}
   ]
 }

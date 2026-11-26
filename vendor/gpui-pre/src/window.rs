@@ -3338,6 +3338,16 @@ impl Window {
         self.invalidator.wake_platform();
     }
 
+    /// Argus patch: whether the window still has something to draw or
+    /// present: a dirty view, a next-frame callback (an animation's next
+    /// step), or a drawn frame not yet presented. Timers that will change the
+    /// window later are not counted.
+    pub fn has_frame_demand(&self) -> bool {
+        self.invalidator.is_dirty()
+            || !self.next_frame_callbacks.borrow().is_empty()
+            || self.needs_present.get()
+    }
+
     /// Schedule a frame to be drawn on the next animation frame.
     ///
     /// This is useful for elements that need to animate continuously, such as a video player or an animated GIF.

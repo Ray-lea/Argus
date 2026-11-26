@@ -2,15 +2,15 @@
   "about": "用键盘操作进程页 CPU 列的表头菜单：打开菜单，核对各项（排序、隐藏与宽度，然后是“选择列…”“自动宽度”“全宽”和“恢复默认列”，菜单不再按分类列出各列），移到“选择列…”并按 Enter 打开对话框，逐步核对菜单的焦点与开合。",
   "steps": [
     { "note": "Process page, sorted by name: the header menu of the CPU column." },
-    { "control": { "page": "processes", "sort": "name", "pointerOutside": true }, "wait": 1500 },
-    { "control": { "headerMenu": "cpu" }, "wait": 500, "inspect": "menu", "label": "opened",
+    { "control": { "page": "processes", "sort": "name", "pointerOutside": true } },
+    { "control": { "headerMenu": "cpu" }, "inspect": "menu", "label": "opened",
       "expect": { "state.open": true, "state.keyboard": true, "state.focus.item.label": "升序排序", "state.items.4": "", "state.items.5": "选择列…", "state.items.8": "恢复默认列" },
       "capture": "menu-opened" },
     { "note": "Down past the disabled width item to the column dialog, which Enter opens." },
-    { "control": { "keys": ["down", "down", "down"] }, "wait": 400, "inspect": "menu", "label": "choose",
+    { "control": { "keys": ["down", "down", "down"] }, "inspect": "menu", "label": "choose",
       "expect": { "state.focus.item.label": "选择列…" } },
-    { "control": { "keys": ["enter"] }, "wait": 900, "inspect": "menu", "label": "dialog",
+    { "control": { "keys": ["enter"] }, "inspect": "menu", "label": "dialog",
       "expect": { "state.open": false }, "capture": "menu-dialog" },
-    { "control": { "keys": ["escape"] }, "wait": 400 }
+    { "control": { "keys": ["escape"] } }
   ]
 }

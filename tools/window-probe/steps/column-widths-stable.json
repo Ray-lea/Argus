@@ -18,8 +18,8 @@
     { "inspect": "columns", "label": "folded-widths", "capture": "folded", "expect": { "state.visible.0.width": 448 } },
 
     { "note": "Every branch open: the widths stay." },
-    { "control": { "headerMenu": "name" }, "wait": 250 },
-    { "control": { "keys": ["enter"] }, "wait": 800, "inspect": "layout", "label": "expanded",
+    { "control": { "headerMenu": "name" } },
+    { "control": { "keys": ["enter"] }, "inspect": "layout", "label": "expanded",
       "expect": { "processTree.visibleRows": 6 } },
     { "inspect": "columns", "label": "expanded-widths", "capture": "expanded", "expect": { "state.visible.0.width": 448 } },
 

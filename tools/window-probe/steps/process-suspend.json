@@ -3,12 +3,12 @@
   "window": [1200, 900],
   "steps": [
     {"control":{"page":"processes","view":"apps","details":"closed","motion":"off","preference":{"processSort":{"key":"cpu","desc":true}},"sample":{"set":{"/processes":[{"pid":10001,"createTime":100,"name":"Review.exe","path":"C:/Review.exe","cpu":1,"workingSet":10485760,"suspended":false},{"pid":10002,"createTime":200,"name":"Review.exe","path":"C:/Review.exe","cpu":0,"workingSet":10485760,"suspended":true}]}},"pointerOutside":true},"wait":500},
-    {"control":{"rowMenu":0},"wait":400,"inspect":"menu","label":"mixed-group","expect":{"state.open":true,"state.items.6":"暂停进程","state.items.7":"恢复进程","state.disabled.6":false,"state.disabled.7":false},"capture":"mixed-group-menu"},
-    {"control":{"keys":["down","down","down","down","down"]},"wait":300,"inspect":"menu","label":"suspend-focused","expect":{"state.focus.item.label":"暂停进程"}},
-    {"control":{"keys":["enter"]},"wait":400,"inspect":"layout","label":"suspend-confirmation","expect":{"dialog.kind":"suspend"},"capture":"suspend-confirmation"},
-    {"control":{"keys":["escape"]},"wait":300,"inspect":"layout","label":"cancelled","expect":{"dialog":null}},
-    {"control":{"dialog":"suspend","args":{"name":"Review","on":false,"members":[{"pid":10002,"createTime":200}]}},"wait":300,"inspect":"layout","label":"resume-immediate","expect":{"dialog":null}},
+    {"control":{"rowMenu":0},"inspect":"menu","label":"mixed-group","expect":{"state.open":true,"state.items.6":"暂停进程","state.items.7":"恢复进程","state.disabled.6":false,"state.disabled.7":false},"capture":"mixed-group-menu"},
+    {"control":{"keys":["down","down","down","down","down"]},"inspect":"menu","label":"suspend-focused","expect":{"state.focus.item.label":"暂停进程"}},
+    {"control":{"keys":["enter"]},"inspect":"layout","label":"suspend-confirmation","expect":{"dialog.kind":"suspend"},"capture":"suspend-confirmation"},
+    {"control":{"keys":["escape"]},"inspect":"layout","label":"cancelled","expect":{"dialog":null}},
+    {"control":{"dialog":"suspend","args":{"name":"Review","on":false,"members":[{"pid":10002,"createTime":200}]}},"inspect":"layout","label":"resume-immediate","expect":{"dialog":null}},
     {"control":{"theme":"light","dialog":"suspend","args":{"name":"Review","on":true,"members":[{"pid":10001,"createTime":100},{"pid":10002,"createTime":200}]}},"wait":400,"inspect":"layout","label":"group-confirmation","expect":{"dialog.kind":"suspend"},"capture":"group-confirmation-light"},
-    {"control":{"keys":["escape"]},"wait":200}
+    {"control":{"keys":["escape"]}}
   ]
 }

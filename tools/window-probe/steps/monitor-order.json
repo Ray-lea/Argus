@@ -3,9 +3,9 @@
   "window": [1100, 900],
   "steps": [
     {"note":"the components page: the readings in blocks by kind, each card's icon beside its title"},
-    {"control":{"page":"components"},"wait":700},
+    {"control":{"page":"components"}},
     {"control":{"desktopMonitor":{"enabled":true}},"wait":1500},
-    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900,"capture":"order-before-dark"},
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"capture":"order-before-dark"},
     {"note":"a block held by its grip: it rises under the pointer, its place stays tinted and the blocks it passed make room"},
     {"control":{"pointer":{"at":"desktopMetrics-grip-gpu","event":"down"}},"wait":100},
     {"control":{"pointer":{"event":"move","dy":-30}},"wait":100},
@@ -28,7 +28,7 @@
       "monitors.desktop.rows.1.metric":"cpu"
     }},
     {"note":"a reading dragged within its block: the CPU's power before its load"},
-    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuPower"},"wait":900},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuPower"}},
     {"control":{"pointer":{"at":"desktopMetrics-cpu-cpuPower","event":"down"}},"wait":100},
     {"control":{"pointer":{"event":"move","dx":-40}},"wait":100},
     {"control":{"pointer":{"event":"move","dx":-380,"dy":-30}},"wait":600,"capture":"order-option-held-dark"},
@@ -40,7 +40,7 @@
     }},
     {"captureWindow":{"name":"desktop-arranged-dark","class":"Zed::Window","title":"桌面监控"}},
     {"note":"a click on an option still checks it; it does not move"},
-    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"},"wait":900},
+    {"control":{"clickAnchor":"desktopMetrics-cpu-cpuTemperature"}},
     {"inspect":"layout","label":"clicked","expect":{
       "monitors.desktop.rows.1.metric":"cpuPower",
       "monitors.desktop.rows.2.metric":"cpu",
@@ -77,8 +77,8 @@
     {"control":{"theme":"light"},"wait":900},
     {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"panel-light"},
     {"control":{"taskbarPanel":"close"},"wait":700},
-    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"wait":900,"capture":"order-light"},
-    {"control":{"clickAnchor":"components-nav-taskbar","pointerOutside":true},"wait":900,"capture":"taskbar-cards-light"},
+    {"control":{"clickAnchor":"components-nav-desktop","pointerOutside":true},"capture":"order-light"},
+    {"control":{"clickAnchor":"components-nav-taskbar","pointerOutside":true},"capture":"taskbar-cards-light"},
     {"control":{"desktopMonitorMenu":"hide"},"wait":900},
     {"control":{"taskbarMonitor":{"enabled":false}},"wait":900}
   ]

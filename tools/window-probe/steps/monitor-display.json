@@ -8,10 +8,10 @@
       {"key":"ACM0002","name":"ACME 24F","primary":false,"rect":[2560,0,4480,1080]},
       {"key":"ACM0003","name":"","primary":false,"rect":[-1920,0,0,1080]}
     ]},"wait":300},
-    {"control":{"page":"components"},"wait":700},
+    {"control":{"page":"components"}},
     {"control":{"taskbarMonitor":{"enabled":true}},"wait":1500},
     {"inspect":"layout","label":"primary","expect":{"monitors.taskbarDisplay":"","monitors.taskbarOn.display":"","monitors.taskbarOn.fallback":false}},
-    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-card-dark"},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"capture":"display-card-dark"},
     {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"display-panel-dark"},
     {"note":"the second display chosen in the panel: the monitor moves to its taskbar and the panel closes"},
     {"control":{"taskbarPanel":"display:ACM0002"},"wait":1500},
@@ -23,7 +23,7 @@
       {"key":"ACM0003","name":"","primary":false,"rect":[-1920,0,0,1080]}
     ]},"wait":2600},
     {"inspect":"layout","label":"away","expect":{"monitors.taskbarDisplay":"ACM0002","monitors.taskbarOn.display":"ACM0002","monitors.taskbarOn.fallback":true}},
-    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-away-dark"},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"capture":"display-away-dark"},
     {"note":"it comes back: the monitor returns to it"},
     {"control":{"taskbarDisplays":[
       {"key":"ACM0001","name":"ACME 27Q","primary":true,"rect":[0,0,2560,1440]},
@@ -37,7 +37,7 @@
     {"control":{"theme":"light"},"wait":900},
     {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"display-panel-light"},
     {"control":{"taskbarPanel":"close"},"wait":700},
-    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"wait":900,"capture":"display-card-light"},
+    {"control":{"clickAnchor":"components-nav-planned","pointerOutside":true},"capture":"display-card-light"},
     {"note":"the system's displays again; with one, the panel offers no choice"},
     {"control":{"taskbarDisplays":[]},"wait":900},
     {"control":{"taskbarMonitor":{"enabled":false}},"wait":900}

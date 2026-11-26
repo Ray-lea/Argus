@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
-import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, summary, unmet, unwanted } from "./lib/ui-shots.mjs";
+import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unmet, unwanted } from "./lib/ui-shots.mjs";
 import { windowProbe } from "./lib/window-probe.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -115,6 +115,30 @@ const tool = (...toolArgs) => {
   return result.stdout.trim();
 };
 const recorded = (name) => events.find((e) => e.event === "recorded" && String(e.dir).endsWith(name));
+// Waits until the instance has nothing left to draw and no command pending
+// (test control `settle`). A build from before that control never answers:
+// after the first silence every settle is a fixed pause instead.
+let answersSettle;
+const unsettled = [];
+const settle = async (name, within = 5000) => {
+  if (answersSettle === false) return sleep(600);
+  const pending = next((e) => e.event === "ui-settled" && e.label === name, answersSettle ? within + 20000 : Math.max(within, 15000) + 5000);
+  send({ settle: name, within });
+  try {
+    const event = await pending;
+    answersSettle = true;
+    if (!event.settled) {
+      unsettled.push(name);
+      console.log(`still busy after ${event.ms} ms: ${name}`);
+    }
+    return event;
+  } catch (cause) {
+    if (answersSettle) throw cause;
+    answersSettle = false;
+    console.log("this build does not answer settle: fixed pauses instead");
+    return sleep(600);
+  }
+};
 
 const results = [];
 const failures = [];
@@ -122,7 +146,9 @@ const logs = [];
 try {
   for (let i = 0; i < 600 && !shown && !exited; i++) await sleep(50);
   if (!shown) throw Error(`window unavailable: ${error}`);
-  await sleep(1500);
+  // The first frame of a development build waits for its shaders to compile.
+  if (live) await sleep(1500);
+  else await settle("start", 60000);
   for (const [index, step] of steps.entries()) {
     const result = { step: index + 1, ...(step.label ? { label: step.label } : {}) };
     if (step.note) console.log(`— ${step.note}`);
@@ -133,6 +159,10 @@ try {
       child.stdin.write(`record ${join(output, name)} ${ms}${crop ? ` ${crop.join(" ")}` : ""}\n`);
     }
     if (step.wait) await sleep(step.wait);
+    if (settles(step, live)) {
+      const event = await settle(`step-${index + 1}`);
+      if (event) result.settled = { ms: event.ms, settled: event.settled };
+    }
     if (step.inspect) {
       const [control, answer] = INSPECTIONS[step.inspect];
       const pending = next((e) => e.event === answer && e.label === step.label);
@@ -185,7 +215,7 @@ try {
   for (let i = 0; i < 400 && !exited; i++) await sleep(50);
   if (!exited) child.kill();
   // `inspections` and `captures` first: what a reader looks up by name (docs/development/gpui.md).
-  const record = { identifier, live, ...summary(steps, results), results, failures, events, stderr: error, exitCode };
+  const record = { identifier, live, ...summary(steps, results), unsettled, results, failures, events, stderr: error, exitCode };
   writeFileSync(join(output, "results.json"), JSON.stringify(record, null, 2));
   if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
   if (!flag("--keep-executable")) {

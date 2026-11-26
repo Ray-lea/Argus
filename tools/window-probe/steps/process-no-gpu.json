@@ -2,13 +2,13 @@
   "about": "用 `sample` 去掉显卡，核对没有显卡的机器上进程页不列出 GPU 列、“选择列”对话框的 GPU 分类页，并截取浅色主题。",
   "window": [1500, 900],
   "steps": [
-    {"control":{"page":"processes","view":"list","details":"closed","motion":"off","preference":{"processColumns":{"selected":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"order":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"autoWidth":true},"processSort":{"key":"gpu","desc":true}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"with-gpu","expect":{"state.visible.length":7,"state.visible.3.key":"gpu","state.visible.6.key":"gpuShared"},"capture":"with-gpu"},
+    {"control":{"page":"processes","view":"list","details":"closed","motion":"off","preference":{"processColumns":{"selected":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"order":["name","pid","cpu","gpu","gpuEngine","gpuDedicated","gpuShared"],"autoWidth":true},"processSort":{"key":"gpu","desc":true}},"pointerOutside":true},"inspect":"columns","label":"with-gpu","expect":{"state.visible.length":7,"state.visible.3.key":"gpu","state.visible.6.key":"gpuShared"},"capture":"with-gpu"},
     {"note":"A machine without a GPU: the performance page lists no adapter.","control":{"sample":{"set":{"/hardware/gpus":[]}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"without-gpu","expect":{"state.visible.length":3,"state.visible.2.key":"cpu","state.preferences.selected.6":"gpuShared"},"capture":"without-gpu"},
-    {"control":{"dialog":"columns","pointerOutside":true},"wait":1200},
+    {"control":{"dialog":"columns","pointerOutside":true}},
     {"note":"The dialog's GPU category tab.","control":{"pointer":{"at":[698,273],"event":"hover"}},"wait":100},
     {"control":{"pointer":{"at":[698,273],"event":"down"}},"wait":50},
     {"control":{"pointer":{"at":[698,273],"event":"up"}},"wait":900},
-    {"control":{"pointerOutside":true},"wait":300,"capture":"dialog-without-gpu"},
+    {"control":{"pointerOutside":true},"capture":"dialog-without-gpu"},
     {"control":{"theme":"light","pointerOutside":true},"wait":600,"capture":"dialog-without-gpu-light"}
   ]
 }

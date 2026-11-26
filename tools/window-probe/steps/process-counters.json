@@ -11,17 +11,17 @@
       {"pid":20005,"privateWs":12582912,"workingSet":20971520,"peakWorkingSet":20971520,"commit":16777216,"virtualSize":2199023255552,"cpuTime":900,"cpuUserTime":300,"cpuKernelTime":600,"ioReadTotal":4096,"ioWriteTotal":0,"ioOtherTotal":0,"pageFaults":2400,"handles":96,"ppid":20001,"createTime":500,"name":"Worker.exe","path":"C:/Program Files/Contoso/Worker.exe","description":"Contoso Worker","cpu":0.4,"cpuKernel":0.3,"cpuUser":0.1,"contextSwitchRate":120,"pageFaultRate":2,"hardFaultRate":0,"sharedWs":8388608,"peakCommit":16777216,"pagedPool":65536,"nonPagedPool":12288,"diskRead":null,"diskWrite":null,"diskReadOps":null,"diskWriteOps":null,"diskReadTotal":4096,"diskWriteTotal":0,"diskReadOpsTotal":1,"diskWriteOpsTotal":0,"ioRead":1024,"ioWrite":0,"ioOther":0,"ioReadOps":2,"ioWriteOps":0,"ioOtherOps":0,"ioReadOpsTotal":2,"ioWriteOpsTotal":0,"ioOtherOpsTotal":0,"hardFaults":0,"contextSwitches":120,"threads":4,"peakThreads":4,"children":0,"runtime":1500,"peakVirtualSize":2199023255552}
     ]}},"pointerOutside":true},"wait":900,"inspect":"columns","label":"cpu-memory-columns","expect":{"state.visible.2.key":"cpuKernel","state.visible.10.key":"nonPagedPool"},"capture":"cpu-memory-dark"},
     { "note": "Disk and I/O requests per second and in total, beside the bytes." },
-    {"control":{"preference":{"processColumns":{"selected":["name","diskRead","diskReadOps","diskWriteOps","diskReadTotal","diskWriteTotal","diskReadOpsTotal","diskWriteOpsTotal","ioReadOps","ioWriteOps","ioOtherOps","ioReadOpsTotal"],"order":["name","diskRead","diskReadOps","diskWriteOps","diskReadTotal","diskWriteTotal","diskReadOpsTotal","diskWriteOpsTotal","ioReadOps","ioWriteOps","ioOtherOps","ioReadOpsTotal"],"autoWidth":true}},"pointerOutside":true},"wait":700,"inspect":"columns","label":"io-columns","expect":{"state.visible.2.key":"diskReadOps","state.visible.11.key":"ioReadOpsTotal"},"capture":"io-dark"},
+    {"control":{"preference":{"processColumns":{"selected":["name","diskRead","diskReadOps","diskWriteOps","diskReadTotal","diskWriteTotal","diskReadOpsTotal","diskWriteOpsTotal","ioReadOps","ioWriteOps","ioOtherOps","ioReadOpsTotal"],"order":["name","diskRead","diskReadOps","diskWriteOps","diskReadTotal","diskWriteTotal","diskReadOpsTotal","diskWriteOpsTotal","ioReadOps","ioWriteOps","ioOtherOps","ioReadOpsTotal"],"autoWidth":true}},"pointerOutside":true},"inspect":"columns","label":"io-columns","expect":{"state.visible.2.key":"diskReadOps","state.visible.11.key":"ioReadOpsTotal"},"capture":"io-dark"},
     { "note": "Per-instance columns: running time, children, peaks; app groups leave them empty." },
     {"control":{"preference":{"processColumns":{"selected":["name","runtime","children","threads","peakThreads","contextSwitches","hardFaults","peakVirtualSize","ioWriteOpsTotal","ioOtherOpsTotal"],"order":["name","runtime","children","threads","peakThreads","contextSwitches","hardFaults","peakVirtualSize","ioWriteOpsTotal","ioOtherOpsTotal"],"autoWidth":true}},"theme":"light","pointerOutside":true},"wait":700,"inspect":"columns","label":"instance-columns","expect":{"state.visible.1.key":"runtime","state.visible.4.key":"peakThreads"},"capture":"instance-light"},
-    {"control":{"view":"apps","pointerOutside":true},"wait":700,"capture":"instance-apps-light"},
-    {"control":{"view":"list","dialog":"columns"},"wait":1000,"capture":"dialog-light"},
-    {"control":{"preference":{"columnsCategory":"io"}},"wait":700,"capture":"dialog-io-light"},
+    {"control":{"view":"apps","pointerOutside":true},"capture":"instance-apps-light"},
+    {"control":{"view":"list","dialog":"columns"},"capture":"dialog-light"},
+    {"control":{"preference":{"columnsCategory":"io"}},"capture":"dialog-io-light"},
     {"note":"The details pane: a process with every counter, its resources and its totals."},
     {"control":{"dismiss":true,"view":"list","theme":"dark","details":"open","preference":{"processColumns":{"selected":["name","cpu","mem"],"order":["name","cpu","mem"],"autoWidth":true}},"pointerOutside":true},"wait":700},
-    {"control":{"selectRow":0},"wait":900,"inspect":"layout","label":"details-builder","expect":{"selectedRow":"Contoso Builder"},"capture":"details-process-dark"},
-    {"control":{"wheel":{"x":1300,"y":500,"lines":-12}},"wait":600,"capture":"details-resources-dark"},
-    {"control":{"wheel":{"x":1300,"y":500,"lines":-40}},"wait":600,"capture":"details-totals-dark"},
+    {"control":{"selectRow":0},"inspect":"layout","label":"details-builder","expect":{"selectedRow":"Contoso Builder"},"capture":"details-process-dark"},
+    {"control":{"wheel":{"x":1300,"y":500,"lines":-12}},"capture":"details-resources-dark"},
+    {"control":{"wheel":{"x":1300,"y":500,"lines":-40}},"capture":"details-totals-dark"},
     {"control":{"keys":["ctrl-shift-c"]},"wait":400,"inspect":"layout","label":"details-copy"},
     {"note":"A process without a disk reading shows none in the disk rows."},
     {"control":{"selectRow":3},"wait":900,"inspect":"layout","label":"details-worker","expect":{"selectedRow":"Contoso Worker"}},
@@ -29,9 +29,9 @@
     {"control":{"wheel":{"x":1300,"y":500,"lines":-12}},"wait":600,"capture":"details-worker-resources-dark"},
     {"note":"An app group adds up its members and leaves out the peaks."},
     {"control":{"view":"apps","theme":"light","pointerOutside":true},"wait":800,"inspect":"layout","label":"apps-rows"},
-    {"control":{"selectRow":1},"wait":900,"inspect":"layout","label":"details-group","expect":{"selectedRow":"Contoso Browser"},"capture":"details-group-light"},
-    {"control":{"wheel":{"x":1300,"y":500,"lines":60}},"wait":400},
-    {"control":{"wheel":{"x":1300,"y":500,"lines":-12}},"wait":600,"capture":"details-group-resources-light"},
-    {"control":{"wheel":{"x":1300,"y":500,"lines":-40}},"wait":600,"capture":"details-group-totals-light"}
+    {"control":{"selectRow":1},"inspect":"layout","label":"details-group","expect":{"selectedRow":"Contoso Browser"},"capture":"details-group-light"},
+    {"control":{"wheel":{"x":1300,"y":500,"lines":60}}},
+    {"control":{"wheel":{"x":1300,"y":500,"lines":-12}},"capture":"details-group-resources-light"},
+    {"control":{"wheel":{"x":1300,"y":500,"lines":-40}},"capture":"details-group-totals-light"}
   ]
 }
