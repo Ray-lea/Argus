@@ -20,8 +20,8 @@
 - `handles::scan` 只能在可终止的辅助进程里运行，不能直接放进 UI、采样或服务线程。`NtQueryObject`、文件信息查询、甚至关闭复制的文件句柄都可能阻塞；由 `argus-service::handles` 的 Job 与超时监控负责回收。只复制句柄查询，绝不关闭来源进程的句柄。合并与结束文件占用结果必须保留 PID + 启动时间。
 - `process.rs` 给每个运行中的进程实例缓存一个 `PROCESS_QUERY_LIMITED_INFORMATION` 句柄（读效率模式用），快照线程数归零时立即关闭，进程消失时随条目关闭；零线程记录不得建立缓存句柄，最终 CPU 与 I/O 计数仍从快照读取。不要改成每次采样重新打开。
 - 规则引擎（`rules.rs`）由 `argus-service::RuleRunner` 的独立宿主线程驱动；采样线程只提交最新的 PID、启动时间和名称，不要让服务 RPC 阻塞采样。规则保存或执行权限来源变化时重新检查并重新计数；同一轮里一个进程实例只套用一次，传输失败不自动重放。
-- 修改采集行为时用相关示例核对结果（命令见 `docs/development/README.md` 的“验证采集数据”）；修改 `history.rs` 的录制、编码或写入路径时，用 `--example history --release -- <秒数>` 看录制开销和每帧大小。
-- 历史日文件只读写 v3（`MAGIC`，进程行在 `.proc` 旁文件），合并后的日期为 v4（`minute::MINUTE_MAGIC`）。其他版本（0.6 之前的 v1/v2）不读取，当作当天没有记录；当天的日文件是其他版本时，录制从空的 v3 文件重新开始，分钟合并也跳过这些日期，到期后按日期清理。格式的不兼容改动按下文“格式与协议的版本号”一节的规则处理，不保留兼容读写；历史文件对应 `scripts/dev-data.json` 的 `history` 修订号，观察文件（`watch.rs` 的 `VERSION`、`watch/store.rs` 的 `MAGIC`）对应 `watch`。新增的包类型要同时处理索引扫描（`Index::record`）与检查点（`Checkpoints::capture`）：检查点按固定步长从帧序列还原主文件位置（`Index::address_run`），每帧都写的包必须定长，且不复制进检查点（如程序计数 `PROGRAMS`，含它的序列记为 `FRAME_RUN_COUNTED`），否则每个检查点都会被判为损坏、退回逐帧扫描。
+- 修改采集行为时用相关示例核对结果（命令见 `docs/development/README.md` 的“验证采集数据”）；修改历史记录的录制（`history/recorder.rs`、`history/catalog.rs`）、编码（`history/encoding.rs`）或写入路径（`history/writer.rs`、`history/summaries.rs`、`history/checkpoints.rs`）时，用 `--example history --release -- <秒数>` 看录制开销和每帧大小。
+- 历史日文件只读写 v3（`MAGIC`，进程行在 `.proc` 旁文件），合并后的日期为 v4（`minute::MINUTE_MAGIC`）。其他版本（0.6 之前的 v1/v2）不读取，当作当天没有记录；当天的日文件是其他版本时，录制从空的 v3 文件重新开始，分钟合并也跳过这些日期，到期后按日期清理。格式的不兼容改动按下文“格式与协议的版本号”一节的规则处理，不保留兼容读写；历史文件对应 `scripts/dev-data.json` 的 `history` 修订号，观察文件（`watch.rs` 的 `VERSION`、`watch/store.rs` 的 `MAGIC`）对应 `watch`。新增的包类型（标签在 `history/encoding.rs`）要同时处理索引扫描（`history/index.rs` 的 `Index::record`）与检查点（`history/checkpoints.rs` 的 `Checkpoints::capture`）：检查点按固定步长从帧序列还原主文件位置（`Index::address_run`），每帧都写的包必须定长，且不复制进检查点（如程序计数 `PROGRAMS`，含它的序列记为 `FRAME_RUN_COUNTED`），否则每个检查点都会被判为损坏、退回逐帧扫描。
 - 历史文件的版本字节同时用作布局标记：代码里与 `VERSION`、`MINUTE_VERSION` 比较，不写字面数字，版本号变动时才不会漏改。
 
 ## 诊断日志

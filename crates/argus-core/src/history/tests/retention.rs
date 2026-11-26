@@ -535,3 +535,29 @@ fn caps_keep_leaders_from_each_resource_and_all_measured_instances() {
         assert!((0..6).all(|k| picked.contains(&(k * 20 + 19))));
     }
 }
+
+#[test]
+fn prunes_old_days() {
+    let dir = temp_dir("prune");
+    fs::create_dir_all(&dir).unwrap();
+    for day in [20_729, 20_730, 20_736] {
+        fs::write(day_path(&dir, day), MAGIC).unwrap();
+    }
+    maintenance::maintain_at(
+        &dir,
+        HistoryOptions {
+            limit: HistoryLimit {
+                days: Some(7),
+                bytes: None,
+            },
+            detail: HistoryDetail::Full,
+            ..Default::default()
+        },
+        20_737,
+        20_737,
+        || false,
+    )
+    .unwrap();
+    assert_eq!(days(&dir), vec![20_736]);
+    let _ = fs::remove_dir_all(&dir);
+}
