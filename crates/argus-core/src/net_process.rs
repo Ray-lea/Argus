@@ -177,10 +177,20 @@ impl NetworkTracker {
             ERROR_SUCCESS
         };
         if enabled != ERROR_SUCCESS {
-            crate::diagnostics::warn(
-                "network ETW EnableTraceEx2",
+            // As with the session itself: a standard user may start it but
+            // not enable the kernel network provider, and the host then asks
+            // its authorized service.
+            let elevated = crate::privilege::is_elevated();
+            let detail = format!(
+                "{}; source={}; elevated={elevated}; service_fallback_possible=true",
                 crate::diagnostics::code(enabled.0),
+                source.name(),
             );
+            if enabled == ERROR_ACCESS_DENIED && !elevated {
+                log::info!(target: "argus_diagnostics", "network ETW provider unavailable: {detail}");
+            } else {
+                crate::diagnostics::warn("network ETW EnableTraceEx2", detail);
+            }
             stop_session(session_name);
             return None;
         }
