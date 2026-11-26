@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { developmentProfile, launchIdentifier, prepare } from "./dev-data.mjs";
 import { HOLD, holdGate, readHold } from "./lib/dev-hold.mjs";
+import { pruneRuns } from "./lib/dev-runs.mjs";
 import { t } from "./lib/console-language.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,10 +86,13 @@ if (mode === "dev") {
         return;
       }
       clearStaleData();
-      const directory = resolve(runs, `run-${Date.now()}`);
+      const name = `run-${Date.now()}`;
+      const directory = resolve(runs, name);
       mkdirSync(directory, { recursive: true });
       const image = resolve(directory, "argus.exe");
       copyFileSync(executable, image);
+      // The previous instance has exited; older copies are no longer used.
+      pruneRuns(runs, name);
       application = spawn(image, [...launchArgs, "--control-stdin"], {
         cwd: root,
         // windowsHide also sets SW_HIDE for GUI windows; Argus handles --hidden itself.
