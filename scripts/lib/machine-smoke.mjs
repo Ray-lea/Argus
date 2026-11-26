@@ -63,6 +63,37 @@ export function currentSid(query = run) {
   return sid;
 }
 
+/**
+ * The elevation type of the desktop shell's token (explorer.exe):
+ * 1 default (no split token), 2 full, 3 limited (the standard half of a split
+ * token), or null when there is no shell or its token cannot be read.
+ */
+export function shellElevationType(query = run) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class ArgusToken {
+  [DllImport("advapi32.dll", SetLastError = true)] public static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+  [DllImport("advapi32.dll", SetLastError = true)] public static extern bool GetTokenInformation(IntPtr token, int kind, out int value, int length, out int returned);
+  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+}
+'@
+$session = (Get-Process -Id $PID).SessionId
+$shell = Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session | Select-Object -First 1
+if (-not $shell) { 'none'; exit }
+$token = [IntPtr]::Zero
+if (-not [ArgusToken]::OpenProcessToken($shell.Handle, 8, [ref]$token)) { 'none'; exit }
+$value = 0; $returned = 0
+[void][ArgusToken]::GetTokenInformation($token, 18, [ref]$value, 4, [ref]$returned)
+[void][ArgusToken]::CloseHandle($token)
+$value`;
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  const result = query("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded], { timeout: 60000 });
+  const value = Number(result.stdout.trim().split(/\r?\n/).at(-1));
+  return [1, 2, 3].includes(value) ? value : null;
+}
+
 export function elevated(query = run) {
   // `net session` needs administrator rights and changes nothing.
   return query("net.exe", ["session"]).status === 0;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders, unmet } from "../lib/live-tests.mjs";
+import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders, splitToken, unmet } from "../lib/live-tests.mjs";
 
 /** Every `#[ignore]` test function of a source tree, by name. */
 function ignoredFunctions(directory, found = new Set()) {
@@ -78,10 +78,21 @@ test("a child's output between a test's name and its result does not hide the re
 });
 
 test("groups that this machine cannot run say why", () => {
-  const facts = { elevated: true, uac: false, values: { account: "a" }, missing: { secondVolume: "no second volume" } };
+  const facts = { elevated: true, splitToken: false, values: { account: "a" }, missing: { secondVolume: "no second volume" } };
   assert.match(unmet({ requires: ["standard rights"] }, facts), /elevated/);
-  assert.match(unmet({ requires: ["UAC"] }, facts), /UAC/);
+  assert.match(unmet({ requires: ["split token"] }, facts), /split token/);
   assert.equal(unmet({ env: { X: "{secondVolume}" } }, facts), "no second volume");
   assert.equal(unmet({ env: { X: "{account}" } }, facts), null);
-  assert.equal(unmet({ requires: ["UAC"] }, { ...facts, uac: true }), null);
+  assert.equal(unmet({ requires: ["split token"] }, { ...facts, splitToken: true }), null);
+});
+
+test("only an administrator with a split token has a shell at standard rights", () => {
+  const admin = "S-1-5-21-1-2-3-1001";
+  const builtIn = "S-1-5-21-1-2-3-500";
+  assert.equal(splitToken({ enableLua: "0x1", filterAdministratorToken: null, sid: admin }), true);
+  assert.equal(splitToken({ enableLua: null, filterAdministratorToken: null, sid: admin }), true);
+  assert.equal(splitToken({ enableLua: "0x0", filterAdministratorToken: "0x1", sid: admin }), false);
+  // The built-in Administrator runs elevated unless Admin Approval Mode covers it.
+  assert.equal(splitToken({ enableLua: "0x1", filterAdministratorToken: null, sid: builtIn }), false);
+  assert.equal(splitToken({ enableLua: "0x1", filterAdministratorToken: "0x1", sid: builtIn }), true);
 });

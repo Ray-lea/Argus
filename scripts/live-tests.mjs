@@ -11,8 +11,8 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, parse, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
-import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders, unmet } from "./lib/live-tests.mjs";
-import { elevated, registryValue, requireDisposable } from "./lib/machine-smoke.mjs";
+import { GROUPS, cargoArgs, environmentOf, outcomes, placeholders, splitToken, unmet } from "./lib/live-tests.mjs";
+import { currentSid, elevated, registryValue, requireDisposable, shellElevationType } from "./lib/machine-smoke.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -49,10 +49,19 @@ function secondVolume() {
   return undefined;
 }
 
+const policies = String.raw`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`;
+// The shell's own token says it; the policy values only when that cannot be read.
+const shell = shellElevationType();
 const facts = {
   elevated: elevated(),
-  // EnableLUA 0 turns UAC off; a missing value means on.
-  uac: registryValue(String.raw`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`, "EnableLUA") !== "0x0",
+  splitToken:
+    shell !== null
+      ? shell === 3
+      : splitToken({
+          enableLua: registryValue(policies, "EnableLUA"),
+          filterAdministratorToken: registryValue(policies, "FilterAdministratorToken"),
+          sid: currentSid(),
+        }),
   values: { account: process.env.USERNAME, secondVolume: secondVolume() },
   missing: { secondVolume: "needs a second writable volume; this machine has only the one %TEMP% is on" },
 };
@@ -63,7 +72,7 @@ if (placeholders(runnable).has("argus")) {
   assert.equal(built.status, 0, "cargo build -p argus failed");
   facts.values.argus = resolve("target/debug/argus.exe");
 }
-console.log(`elevated: ${facts.elevated}; UAC: ${facts.uac}; second volume: ${facts.values.secondVolume ?? "none"}`);
+console.log(`elevated: ${facts.elevated}; split token: ${facts.splitToken}; second volume: ${facts.values.secondVolume ?? "none"}`);
 
 const results = [];
 for (const group of chosen) {
@@ -90,7 +99,7 @@ for (const group of chosen) {
   if (!passed) console.log(text.split(/\r?\n/).filter((line) => /^error|error\[|panicked|exit code: 0x/.test(line)).slice(0, 20).join("\n"));
 }
 
-writeFileSync(join(output, "summary.json"), JSON.stringify({ facts: { elevated: facts.elevated, uac: facts.uac, secondVolume: Boolean(facts.values.secondVolume) }, results }, null, 2));
+writeFileSync(join(output, "summary.json"), JSON.stringify({ facts: { elevated: facts.elevated, splitToken: facts.splitToken, secondVolume: Boolean(facts.values.secondVolume) }, results }, null, 2));
 const failed = results.filter((result) => !result.skipped && !result.passed);
 const lines = [
   `| group | result | tests | seconds |`,

@@ -34,14 +34,22 @@ export const GROUPS = [
   },
   {
     name: "owned processes",
-    about: "watch identity of owned helper processes, a startup file sent to the Recycle Bin, icon extraction soak",
+    about: "watch identity of owned helper processes, a startup file sent to the Recycle Bin",
     cargo: ["-p", "argus-core", "--lib"],
     tests: [
       "watch::identity::tests::two_copies_stay_distinct_and_restarting_the_same_copy_keeps_program_identity",
       "watch::program::tests::real_idle_instances_restart_and_same_name_other_folder_remain_separate",
       "startup::tests::a_startup_file_goes_to_the_recycle_bin",
-      "meta::category_tests::resource_soak_icon_extraction",
     ],
+  },
+  // The soaks count the process's own GDI objects or handles: each runs in a
+  // process of its own, as their #[ignore] notes ask, so that what an earlier
+  // test left behind does not count as a leak.
+  {
+    name: "icon soak",
+    about: "GDI objects of the process while icons are extracted again and again",
+    cargo: ["-p", "argus-core", "--lib"],
+    tests: ["meta::category_tests::resource_soak_icon_extraction"],
   },
   {
     name: "history across volumes",
@@ -66,13 +74,15 @@ export const GROUPS = [
   },
   {
     name: "privileged helpers",
-    about: "the protected helper report, the local broker under load, sensor thread affinity",
+    about: "the protected helper report, sensor thread affinity",
     cargo: ["-p", "argus-service", "--lib"],
-    tests: [
-      "diagnostics::tests::protected_helper_report_round_trip",
-      "pipe::tests::resource_soak_requests_disconnects_and_shutdown",
-      "sensors::cpu::tests::affinity_cadence_without_driver_access",
-    ],
+    tests: ["diagnostics::tests::protected_helper_report_round_trip", "sensors::cpu::tests::affinity_cadence_without_driver_access"],
+  },
+  {
+    name: "broker soak",
+    about: "handles of the process while clients connect to and leave the local broker",
+    cargo: ["-p", "argus-service", "--lib"],
+    tests: ["pipe::tests::resource_soak_requests_disconnects_and_shutdown"],
   },
   {
     name: "desktop shell",
@@ -81,14 +91,14 @@ export const GROUPS = [
     tests: ["tasks::tests::live_shell_child"],
   },
   {
-    // With UAC off the shell itself is elevated, and the helper refuses to run
-    // a program "at standard rights" with it (exit code 0x20000101).
+    // Without a split token the shell itself is elevated, and the helper
+    // refuses to run a program "at standard rights" with it (0x20000101).
     name: "standard rights from an elevated process",
     about: "the helper that starts programs at standard rights under the desktop shell",
     cargo: ["-p", "argus-app", "--lib"],
     tests: ["tasks::tests::live_shell_helper"],
     env: { ARGUS_TASKS_HOST: "{argus}" },
-    requires: ["UAC"],
+    requires: ["split token"],
   },
   {
     name: "process watch",
@@ -139,13 +149,25 @@ export function cargoArgs(group) {
 }
 
 /**
+ * Whether an administrator signed in here gets a split token, so that the
+ * desktop shell runs at standard rights: UAC on, and for the built-in
+ * Administrator (RID 500) also Admin Approval Mode, which Windows leaves off
+ * for that account. Values as `reg query` prints them, null when absent.
+ */
+export function splitToken({ enableLua, filterAdministratorToken, sid }) {
+  if (enableLua === "0x0") return false;
+  return !/-500$/.test(sid ?? "") || filterAdministratorToken === "0x1";
+}
+
+/**
  * Why a group cannot run on this machine, or null. `facts` says what the
- * machine offers: `elevated`, `uac` (UAC on), and the placeholder values.
+ * machine offers: `elevated`, `splitToken`, and the placeholder values.
  */
 export function unmet(group, facts) {
   for (const need of group.requires ?? []) {
     if (need === "standard rights" && facts.elevated) return "needs a process at standard rights; this one is elevated";
-    if (need === "UAC" && !facts.uac) return "needs UAC: with it off the desktop shell runs elevated";
+    if (need === "split token" && !facts.splitToken)
+      return "needs an account with a split token: here the desktop shell runs with the full administrator token (UAC off, or the built-in Administrator)";
   }
   for (const name of placeholders([group])) if (facts.values[name] === undefined) return facts.missing?.[name] ?? `no value for {${name}}`;
   return null;
