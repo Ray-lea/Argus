@@ -7,6 +7,7 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 | `start.bat` / `start.bat dev` | 启动原生 GPUI 开发版，监听 Rust 与资源变更 |
 | `start-website.bat` | 启动官网开发服务器，实时预览页面、组件、样式和开发版文档 |
 | `start.bat check` | 文案、格式、生成代码、脚本测试、Clippy 与 Rust 测试 |
+| `pnpm verify [文件…]` | 只运行改动的文件涉及的检查：文案的 Biome 与译文检查，脚本的语法检查与脚本测试，Rust 的格式检查、Clippy（连同依赖它的包）与测试（英文环境，同 CI），以及受影响的界面步骤文件。不给文件时取工作区的改动（含未跟踪文件），`--since <提交>` 另加该提交以来的提交，`--no-ui` 不运行步骤文件，`--plan` 只列出要运行的检查。路径与检查的对应在 `scripts/lib/verify.mjs` |
 | `start.bat build` | 构建原生程序 `target/release/argus.exe`，内含任务管理器辅助程序 |
 | `start.bat build installer` | 构建原生程序并生成 NSIS 安装包 |
 | `node scripts/readme-previews.mjs` | 从当前发行构建生成中英文 README 的浅色和深色进程页截图 |
