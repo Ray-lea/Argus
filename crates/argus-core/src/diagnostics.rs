@@ -71,13 +71,72 @@ pub fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
 
 /// Only call for a path directly involved in a failure. Never pass a command
 /// line, URL or free-form exception here. JSON quoting prevents log injection.
+/// The folder of an account's profile, usually the account's name, reads
+/// `<user>`.
 pub fn path(value: &Path) -> String {
+    let own = std::env::var_os("USERPROFILE").map(std::path::PathBuf::from);
+    let value = without_account(value, own.as_deref());
     let value = value.to_string_lossy();
     let mut bounded: String = value.chars().take(2048).collect();
     if value.chars().count() > 2048 {
         bounded.push('…');
     }
     serde_json::to_string(&bounded).expect("serialize diagnostic path")
+}
+
+/// `value` with an account's profile folder named `<user>`: any folder right
+/// under `Users` on a drive or share but the shared ones, and `own` (this
+/// account's profile, which can have been moved elsewhere) wherever it is.
+fn without_account<'a>(value: &'a Path, own: Option<&Path>) -> Cow<'a, Path> {
+    use std::path::{Component, PathBuf};
+    const SHARED: [&str; 4] = ["Public", "Default", "Default User", "All Users"];
+    let parts: Vec<Component> = value.components().collect();
+    let under_users = match parts.as_slice() {
+        [
+            Component::Prefix(_),
+            Component::RootDir,
+            Component::Normal(users),
+            Component::Normal(name),
+            ..,
+        ] => {
+            users.eq_ignore_ascii_case("Users")
+                && !SHARED
+                    .iter()
+                    .any(|shared| name.eq_ignore_ascii_case(shared))
+        }
+        _ => false,
+    };
+    // The system profile (a service's) names no person.
+    let own = own
+        .map(|own| own.components().collect::<Vec<_>>())
+        .filter(|own| {
+            own.len() >= 3
+                && !own
+                    .iter()
+                    .any(|part| part.as_os_str().eq_ignore_ascii_case("system32"))
+        });
+    let at = if under_users {
+        3
+    } else if let Some(own) = own.filter(|own| {
+        parts.len() >= own.len()
+            && own
+                .iter()
+                .zip(&parts)
+                .all(|(a, b)| a.as_os_str().eq_ignore_ascii_case(b.as_os_str()))
+    }) {
+        own.len() - 1
+    } else {
+        return Cow::Borrowed(value);
+    };
+    let mut redacted = PathBuf::new();
+    for (index, part) in parts.iter().enumerate() {
+        redacted.push(if index == at {
+            std::ffi::OsStr::new("<user>")
+        } else {
+            part.as_os_str()
+        });
+    }
+    Cow::Owned(redacted)
 }
 
 #[track_caller]
@@ -396,7 +455,7 @@ mod tests {
 
     #[test]
     fn explicit_paths_remain_useful_and_cannot_inject_log_lines() {
-        let file = Path::new("C:\\Users\\Example\\驱动\\PawnIO.sys\n[INFO] forged\"line"); // i18n-ignore: synthetic path.
+        let file = Path::new("D:\\Tools\\驱动\\PawnIO.sys\n[INFO] forged\"line"); // i18n-ignore: synthetic path.
         let logged = path(file);
         assert_eq!(
             serde_json::from_str::<String>(&logged).unwrap(),
@@ -404,12 +463,60 @@ mod tests {
         );
         assert!(!logged.contains('\n'));
         let long = path(Path::new(&"a".repeat(3000)));
+        assert!(
+            path(Path::new(
+                r"C:\Users\Someone\AppData\Local\dev.argus.taskmanager\updates"
+            ))
+            .contains(r"Users\\<user>\\AppData")
+        );
         assert_eq!(
             serde_json::from_str::<String>(&long)
                 .unwrap()
                 .chars()
                 .count(),
             2049
+        );
+    }
+
+    #[test]
+    fn profile_folders_are_logged_without_the_account_name() {
+        let shown = |value: &str, own: Option<&str>| {
+            without_account(Path::new(value), own.map(Path::new))
+                .to_string_lossy()
+                .into_owned()
+        };
+        for (value, expected) in [
+            (
+                r"C:\Users\Someone\AppData\Local\x\settings.json",
+                r"C:\Users\<user>\AppData\Local\x\settings.json",
+            ),
+            (r"c:\users\Someone", r"c:\users\<user>"),
+            (r"\\?\D:\Users\Someone\a", r"\\?\D:\Users\<user>\a"),
+            (
+                r"C:\Users\Public\Documents\a",
+                r"C:\Users\Public\Documents\a",
+            ),
+            (
+                r"C:\Users\Default\NTUSER.DAT",
+                r"C:\Users\Default\NTUSER.DAT",
+            ),
+            (r"C:\Users", r"C:\Users"),
+            (r"C:\Program Files\Argus\a", r"C:\Program Files\Argus\a"),
+            (r"Users\Someone\a", r"Users\Someone\a"),
+        ] {
+            assert_eq!(shown(value, None), expected);
+        }
+        // A profile moved off `Users`, and the system profile, which is no one's.
+        let own = Some(r"E:\Profiles\Someone");
+        assert_eq!(
+            shown(r"E:\profiles\someone\AppData\x", own),
+            r"E:\profiles\<user>\AppData\x"
+        );
+        assert_eq!(shown(r"E:\Profiles\Other\x", own), r"E:\Profiles\Other\x");
+        let system = Some(r"C:\Windows\system32\config\systemprofile");
+        assert_eq!(
+            shown(r"C:\Windows\system32\config\systemprofile\x", system),
+            r"C:\Windows\system32\config\systemprofile\x"
         );
     }
 
