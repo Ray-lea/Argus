@@ -112,5 +112,6 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 - `target/` 只放构建产物与测试输出：`start.bat clean all` 即 `cargo clean`，会清空它。无法重新生成的资料不放在那里：进行中的设计稿及其工具放 `design.local/<主题>/`，结束的调查、测量原始数据和交付物放 `archives.local/<日期>/`，并在该目录的 `README.txt` 里记一行。两处都已被 `*.local` 忽略，不进 Git。
 - Cargo 按文件时间判断是否需要重编：用保留原时间的复制来还原文件，会让按另一份内容编出的产物看起来仍是最新的。还原后更新文件时间，或用写入的方式还原。
 - Windows PowerShell 5.1：传给原生程序的参数里的双引号会被剥掉（把 JS 写进文件再传路径）；没有 BOM 的 .ps1 按 ANSI 读取，含中文的 .ps1 要存成 UTF-8 with BOM。
-- 在 Git Bash 里用 `node -e "…"`、`sed` 或 heredoc 写入含反引号、`$` 或反斜杠的文本时，它们会被 shell 当成命令替换、变量或转义，悄悄改坏写入的 Rust 注释、路径和文档；长 heredoc 也可能被工具层截断。多行或含这些字符的改动先用文件工具写成脚本文件再运行，或直接用编辑工具。不要运行 `python -`，它会一直等待标准输入。
+- 改源文件用编辑工具。文件很大时先搜索出行号，用读取工具的偏移与行数只读相关的一段，再编辑那一段；不要写 node 或 shell 脚本按锚点替换：这是过往失败命令中最常见的一类（引号或 heredoc 不配对、锚点与文件里的空白不一致），失败时还可能只替换了一部分。只有跨许多文件的机械替换才用脚本，并让每个锚点必须恰好匹配一次，否则不写入任何文件。
+- 在 Git Bash 里用 `node -e "…"`、`sed` 或 heredoc 写入含反引号、`$` 或反斜杠的文本时，它们会被 shell 当成命令替换、变量或转义，悄悄改坏写入的 Rust 注释、路径和文档；长 heredoc 也可能被工具层截断。这类脚本先用文件工具写成文件再运行。Git Bash 的 `/c/…` 路径传给 node 会被当成 `D:\c\…`，传给 node 的路径写成 `C:/…`。不要运行 `python -`，它会一直等待标准输入。
 - Git Bash 会把以 `/` 开头的参数改写成路径（NSIS 的 `/S`、`taskkill` 的 `/PID` 等因此失效）：运行这类 Windows 程序用 PowerShell 的 `Start-Process`，或者设 `MSYS_NO_PATHCONV=1`。
