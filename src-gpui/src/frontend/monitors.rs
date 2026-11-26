@@ -1179,6 +1179,10 @@ impl PartialEq for TaskbarPanel {
 #[derive(Default)]
 pub(in crate::frontend) struct Monitors {
     desk: Option<Open>,
+    /// A sample came in: the desktop monitor opened as its saved settings
+    /// say (`Desktop::refresh_monitors`). Only changes to them open or
+    /// close it otherwise.
+    sampled: bool,
     /// Changes to a monitor made while a settings change was on its way
     /// (readings chosen or arranged, its look): per monitor's settings key,
     /// its command and the fields changed, the latest of each, sent once
@@ -1436,6 +1440,18 @@ impl Desktop {
         if !self.data.contains_key("settings") {
             return;
         }
+        self.sync_desk_monitor(cx);
+        self.refresh_taskbar_monitor();
+        // The taskbar monitor's panel follows its settings.
+        self.refresh_tray(cx);
+    }
+
+    /// Shows, rearranges or closes the desktop monitor as the settings now
+    /// say.
+    fn sync_desk_monitor(&mut self, cx: &mut Context<Self>) {
+        if !self.data.contains_key("settings") {
+            return;
+        }
         let desktop: DesktopMonitor = self.monitor_settings("desktopMonitor");
         let wanted = desktop.enabled && !desktop.metrics.is_empty();
         let gauges = gauges(&self.snapshot, &desktop.metrics, self.bits());
@@ -1454,9 +1470,6 @@ impl Desktop {
             }
             (false, None) => {}
         }
-        self.refresh_taskbar_monitor();
-        // The taskbar monitor's panel follows its settings.
-        self.refresh_tray(cx);
     }
 
     /// The recent values the desktop monitor's curves show, by gauge; none
@@ -1653,9 +1666,21 @@ impl Desktop {
         self.refresh_taskbar_monitor();
     }
 
-    /// A new sample: the monitors that show follow it.
+    /// A new sample: the monitors that show follow it. The first opens the
+    /// desktop monitor when its saved settings show it, as at a start: the
+    /// settings are read before any sample, and nothing else opens it until
+    /// they change (the taskbar monitor is attached by the shell as the
+    /// main window is made).
     pub(in crate::frontend) fn refresh_monitors(&mut self, cx: &mut Context<Self>) {
-        if let Some(Open { view, .. }) = self.monitors.desk.clone() {
+        if !self.monitors.sampled {
+            self.monitors.sampled = true;
+            // After this update: a fixture's samples come in while the main
+            // window is still being made.
+            let this = cx.weak_entity();
+            cx.defer(move |cx| {
+                let _ = this.update(cx, |this, cx| this.sync_desk_monitor(cx));
+            });
+        } else if let Some(Open { view, .. }) = self.monitors.desk.clone() {
             let settings = view.read(cx).settings.clone();
             let gauges = gauges(&self.snapshot, &settings.metrics, self.bits());
             let curves = self.desk_curves(&settings, &gauges);
