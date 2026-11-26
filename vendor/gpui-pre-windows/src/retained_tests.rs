@@ -150,7 +150,8 @@ fn foreground_boundary_keeps_static_quads_after_animated_bars() {
         })
         .to_vec();
     let animated = split_batches(&scene, Some(2));
-    let batches = super::split_primitive_batches(&scene, animated.into_iter(), Some(3));
+    let batches =
+        super::scene_split::split_primitive_batches(&scene, animated.into_iter(), Some(3));
     assert_eq!(batches.len(), 3);
     assert!(matches!(&batches[0], PrimitiveBatch::Quads(range) if *range == (0..2)));
     assert!(matches!(&batches[1], PrimitiveBatch::Quads(range) if *range == (2..4)));

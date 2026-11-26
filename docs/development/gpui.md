@@ -199,7 +199,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 ### 相关测试与工具
 
-本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
+本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)，列出与升级补丁的方法见 [vendored GPUI 的补丁与升级](#vendored-gpui-的补丁与升级)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
 
 `cargo test -p argus --test touch_input` 检查触点标识复用、捕获丢失、多指接触、点按、双击、滑动取消、消息重入与长按菜单。[`touch-input.json`](../../tools/window-probe/steps/touch-input.json) 用隔离窗口复核进程树、重新排序后的长按目标、菜单、图表、150% 界面缩放下的页面滚动及滚动条拖动与取消。
 
@@ -212,3 +212,35 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 开发构建的隔离测试可设置 `ARGUS_TEST_BACKDROP_BUILD=22000`，模拟 Windows 11 21H2 的背景能力判定；`tools/window-probe/steps/backdrop-fallback.json` 自带该设置，核对深浅主题的实色回退。该变量仅对同时带有 `--test` 和独立测试标识的开发实例生效，保留原有合成渲染路径；`inspectLayout` 输出 `systemBackdrop` 与 `backgroundAlpha`。
 
 `cargo test -p argus --test display_reentry` 检查显示器回调在窗口更新期间重入、连续通知合并、原生嵌套消息循环及窗口关闭后的延迟处理。`cargo run -p argus --example display_reentry` 在自身隐藏窗口的初始化回调内发送 `WM_DISPLAYCHANGE`，检查真实 Windows 消息路径；它保持窗口隐藏，不更改显示器设置。
+
+## vendored GPUI 的补丁与升级
+
+[`vendor/gpui-pre`](../../vendor/gpui-pre) 与 [`vendor/gpui-pre-windows`](../../vendor/gpui-pre-windows) 是 crates.io 上同名包的快照加本地补丁。快照省略 Cargo 打包时加入的文件（`Cargo.lock`、`Cargo.toml.orig`、`.cargo_vcs_info.json`），`gpui-pre` 另省略独立示例及其素材和基准测试，保留上游源码测试读取的 EXIF 样图；规则见 [`scripts/lib/vendor-patches.mjs`](../../scripts/lib/vendor-patches.mjs) 的 `VENDORED`。
+
+本地分支 `vendor-upstream` 按同样的路径与取舍保存各上游版本的原样包，每个版本一个提交，提交说明记录包的 SHA-256。`git diff vendor-upstream -- vendor/gpui-pre vendor/gpui-pre-windows` 即完整的补丁集。该分支不推送，各克隆用 `init` 自行建立：
+
+| 命令 | 用途 |
+|---|---|
+| `node scripts/vendor-patches.mjs init [--force]` | 按 `vendor/` 中清单的版本建立分支。包取自 Cargo 注册表缓存，缓存中没有时在临时工程中运行 `cargo fetch` 下载。`--force` 重建已有的分支 |
+| `node scripts/vendor-patches.mjs stat [<路径>…]` | 按改动量列出各文件相对上游增删的行数，并给出各包与全部的合计。`A` 为本地新增的文件，`M` 为改动过的上游文件。`--limit N` 只列前 N 个，`--json` 输出 JSON |
+| `node scripts/vendor-patches.mjs diff [<路径>…]` | 输出补丁；其余以 `-` 开头的参数（如 `--stat`、`-U10`）传给 `git diff` |
+| `node scripts/vendor-patches.mjs import <版本>` | 把该版本的原样包加为分支的新提交 |
+| `node scripts/vendor-patches.mjs upgrade <版本>` | 导入该版本，并把本地补丁合并到工作区，见下文 |
+
+`stat` 与 `diff` 比较工作区，`--rev <提交>` 改为比较该提交。上游一侧取分支中与被比较一侧清单版本相同的提交，`--upstream <引用>` 可直接指定。路径相对 `vendor/` 或仓库根目录，不给路径时比较两个包。比较不计重命名：从上游文件移出的代码计为本地文件的新增行。
+
+本地新增的类型、函数和整段逻辑放在独立的文件中（如 `gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs`），上游文件只保留接入点。升级时只有上游文件中的补丁可能与上游的改动冲突，其规模即 `stat` 中 `M` 一类的行数。
+
+### 升级上游
+
+`gpui-kit` 以 `=x.y.z` 固定 `gpui-pre` 的版本，组件库与快照一起升级，`src-gpui/Cargo.toml` 中的 `gpui-kit`、`gpui_test`、`gpui_windows` 同步修改。升级在 `target/worktrees/` 下的工作树中进行（`node scripts/worktree.mjs add <名称>`），避免主工作区的开发脚本因升级中途的源码反复重建。
+
+`node scripts/vendor-patches.mjs upgrade <新版本>` 要求 `vendor/` 没有未提交的改动。它把新版本的原样包提交到 `vendor-upstream`，再逐文件处理工作区：
+
+- 没有本地补丁的文件改为新版本的内容；上游新增的文件加入工作区并以 `git add --intent-to-add` 登记，上游删除的文件随之删除。
+- 有补丁且上游也改动过的文件用 `git merge-file --diff3` 三方合并，基准为旧版本的原样包，冲突处留下标记。
+- 上游删除了带补丁的文件、本地删除的文件在上游有改动、双方新增了同名文件时不做处理，列为待定。
+
+结果留在工作区，不暂存内容也不提交；存在冲突或待定的文件时以非零状态退出。上游整体重写过的文件从上游的新文件出发，按 `ARGUS-PATCHES.md` 的记录与旧补丁重新实现补丁。合并完成后更新两份 `ARGUS-PATCHES.md` 中的来源版本；此后 `stat` 与 `diff` 相对新版本比较，补丁量应与升级前相当。放弃升级时运行 `git restore --source=HEAD --staged --worktree -- vendor/`，再次运行 `upgrade` 会沿用分支上已导入的版本。
+
+验证时用升级前后的构建各运行一次 `node scripts/ui-smoke.mjs` 与 `node scripts/ui-shots.mjs <标签> tools/window-probe/steps/localization.json`（`--executable` 指定旧构建），以 `node scripts/compare-shots.mjs` 逐像素对照，页面只应在预期之处不同；用 `node scripts/perf-ab.mjs` 对照新旧发布构建。按本页复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行和 Windows 渲染，再用 `cargo tree -p argus -i windows -e features` 核对没有多编译一份 `windows`，并运行 `node scripts/notices.mjs`。
