@@ -114,6 +114,40 @@ pub fn right_press() -> Option<Instant> {
 pub fn mark_right_press() {
     *RIGHT_PRESS.lock().unwrap() = Some(Instant::now());
 }
+/// Whether `message` comes from the system's pointer while this instance
+/// leaves it out: a test instance answers its test controls alone, so the
+/// pointer of whoever uses the desktop neither hovers nor clicks its windows
+/// (`gpui::set_windows_system_pointer_ignored`; GPUI's own windows do the
+/// same in the platform). For the windows Argus handles the pointer of itself.
+pub(crate) fn ignores_pointer(message: u32) -> bool {
+    gpui_kit::gpui::windows_system_pointer_ignored()
+        && matches!(
+            message,
+            WM_MOUSEACTIVATE
+                | WM_MOUSEMOVE
+                | windows::Win32::UI::Controls::WM_MOUSELEAVE
+                | WM_LBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_LBUTTONDBLCLK
+                | WM_RBUTTONDOWN
+                | WM_RBUTTONUP
+                | WM_RBUTTONDBLCLK
+                | WM_MBUTTONDOWN
+                | WM_MBUTTONUP
+                | WM_MOUSEWHEEL
+                | WM_MOUSEHWHEEL
+                | WM_CONTEXTMENU
+        )
+}
+/// The answer to a message [`ignores_pointer`] leaves out: no activation and
+/// the click dropped, nothing for the rest.
+pub(crate) fn ignored_pointer(message: u32) -> LRESULT {
+    LRESULT(if message == WM_MOUSEACTIVATE {
+        MA_NOACTIVATEANDEAT as isize
+    } else {
+        0
+    })
+}
 const TRAY_MESSAGE: u32 = WM_APP + 82;
 const BADGE_COLOR: [u8; 4] = [0x38, 0xBD, 0xF8, 0xFF];
 

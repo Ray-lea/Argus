@@ -75,8 +75,7 @@ const captures = (dir) => readdirSync(dir).filter((name) => name.endsWith(".png"
  * Compares the captures of two sets of runs that should look the same, each
  * set a list of folders with the same capture names. A capture passes when
  * any run of one set equals any run of the other: something outside the
- * comparison (a hover fill under the real pointer) may mark one run of
- * either. Returns the captures that never matched, each with its closest
+ * comparison (a curve moving with real time) may mark one run of either. Returns the captures that never matched, each with its closest
  * pair, and those the other set does not have at all.
  */
 export function parityDifferences(ours, theirs, tolerance = 0) {

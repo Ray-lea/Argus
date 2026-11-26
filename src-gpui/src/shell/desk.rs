@@ -84,6 +84,9 @@ unsafe extern "system" fn procedure(
     _id: usize,
     _data: usize,
 ) -> LRESULT {
+    if super::ignores_pointer(message) {
+        return super::ignored_pointer(message);
+    }
     match message {
         // Clicks leave the active window active.
         WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),

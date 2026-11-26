@@ -20,7 +20,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 ## 界面验证
 
-`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录，其中历史页的数据和 `history-picker.json` 的步骤分别由同目录的 `history.mjs`、`history-picker.mjs` 生成：需要改动时修改生成脚本并重新运行，`pnpm test` 核对生成结果与已提交的内容一致。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
+`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。测试实例（`--test`）不接收系统的指针：鼠标、触控笔与触摸既不悬停、单击、滚动，也不激活它的窗口，标题栏对它们没有按钮与边框（GPUI 补丁 `set_windows_system_pointer_ignored`，任务栏监控与桌面监控的窗口同样处理）。实例只经测试控制操作，桌面上正在使用的鼠标不会改变测试画面。模拟快照位于该工具的 fixtures 目录，其中历史页的数据和 `history-picker.json` 的步骤分别由同目录的 `history.mjs`、`history-picker.mjs` 生成：需要改动时修改生成脚本并重新运行，`pnpm test` 核对生成结果与已提交的内容一致。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
 
 `--fixture` 直接使用模拟快照，不启动真实采集器或采集侧的服务客户端，可用于独立检查图形初始化。`--test` 本身保留真实采集。
 
@@ -63,7 +63,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（63 个文件，开发构建约 18 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同（`--parity-tolerance N` 允许每个通道相差不超过 N：CI 运行器的软件渲染下，滚动后的表格每次运行略有不同，nightly 用 2）；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
 
-不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
+不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：同一构建的两次截图仍可能有运行之间的差异（模拟快照下随真实时间移动的曲线、软件渲染下的个别像素），这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
 每个步骤文件的用途、它用到的测试控制与检查字段写在文件开头的 `about` 里；`node scripts/ui-steps.mjs --list` 列出全部文件及其说明。
 

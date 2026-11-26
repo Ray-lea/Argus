@@ -126,6 +126,30 @@ impl Drop for DrawWindowGuard<'_> {
     }
 }
 
+/// Argus patch: the answer to a message of the system's pointer while the
+/// windows leave it out, or `None` for any other message. Nothing reaches
+/// `DefWindowProc` either, which would move, size or activate the window.
+fn ignored_pointer_result(msg: u32) -> Option<isize> {
+    match msg {
+        // Neither a click nor a touch activates the window; the click is dropped.
+        WM_MOUSEACTIVATE => Some(MA_NOACTIVATEANDEAT as isize),
+        WM_POINTERACTIVATE => Some(PA_NOACTIVATE as isize),
+        // No caption buttons, edges or snap layouts under the pointer.
+        WM_NCHITTEST => Some(HTNOWHERE as isize),
+        WM_MOUSEMOVE | WM_MOUSELEAVE | WM_MOUSEHOVER | WM_NCMOUSEMOVE | WM_NCMOUSELEAVE
+        | WM_NCMOUSEHOVER | WM_LBUTTONDOWN | WM_LBUTTONUP | WM_LBUTTONDBLCLK | WM_RBUTTONDOWN
+        | WM_RBUTTONUP | WM_RBUTTONDBLCLK | WM_MBUTTONDOWN | WM_MBUTTONUP | WM_MBUTTONDBLCLK
+        | WM_XBUTTONDOWN | WM_XBUTTONUP | WM_XBUTTONDBLCLK | WM_NCLBUTTONDOWN | WM_NCLBUTTONUP
+        | WM_NCLBUTTONDBLCLK | WM_NCRBUTTONDOWN | WM_NCRBUTTONUP | WM_NCRBUTTONDBLCLK
+        | WM_NCMBUTTONDOWN | WM_NCMBUTTONUP | WM_NCMBUTTONDBLCLK | WM_NCXBUTTONDOWN
+        | WM_NCXBUTTONUP | WM_NCXBUTTONDBLCLK | WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_POINTERDOWN
+        | WM_POINTERUPDATE | WM_POINTERUP | WM_POINTERENTER | WM_POINTERLEAVE
+        | WM_POINTERCAPTURECHANGED | WM_POINTERWHEEL | WM_POINTERHWHEEL | DM_POINTERHITTEST
+        | WM_CONTEXTMENU => Some(0),
+        _ => None,
+    }
+}
+
 impl WindowsWindowInner {
     pub(crate) fn handle_msg(
         self: &Rc<Self>,
@@ -134,6 +158,13 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
+        // Argus patch: an application that drives its windows with synthetic
+        // input leaves the system's pointer out (`windows_system_pointer_ignored`).
+        if gpui::windows_system_pointer_ignored()
+            && let Some(result) = ignored_pointer_result(msg)
+        {
+            return LRESULT(result);
+        }
         let handled = match msg {
             // `DefWindowProc` answers `MA_NOACTIVATE` for a left click on `HTCAPTION`.
             // The activation is only triggered when `DefWindowProc` handles the following `WM_NCLBUTTONDOWN`.

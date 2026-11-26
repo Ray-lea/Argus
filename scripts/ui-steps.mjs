@@ -20,7 +20,8 @@
 // A step file with `run.parity` is run a second time with those switches set
 // (output in steps-<name>-parity), and every capture of the two runs must be
 // the same pixel for pixel. Captures that differ are taken once more on both
-// sides before the file fails: the real pointer may have rested on a window.
+// sides before the file fails: a run can catch something that varies between
+// runs of the same build.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
