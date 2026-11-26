@@ -65,7 +65,7 @@ export function uninstallSmoke(directory, {
     copyFileSync(join(target, "uninstall.exe"), join(scratch, "uninstall.exe"));
     const file = join(scratch, "run.ps1");
     writeFileSync(file, script);
-    const result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-File", file], {
+    const options = {
       encoding: "utf8", windowsHide: true, timeout: timeoutMs * 2 + 15_000,
       env: {
         ...process.env,
@@ -73,7 +73,11 @@ export function uninstallSmoke(directory, {
         ARGUS_SMOKE_UNINSTALL_KEY: uninstallKey,
         ARGUS_SMOKE_TIMEOUT_MS: String(timeoutMs),
       },
-    });
+    };
+    let result = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-File", file], options);
+    // Runners have PowerShell 7; a lab VM may have only Windows PowerShell, which runs the script as well.
+    if (result.error?.code === "ENOENT")
+      result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file], options);
     if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(`Uninstall smoke check failed (${result.status}):\n${result.stdout}${result.stderr}`);
     return result.stdout.trim();
