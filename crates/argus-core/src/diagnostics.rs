@@ -354,7 +354,9 @@ pub fn failure(text: &str) -> Cow<'static, str> {
 }
 
 /// The Win32 code as Rust ("(os error 5)") and windows-rs ("(0x80070005)")
-/// print it.
+/// print it, or as the service's error text shows it after the system's
+/// sentence ("Access is denied. (5)", "拒绝访问。（5）": `service.osError`,
+/// which leaves out Rust's suffix), also inside a longer message.
 fn os_error(text: &str) -> Option<u32> {
     let rust = text.match_indices("os error ").find_map(|(at, _)| {
         if joined(text, at) {
@@ -366,6 +368,30 @@ fn os_error(text: &str) -> Option<u32> {
             .ok()
     });
     rust.or_else(|| hresults(text).find_map(|h| (h >> 16 == 0x8007).then_some(h & 0xffff)))
+        .or_else(|| sentence_code(text))
+}
+
+/// A decimal code in parentheses right after a full stop: system error
+/// texts end with one ("." or "。"), so a number in parentheses elsewhere in
+/// a sentence ("step (5) of …") is not taken for a code.
+fn sentence_code(text: &str) -> Option<u32> {
+    text.char_indices().find_map(|(at, c)| {
+        let close = match c {
+            '(' => ')',
+            '（' => '）',
+            _ => return None,
+        };
+        let stop = text[..at].trim_end().chars().next_back()?;
+        if stop != '.' && stop != '。' {
+            return None;
+        }
+        let rest = &text[at + c.len_utf8()..];
+        let (digits, _) = rest.split_once(close)?;
+        // Win32 codes have at most five digits; HRESULTs are hex and found above.
+        ((1..=5).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| digits.parse().ok())
+            .flatten()
+    })
 }
 
 /// Failure HRESULTs: exactly eight hex digits with the top bit set, so that
@@ -683,6 +709,23 @@ mod tests {
                 "pipe closed (os error 233)",
             ),
             ("没有注册类 (0x80040154)", "hresult 0x80040154"),
+            // The service's error text: the system's words, then the code once.
+            ("管道已结束。（109）", "pipe closed (os error 109)"),
+            (
+                "The pipe has been ended. (109)",
+                "pipe closed (os error 109)",
+            ),
+            ("拒绝访问。（5）", "access denied (os error 5)"),
+            ("未指定的错误（0x80004005）", "hresult 0x80004005"),
+            // Inside a longer message, as the task manager replacement words it.
+            (
+                r"C:\Users\x\y: Access is denied. (5). Security software may block it.",
+                "access denied (os error 5)",
+            ),
+            (
+                "自检失败：拒绝访问。（5）。可能被安全软件拦截。",
+                "access denied (os error 5)",
+            ),
         ] {
             assert_eq!(failure(text), class, "{text}");
         }
@@ -698,6 +741,11 @@ mod tests {
             ("build 26300.9711 failed with 0x1234", "operation failed"),
             ("id ab0x80070005", "operation failed"),
             ("cmos error 5", "operation failed"),
+            // Only a code right after the system's full stop counts.
+            ("(5)", "operation failed"),
+            ("step (5) of the setup", "operation failed"),
+            ("第（2）步失败", "operation failed"),
+            ("Done. (2026112)", "operation failed"),
         ] {
             assert_eq!(failure(text), class, "{text}");
         }
