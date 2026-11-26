@@ -1,5 +1,7 @@
 # Argus patches
 
+`Window::paint_composition_overlay` marks a full-viewport paint layer. The platform can composite earlier primitives on one surface and the marked layer and later primitives on another. Cached paint operations replay the marker at the current draw order. `Window::supports_composition_overlay` lets a view choose its fallback when the platform lacks this capability. Tests can borrow `Window::rendered_scene` to check the order after a cached paint.
+
 `set_windows_software_rendering` records whether the application wants the Windows renderer on the system's software rasterizer, and `windows_software_rendering_requested` reads it. The flag is process-wide: the Windows platform reads it when it creates its DirectX devices and on every turn of its frame clock (at least once a second while no window draws), so it can be set before the application starts or while windows are open.
 
 On Windows, an unclaimed touch long press dispatches a right-button press and release to the existing context-menu listeners. Text selection and tooltip handlers retain first refusal, and the contact is claimed so releasing it cannot click through the newly opened menu. A release that first reports movement beyond the tap slop scrolls from the original contact instead of clicking its destination. Argus's `touch_input` regression covers taps, double taps, panning, cancellation, coalesced movement and claimed/unclaimed long presses.

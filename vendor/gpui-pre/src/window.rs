@@ -3841,9 +3841,8 @@ impl Window {
             .render_to_image(&self.rendered_frame.scene)
     }
 
-    /// Borrows the most recently rendered frame's scene, so benchmarks can validate their
-    /// output and report batch counts without cloning it.
-    #[cfg(feature = "bench-support")]
+    /// Borrows the last rendered scene for paint-order tests and batch benchmarks.
+    #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
     pub fn rendered_scene(&self) -> &Scene {
         &self.rendered_frame.scene
     }
@@ -5899,6 +5898,27 @@ impl Window {
         }
 
         result
+    }
+
+    /// Whether this window can present an overlay on its own composition surface.
+    pub fn supports_composition_overlay(&self) -> bool {
+        self.platform_window.supports_composition_overlay()
+    }
+
+    /// Begin a full-window overlay. A compositing backend can keep the already
+    /// painted content in one surface and the overlay and later paint in another.
+    pub fn paint_composition_overlay<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        draw: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        if bounds.intersect(&self.content_mask().bounds).is_empty() {
+            return draw(self);
+        }
+        self.paint_layer(bounds, |window| {
+            window.next_frame.scene.mark_composition_overlay();
+            draw(window)
+        })
     }
 
     /// Paint the drop (non-inset) shadows from `shadows` into the scene at the current

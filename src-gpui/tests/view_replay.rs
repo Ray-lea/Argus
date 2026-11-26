@@ -10,6 +10,83 @@ use gpui_test::{
 use std::cell::Cell;
 use std::rc::Rc;
 
+#[test]
+fn a_cached_composition_overlay_replays_at_its_current_draw_order() {
+    struct Overlay(Rc<Cell<usize>>);
+    impl Render for Overlay {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            self.0.set(self.0.get() + 1);
+            gpui_test::canvas(
+                |_, _, _| {},
+                |bounds, _, window, _| {
+                    window.paint_composition_overlay(bounds, |window| {
+                        window.paint_quad(gpui_test::fill(bounds, rgb(0x667788)));
+                    });
+                },
+            )
+            .size_full()
+        }
+    }
+
+    struct Page {
+        fills: usize,
+        overlay: Entity<Overlay>,
+    }
+    impl Render for Page {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .relative()
+                .size_full()
+                .children((0..self.fills).map(|_| div().absolute().inset_0().bg(rgb(0x223344))))
+                .child(
+                    self.overlay
+                        .clone()
+                        .cached(StyleRefinement::default().size_full()),
+                )
+        }
+    }
+
+    fn boundary(window: &Window, count: usize) -> u32 {
+        let scene = window.rendered_scene();
+        let order = scene.composition_overlay.expect("visible overlay");
+        let mut below = 0;
+        let mut above = 0;
+        for quad in &scene.quads {
+            if quad.background.as_solid() == Some(rgb(0x223344).into()) {
+                assert!(quad.order < order);
+                below += 1;
+            } else if quad.background.as_solid() == Some(rgb(0x667788).into()) {
+                assert_eq!(quad.order, order);
+                above += 1;
+            }
+        }
+        assert_eq!((below, above), (count, 1));
+        order
+    }
+
+    let mut cx = TestAppContext::single();
+    let renders = Rc::new(Cell::new(0));
+    let window = cx.add_window(|_, cx| Page {
+        fills: 1,
+        overlay: cx.new(|_| Overlay(renders.clone())),
+    });
+    cx.run_until_parked();
+    let first = window
+        .update(&mut cx, |page, window, cx| {
+            let order = boundary(window, 1);
+            page.fills = 2;
+            cx.notify();
+            order
+        })
+        .unwrap();
+    cx.run_until_parked();
+    let second = window
+        .update(&mut cx, |_, window, _| boundary(window, 2))
+        .unwrap();
+    assert!(second > first);
+    assert_eq!(renders.get(), 1);
+}
+
 #[derive(Clone, Default)]
 struct Counts {
     outer: Rc<Cell<usize>>,

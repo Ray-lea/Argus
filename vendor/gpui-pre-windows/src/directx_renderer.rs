@@ -32,6 +32,10 @@ mod retained_tests;
 #[path = "chart_composition.rs"]
 mod chart_composition;
 
+#[path = "composition_overlay.rs"]
+mod composition_overlay;
+use composition_overlay::CompositionOverlay;
+
 #[path = "scene_cache.rs"]
 mod scene_cache;
 #[path = "scroll_copy.rs"]
@@ -770,6 +774,8 @@ struct DirectComposition {
     /// With `ARGUS_GPUI_COMPOSED_PRESENT`: the bitmap `swap_visual` shows in
     /// place of the flip chain.
     flat: Option<FlatBitmap>,
+    overlay: Option<CompositionOverlay>,
+    overlay_unavailable: bool,
     charts: chart_composition::ChartComposition,
 }
 
@@ -1271,6 +1277,33 @@ impl DirectXRenderer {
             self.charts_moved = Some(std::time::Instant::now());
         }
         self.drawn_revision = scene.paint_revision;
+        if let Some(order) = scene.composition_overlay
+            && self.supports_composition_overlay()
+        {
+            match self.present_composition_overlay(scene, order) {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    log::warn!("Presenting composition overlay: {error:#}");
+                    self.direct_composition
+                        .as_mut()
+                        .unwrap()
+                        .overlay_unavailable = true;
+                    if let Some(resources) = &mut self.resources {
+                        resources.forget();
+                    }
+                    // Keep the previous image until the requested animation frame
+                    // repaints the overlay with the single-surface fallback.
+                    return Ok(());
+                }
+            }
+        }
+        if self
+            .direct_composition
+            .as_ref()
+            .is_some_and(|comp| comp.overlay.is_some())
+        {
+            return self.finish_composition_overlay(scene, background_appearance);
+        }
         let force = scene.force_full_redraw.replace(false) || self.fresh.len() > 4096;
         if force {
             self.fresh.clear();
@@ -3151,6 +3184,8 @@ impl DirectComposition {
                     comp_target,
                     swap_visual,
                     flat: None,
+                    overlay: None,
+                    overlay_unavailable: false,
                     charts,
                 })
             }

@@ -1135,6 +1135,13 @@ impl PlatformWindow for WindowsWindow {
             .set(Some(callback));
     }
 
+    fn supports_composition_overlay(&self) -> bool {
+        self.state
+            .renderer
+            .try_borrow()
+            .is_ok_and(|renderer| renderer.supports_composition_overlay())
+    }
+
     fn draw(&self, scene: &Scene) {
         let mut renderer = self.state.renderer.borrow_mut();
         // Display-change broadcasts can arrive inside a renderer COM call.

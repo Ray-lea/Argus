@@ -1290,15 +1290,17 @@ impl DirectXRenderer {
         comp.charts.backdrop_scan = None;
         comp.charts.foreground = None;
         comp.charts.foreground_overlay = None;
-        if !comp.charts.used_since_hide {
+        let had_overlay = comp.overlay.is_some();
+        if !comp.charts.used_since_hide && !had_overlay {
             return Ok(false);
         }
-        if comp.charts.active() {
+        if comp.charts.active() || had_overlay {
             unsafe {
                 comp.comp_target.SetRoot(comp.swap_visual.as_ref())?;
                 comp.comp_device.Commit()?;
             }
         }
+        comp.overlay = None;
         comp.charts.deactivate();
         comp.charts.bars.clear();
         if let Some(r) = self.resources.as_mut() {
@@ -2362,7 +2364,7 @@ impl DirectXRenderer {
     }
 }
 
-fn diagnostics() -> bool {
+pub(super) fn diagnostics() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("ARGUS_GPUI_DIAGNOSTICS").is_some())
 }

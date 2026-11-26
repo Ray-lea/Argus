@@ -45,6 +45,8 @@ pub struct Scene {
     pub force_full_redraw: std::cell::Cell<bool>,
     /// Earliest draw order that can change without a complete paint.
     pub animated_order: Option<DrawOrder>,
+    /// Draw order of a full-window translucent overlay to composite separately.
+    pub composition_overlay: Option<DrawOrder>,
     /// Source geometry of retained load bars, indexed after scene sorting.
     pub retained_bars: std::collections::BTreeMap<usize, RetainedBar>,
     pub(crate) paint_operations: Vec<PaintOperation>,
@@ -88,6 +90,7 @@ impl Scene {
         self.scroll_regions.clear();
         self.force_full_redraw.set(false);
         self.animated_order = None;
+        self.composition_overlay = None;
         self.retained_bars.clear();
         self.paint_operations.clear();
         self.hover_quads.clear();
@@ -163,6 +166,14 @@ impl Scene {
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
+    }
+
+    pub(crate) fn mark_composition_overlay(&mut self) {
+        if let Some(&order) = self.layer_stack.last() {
+            self.composition_overlay.get_or_insert(order);
+            self.paint_operations
+                .push(PaintOperation::CompositionOverlay);
+        }
     }
 
     /// Moves and fades everything inserted until the matching
@@ -333,6 +344,7 @@ impl Scene {
                 }
                 PaintOperation::Rule(axis, quad) => self.insert_rule(*axis, *quad),
                 PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
+                PaintOperation::CompositionOverlay => self.mark_composition_overlay(),
                 PaintOperation::EndLayer => self.pop_layer(),
                 PaintOperation::PushTransform(transform) => self.push_transform(*transform),
                 PaintOperation::PushLiveTransform {
@@ -478,6 +490,7 @@ pub(crate) enum PaintOperation {
     Primitive(Primitive),
     Rule(crate::Axis, Quad),
     StartLayer(Bounds<ScaledPixels>),
+    CompositionOverlay,
     EndLayer,
     PushTransform(VisualTransform),
     /// A [`LiveTransform`] about `anchor` (device pixels), read again on every replay.
