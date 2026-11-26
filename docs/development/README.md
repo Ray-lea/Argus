@@ -91,3 +91,15 @@ cargo run -p argus-core --example history_switch --release -- <历史目录的�
 `network_cadence` 的 `--alternating` 让测试流量每半秒交替变化，用于检查每次刷新是否重新计算速率。快速事件送达使用 [ControlTrace 的 FLUSH 操作](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-controltracew)，在独立线程执行。
 
 `gpu_diagnostics` 输出带时间戳的 JSONL，包含目标进程的引擎身份、计数区间、整机占用和可用的 NVIDIA 核心读数。对照时保持相同负载，核对适配器、引擎与采样区间。`gpu_compute` 在 12 秒内重复提交 40 ms、休息 160 ms 的短 CUDA 负载，实际 GPU 利用率以计数器为准。
+
+## 分析崩溃转储
+
+用户报告蓝屏或绿屏时，可请对方提供 `C:\Windows\Minidump` 下的转储文件。`node scripts/triage-dump.mjs <转储文件>` 不需要调试器，只读取该文件，输出停止代码及其参数、系统时间与开机时长、出错线程所属进程的映像名、处理器上下文与陷阱帧所在的位置，以及出错线程栈上指向已加载驱动的地址（`模块+偏移`，由内向外，同一模块的连续地址合并为一行）。栈上的值包含过期数据，按驱动链的整体走向判读，不逐项当作调用帧。没有符号时只能得到模块和偏移，得不到函数名。
+
+其他子命令用于进一步核对：`drivers [正则]` 列出已加载的驱动及其地址范围，`stamps [正则]` 给出驱动的链接时间与校验和（用于判断驱动版本），`trap` 读取 0x139 停止代码的陷阱帧与异常记录，`mem <地址> [长度]` 读取转储中保存的内存，`blocks`、`find`、`scan`、`tail` 查看转储本身的布局。
+
+输出含有报告者机器上的驱动与进程名称，只用于分析：不要原样贴到公开的问题或提交里，转储与输出也不放进仓库。存储相关的崩溃还需要报告者存储控制器的驱动，可请对方在普通权限的 PowerShell 中运行：
+
+```powershell
+Get-PnpDevice -PresentOnly | ? { $_.Class -in 'DiskDrive','SCSIAdapter','HDC' -or $_.Service -match 'nvme|stor|vmd' } | ft Class, FriendlyName, Service
+```
