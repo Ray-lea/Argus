@@ -46,6 +46,7 @@ export const STEP_RULES = [
   [/^src-gpui\/src\/frontend\/(tips|icon_motion)\.rs$/, ["column-widths", "caption-buttons", "about-links"]],
   [/^src-gpui\/src\/frontend\/motion\.rs$|^src-gpui\/src\/window_motion/, ["window-motion", "vitals-visibility", "tray-reopen"]],
   [/^src-gpui\/src\/frontend\/(theme|appearance|assets)\.rs$/, ["localization", "backdrop-fallback", "caption-buttons"]],
+  [/^src-gpui\/src\/frontend\/units\.rs$/, ["byte-units", "column-widths", "monitor-metrics", "vitals-visibility"]],
   [/^src-gpui\/src\/frontend\.rs$|^src-gpui\/src\/frontend\/(layout|pages|widgets|inline)\.rs$/, ["localization", "status-rate"]],
   [/^src-gpui\/src\/(window_state|platform\/)/, ["window-maximized-restore", "window-restore"]],
   [/^src-gpui\/src\/frontend\/backend\.rs$/, ["localization", "process-order-held"]],

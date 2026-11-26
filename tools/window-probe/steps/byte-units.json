@@ -1,0 +1,24 @@
+{
+  "about": "检查字节单位设置：“数据与历史”设置页的下拉列表依次列出二进制 IEC、十进制 SI 与传统风格，默认选中传统风格（截图 list）；用键盘选择 IEC 后，网络速率单位的分段按钮随之显示 MiB/s。依次在 IEC、SI 与传统风格下截取进程页（概况带、内存与速率列）、性能页的内存、磁盘与网络视图以及历史页，`inspect columns` 记录各列宽度，以便比较 IEC 符号更宽时列宽的变化与切回传统风格后的复原（processes-restored 应与 processes-traditional 相同）。下拉列表不是菜单，`inspectMenu` 读不到它，各项只能从截图核对。",
+  "window": [1400, 900],
+  "steps": [
+    { "control": { "page": "processes", "details": "closed", "motion": "off", "pointerOutside": true }, "inspect": "columns", "label": "processes-traditional", "capture": "processes-traditional" },
+    { "control": { "page": "settings", "settingsSection": "data" }, "capture": "settings-traditional" },
+    { "control": { "clickAnchor": "settings-byte-unit" }, "capture": "list" },
+    { "control": { "keys": ["up", "up", "enter"], "pointerOutside": true }, "capture": "settings-iec" },
+    { "control": { "clickAnchor": "settings-byte-unit" }, "capture": "list-iec" },
+    { "control": { "keys": ["escape"], "pointerOutside": true } },
+    { "control": { "page": "processes" }, "inspect": "columns", "label": "processes-iec", "capture": "processes-iec" },
+    { "control": { "page": "performance", "deviceKind": "memory" }, "capture": "memory-iec" },
+    { "control": { "deviceKind": "disk" }, "capture": "disk-iec" },
+    { "control": { "deviceKind": "network" }, "capture": "network-iec" },
+    { "control": { "page": "history" }, "capture": "history-iec" },
+    { "control": { "preference": { "byteUnit": "si" }, "page": "processes" }, "inspect": "columns", "label": "processes-si", "capture": "processes-si" },
+    { "control": { "page": "performance", "deviceKind": "memory" }, "capture": "memory-si" },
+    { "control": { "deviceKind": "disk" }, "capture": "disk-si" },
+    { "control": { "deviceKind": "network" }, "capture": "network-si" },
+    { "control": { "page": "history" }, "capture": "history-si" },
+    { "control": { "page": "settings", "settingsSection": "data" }, "capture": "settings-si" },
+    { "control": { "preference": { "byteUnit": "traditional" }, "page": "processes" }, "inspect": "columns", "label": "processes-restored", "capture": "processes-restored" }
+  ]
+}
