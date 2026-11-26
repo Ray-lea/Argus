@@ -254,6 +254,7 @@
     "standardAccount": "Esta cuenta no es de administrador, por lo que no puede activar el inicio automático como administrador. El servicio privilegiado puede realizar las operaciones administrativas compatibles.",
     "fallback": "El inicio automático como administrador no se ha completado. Argus se ejecuta con permisos estándar. Utilice «Reparar autorización» en Configuración.",
     "notReady": "La autorización para iniciar como administrador aún no está preparada.",
+    "taskRejected": "El Programador de tareas de Windows no ha podido crear la tarea de inicio como administrador, por lo que este inicio no está activado. Puede deberse a la protección de tareas programadas de un programa de seguridad. Revise el registro de bloqueos; si corresponde a una operación de Argus, permita el cambio y vuelva a intentarlo. Si no encuentra una entrada correspondiente, facilite el registro de diagnóstico de Argus.",
     "revokedRestartFailed": "Se ha revocado la autorización de inicio como administrador. Este proceso conserva los permisos de administrador; cierre y vuelva a abrir Argus para ejecutarlo con permisos estándar."
   }
 }

@@ -21,6 +21,7 @@ pub fn code(value: u32) -> String {
         0x2000_0006 => "task manager replacement conflict",
         0x2000_0007 => "task manager replacement update failed",
         0x2000_0009 => "service authorization record missing or unreadable",
+        0x2000_000a => "scheduled task registration rejected",
         0x2000_0101 => "driver download failed",
         0x2000_0102 => "driver package invalid",
         0x2000_0103 => "driver signature invalid",

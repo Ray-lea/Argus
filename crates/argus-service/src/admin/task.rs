@@ -123,13 +123,39 @@ impl Scheduler {
         }
         Ok(())
     }
+    /// Task Scheduler's own code is logged; the caller gets `TASK_REJECTED`,
+    /// which names the step for the interface.
     pub fn register(&self, id: &str, sid: &str, image: &Path) -> Result<()> {
         let xml = xml(sid, image);
+        let mut registered = self.register_xml(id, sid, &xml);
+        if registered.is_err() {
+            argus_core::diagnostics::warn(
+                "administrator task registration context",
+                self.registration_context(id, sid, image, &xml),
+            );
+            // A registration whose cache entry or task file is gone is not
+            // found, yet keeps its name: registering it again fails (usually
+            // ERROR_FILE_NOT_FOUND) until it is deleted. Not found, there is
+            // no working task to lose.
+            if matches!(self.get(id, sid), Err(2)) {
+                let _ = util::stage(
+                    "administrator ITaskFolder::RegisterTask before stale task removal",
+                    registered,
+                );
+                let _ = util::stage("administrator stale task removal", self.remove(id, sid));
+                registered = self.register_xml(id, sid, &xml);
+            }
+        }
+        util::stage("administrator ITaskFolder::RegisterTask", registered)
+            .map_err(|_| util::TASK_REJECTED)
+    }
+
+    fn register_xml(&self, id: &str, sid: &str, xml: &str) -> Result<()> {
         let acl = format!("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FRFX;;;{sid})");
-        let registered = unsafe {
+        unsafe {
             self.folder.RegisterTask(
                 &BSTR::from(name(id, sid)),
-                &BSTR::from(xml.as_str()),
+                &BSTR::from(xml),
                 TASK_CREATE_OR_UPDATE.0 | TASK_DONT_ADD_PRINCIPAL_ACE.0,
                 &VARIANT::from(sid),
                 &VARIANT::default(),
@@ -137,15 +163,8 @@ impl Scheduler {
                 &VARIANT::from(acl.as_str()),
             )
         }
-        .map_err(win);
-        if registered.is_err() {
-            argus_core::diagnostics::warn(
-                "administrator task registration context",
-                self.registration_context(id, sid, image, &xml),
-            );
-        }
-        util::stage("administrator ITaskFolder::RegisterTask", registered)?;
-        Ok(())
+        .map(drop)
+        .map_err(win)
     }
 
     fn registration_context(&self, id: &str, sid: &str, image: &Path, xml: &str) -> String {
@@ -618,13 +637,70 @@ mod tests {
             .as_ref()
             .ok()
             .map(|_| checked(&id, &sid, &image).is_ok());
+        // What a cleaner or an interrupted deletion can leave: the name only.
+        let replaced = (mode == "fixed" && registered.is_ok()).then(|| {
+            orphan(&id, &sid);
+            assert_eq!(scheduler.exists(&id, &sid), Ok(false));
+            // Without the removal (Windows 11 26H2 answers Err(2)).
+            println!(
+                "stale-registration-plain={:?}",
+                scheduler.register_xml(&id, &sid, &xml(&sid, &image))
+            );
+            scheduler
+                .register(&id, &sid, &image)
+                .and_then(|()| checked(&id, &sid, &image).map(drop))
+        });
         let _ = scheduler.remove(&id, &sid);
         if mode == "fixed" {
             registered.unwrap();
             assert_eq!(verified, Some(true));
+            assert_eq!(replaced, Some(Ok(())));
         } else if registered.is_ok() {
             assert_eq!(verified, Some(true));
         }
+    }
+
+    /// Deletes all Task Scheduler keeps of a registered task but its name in
+    /// the `Tree`: the cache entry under `Tasks` (and `Plain`, for a task
+    /// without triggers) and the task file. Task Scheduler then reports the
+    /// task as not found and refuses to register it again.
+    fn orphan(id: &str, sid: &str) {
+        use windows::Win32::System::Registry::{
+            HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegDeleteKeyW, RegGetValueW,
+        };
+        let cache = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache";
+        let tree = util::wide(&format!(r"{cache}\Tree\{}", name(id, sid)));
+        let value = util::wide("Id");
+        let mut data = [0u16; 64];
+        let mut bytes = size_of_val(&data) as u32;
+        unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                windows::core::PCWSTR(tree.as_ptr()),
+                windows::core::PCWSTR(value.as_ptr()),
+                RRF_RT_REG_SZ,
+                None,
+                Some(data.as_mut_ptr().cast()),
+                Some(&mut bytes),
+            )
+        }
+        .ok()
+        .unwrap();
+        let guid = String::from_utf16_lossy(&data[..(bytes as usize / 2).saturating_sub(1)]);
+        for kind in ["Tasks", "Plain"] {
+            let key = util::wide(&format!(r"{cache}\{kind}\{guid}"));
+            let deleted =
+                unsafe { RegDeleteKeyW(HKEY_LOCAL_MACHINE, windows::core::PCWSTR(key.as_ptr())) };
+            // A task with triggers has no `Plain` entry.
+            assert!(deleted.is_ok() || kind == "Plain", "{kind}: {deleted:?}");
+        }
+        let system = std::env::var_os("SystemRoot").unwrap();
+        std::fs::remove_file(
+            Path::new(&system)
+                .join(r"System32\Tasks")
+                .join(name(id, sid)),
+        )
+        .unwrap();
     }
 
     #[test]
