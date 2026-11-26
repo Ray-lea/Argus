@@ -8,6 +8,7 @@ import { availableParallelism } from "node:os";
 import assert from "node:assert/strict";
 import { physicalPixelsMatch, summarizeFrames } from "./perf-frames.mjs";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
+import { windowProbe } from "./lib/window-probe.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -49,7 +50,7 @@ writeFileSync(
     hardwareAcceleration: !softwareRendering,
   }),
 );
-const probe = resolve(flag("--probe", "target/release/argus-window-probe.exe"));
+const probe = windowProbe(flag("--probe")).path;
 const seconds = Number(flag("--seconds", 20));
 const warmup = Number(flag("--warmup", 25));
 const captureEnabled = !process.argv.includes("--no-capture");

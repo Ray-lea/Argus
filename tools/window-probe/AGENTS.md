@@ -34,4 +34,6 @@
 - 机器正在大量读写磁盘或编译时，开发构建的首帧（启动时编译着色器）可能迟到数十秒，带固定等待的检查会报“missing response”或缺少检查结果。这类失败在负载过去后重跑确认，不要据此修改等待时间。
 - 测试实例以 `0xc0000409` 退出是 panic；位置在输出目录 `logs/argus.log` 的 `panic at` 一行，常指向 vendored GPUI 里的断言。
 - 开发构建在启动时从源码目录编译着色器：改 `shaders.hlsl` 后重启实例即可看到效果，但这样的程序不能拿到别的机器上运行。
-- `cargo test -p argus` 会重新生成 `target/debug/argus.exe`。界面检查和测试交替进行时，以检查开始时脚本复制到输出目录的那一份为准。
+- `cargo test -p argus` 会重新生成 `target/debug/argus.exe`。界面检查和测试交替进行时，以检查开始时脚本复制到输出目录的那一份为准；`ui-shots` 结束时删除这份副本，要拿它做之后的基准就加 `--keep-executable`。
+- 读 `results.json` 时按名称取：检查结果在 `inspections[label]`，写出的图片在 `captures`（字段见 `docs/development/gpui.md` 的“截图与录制”），不要按 `results` 的下标或猜测的字段去找。
+- 沙箱里写不了 `%APPDATA%` 时，启动脚本前设 `ARGUS_TEST_DATA_ROOT`（如 `target\test-profiles`），测试标识的目录就放在其下（`docs/development/environment.md`）。

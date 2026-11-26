@@ -208,3 +208,18 @@ export function runSeconds(steps) {
   const ms = steps.reduce((sum, step) => sum + (step.wait ?? 0) + (step.record?.ms ?? 0) + 500, 0);
   return Math.ceil(ms / 1000) + 60;
 }
+
+/**
+ * What a run produced, by name, for results.json: the answer of each labelled
+ * inspection (`inspections[label]`) and the image files written, in order.
+ * Steps after one that failed produced nothing and have no result.
+ */
+export function summary(steps, results) {
+  const inspections = {};
+  for (const result of results) if (result.label && result.inspect) inspections[result.label] = result.inspect;
+  const captures = [];
+  for (const step of steps.slice(0, results.length))
+    for (const name of [step.capture, step.captureFlyout, step.captureWindow?.name, step.crop?.name, step.sheet?.name])
+      if (name) captures.push(`${name}.png`);
+  return { inspections, captures };
+}

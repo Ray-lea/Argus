@@ -5,6 +5,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
+import { windowProbe } from "./lib/window-probe.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
@@ -39,7 +40,7 @@ writeFileSync(
     closeToTray: false,
   }),
 );
-const probe = resolve(option("--probe", "target/release/argus-window-probe.exe"));
+const probe = windowProbe(option("--probe")).path;
 const delay = Number(option("--tray-delay", "2000"));
 assert(Number.isInteger(delay) && delay >= 1 && delay <= 10000);
 const events = [];

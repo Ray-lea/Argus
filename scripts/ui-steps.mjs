@@ -54,7 +54,8 @@ const copy = (label) => resolve(folder(label), "argus.exe");
 /** One run of a step file under a label; resolves to the lines of its failure, none when it passed. */
 async function run(label, file, limit, { executable, env = {} } = {}) {
   // An executable given here stands before the caller's own, so that it is the one taken.
-  const args = ["scripts/ui-shots.mjs", label, file, ...(executable ? ["--executable", executable] : []), ...passed];
+  // The copies are kept for the parity runs, which reuse the first, and removed below.
+  const args = ["scripts/ui-shots.mjs", label, file, ...(executable ? ["--executable", executable] : []), "--keep-executable", ...passed];
   const child = spawn(process.execPath, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
   let stderr = "";
   child.stdout.resume();

@@ -6,6 +6,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
+import { windowProbe } from "./lib/window-probe.mjs";
 
 process.chdir(resolve(import.meta.dirname, ".."));
 const [label = "process-roster", input = "target/debug/argus.exe"] = process.argv.slice(2);
@@ -24,7 +25,7 @@ writeFileSync(join(config, "settings.json"), JSON.stringify({
   history: false, hotkeyEnabled: false, kernelSensors: false,
   updateCheck: false, closeToTray: false,
 }));
-const probe = resolve("target/release/argus-window-probe.exe");
+const probe = windowProbe().path;
 const child = spawn(probe, ["run", executable, "--hidden", "--test", "--identifier", identifier, "--stop-after", "90"], {
   windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
 });

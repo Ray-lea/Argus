@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
 import { compareChartPixels } from "./lib/capture-pixels.mjs";
+import { windowProbe } from "./lib/window-probe.mjs";
 const root = resolve(import.meta.dirname, "..");
 process.chdir(root);
 const label = process.argv[2] ?? `smoke-${Date.now()}`;
@@ -131,7 +132,7 @@ const overviewStates = [
   ...(hardware.batteries ?? []).map((b, i) => [`battery-${i}`, { device: `bat:${b.info.id}` }]),
 ];
 const probeFlag = process.argv.indexOf("--probe");
-const probe = resolve(probeFlag >= 0 ? process.argv[probeFlag + 1] : "target/release/argus-window-probe.exe");
+const probe = windowProbe(probeFlag >= 0 ? process.argv[probeFlag + 1] : undefined).path;
 const executable = resolve(output, "argus.exe");
 const executableFlag = process.argv.indexOf("--executable");
 copyFileSync(resolve(executableFlag >= 0 ? process.argv[executableFlag + 1] : process.argv.includes("--dev") ? "target/debug/argus.exe" : "target/release/argus.exe"), executable);
