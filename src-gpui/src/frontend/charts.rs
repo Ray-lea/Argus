@@ -17,6 +17,8 @@ use gpui_kit::component::plot::{
     tooltip::{Tooltip, TooltipState},
 };
 use gpui_kit::gpui::Axis;
+
+use super::units::{ByteUnit, GIGA};
 #[derive(Clone, Copy)]
 pub(super) enum ChartHeight {
     Fixed(Pixels),
@@ -283,7 +285,10 @@ impl MetricFormat {
             Self::Percent => format!("{}%", theme::cpu(value)),
             Self::RoundPercent => format!("{}%", value.round()),
             Self::Memory => theme::memory(value),
-            Self::Gigabytes => crate::regional::number!("{:.1} GB", value / GIB),
+            Self::Gigabytes => {
+                let units = ByteUnit::current();
+                format!("{} {}", units.gigabytes(value), units.symbol(GIGA))
+            }
             Self::Rate => theme::bytes(value, true),
             Self::ByteRate => byte_rate(value),
             Self::Count => theme::count(value),
@@ -299,9 +304,6 @@ impl MetricFormat {
         }
     }
 }
-pub(in crate::frontend) const KIB: f64 = 1024.;
-pub(in crate::frontend) const MIB: f64 = KIB * 1024.;
-pub(in crate::frontend) const GIB: f64 = MIB * 1024.;
 /// Watts with sensible precision: 7.4, 78, and the sub-watt readings of an
 /// idle integrated GPU kept: 0.012.
 pub(in crate::frontend) fn watts(value: f64) -> String {
@@ -321,15 +323,7 @@ pub(in crate::frontend) fn watts_tenths(value: f64) -> String {
 }
 /// A byte rate with its unit always shown: "0 KB/s", "312 KB/s", "1.2 MB/s".
 pub(in crate::frontend) fn byte_rate(bytes: f64) -> String {
-    if bytes < 1. {
-        "0 KB/s".into()
-    } else if bytes < MIB {
-        format!("{} KB/s", (bytes / KIB).round().max(1.))
-    } else if bytes < GIB {
-        crate::regional::number!("{:.1} MB/s", bytes / MIB)
-    } else {
-        crate::regional::number!("{:.2} GB/s", bytes / GIB)
-    }
+    ByteUnit::current().rate_shown(bytes)
 }
 /// A rate in bits per second, the unit links and broadband plans are sold in.
 pub(in crate::frontend) fn bit_rate(bytes: f64) -> String {
@@ -1010,6 +1004,7 @@ struct ChartRevision {
     grid: bool,
     format: Option<MetricFormat>,
     network_bits: bool,
+    byte_unit: ByteUnit,
 }
 /// Grid lines and frames in the chart's own color.
 const GRID_OPACITY: f32 = 0.13;
@@ -1629,6 +1624,7 @@ impl Desktop {
             grid: look.frame,
             format: look.format,
             network_bits: bits,
+            byte_unit: ByteUnit::current(),
         };
         self.active_charts.borrow_mut().insert(id.into());
         let render = self.render_count;

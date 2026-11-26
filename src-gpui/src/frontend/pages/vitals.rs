@@ -7,6 +7,7 @@
 //! the curve out under it (`charts::Overlay`); the page lays the same text out
 //! with transparent ink, for its tooltips and test anchors.
 use super::*;
+use crate::frontend::units::{ByteUnit, GIGA};
 use charts::{Line, Look, Overlay, Scale};
 use gpui_kit::gpui::transparent_black;
 
@@ -492,7 +493,9 @@ impl Desktop {
                 .map(|s| s.iter().filter_map(|(_, v)| *v).fold(0., f64::max))
                 .unwrap_or(0.)
         };
-        let gb = |bytes: f64| crate::regional::number!("{:.1}", bytes / 1073741824.);
+        let units = ByteUnit::current();
+        let gb = |bytes: f64| units.gigabytes(bytes);
+        let gb_symbol = units.symbol(GIGA);
         let split = |value: String| -> (String, String) {
             value
                 .split_once(' ')
@@ -500,21 +503,11 @@ impl Desktop {
                 .unwrap_or((value, String::new()))
         };
         let disk_value = split(
-            disk.map(|value| {
-                if value < 1. {
-                    "0 KB/s".into()
-                } else {
-                    theme::bytes(value, true)
-                }
-            })
-            .unwrap_or_else(|| label("format.missing")),
+            disk.map(charts::byte_rate)
+                .unwrap_or_else(|| label("format.missing")),
         );
         let net_value = split(if rx + tx < 1. {
-            if bits {
-                "0 Kbps".into()
-            } else {
-                "0 KB/s".into()
-            }
+            theme::idle_rate(bits)
         } else {
             theme::network(rx + tx, bits)
         });
@@ -551,9 +544,9 @@ impl Desktop {
                 key: "system.memUsed",
                 color: p.memory,
                 top: mem_total,
-                scale: format!("{} GB", gb(mem_total)),
+                scale: format!("{} {gb_symbol}", gb(mem_total)),
                 figure: gb(number(sys, "memUsed")),
-                unit: format!("/ {} GB", gb(mem_total)),
+                unit: format!("/ {} {gb_symbol}", gb(mem_total)),
                 // Whole-system usage, unlike the process rows' private working sets.
                 readings: Readings::Detail(
                     format!("{mem_percent}%"),

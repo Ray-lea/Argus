@@ -1,6 +1,6 @@
 //! Shared throughput-axis steps. Samples and returned limits stay in bytes/s.
 
-use super::{GIB, KIB, MIB};
+use crate::frontend::units::ByteUnit;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::frontend) enum RateScale {
@@ -23,7 +23,8 @@ impl RateScale {
     }
 }
 
-fn units(bits: bool) -> [(f64, &'static str); 6] {
+/// The multiples an axis steps through, kilo first, in bytes per second.
+fn units(bits: bool, bytes: ByteUnit) -> [(f64, &'static str); 6] {
     if bits {
         [
             (1e3 / 8., "Kbps"),
@@ -34,21 +35,18 @@ fn units(bits: bool) -> [(f64, &'static str); 6] {
             (1e18 / 8., "Ebps"),
         ]
     } else {
-        [
-            (KIB, "KB/s"),
-            (MIB, "MB/s"),
-            (GIB, "GB/s"),
-            (GIB * KIB, "TB/s"),
-            (GIB * MIB, "PB/s"),
-            (GIB * GIB, "EB/s"),
-        ]
+        std::array::from_fn(|index| (bytes.multiple(index + 1), bytes.rate_symbol(index + 1)))
     }
 }
 
 /// The first configured step that contains the observed peak, with a 100 K floor.
 pub(in crate::frontend) fn ceiling(peak: f64, scale: RateScale) -> f64 {
+    ceiling_in(peak, scale, ByteUnit::current())
+}
+
+fn ceiling_in(peak: f64, scale: RateScale, bytes: ByteUnit) -> f64 {
     let peak = if peak.is_finite() { peak.max(0.) } else { 0. };
-    for (index, (size, _)) in units(scale.bits()).into_iter().enumerate() {
+    for (index, (size, _)) in units(scale.bits(), bytes).into_iter().enumerate() {
         for step in scale.steps(index == 0) {
             let top = step * size;
             if top >= peak {
@@ -61,7 +59,11 @@ pub(in crate::frontend) fn ceiling(peak: f64, scale: RateScale) -> f64 {
 }
 
 pub(in crate::frontend) fn label(top: f64, bits: bool) -> String {
-    let units = units(bits);
+    label_in(top, bits, ByteUnit::current())
+}
+
+fn label_in(top: f64, bits: bool, bytes: ByteUnit) -> String {
+    let units = units(bits, bytes);
     let (size, unit) = units
         .iter()
         .rev()
@@ -72,7 +74,40 @@ pub(in crate::frontend) fn label(top: f64, bits: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{ByteUnit, RateScale, ceiling_in, label_in};
+
+    const KIB: f64 = 1024.;
+    const MIB: f64 = KIB * 1024.;
+    const GIB: f64 = MIB * 1024.;
+
+    // The traditional units, without the process-wide choice.
+    fn ceiling(peak: f64, scale: RateScale) -> f64 {
+        ceiling_in(peak, scale, ByteUnit::Traditional)
+    }
+    fn label(top: f64, bits: bool) -> String {
+        label_in(top, bits, ByteUnit::Traditional)
+    }
+    fn units(bits: bool) -> [(f64, &'static str); 6] {
+        super::units(bits, ByteUnit::Traditional)
+    }
+
+    #[test]
+    fn decimal_and_iec_units_keep_the_steps_in_their_own_multiples() {
+        let si = |peak| ceiling_in(peak, RateScale::Disk, ByteUnit::Si);
+        assert_eq!(si(0.), 100e3);
+        assert_eq!(si(150e3), 200e3);
+        assert_eq!(si(2e6), 10e6);
+        assert_eq!(label_in(10e6, false, ByteUnit::Si), "10 MB/s");
+        assert_eq!(
+            ceiling_in(4e6, RateScale::Network(false), ByteUnit::Si),
+            5e6
+        );
+        assert_eq!(
+            ceiling_in(2. * MIB, RateScale::Disk, ByteUnit::Iec),
+            10. * MIB
+        );
+        assert_eq!(label_in(10. * MIB, false, ByteUnit::Iec), "10 MiB/s");
+    }
 
     #[test]
     fn disk_uses_requested_steps_and_repeats_above_gigabytes() {

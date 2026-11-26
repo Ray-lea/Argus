@@ -7,6 +7,7 @@ Argus 是 Windows（x64 与 ARM64）原生应用。`argus-core` 读取系统数�
 | `crates/argus-core` | Windows 原生采集、数据模型、历史记录与系统操作 |
 | `crates/argus-service` | 可选特权服务、固定传感器模块与任务管理器辅助程序 |
 | `crates/argus-app` | 采样调度、设置、界面偏好、任务启动和安装辅助 |
+| `crates/argus-view-logic` | 界面中不依赖 GPUI 的逻辑：进程行与分组、进程列、显示筛选、界面偏好、区域格式、历史曲线的分桶与任务栏监控的排版 |
 | `src-gpui` | GPUI 视图、窗口生命周期、托盘、快捷键和更新 |
 | `resources` | 应用元数据、图标、主题、动画参数与硬件指标定义 |
 | `tools` | 独立窗口捕获探针和发布签名工具 |

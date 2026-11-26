@@ -71,6 +71,21 @@ test("a frontend file runs its step files; one no rule names runs localization",
   assert.deepEqual(stepFilesFor("crates/argus-core/src/util.rs"), []);
 });
 
+test("the interface's logic outside GPUI runs the step files of the module that re-exports it", () => {
+  for (const [moved, old] of [
+    ["crates/argus-view-logic/src/columns.rs", "src-gpui/src/frontend/columns.rs"],
+    ["crates/argus-view-logic/src/collation.rs", "src-gpui/src/frontend/collation.rs"],
+    ["crates/argus-view-logic/src/gpu_usage.rs", "src-gpui/src/frontend/gpu_usage.rs"],
+    ["crates/argus-view-logic/src/visibility.rs", "src-gpui/src/frontend/visibility.rs"],
+    ["crates/argus-view-logic/src/history_series.rs", "src-gpui/src/frontend/pages/history/series.rs"],
+    ["crates/argus-view-logic/src/taskbar_layout.rs", "src-gpui/src/shell/taskbar_draw.rs"],
+    ["crates/argus-view-logic/src/model.rs", "src-gpui/src/frontend/model.rs"],
+    ["crates/argus-view-logic/src/model/sensor_layout.rs", "src-gpui/src/frontend/model.rs"],
+    ["crates/argus-view-logic/src/prefs.rs", "src-gpui/src/frontend/prefs.rs"],
+  ])
+    assert.deepEqual(stepFilesFor(moved), stepFilesFor(old), moved);
+});
+
 test("the lock file checks the whole workspace and the notices", () => {
   const result = plan(["Cargo.lock"]);
   assert.deepEqual(names(result), ["rustfmt", "clippy", "rust tests", "third-party notices"]);

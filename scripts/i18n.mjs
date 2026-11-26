@@ -80,7 +80,7 @@ const catalogs = new Map(locales.map((l) => [l, load(l)]));
 const source = catalogs.get(SOURCE);
 if (!source) throw new Error(`locales/${SOURCE} is missing`);
 
-const registered = [...readFileSync(join(root, "src-gpui/src/catalog.rs"), "utf8").matchAll(/register!\(\w+,\s*"([^"]+)"\)/g)].map(m => m[1]);
+const registered = [...readFileSync(join(root, "crates/argus-view-logic/src/catalog.rs"), "utf8").matchAll(/register!\(\w+,\s*"([^"]+)"\)/g)].map(m => m[1]);
 const nativeLocales = [...readFileSync(join(root, "crates/argus-core/src/i18n.rs"), "utf8").matchAll(/#\[serde\(rename = "([^"]+)"\)\]/g)].map(m => m[1]);
 for (const [where, tags] of [["desktop catalogs", registered], ["native locales", nativeLocales], ["installer languages", Object.keys(installerLanguages)]]) {
   if (tags.length !== locales.length || !same(new Set(locales), new Set(tags))) error(where, "registered languages differ from locales/");
@@ -168,8 +168,11 @@ for (const name of readdirSync(siteDir).filter(name => name.endsWith(".json"))) 
 
 // ---- Code ----------------------------------------------------------------------------
 
-const rustDirs = ["src-gpui/src", "crates/argus-core/src", "crates/argus-service/src", "crates/argus-app/src"];
+const rustDirs = ["src-gpui/src", "crates/argus-view-logic/src", "crates/argus-core/src", "crates/argus-service/src", "crates/argus-app/src"];
 const rustFiles = rustDirs.flatMap((d) => walk(join(root, d))).filter((f) => f.endsWith(".rs"));
+// The interface and its logic outside GPUI read the desktop catalogs.
+const desktop = (file) => rel(file).startsWith("src-gpui/") || rel(file).startsWith("crates/argus-view-logic/");
+const views = (file) => rel(file).startsWith("src-gpui/src/frontend") || rel(file).startsWith("crates/argus-view-logic/");
 
 // Rust lookups: tr!("key") and tr!("key", name = value, …).
 const native = source.get("native") ?? new Map();
@@ -182,7 +185,7 @@ for (const file of rustFiles) {
   for (const { key, names, index } of macroCalls(text, "tr")) {
     const line = text.slice(0, index).split("\n").length;
     const where = `${rel(file)}:${line}`;
-    const template = native.get(key) ?? (rel(file).startsWith("src-gpui/") ? application.get(key) : undefined);
+    const template = native.get(key) ?? (desktop(file) ? application.get(key) : undefined);
     if (template === undefined) {
       error(where, `tr!("${key}") is not in locales/${SOURCE}/native.json`);
       continue;
@@ -194,7 +197,7 @@ for (const file of rustFiles) {
 }
 
 // Native view adapters also look up labels without placeholders.
-for (const file of rustFiles.filter((file) => rel(file).startsWith("src-gpui/src/frontend"))) {
+for (const file of rustFiles.filter(views)) {
   const text = readFileSync(file, "utf8");
   for (const match of text.matchAll(/\b(?:counted|quantity)\(\s*"([\w.]+)"/g)) {
     const template = application.get(match[1]) ?? native.get(match[1]);

@@ -177,11 +177,7 @@ fn celsius(value: &Value) -> String {
         .unwrap_or_else(missing)
 }
 fn sector(bytes: u64) -> String {
-    if bytes >= 1024 && bytes.is_multiple_of(1024) {
-        format!("{} KB", bytes / 1024)
-    } else {
-        format!("{bytes} B")
-    }
+    ByteUnit::current().block(bytes)
 }
 /// "PCIe 4.0 ×4" from a link's generation and width.
 fn link(rate: &Value) -> Option<String> {

@@ -798,7 +798,7 @@ impl Desktop {
                 Some(Scale::Fixed(if total > 0. { total } else { 1. })),
                 ChartHeight::Fill,
                 Look::boxed(label(caption))
-                    .top(format!("{} GB", gb(total)))
+                    .top(format!("{} {}", gb(total), gb_symbol()))
                     .format(MetricFormat::Gigabytes)
                     .min_height(px(SMALL_MIN)),
                 cx,
@@ -880,14 +880,14 @@ impl Desktop {
             self.stat(
                 label("performance.gpu.dedicatedMemory"),
                 gb_pair(number(gpu, "dedicatedUsed"), number(info, "dedicatedTotal")),
-                Some("GB".into()),
+                Some(gb_symbol()),
                 None,
                 cx,
             ),
             self.stat(
                 label("performance.gpu.sharedMemory"),
                 gb_pair(number(gpu, "sharedUsed"), number(info, "sharedTotal")),
-                Some("GB".into()),
+                Some(gb_symbol()),
                 None,
                 cx,
             ),

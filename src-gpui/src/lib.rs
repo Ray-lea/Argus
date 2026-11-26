@@ -203,6 +203,9 @@ pub fn run() -> anyhow::Result<()> {
     // Before the event loop creates the graphics device.
     let hardware_acceleration = settings.get().hardware_acceleration;
     gpui_kit::gpui::set_windows_software_rendering(!hardware_acceleration);
+    // A test instance answers its test controls alone: the pointer of whoever
+    // uses the desktop neither hovers, clicks, scrolls nor activates it.
+    gpui_kit::gpui::set_windows_system_pointer_ignored(options.test);
     logging::init(
         host.path().app_log_dir()?.join("diagnostics"),
         std::env::args().any(|arg| arg == "--startup-trace"),

@@ -286,7 +286,7 @@
     }
   },
   "memory": {
-    "sub": "{used} / {total} GB ({percent} %)",
+    "sub": "{used} / {total} {unit} ({percent} %)",
     "usage": "Utilisation de la mémoire",
     "legendInUse": "En cours d’utilisation {value}",
     "legendCompressed": "Compressée {value}",

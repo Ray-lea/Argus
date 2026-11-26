@@ -290,7 +290,7 @@
     }
   },
   "memory": {
-    "sub": "{used} / {total} GB ({percent} %)",
+    "sub": "{used} / {total} {unit} ({percent} %)",
     "usage": "Использование памяти",
     "legendInUse": "Используется {value}",
     "legendCompressed": "Сжатая {value}",

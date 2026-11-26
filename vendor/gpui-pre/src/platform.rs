@@ -2947,6 +2947,27 @@ pub fn windows_software_rendering_requested() -> bool {
     WINDOWS_SOFTWARE_RENDERING.load(std::sync::atomic::Ordering::Acquire)
 }
 
+#[cfg(target_os = "windows")]
+static WINDOWS_SYSTEM_POINTER_IGNORED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Argus patch: leaves the system's pointer (mouse, pen, touch) out of every
+/// window, for an application that drives its windows with synthetic input
+/// only (`Window::dispatch_event`), such as a test instance on a desktop
+/// someone is using. The pointer then neither hovers, clicks, scrolls nor
+/// activates these windows, and the caption has no buttons or edges for it.
+#[cfg(target_os = "windows")]
+pub fn set_windows_system_pointer_ignored(ignored: bool) {
+    WINDOWS_SYSTEM_POINTER_IGNORED.store(ignored, std::sync::atomic::Ordering::Release);
+}
+
+/// Whether the windows leave the system's pointer out
+/// ([`set_windows_system_pointer_ignored`]).
+#[cfg(target_os = "windows")]
+pub fn windows_system_pointer_ignored() -> bool {
+    WINDOWS_SYSTEM_POINTER_IGNORED.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// The appearance of the background of the window itself, when there is
 /// no content or the content is transparent.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

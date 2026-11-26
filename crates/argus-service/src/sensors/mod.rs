@@ -183,6 +183,31 @@ impl crate::snapshot::Source for NativeSource {
 
 type CachedFrame = Option<(Instant, Arc<CpuSensors>)>;
 type Cache = Arc<Mutex<CachedFrame>>;
+
+/// The sampled error alone ("device not found") cannot tell a stopped,
+/// removed or disabled PawnIO apart, so each entry into a driver failure logs
+/// one read-only snapshot of the driver service and its PnP device. Only a
+/// ready frame re-arms it; pending or retried failures never repeat it.
+#[derive(Default)]
+struct DriverReport {
+    logged: bool,
+}
+
+impl DriverReport {
+    fn should_log(&mut self, state: SensorState) -> bool {
+        match state {
+            SensorState::DriverUnavailable | SensorState::ModuleRejected => {
+                !std::mem::replace(&mut self.logged, true)
+            }
+            SensorState::Ready => {
+                self.logged = false;
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
 pub struct SensorClient {
     tx: mpsc::Sender<Option<Duration>>,
     cache: Cache,
@@ -193,6 +218,7 @@ pub struct SensorClient {
 impl SensorClient {
     pub fn spawn() -> Self {
         let mut diagnostics = crate::diagnostics::Probe::default();
+        let mut driver_report = DriverReport::default();
         Self::with_reader(move || {
             let pid = crate::util::stage("sensor service lookup", crate::install::running_pid());
             let Ok(Some(pid)) = pid else {
@@ -235,6 +261,12 @@ impl SensorClient {
                             ),
                         );
                         diagnostics.collect(pid);
+                    }
+                    if driver_report.should_log(frame.state) {
+                        argus_core::diagnostics::warn(
+                            "kernel sensor driver status",
+                            crate::driver::diagnostic_status(),
+                        );
                     }
                     *frame
                 }
@@ -644,6 +676,20 @@ mod tests {
             Some(4200.0)
         );
     }
+    #[test]
+    fn driver_status_is_logged_once_per_failure_until_sensors_recover() {
+        let mut report = DriverReport::default();
+        assert!(!report.should_log(SensorState::Pending));
+        assert!(report.should_log(SensorState::DriverUnavailable));
+        assert!(!report.should_log(SensorState::DriverUnavailable));
+        // A lease that went idle and is retried is still the same failure.
+        assert!(!report.should_log(SensorState::Pending));
+        assert!(!report.should_log(SensorState::ModuleRejected));
+        assert!(!report.should_log(SensorState::ServiceUnavailable));
+        assert!(!report.should_log(SensorState::Ready));
+        assert!(report.should_log(SensorState::ModuleRejected));
+    }
+
     #[test]
     fn disconnected_reader_returns_without_driver_access() {
         let started = Instant::now();

@@ -17,6 +17,7 @@ name = "argus_native"
 argus-core = { path = "../crates/argus-core" }
 argus-service = { path = "../crates/argus-service" }
 argus-app = { path = "../crates/argus-app" }
+argus-view-logic = { path = "../crates/argus-view-logic" }
 gpui-kit = { version = "=0.10.0", features = ["profiler"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive", "rc"] }

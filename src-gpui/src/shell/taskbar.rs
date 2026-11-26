@@ -416,6 +416,9 @@ unsafe extern "system" fn window_procedure(
     w: WPARAM,
     l: LPARAM,
 ) -> LRESULT {
+    if super::ignores_pointer(message) {
+        return super::ignored_pointer(message);
+    }
     match message {
         WM_NCHITTEST => LRESULT(HTCLIENT as isize),
         // A click leaves the active window active, as on the tray icon.

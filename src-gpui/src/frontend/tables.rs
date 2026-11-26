@@ -12,6 +12,7 @@ mod header;
 pub(in crate::frontend) mod touch;
 use header::{HeaderDrag, HeaderPayload};
 mod widths;
+use super::units::ByteUnit;
 use gpui_kit::base::ElementExt;
 use gpui_kit::component::{
     ActiveTheme, Disableable, Sizable,
@@ -486,6 +487,7 @@ pub(super) struct NativeTable {
     process_columns: columns::Preferences,
     font_size: Pixels,
     locale: argus_core::i18n::Locale,
+    byte_unit: ByteUnit,
     bits: bool,
     scope: (String, String),
     totals: HashMap<String, String>,
@@ -860,6 +862,7 @@ impl NativeTable {
             process_columns: columns::Preferences::default(),
             font_size: px(0.),
             locale: argus_core::i18n::locale(),
+            byte_unit: ByteUnit::current(),
             bits: false,
             scope: (String::new(), String::new()),
             totals: HashMap::new(),
@@ -902,6 +905,7 @@ impl NativeTable {
             .is_some_and(|measured| !Arc::ptr_eq(&self.measured, measured));
         let totals_changed = self.totals != totals;
         let locale = argus_core::i18n::locale();
+        let byte_unit = ByteUnit::current();
         self.cell_values.configure(&rows, page, bits, cx);
         if rows_changed || self.page != page {
             self.group_view.groups = Rc::new(if page == "processes" {
@@ -926,6 +930,7 @@ impl NativeTable {
             && self.available == available
             && self.font_size == font_size
             && self.locale == locale
+            && self.byte_unit == byte_unit
             && self.scope.0 == scope.0
             && self.scope.1 == scope.1
             && (page != "processes" || &self.process_columns == preferences)
@@ -951,9 +956,10 @@ impl NativeTable {
             return false;
         }
         // A column whose contents or settings ask for another width eases
-        // there; a new window size, text size or language takes effect at
-        // once, as do a list's first rows.
-        let restyled = self.font_size != font_size || self.locale != locale;
+        // there; a new window size, text size, language or byte unit takes
+        // effect at once, as do a list's first rows.
+        let restyled =
+            self.font_size != font_size || self.locale != locale || self.byte_unit != byte_unit;
         let animate = (page == "processes" || (fills(page) && had_rows))
             && self.page == page
             && !self.columns.is_empty()
@@ -967,12 +973,13 @@ impl NativeTable {
             .map(|(field, column)| (field.key, f32::from(column.width)))
             .collect();
         // Measured widths last through window sizes, views, pages and column
-        // order: only another text size or language measures them anew.
+        // order: only another text size, language or byte unit measures them anew.
         if restyled {
             self.auto_widths.reset();
             self.fitted.clear();
         }
         self.locale = locale;
+        self.byte_unit = byte_unit;
         self.scope = (scope.0.into(), scope.1.into());
         self.available = available;
         self.font_size = font_size;
@@ -2035,7 +2042,7 @@ pub(in crate::frontend) struct WidthRows {
 }
 /// What the measured list depends on besides the sample: the view, the
 /// category headings of the name order, grouping by user, the columns
-/// chosen and the language.
+/// chosen, the language and the byte units.
 #[derive(PartialEq)]
 struct WidthShape {
     view: String,
@@ -2043,6 +2050,7 @@ struct WidthShape {
     users: model::UserGrouping,
     columns: Vec<String>,
     locale: argus_core::i18n::Locale,
+    byte_unit: ByteUnit,
 }
 /// What the measured list is built from besides the sample, taken on the
 /// UI thread for a build that may run off it.
@@ -2260,6 +2268,7 @@ impl Desktop {
             users: self.user_grouping(),
             columns: keys,
             locale: argus_core::i18n::locale(),
+            byte_unit: ByteUnit::current(),
         }
     }
     /// What to build the process list measured for the column widths from,
@@ -2635,6 +2644,7 @@ impl Desktop {
                 || delegate.font_size != theme::font(12.)
                 || delegate.bits != bits
                 || delegate.locale != argus_core::i18n::locale()
+                || delegate.byte_unit != ByteUnit::current()
         };
         let totals = if stale {
             self.process_column_totals(&column_preferences)
@@ -3038,13 +3048,7 @@ impl Desktop {
                 .iter()
                 .filter_map(|p| p[key].as_f64())
                 .reduce(|a, b| a + b)
-                .map(|v| {
-                    if v < 1. {
-                        "0 KB/s".into()
-                    } else {
-                        theme::bytes(v, true)
-                    }
-                })
+                .map(charts::byte_rate)
                 .unwrap_or_else(|| label("format.missing")),
             "net" => {
                 let bits = self.prefs.get::<String>("netUnit", "bytes".into()) == "bits";

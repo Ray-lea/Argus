@@ -61,6 +61,7 @@ const REBOOT_REQUIRED: u32 = 3010;
 const MIN_VERSION: (u32, u32, u32, u32) = (2, 2, 0, 0);
 const MIN_DEVICE_VERSION: u32 = (MIN_VERSION.0 << 16) | (MIN_VERSION.1 << 8) | MIN_VERSION.2;
 const INSTALL_ARGS: [&str; 2] = ["-install", "-silent"];
+const UNINSTALL_ARGS: [&str; 2] = ["-uninstall", "-silent"];
 
 struct Service(SC_HANDLE);
 impl Drop for Service {
@@ -76,6 +77,9 @@ enum Plan {
     Ready,
     Start,
     Install,
+    /// A compatible driver whose `Root\PawnIO` node is gone: official
+    /// uninstall, then install, recreates it.
+    Reinstall,
     MigrateLegacy,
 }
 
@@ -108,6 +112,7 @@ impl Inspection {
             Ok(Plan::Ready) => "ready".into(),
             Ok(Plan::Start) => "start required".into(),
             Ok(Plan::Install) => "install/update required".into(),
+            Ok(Plan::Reinstall) => "reinstall required (no PnP device node)".into(),
             Ok(Plan::MigrateLegacy) => "legacy migration required".into(),
             Err(code) => format!("error {code:#010x}"),
         };
@@ -161,6 +166,38 @@ fn plan(installed: bool, compatible: bool, running: bool) -> Plan {
     }
 }
 
+/// The driver creates its device only for the `Root\PawnIO` node, which a
+/// rerun of the pinned setup does not restore: it exits 183 while its version
+/// is registered. Its uninstall clears that registration (keeping the service
+/// and driver package), after which install recreates the node. A driver newer
+/// than the pinned setup belongs to other software and is never downgraded.
+fn missing_node_plan(
+    installed: (u32, u32, u32, u32),
+    pinned: Option<(u32, u32, u32, u32)>,
+) -> Result<Plan> {
+    if pinned.is_some_and(|pinned| installed <= pinned) {
+        Ok(Plan::Reinstall)
+    } else {
+        Err(NOT_READY)
+    }
+}
+
+fn package_version() -> Option<(u32, u32, u32, u32)> {
+    parse_version(package::version())
+}
+
+fn parse_version(text: &str) -> Option<(u32, u32, u32, u32)> {
+    let parts = text
+        .split('.')
+        .map(|part| part.parse().ok())
+        .collect::<Option<Vec<u32>>>()?;
+    match parts[..] {
+        [a, b, c] => Some((a, b, c, 0)),
+        [a, b, c, d] => Some((a, b, c, d)),
+        _ => None,
+    }
+}
+
 fn finish_preparation(
     plan: Plan,
     install: impl FnOnce() -> Result<()>,
@@ -169,7 +206,7 @@ fn finish_preparation(
     if plan == Plan::Ready {
         return Ok(());
     }
-    if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
+    if matches!(plan, Plan::Install | Plan::Reinstall | Plan::MigrateLegacy) {
         install()?;
     }
     start()
@@ -655,8 +692,12 @@ fn inspect_with_trace(service: &Service, trace: &mut Inspection) -> Result<(Plan
     let running = state(service)?.dwCurrentState == SERVICE_RUNNING;
     if compatible {
         trace.stage = "PnP device state";
-        trace.device = Some(device::inspect()?);
-        trace.device.as_ref().unwrap().check(running)?;
+        let device = trace.device.insert(device::inspect()?);
+        if device.missing() {
+            trace.stage = "inspection complete";
+            return missing_node_plan(version, package_version()).map(|plan| (plan, pins));
+        }
+        device.check(running)?;
     }
     trace.stage = "inspection complete";
     Ok((plan(true, compatible, running), pins))
@@ -769,7 +810,7 @@ fn start() -> Result<()> {
     let service =
         open(SERVICE_QUERY_CONFIG | SERVICE_QUERY_STATUS | SERVICE_START)?.ok_or(NOT_READY)?;
     let (plan, _pins) = util::stage("PawnIO startup precheck", inspect(&service))?;
-    if matches!(plan, Plan::Install | Plan::MigrateLegacy) {
+    if matches!(plan, Plan::Install | Plan::Reinstall | Plan::MigrateLegacy) {
         return Err(NOT_READY);
     }
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -913,6 +954,17 @@ fn migrate_then_install(
     install()
 }
 
+/// Repairs a missing `Root\PawnIO` node (see `missing_node_plan`). The
+/// uninstall exits 0 again when nothing is registered, so an interrupted
+/// repair can be retried.
+fn reinstall(
+    uninstall: impl FnOnce() -> Result<()>,
+    install: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    uninstall()?;
+    install()
+}
+
 fn install_package(root: &Path, migrate: bool) -> Result<()> {
     // Acquire both payloads before touching a working legacy installation.
     let bytes = package::download(package::manifest())?;
@@ -938,7 +990,7 @@ fn install_package(root: &Path, migrate: bool) -> Result<()> {
             }
             legacy::protect_installation(&program_files()?)?;
             migrate_then_install(
-                || run_installer(&legacy_installer, &["-uninstall", "-silent"], true),
+                || run_installer(&legacy_installer, &UNINSTALL_ARGS, true),
                 || match open(SERVICE_QUERY_STATUS) {
                     Ok(service) => Ok(service.is_none()),
                     Err(1072) => Ok(false),
@@ -947,8 +999,13 @@ fn install_package(root: &Path, migrate: bool) -> Result<()> {
                 install,
             )
         } else {
+            // Rechecked: other software may have repaired the node meanwhile.
             match current_plan()? {
                 Plan::Install => install(),
+                Plan::Reinstall => reinstall(
+                    || run_installer(&installer, &UNINSTALL_ARGS, false),
+                    install,
+                ),
                 Plan::Ready | Plan::Start => Ok(()),
                 Plan::MigrateLegacy => Err(LEGACY_LAYOUT),
             }
@@ -1319,6 +1376,54 @@ mod tests {
             package::manifest(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn missing_device_node_is_reinstalled_without_downgrading() {
+        let pinned = package_version();
+        assert!(pinned.is_some_and(|version| version >= MIN_VERSION));
+        assert_eq!(missing_node_plan(MIN_VERSION, pinned), Ok(Plan::Reinstall));
+        assert_eq!(
+            missing_node_plan((2, 1, 9, 0), Some((2, 2, 0, 0))),
+            Ok(Plan::Reinstall)
+        );
+        assert_eq!(missing_node_plan((3, 0, 0, 0), pinned), Err(NOT_READY));
+        assert_eq!(missing_node_plan(MIN_VERSION, None), Err(NOT_READY));
+        assert_eq!(parse_version("2.2.0"), Some((2, 2, 0, 0)));
+        assert_eq!(parse_version("2.2.0.7"), Some((2, 2, 0, 7)));
+        for text in ["2.2", "2.x.0", "", "1.2.3.4.5"] {
+            assert_eq!(parse_version(text), None);
+        }
+
+        for code in [1223, 5, 1641] {
+            assert_eq!(
+                reinstall(|| Err(code), || panic!("uninstall failed")),
+                Err(code)
+            );
+        }
+        let order = std::cell::RefCell::new(Vec::new());
+        finish_preparation(
+            Plan::Reinstall,
+            || {
+                reinstall(
+                    || {
+                        order.borrow_mut().push("uninstall");
+                        Ok(())
+                    },
+                    || {
+                        order.borrow_mut().push("install");
+                        Ok(())
+                    },
+                )
+            },
+            || {
+                order.borrow_mut().push("start");
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(*order.borrow(), ["uninstall", "install", "start"]);
+        assert_eq!(UNINSTALL_ARGS, ["-uninstall", "-silent"]);
     }
 
     #[test]

@@ -39,6 +39,7 @@ mod theme;
 mod tips;
 mod tray;
 mod type_search;
+mod units;
 mod users;
 mod visibility;
 mod welcome;
@@ -861,6 +862,7 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
                 // viewport depend on them.
                 appearance::apply_font_size(appearance::FONT_SIZE.load(&prefs));
                 appearance::apply_scale(appearance::SCALE.load(&prefs), window, cx);
+                units::ByteUnit::load(&prefs).apply();
                 let saved = host.state::<crate::settings::SettingsStore>().get();
                 theme::apply(
                     if crate::platform::is_dark(saved.theme) {

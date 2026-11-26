@@ -2,6 +2,8 @@
 
 [`src-gpui/src/frontend`](../../src-gpui/src/frontend) 包含窗口布局、虚拟表格、图表、菜单、对话框和各页面。`Desktop` 持有界面状态，采样与系统操作由[原生宿主](host.md)调度。
 
+界面中不依赖 GPUI 的逻辑在 [`crates/argus-view-logic`](../../crates/argus-view-logic)：`model`、`collation`、`gpu_usage`、`prefs`，`columns` 的列定义与列偏好，`visibility` 的筛选规则，历史页的 `series`（`history_series`），任务栏监控的排版（`taskbar_layout`），`regional`，以及界面文案目录的注册（`catalog::register`）。`src-gpui` 在原路径保留同名模块，只重新导出其中的项，调用方的写法不变；需要 GPUI 或 DirectWrite 的部分（列对话框、筛选规则的编辑界面、任务栏监控的 `Painter`、`catalog::set_locale`）留在 `src-gpui`。该 crate 不依赖 `gpui` 与 `gpui_kit`，改动其中的逻辑后用 `cargo test -p argus-view-logic` 运行测试，只需重编这一个 crate（耗时见[构建与缓存](../development/build.md)）。
+
 ## 数据、排序与偏好
 
 `model` 以 PID 和创建时间标识进程，生成应用分组与进程树。各页面独立保存选择、筛选和排序。`collation` 用 Windows 的 ICU 按界面语言生成排序键，数字按数值比较，字母忽略大小写与重音。暂停排序期间行位置固定，数值继续更新；展开或折叠时同样保持，新显示的行跟在所属条目之后（`Desktop::holds_order`）。

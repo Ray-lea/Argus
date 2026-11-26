@@ -6,7 +6,7 @@
 
 控件上的图标用 `moving_icon` 绘制，并在控件内放置 `icon_probe`（控件须为 `relative`）：指针移入时图标按 `frontend/icon_motion.rs` 的 `Motion::of` 播放一次动效，控件换用另一图标时新图标弹入。图标是整张栅格，动效只做整体的旋转、位移与缩放，结束时回到未变换的静止状态，不循环；关闭“界面动画”后不播放。`btn`、`tool_button`、分段选择器、页面导航和设置分组已接入，测试实例下 `icon_probe` 以控件名登记锚点，可用 `hoverAnchor` 触发。
 
-进程列定义在 `frontend/columns.rs`，表头列菜单与选择列对话框在 `frontend/columns/dialog.rs`。`processColumns` 保存列的选择、顺序与宽度，名称列固定。表格、滚动和文本布局见[原生界面](../architecture/frontend.md)。
+进程列定义在 `argus-view-logic` 的 `columns.rs`（界面经 `frontend/columns.rs` 引用），表头列菜单与选择列对话框在 `frontend/columns/dialog.rs`。`processColumns` 保存列的选择、顺序与宽度，名称列固定。表格、滚动和文本布局见[原生界面](../architecture/frontend.md)。
 
 采样、存储和系统操作由后台 Rust 模块执行。界面按快照时间更新读数，动画帧平移已有曲线纹理。新增图表时应保留采样时间戳、缺测断点和窗口可见性判断，细节见[曲线与时间轴](../design/charts.md)。
 
@@ -20,7 +20,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 ## 界面验证
 
-`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。模拟快照位于该工具的 fixtures 目录，其中历史页的数据和 `history-picker.json` 的步骤分别由同目录的 `history.mjs`、`history-picker.mjs` 生成：需要改动时修改生成脚本并重新运行，`pnpm test` 核对生成结果与已提交的内容一致。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
+`tools/window-probe` 以独立标识、隐藏启动和不激活显示运行测试实例，监视前台变化，仅通过 Windows.Graphics.Capture 捕获目标窗口。测试实例（`--test`）不接收系统的指针：鼠标、触控笔与触摸既不悬停、单击、滚动，也不激活它的窗口，标题栏对它们没有按钮与边框（GPUI 补丁 `set_windows_system_pointer_ignored`，任务栏监控与桌面监控的窗口同样处理）。实例只经测试控制操作，桌面上正在使用的鼠标不会改变测试画面。模拟快照位于该工具的 fixtures 目录，其中历史页的数据和 `history-picker.json` 的步骤分别由同目录的 `history.mjs`、`history-picker.mjs` 生成：需要改动时修改生成脚本并重新运行，`pnpm test` 核对生成结果与已提交的内容一致。实机验证可以省略 fixture，保持测试标识与测试模式，关闭规则执行和历史写入。
 
 `--fixture` 直接使用模拟快照，不启动真实采集器或采集侧的服务客户端，可用于独立检查图形初始化。`--test` 本身保留真实采集。
 
@@ -61,9 +61,9 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 `drag` 是简写：`{ "drag": { "at", "dx", "dy", "steps", "interval" } }` 展开为悬停、按下、均匀分步移动和松开，可附带 `record` 与 `wait`。按下与各次移动不等待空闲，保持指针的节奏。示例见 `tools/window-probe/steps`：`header-menu.json` 用键盘操作表头菜单并逐步断言，`column-drag.json` 录制表头与“选择列”对话框的拖动并拼图。
 
-`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（63 个文件，开发构建约 18 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同（`--parity-tolerance N` 允许每个通道相差不超过 N：CI 运行器的软件渲染下，滚动后的表格每次运行略有不同，nightly 用 2）；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
+`node scripts/ui-steps.mjs [名称…]` 依次运行 `tools/window-probe/steps` 下的步骤文件，省略名称时运行全部（64 个文件，开发构建约 18 分钟）。每个文件使用独立的测试窗口，输出在 `target/native-validation/steps-<名称>`（运行结束后删去其中的程序副本），各文件的结果汇总在 `target/native-validation/steps/summary.json`。`--release`、`--executable`、`--probe`、`--language` 与 `--theme` 传给每次运行，`--list` 只列出名称。`tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件：它们照常运行并报告，不影响退出码；未登记的文件失败，或已登记的文件通过（名单已过期），退出码为 1。步骤文件带 `run.parity` 时，套件用同一份程序再运行一次并设上其中的环境变量（输出在 `steps-<名称>-parity`），两次运行的每张截图必须逐像素相同（`--parity-tolerance N` 允许每个通道相差不超过 N：CI 运行器的软件渲染下，滚动后的表格每次运行略有不同，nightly 用 2）；有差异时两侧各重拍一次，任一对相同即通过，仍不同则该文件失败并列出差异的像素数、最大色差与范围。`table-rows.json` 以此对照表格行的两条绘制路径（`ARGUS_TABLE_ROWS=component`）。
 
-不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：真实指针停在测试窗口露出的部分时，同一构建的两次截图会相差一行或一个控件的悬停底色，这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
+不应改变画面的改动，用同一步骤文件在改动前后各运行一次（使用不同的标签），再以 `node scripts/compare-shots.mjs <新> <旧> [<旧>…]` 逐像素比较同名截图；参数为截图目录，或 `target/native-validation` 下的标签。任一旧运行中有相同的截图即算通过：同一构建的两次截图仍可能有运行之间的差异（模拟快照下随真实时间移动的曲线、软件渲染下的个别像素），这时多给几次旧运行。有差异的截图列出最接近的旧运行、差异像素数、最大色差、差异的范围与所在的行；`--tolerance N` 允许不超过 N 的色差，`--only` 限定截图名称。
 
 每个步骤文件的用途、它用到的测试控制与检查字段写在文件开头的 `about` 里；`node scripts/ui-steps.mjs --list` 列出全部文件及其说明。
 
@@ -199,7 +199,7 @@ Windows 触摸屏的 `WM_POINTER` 消息转换为 GPUI `TouchEvent`，坐标按�
 
 ### 相关测试与工具
 
-本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
+本地补丁分别记录在 [GPUI](../../vendor/gpui-pre/ARGUS-PATCHES.md) 和 [Windows 平台层](../../vendor/gpui-pre-windows/ARGUS-PATCHES.md)，列出与升级补丁的方法见 [vendored GPUI 的补丁与升级](#vendored-gpui-的补丁与升级)。更新上游时，复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行及 Windows 渲染。
 
 `cargo test -p argus --test touch_input` 检查触点标识复用、捕获丢失、多指接触、点按、双击、滑动取消、消息重入与长按菜单。[`touch-input.json`](../../tools/window-probe/steps/touch-input.json) 用隔离窗口复核进程树、重新排序后的长按目标、菜单、图表、150% 界面缩放下的页面滚动及滚动条拖动与取消。
 
@@ -212,3 +212,35 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 开发构建的隔离测试可设置 `ARGUS_TEST_BACKDROP_BUILD=22000`，模拟 Windows 11 21H2 的背景能力判定；`tools/window-probe/steps/backdrop-fallback.json` 自带该设置，核对深浅主题的实色回退。该变量仅对同时带有 `--test` 和独立测试标识的开发实例生效，保留原有合成渲染路径；`inspectLayout` 输出 `systemBackdrop` 与 `backgroundAlpha`。
 
 `cargo test -p argus --test display_reentry` 检查显示器回调在窗口更新期间重入、连续通知合并、原生嵌套消息循环及窗口关闭后的延迟处理。`cargo run -p argus --example display_reentry` 在自身隐藏窗口的初始化回调内发送 `WM_DISPLAYCHANGE`，检查真实 Windows 消息路径；它保持窗口隐藏，不更改显示器设置。
+
+## vendored GPUI 的补丁与升级
+
+[`vendor/gpui-pre`](../../vendor/gpui-pre) 与 [`vendor/gpui-pre-windows`](../../vendor/gpui-pre-windows) 是 crates.io 上同名包的快照加本地补丁。快照省略 Cargo 打包时加入的文件（`Cargo.lock`、`Cargo.toml.orig`、`.cargo_vcs_info.json`），`gpui-pre` 另省略独立示例及其素材和基准测试，保留上游源码测试读取的 EXIF 样图；规则见 [`scripts/lib/vendor-patches.mjs`](../../scripts/lib/vendor-patches.mjs) 的 `VENDORED`。
+
+本地分支 `vendor-upstream` 按同样的路径与取舍保存各上游版本的原样包，每个版本一个提交，提交说明记录包的 SHA-256。`git diff vendor-upstream -- vendor/gpui-pre vendor/gpui-pre-windows` 即完整的补丁集。该分支不推送，各克隆用 `init` 自行建立：
+
+| 命令 | 用途 |
+|---|---|
+| `node scripts/vendor-patches.mjs init [--force]` | 按 `vendor/` 中清单的版本建立分支。包取自 Cargo 注册表缓存，缓存中没有时在临时工程中运行 `cargo fetch` 下载。`--force` 重建已有的分支 |
+| `node scripts/vendor-patches.mjs stat [<路径>…]` | 按改动量列出各文件相对上游增删的行数，并给出各包与全部的合计。`A` 为本地新增的文件，`M` 为改动过的上游文件。`--limit N` 只列前 N 个，`--json` 输出 JSON |
+| `node scripts/vendor-patches.mjs diff [<路径>…]` | 输出补丁；其余以 `-` 开头的参数（如 `--stat`、`-U10`）传给 `git diff` |
+| `node scripts/vendor-patches.mjs import <版本>` | 把该版本的原样包加为分支的新提交 |
+| `node scripts/vendor-patches.mjs upgrade <版本>` | 导入该版本，并把本地补丁合并到工作区，见下文 |
+
+`stat` 与 `diff` 比较工作区，`--rev <提交>` 改为比较该提交。上游一侧取分支中与被比较一侧清单版本相同的提交，`--upstream <引用>` 可直接指定。路径相对 `vendor/` 或仓库根目录，不给路径时比较两个包。比较不计重命名：从上游文件移出的代码计为本地文件的新增行。
+
+本地新增的类型、函数和整段逻辑放在独立的文件中（如 `gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs`），上游文件只保留接入点。升级时只有上游文件中的补丁可能与上游的改动冲突，其规模即 `stat` 中 `M` 一类的行数。
+
+### 升级上游
+
+`gpui-kit` 以 `=x.y.z` 固定 `gpui-pre` 的版本，组件库与快照一起升级，`src-gpui/Cargo.toml` 中的 `gpui-kit`、`gpui_test`、`gpui_windows` 同步修改。升级在 `target/worktrees/` 下的工作树中进行（`node scripts/worktree.mjs add <名称>`），避免主工作区的开发脚本因升级中途的源码反复重建。
+
+`node scripts/vendor-patches.mjs upgrade <新版本>` 要求 `vendor/` 没有未提交的改动。它把新版本的原样包提交到 `vendor-upstream`，再逐文件处理工作区：
+
+- 没有本地补丁的文件改为新版本的内容；上游新增的文件加入工作区并以 `git add --intent-to-add` 登记，上游删除的文件随之删除。
+- 有补丁且上游也改动过的文件用 `git merge-file --diff3` 三方合并，基准为旧版本的原样包，冲突处留下标记。
+- 上游删除了带补丁的文件、本地删除的文件在上游有改动、双方新增了同名文件时不做处理，列为待定。
+
+结果留在工作区，不暂存内容也不提交；存在冲突或待定的文件时以非零状态退出。上游整体重写过的文件从上游的新文件出发，按 `ARGUS-PATCHES.md` 的记录与旧补丁重新实现补丁。合并完成后更新两份 `ARGUS-PATCHES.md` 中的来源版本；此后 `stat` 与 `diff` 相对新版本比较，补丁量应与升级前相当。放弃升级时运行 `git restore --source=HEAD --staged --worktree -- vendor/`，再次运行 `upgrade` 会沿用分支上已导入的版本。
+
+验证时用升级前后的构建各运行一次 `node scripts/ui-smoke.mjs` 与 `node scripts/ui-shots.mjs <标签> tools/window-probe/steps/localization.json`（`--executable` 指定旧构建），以 `node scripts/compare-shots.mjs` 逐像素对照，页面只应在预期之处不同；用 `node scripts/perf-ab.mjs` 对照新旧发布构建。按本页复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行和 Windows 渲染，再用 `cargo tree -p argus -i windows -e features` 核对没有多编译一份 `windows`，并运行 `node scripts/notices.mjs`。

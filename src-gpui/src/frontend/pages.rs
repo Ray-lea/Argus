@@ -437,6 +437,15 @@ impl Desktop {
                 cx.notify();
                 return;
             }
+            units::PREFERENCE => {
+                let unit = units::ByteUnit::parse(value.as_str().unwrap_or_default());
+                self.prefs.set(key, unit.key());
+                unit.apply();
+                // Cached views and the tables' widths hold figures in the old units.
+                window.refresh();
+                cx.notify();
+                return;
+            }
             "fontSize" => {
                 let size = appearance::FONT_SIZE.parse(&value.to_string());
                 self.font_size = size;

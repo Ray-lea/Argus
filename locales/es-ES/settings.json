@@ -304,6 +304,13 @@
       "option": "Tras {minutes} min",
       "never": "Nunca"
     },
+    "byteUnit": {
+      "title": "Unidades de bytes",
+      "desc": "Las unidades de la memoria, la capacidad de almacenamiento, las velocidades de transferencia y otras cantidades en bytes. Las velocidades en bits siempre cuentan en múltiplos de 1000.",
+      "iec": "Binario IEC (1 MiB = 1024 KiB)",
+      "si": "Decimal SI (1 MB = 1000 KB)",
+      "traditional": "Tradicional (1 MB = 1024 KB)"
+    },
     "netUnit": {
       "title": "Unidad de velocidad de red",
       "desc": "Los bytes utilizan la misma unidad que la velocidad del disco; los bits, la misma que la velocidad del enlace de red y el ancho de banda."

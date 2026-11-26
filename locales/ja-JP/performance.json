@@ -278,7 +278,7 @@
     }
   },
   "memory": {
-    "sub": "{used} / {total} GB（{percent}%）",
+    "sub": "{used} / {total} {unit}（{percent}%）",
     "usage": "メモリ使用量",
     "legendInUse": "使用中 {value}",
     "legendCompressed": "圧縮 {value}",

@@ -5,9 +5,9 @@
 //
 // <new> and <old> are folders of PNGs, or labels under target/native-validation
 // (what ui-shots and ui-smoke write). A capture passes when any old run holds
-// an equal one. Give several old runs when captures can carry a stray hover
-// fill: the real pointer may rest over the visible part of the test window,
-// and then one row or control differs from run to run of the same build.
+// an equal one. Give several old runs when captures differ from run to run of
+// the same build: curves move with real time even over a fixture, and the
+// software rasterizer of CI runners varies by a level here and there.
 // For each capture without a match it prints the closest old run, the count of
 // changed pixels, the largest channel difference, the box around them and the
 // rows they fall in. Exit code 1 when a capture differs or is missing.
