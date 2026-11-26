@@ -63,7 +63,10 @@
   "openedFiles": {
     "loading": "Recherche des fichiers ouverts…",
     "empty": "Aucun fichier disque trouvé",
-    "denied": "Les fichiers ouverts sont indisponibles avec les autorisations actuelles. Essayez d’exécuter Argus en tant qu’administrateur."
+    "denied": "Les fichiers ouverts sont indisponibles avec les autorisations actuelles. Essayez d’exécuter Argus en tant qu’administrateur.",
+    "unavailable": "Les fichiers ouverts sont indisponibles tant que l’identité du processus n’est pas prête.",
+    "truncated": "La liste peut être incomplète (limite de temps ou de taille).",
+    "error": "{message}"
   },
   "parent": "Processus parent",
   "parentLink": "{name} ({pid})",

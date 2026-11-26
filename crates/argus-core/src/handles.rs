@@ -746,14 +746,8 @@ pub fn enumerate_process_open_files(
         elevated: crate::privilege::is_elevated(),
         ..Default::default()
     };
-    if !emit(ScanEvent::Progress {
-        cursor: whole_process(pid),
-        checked: summary.checked,
-        denied: summary.denied_processes,
-        skipped: summary.skipped,
-    }) {
-        return Ok(());
-    }
+    // Do not emit `whole_process` as a resume cursor: for a single-PID scan that
+    // would skip every real handle on watchdog restart (`handle > u64::MAX` is empty).
     let access = PROCESS_DUP_HANDLE | PROCESS_QUERY_INFORMATION;
     let Some(process) = open_instance(pid, instance.created, access) else {
         summary.denied_processes = 1;
@@ -787,14 +781,36 @@ pub fn enumerate_process_open_files(
             handles
         }
         Err(status) if status.0 == nt::STATUS_INFO_LENGTH_MISMATCH => {
-            // Fall back to the system-wide table filtered by this PID.
-            match listing(me, anchor.0, after)? {
-                Listing::Table(mut processes) => processes.remove(&pid).unwrap_or_default(),
-                Listing::PerProcess { .. } => {
+            // Process table too large for the job limit: fall back to the
+            // system-wide table filtered by this PID (same source as `scan`'s Table).
+            let mut table = AlignedBuf::with_capacity(1024 * 1024);
+            match nt::query_system_information(nt::SYSTEM_EXTENDED_HANDLE_INFORMATION, &mut table) {
+                Ok(returned) => {
+                    let entries = nt::handle_entries(&table, returned)
+                        .ok_or_else(|| ActionError::Os(tr!("core.handles.unknownTable")))?;
+                    let mut handles: Vec<usize> = entries
+                        .iter()
+                        .filter(|e| {
+                            e.pid == pid as usize
+                                && u32::from(e.object_type) == file_type
+                                && after.is_none_or(|after| {
+                                    Cursor {
+                                        pid,
+                                        handle: e.handle as u64,
+                                    } > after
+                                })
+                        })
+                        .map(|e| e.handle)
+                        .collect();
+                    handles.sort_unstable();
+                    handles
+                }
+                Err(status) if status.0 == nt::STATUS_INFO_LENGTH_MISMATCH => {
                     summary.truncated = true;
                     emit(ScanEvent::Done(summary));
                     return Ok(());
                 }
+                Err(status) => return Err(nt_error(status.0)),
             }
         }
         Err(_) => {

@@ -51,7 +51,10 @@
   "openedFiles": {
     "loading": "正在尋找開啟的檔案…",
     "empty": "未發現磁碟檔案",
-    "denied": "目前的權限無法讀取開啟的檔案，可使用系統管理員權限重試。"
+    "denied": "目前的權限無法讀取開啟的檔案，可使用系統管理員權限重試。",
+    "unavailable": "進程身分尚未就緒，暫時無法列出開啟的檔案。",
+    "truncated": "清單可能不完整（達到時間或數量上限）。",
+    "error": "{message}"
   },
   "parent": "父處理程序",
   "parentLink": "{name}（{pid}）",

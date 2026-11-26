@@ -280,6 +280,9 @@ impl Desktop {
                 cx,
             );
         }
+        // Drop the previous snapshot so a re-select shows loading instead of
+        // stale paths while the worker runs.
+        self.data.remove(&format!("open-files:{key}"));
         if let Some(args) = open_files_args {
             self.request(
                 "process_open_files",
@@ -656,7 +659,7 @@ impl Desktop {
         }
 
         if !picked.group {
-            body = body.child(self.details_open_files(key, &mono, cx));
+            body = body.child(self.details_open_files(key, &mono, process, cx));
         }
 
         if !sheet.version.is_empty() {
@@ -671,52 +674,49 @@ impl Desktop {
         &self,
         key: &str,
         mono: &SharedString,
+        process: &Value,
         _cx: &Context<Self>,
     ) -> AnyElement {
         let p = self.palette;
-        let cache = format!("open-files:{key}");
-        let report = self.data.get(&cache);
         let mut section =
             div().child(self.details_section_title(label("details.section.openedFiles")));
+        let note = |text: String| {
+            div()
+                .mt(px(6.))
+                .text_color(p.muted)
+                .text_size(theme::font(12.))
+                .child(text)
+        };
+        // Identity still resolving: do not pretend a scan is in flight.
+        if process["createTime"].as_i64().unwrap_or(0) <= 0 {
+            return section
+                .child(note(label("details.openedFiles.unavailable")))
+                .into_any_element();
+        }
+        let cache = format!("open-files:{key}");
+        let report = self.data.get(&cache);
         match report {
             None => {
-                section = section.child(
-                    div()
-                        .mt(px(6.))
-                        .text_color(p.muted)
-                        .text_size(theme::font(12.))
-                        .child(label("details.openedFiles.loading")),
-                );
+                section = section.child(note(label("details.openedFiles.loading")));
             }
             Some(report) => {
                 let files = report["files"].as_array().cloned().unwrap_or_default();
-                let denied = report["summary"]["deniedProcesses"].as_u64().unwrap_or(0) > 0
-                    && files.is_empty();
+                let summary = &report["summary"];
+                let denied =
+                    summary["deniedProcesses"].as_u64().unwrap_or(0) > 0 && files.is_empty();
+                let error = summary["error"].as_str().filter(|s| !s.is_empty());
+                let truncated =
+                    boolean(summary, "truncated") || summary["timeouts"].as_u64().unwrap_or(0) > 0;
                 if denied {
-                    section = section.child(
-                        div()
-                            .mt(px(6.))
-                            .text_color(p.muted)
-                            .text_size(theme::font(12.))
-                            .child(label("details.openedFiles.denied")),
-                    );
+                    section = section.child(note(label("details.openedFiles.denied")));
                 } else if files.is_empty() {
-                    section = section.child(
-                        div()
-                            .mt(px(6.))
-                            .text_color(p.muted)
-                            .text_size(theme::font(12.))
-                            .child(label("details.openedFiles.empty")),
-                    );
+                    section = section.child(note(if let Some(error) = error {
+                        tr!("details.openedFiles.error", message = error)
+                    } else {
+                        label("details.openedFiles.empty")
+                    }));
                 } else {
-                    let paths: Vec<&str> = files
-                        .iter()
-                        .filter_map(|file| file["path"].as_str())
-                        .filter(|path| !path.is_empty())
-                        .take(512)
-                        .collect();
-                    // One bordered box for the whole list (like Command line), no
-                    // per-path reveal/copy buttons.
+                    // One bordered box for the whole list (like Command line).
                     let mut list = div()
                         .id("process-opened-files")
                         .mt(px(6.))
@@ -734,11 +734,28 @@ impl Desktop {
                         .flex()
                         .flex_col()
                         .gap(px(2.));
-                    for (index, path) in paths.into_iter().enumerate() {
+                    for (index, file) in files.iter().enumerate() {
+                        let path = file["path"].as_str().unwrap_or_default();
+                        if path.is_empty() {
+                            continue;
+                        }
+                        let count = file["count"].as_u64().unwrap_or(1);
+                        let text = if count > 1 {
+                            format!("{path} (×{count})")
+                        } else {
+                            path.to_owned()
+                        };
                         let id = format!("opened-file-{index}");
-                        list = list.child(selectable(&id, path));
+                        list = list.child(selectable(&id, text));
                     }
                     section = section.child(list);
+                    if truncated || error.is_some() {
+                        section = section.child(note(if let Some(error) = error {
+                            tr!("details.openedFiles.error", message = error)
+                        } else {
+                            label("details.openedFiles.truncated")
+                        }));
+                    }
                 }
             }
         }

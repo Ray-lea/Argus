@@ -63,7 +63,10 @@
   "openedFiles": {
     "loading": "Buscando archivos abiertos…",
     "empty": "No se encontraron archivos de disco",
-    "denied": "Los archivos abiertos no están disponibles con los permisos actuales. Intente ejecutar Argus como administrador."
+    "denied": "Los archivos abiertos no están disponibles con los permisos actuales. Intente ejecutar Argus como administrador.",
+    "unavailable": "Los archivos abiertos no están disponibles hasta que la identidad del proceso esté lista.",
+    "truncated": "La lista puede estar incompleta (límite de tiempo o de tamaño).",
+    "error": "{message}"
   },
   "parent": "Proceso padre",
   "parentLink": "{name} ({pid})",

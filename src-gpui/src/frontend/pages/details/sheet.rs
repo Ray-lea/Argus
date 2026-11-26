@@ -581,21 +581,45 @@ impl Desktop {
             heading(label("details.section.commandLine")),
             sheet.command_line.into_iter().collect(),
         ));
-        if !picked.group {
-            let open_files = self
-                .data
-                .get(&format!("open-files:{key}"))
-                .and_then(|report| report["files"].as_array())
+        if !picked.group
+            && let Some(report) = self.data.get(&format!("open-files:{key}"))
+        {
+            let open_files = report["files"]
+                .as_array()
                 .map(|files| {
                     files
                         .iter()
-                        .filter_map(|file| file["path"].as_str())
-                        .filter(|path| !path.is_empty())
-                        .map(str::to_owned)
+                        .filter_map(|file| {
+                            let path = file["path"].as_str().filter(|p| !p.is_empty())?;
+                            let count = file["count"].as_u64().unwrap_or(1);
+                            Some(if count > 1 {
+                                format!("{path} (×{count})")
+                            } else {
+                                path.to_owned()
+                            })
+                        })
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            sections.push((heading(label("details.section.openedFiles")), open_files));
+            if !open_files.is_empty()
+                || report["summary"]["deniedProcesses"].as_u64().unwrap_or(0) > 0
+                || report["summary"]["error"]
+                    .as_str()
+                    .is_some_and(|e| !e.is_empty())
+            {
+                let lines = if open_files.is_empty() {
+                    vec![
+                        report["summary"]["error"]
+                            .as_str()
+                            .filter(|e| !e.is_empty())
+                            .map(|e| e.to_owned())
+                            .unwrap_or_else(|| label("details.openedFiles.denied")),
+                    ]
+                } else {
+                    open_files
+                };
+                sections.push((heading(label("details.section.openedFiles")), lines));
+            }
         }
         sections.push((
             heading(label("details.section.version")),

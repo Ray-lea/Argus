@@ -459,7 +459,7 @@ fn run_process_files(
             }
         };
         let mut activity = Instant::now();
-        let mut cursor = None;
+        let mut cursor: Option<Cursor> = None;
         let mut checked = 0;
         let mut denied = 0;
         let mut skipped = 0;
@@ -480,8 +480,11 @@ fn run_process_files(
                 }
                 if now < deadline
                     && let Some(current) = cursor
+                    && current.handle != u64::MAX
                     && attempt < MAX_RESTARTS
                 {
+                    // Skip whole-process sentinels: resuming after handle MAX
+                    // would filter out every real handle for this PID.
                     after = Some(current);
                     continue 'restart;
                 }

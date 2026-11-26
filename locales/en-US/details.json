@@ -60,7 +60,10 @@
   "openedFiles": {
     "loading": "Looking up opened files…",
     "empty": "No disk files found",
-    "denied": "Opened files are unavailable with current permissions. Try running Argus as administrator."
+    "denied": "Opened files are unavailable with current permissions. Try running Argus as administrator.",
+    "unavailable": "Opened files are unavailable until the process identity is ready.",
+    "truncated": "The list may be incomplete (time or size limit).",
+    "error": "{message}"
   },
   "parent": "Parent process",
   "parentLink": "{name} ({pid})",

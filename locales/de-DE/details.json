@@ -60,7 +60,10 @@
   "openedFiles": {
     "loading": "Geöffnete Dateien werden ermittelt…",
     "empty": "Keine Festplattendateien gefunden",
-    "denied": "Geöffnete Dateien sind mit den aktuellen Berechtigungen nicht verfügbar. Versuchen Sie, Argus als Administrator auszuführen."
+    "denied": "Geöffnete Dateien sind mit den aktuellen Berechtigungen nicht verfügbar. Versuchen Sie, Argus als Administrator auszuführen.",
+    "unavailable": "Geöffnete Dateien sind erst verfügbar, wenn die Prozessidentität bereit ist.",
+    "truncated": "Die Liste ist möglicherweise unvollständig (Zeit- oder Größenlimit).",
+    "error": "{message}"
   },
   "parent": "Übergeordneter Prozess",
   "parentLink": "{name} ({pid})",

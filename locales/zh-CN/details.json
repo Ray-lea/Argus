@@ -51,7 +51,10 @@
   "openedFiles": {
     "loading": "正在查找打开的文件…",
     "empty": "未发现磁盘文件",
-    "denied": "当前权限无法读取打开的文件，可用管理员权限重试。"
+    "denied": "当前权限无法读取打开的文件，可用管理员权限重试。",
+    "unavailable": "进程身份尚未就绪，暂时无法列出打开的文件。",
+    "truncated": "列表可能不完整（达到时间或数量上限）。",
+    "error": "{message}"
   },
   "parent": "父进程",
   "parentLink": "{name}（{pid}）",
