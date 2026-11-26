@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/argus-core", "crates/argus-service", "crates/argus-app", "src-gpui", "tools/window-probe", "tools/update-signer"]
+members = ["crates/argus-core", "crates/argus-service", "crates/argus-app", "crates/argus-view-logic", "src-gpui", "tools/window-probe", "tools/update-signer"]
 default-members = ["src-gpui"]
 exclude = ["vendor/gpui-pre", "vendor/gpui-pre-windows"]
 
@@ -132,6 +132,15 @@ debug = false
 # a minute, nearly all of it code generation of that one crate.
 [profile.dev.package.argus]
 opt-level = 2
+
+# The interface's logic outside GPUI (process rows, columns, formats), which
+# runs every sample as the interface does. Its tests need no speed: at
+# opt-level 0 they rebuild after a change in about 4 s instead of 9.
+[profile.dev.package.argus-view-logic]
+opt-level = 2
+
+[profile.test.package.argus-view-logic]
+opt-level = 0
 
 [profile.dev.package.argus-core]
 opt-level = 2

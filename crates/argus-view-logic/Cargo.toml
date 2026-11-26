@@ -1,0 +1,20 @@
+[package]
+name = "argus-view-logic"
+description = "Argus interface logic that needs no GPUI: process rows, columns, preferences, regional formats and history series"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+argus-core = { path = "../argus-core" }
+argus-app = { path = "../argus-app" }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+smol = "2"
+log = { version = "0.4", features = ["std"] }
+time = { version = "0.3", features = ["parsing", "local-offset"] }
+windows.workspace = true
