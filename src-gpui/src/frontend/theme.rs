@@ -2,6 +2,8 @@
 use gpui_kit::component::{ActiveTheme, Icon, Theme, ThemeMode};
 use gpui_kit::*;
 
+use super::units::ByteUnit;
+
 /// Emphasis for names, headings and navigation. Segoe UI Variable supplies
 /// this weight. Requesting 600 selects YaHei UI Bold for Chinese text.
 pub const LABEL_WEIGHT: FontWeight = FontWeight::MEDIUM;
@@ -663,47 +665,24 @@ pub fn cpu(value: f64) -> String {
         crate::regional::number!("{value:.1}")
     }
 }
+/// Memory in the chosen byte units (`ByteUnit::memory`).
 pub fn memory(value: f64) -> String {
-    let gb = value / 1073741824.;
-    if gb >= 10. {
-        crate::regional::number!("{gb:.1} GB")
-    } else if gb >= 1. {
-        crate::regional::number!("{gb:.2} GB")
-    } else {
-        crate::regional::number!("{:.1} MB", value / 1048576.)
-    }
+    ByteUnit::current().memory(value)
 }
+/// A size or, with `rate`, a rate in the chosen byte units; idle rates show a bare 0.
 pub fn bytes(value: f64, rate: bool) -> String {
     if rate {
-        // Rates read in whole kilobytes at least; idle shows a bare 0.
-        const KB: f64 = 1024.;
-        const MB: f64 = KB * 1024.;
-        const GB: f64 = MB * 1024.;
-        return if value < 1. {
-            "0".into()
-        } else if value < MB {
-            format!("{} KB/s", (value / KB).round().max(1.))
-        } else if value < GB {
-            crate::regional::number!("{:.1} MB/s", value / MB)
-        } else {
-            crate::regional::number!("{:.2} GB/s", value / GB)
-        };
-    }
-    let suffix = "";
-    let mut amount = value;
-    let mut unit = 0;
-    while amount >= 1024. && unit < 4 {
-        amount /= 1024.;
-        unit += 1;
-    }
-    let names = ["B", "KB", "MB", "GB", "TB"];
-    if value == 0. {
-        return "0".into();
-    }
-    if unit <= 1 {
-        crate::regional::number!("{amount:.0} {}{suffix}", names[unit])
+        ByteUnit::current().rate(value)
     } else {
-        crate::regional::number!("{amount:.1} {}{suffix}", names[unit])
+        ByteUnit::current().size(value)
+    }
+}
+/// An idle rate with its unit: "0 KB/s", or "0 Kbps" in bits.
+pub fn idle_rate(bits: bool) -> String {
+    if bits {
+        "0 Kbps".into()
+    } else {
+        ByteUnit::current().rate_shown(0.)
     }
 }
 pub fn network(value: f64, bits: bool) -> String {

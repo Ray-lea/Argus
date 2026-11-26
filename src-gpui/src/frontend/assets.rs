@@ -98,6 +98,7 @@ product_icons! {
     "DashboardIcon" => LayoutDashboard,
     "TimerIcon" => Timer,
     "TransferIcon" => ArrowUpDown,
+    "ByteUnitIcon" => Binary,
     // The filled one is the same outline, filled as it is loaded (`icon_path`).
     "StarIcon" | "StarFilledIcon" => Star,
     "ChatIcon" => MessageSquare,

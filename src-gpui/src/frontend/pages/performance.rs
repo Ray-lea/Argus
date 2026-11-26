@@ -1,5 +1,6 @@
 use super::*;
-use charts::{ChartHeight, GIB, KIB, Line, Look, MIB, MetricFormat, RateScale, Scale};
+use crate::frontend::units::{ByteUnit, GIGA, MEGA};
+use charts::{ChartHeight, Line, Look, MetricFormat, RateScale, Scale};
 use gpui_kit::base::ElementExt;
 mod cpu_motion;
 mod disk_details;
@@ -378,23 +379,19 @@ fn npu_percent(npu: &Value) -> Option<u64> {
 fn ghz(mhz: f64) -> String {
     crate::regional::number!("{:.2} GHz", mhz / 1000.)
 }
+/// Gigabytes to a tenth, without the symbol (`gb_symbol`).
 fn gb(bytes: f64) -> String {
-    crate::regional::number!("{:.1}", bytes / GIB)
+    ByteUnit::current().gigabytes(bytes)
+}
+fn gb_symbol() -> String {
+    ByteUnit::current().symbol(GIGA).into()
 }
 fn fmt_cache(bytes: f64) -> String {
-    if bytes >= MIB {
-        crate::regional::number!("{:.1} MB", bytes / MIB)
-    } else {
-        format!("{} KB", (bytes / KIB).round())
-    }
+    ByteUnit::current().cache(bytes)
 }
-/// Capacity in binary units, the way Windows reports drive sizes.
+/// A drive's capacity in the chosen byte units.
 fn fmt_capacity(bytes: f64) -> String {
-    if bytes >= 1024. * GIB {
-        crate::regional::number!("{:.1} TB", bytes / (1024. * GIB))
-    } else {
-        format!("{} GB", (bytes / GIB).round())
-    }
+    ByteUnit::current().capacity(bytes)
 }
 fn link_speed(bits: f64) -> String {
     if bits >= 1e9 {
@@ -1012,6 +1009,7 @@ impl Desktop {
                 "performance.memory.sub",
                 used = gb(number(sys, "memUsed")),
                 total = gb(number(sys, "memTotal")),
+                unit = gb_symbol(),
                 percent = (number(sys, "memUsed") / number(sys, "memTotal").max(1.) * 100.).round()
             ),
             "disk" => {
@@ -3170,9 +3168,9 @@ impl Desktop {
         let memory = &self.snapshot["hardware"]["memory"];
         let total = number(sys, "memTotal");
         let installed = number(memory, "installed");
-        let model = crate::regional::number!(
-            "{:.0} GB{}",
-            (if installed > 0. { installed } else { total }) / GIB,
+        let model = format!(
+            "{}{}",
+            ByteUnit::current().figure(if installed > 0. { installed } else { total }, GIGA, 0),
             memory["kind"]
                 .as_str()
                 .map(|kind| format!(" {kind}"))
@@ -3293,8 +3291,9 @@ impl Desktop {
                 "performance.memory.freeDescription",
                 tr!("performance.memory.legendFree", value = reading(free)),
             ));
+        let units = ByteUnit::current();
         let gb_stat =
-            |key: &str, bytes: f64| self.stat(label(key), gb(bytes), Some("GB".into()), None, cx);
+            |key: &str, bytes: f64| self.stat(label(key), gb(bytes), Some(gb_symbol()), None, cx);
         let in_use = if let Some((resident, stored)) = compression {
             // "39.5 GB (3.4 GB)", as Task Manager's "In use (Compressed)".
             let unit = |unit: String| {
@@ -3304,16 +3303,19 @@ impl Desktop {
                     .text_color(p.muted)
                     .child(unit)
             };
-            let (part, part_unit) = if resident >= GIB {
-                (gb(resident), "GB")
+            let (part, part_unit) = if resident >= units.multiple(GIGA) {
+                (gb(resident), units.symbol(GIGA))
             } else {
-                (format!("{}", (resident / MIB).round()), "MB")
+                (
+                    format!("{}", (resident / units.multiple(MEGA)).round()),
+                    units.symbol(MEGA),
+                )
             };
             let value = div()
                 .flex()
                 .items_baseline()
                 .child(gb(used))
-                .child(unit("GB".into()))
+                .child(unit(gb_symbol()))
                 .child(div().ml(px(6.)).child(format!("({part}")))
                 .child(unit(part_unit.into()))
                 .child(")")
@@ -3354,7 +3356,7 @@ impl Desktop {
                     gb(number(sys, "commitUsed")),
                     gb(number(sys, "commitLimit"))
                 ),
-                Some("GB".into()),
+                Some(gb_symbol()),
                 None,
                 cx,
             ),
@@ -3413,7 +3415,7 @@ impl Desktop {
         if reserved > 0. {
             rows.push((
                 label("performance.memory.reserved"),
-                plain(crate::regional::number!("{:.0} MB", reserved / MIB)),
+                plain(units.figure(reserved, MEGA, 0)),
             ));
         }
         vec![
@@ -3424,7 +3426,7 @@ impl Desktop {
                 Some(Scale::Fixed(total.max(1.))),
                 ChartHeight::Fill,
                 Look::boxed(label("performance.memory.usage"))
-                    .top(format!("{} GB", gb(total)))
+                    .top(format!("{} {}", gb(total), gb_symbol()))
                     .format(MetricFormat::Gigabytes)
                     .min_height(px(MAIN_MIN)),
                 cx,

@@ -6,6 +6,7 @@
 //! default device, or of one GPU, disk or network adapter of several.
 use super::pages::components::{TASKBAR_STYLES, TaskbarChoice};
 use super::pages::performance::rail;
+use super::units::{ByteUnit, GIGA, MEGA};
 use super::*;
 use crate::settings::{
     DeskLayout, DeskStyle, DesktopMonitor, Metric, Reading, TaskbarMonitor, TaskbarStyle,
@@ -529,10 +530,11 @@ pub(in crate::frontend) fn gauges(
             false,
         )
     };
-    let gigabytes = |bytes: f64| crate::regional::number!("{:.1} GB", bytes / 1073741824.);
+    let units = ByteUnit::current();
+    let gigabytes = |bytes: f64| units.figure(bytes, GIGA, 1);
     let rate = |value: Option<f64>, network: bool| match value {
         None => missing.clone(),
-        Some(value) if value < 1. => if network && bits { "0 Kbps" } else { "0 KB/s" }.into(),
+        Some(value) if value < 1. => theme::idle_rate(network && bits),
         Some(value) if network => theme::network(value, bits),
         Some(value) => theme::bytes(value, true),
     };
@@ -540,7 +542,7 @@ pub(in crate::frontend) fn gauges(
         if network && bits {
             crate::regional::number!("{:.1} Mbps", 999.9)
         } else {
-            crate::regional::number!("{:.1} MB/s", 999.9)
+            crate::regional::number!("{:.1} {}", 999.9, units.rate_symbol(MEGA))
         }
     };
     let pair = |marks: [String; 2], rates: [Option<f64>; 2], network: bool| Shown {
@@ -657,7 +659,7 @@ pub(in crate::frontend) fn gauges(
                     single(
                         used.map(gigabytes),
                         // Used memory never shows more digits than the total.
-                        gigabytes(total.max(1073741824. * 8.88)),
+                        gigabytes(total.max(units.multiple(GIGA) * 8.88)),
                         used.map(|used| used / total),
                         true,
                         used.is_some_and(|used| (used / total * 100.).round() >= HIGH),

@@ -2,8 +2,9 @@
 //! axis, and which recorded channels it is drawn from. The base readings are
 //! always there; the rest come from what was recorded (`history_channels`).
 use super::series::{Part, Points, nice_top};
-use crate::frontend::charts::{self, GIB, KIB, MIB};
+use crate::frontend::charts;
 use crate::frontend::theme::{self, Palette, label};
+use crate::frontend::units::{ByteUnit, GIGA, KILO, MEGA};
 use argus_core::tr;
 use gpui_kit::gpui::Hsla;
 use serde_json::Value;
@@ -295,14 +296,25 @@ impl Reading {
         nice_top(value / unit, false) * unit
     }
 
+    /// The multiple a byte reading's axis value is labelled in.
+    fn byte_power(&self, value: f64) -> Option<usize> {
+        let units = ByteUnit::current();
+        match self.unit {
+            Unit::Rate | Unit::NetworkRate if value >= units.multiple(GIGA) => Some(GIGA),
+            Unit::Rate | Unit::NetworkRate if value >= units.multiple(MEGA) => Some(MEGA),
+            Unit::Rate | Unit::NetworkRate => Some(KILO),
+            Unit::Bytes if value >= units.multiple(GIGA) => Some(GIGA),
+            Unit::Bytes => Some(MEGA),
+            _ => None,
+        }
+    }
+
     /// The size of the unit an axis value is labelled in.
     pub(super) fn label_unit(&self, value: f64) -> f64 {
+        if let Some(power) = self.byte_power(value) {
+            return ByteUnit::current().multiple(power);
+        }
         match self.unit {
-            Unit::Rate | Unit::NetworkRate if value >= GIB => GIB,
-            Unit::Rate | Unit::NetworkRate if value >= MIB => MIB,
-            Unit::Rate | Unit::NetworkRate => KIB,
-            Unit::Bytes if value >= GIB => GIB,
-            Unit::Bytes => MIB,
             Unit::Megahertz => 1000.,
             Unit::Milliwatts => 1000.,
             _ => 1.,
@@ -317,7 +329,9 @@ impl Reading {
     /// An axis label: as short as the axis allows (no decimals where the rows
     /// are whole).
     pub(super) fn axis_label(&self, value: f64, top: f64, bits: bool) -> String {
-        let unit = self.label_unit(top.abs().max(value.abs()));
+        let far = top.abs().max(value.abs());
+        let unit = self.label_unit(far);
+        let power = self.byte_power(far).unwrap_or(0);
         let scaled = value / unit;
         let number = if (scaled - scaled.round()).abs() < 0.05 {
             format!("{}", scaled.round())
@@ -330,25 +344,17 @@ impl Reading {
                 charts::bit_rate(value)
             }
             Unit::Rate | Unit::NetworkRate => {
-                let name = if unit >= GIB {
-                    "GB/s"
-                } else if unit >= MIB {
-                    "MB/s"
-                } else {
-                    "KB/s"
-                };
                 if value == 0. {
                     "0".into()
                 } else {
-                    format!("{number} {name}")
+                    format!("{number} {}", ByteUnit::current().rate_symbol(power))
                 }
             }
             Unit::Bytes => {
-                let name = if unit >= GIB { "GB" } else { "MB" };
                 if value == 0. {
                     "0".into()
                 } else {
-                    format!("{number} {name}")
+                    format!("{number} {}", ByteUnit::current().symbol(power))
                 }
             }
             Unit::Celsius => format!("{number}°C"),
@@ -364,18 +370,26 @@ impl Reading {
     /// Values as wide as this reading's widest, for a slot that keeps its width
     /// while the value changes.
     pub(super) fn widest_samples(&self, bits: bool) -> Vec<String> {
-        let values: &[f64] = match self.unit {
-            Unit::Percent => &[100., 88.8],
-            Unit::Bytes => &[88.8 * GIB, 8.88 * GIB, 888.8 * MIB],
-            Unit::Rate | Unit::NetworkRate => &[888. * KIB, 88.8 * MIB, 888.8 * MIB, 8.88 * GIB],
-            Unit::Celsius => &[100.],
-            Unit::Megahertz => &[8888.],
-            Unit::Watts => &[888.8, 88.8],
-            Unit::Milliwatts => &[-188_000., 88_800.],
-            Unit::Volts => &[8.888],
-            Unit::Rpm => &[8888.],
-            Unit::Count => &[888_888.],
-            Unit::Milliseconds => &[888.8],
+        let units = ByteUnit::current();
+        let (kilo, mega, giga) = (
+            units.multiple(KILO),
+            units.multiple(MEGA),
+            units.multiple(GIGA),
+        );
+        let values: Vec<f64> = match self.unit {
+            Unit::Percent => vec![100., 88.8],
+            Unit::Bytes => vec![88.8 * giga, 8.88 * giga, 888.8 * mega],
+            Unit::Rate | Unit::NetworkRate => {
+                vec![888. * kilo, 88.8 * mega, 888.8 * mega, 8.88 * giga]
+            }
+            Unit::Celsius => vec![100.],
+            Unit::Megahertz => vec![8888.],
+            Unit::Watts => vec![888.8, 88.8],
+            Unit::Milliwatts => vec![-188_000., 88_800.],
+            Unit::Volts => vec![8.888],
+            Unit::Rpm => vec![8888.],
+            Unit::Count => vec![888_888.],
+            Unit::Milliseconds => vec![888.8],
         };
         values.iter().map(|v| self.format(*v, bits)).collect()
     }

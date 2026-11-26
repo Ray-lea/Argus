@@ -304,6 +304,13 @@
       "option": "After {minutes} min",
       "never": "Never"
     },
+    "byteUnit": {
+      "title": "Byte units",
+      "desc": "The units for memory, storage capacity, transfer rates and other amounts in bytes. Bit rates always count in multiples of 1000.",
+      "iec": "Binary IEC (1 MiB = 1024 KiB)",
+      "si": "Decimal SI (1 MB = 1000 KB)",
+      "traditional": "Traditional (1 MB = 1024 KB)"
+    },
     "netUnit": {
       "title": "Network speed unit",
       "desc": "Bytes match the unit of disk speeds; bits match network adapter link speeds and broadband plans."

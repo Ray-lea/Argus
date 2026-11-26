@@ -282,7 +282,7 @@
     }
   },
   "memory": {
-    "sub": "{used} / {total} GB ({percent} %)",
+    "sub": "{used} / {total} {unit} ({percent} %)",
     "usage": "Speichernutzung",
     "legendInUse": "In Verwendung {value}",
     "legendCompressed": "Komprimiert {value}",

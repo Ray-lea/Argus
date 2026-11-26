@@ -58,8 +58,9 @@ impl NameFacts {
     }
 }
 
-/// Everything that can change the cell palette or the font overrides.
-/// The first four fields match `Palette::current`'s dependency key.
+/// Everything that can change the cell palette, the font overrides or the
+/// way figures are written. The first four fields match `Palette::current`'s
+/// dependency key.
 #[derive(PartialEq)]
 struct StyleKey {
     mode: ThemeMode,
@@ -71,6 +72,7 @@ struct StyleKey {
     font_family: SharedString,
     mono_font: SharedString,
     locale: argus_core::i18n::Locale,
+    byte_unit: ByteUnit,
 }
 
 impl StyleKey {
@@ -86,6 +88,7 @@ impl StyleKey {
             font_family: theme.font_family.clone(),
             mono_font: theme::mono_font(cx),
             locale: argus_core::i18n::locale(),
+            byte_unit: ByteUnit::current(),
         }
     }
 }

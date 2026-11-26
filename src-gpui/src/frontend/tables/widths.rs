@@ -96,12 +96,17 @@ fn envelope(field: &Field, bits: bool) -> Vec<Cow<'static, str>> {
             .map(|level| Cow::Owned(label(&format!("processes.power.{level}"))))
             .collect();
     }
-    figures_envelope(field, bits)
-        .iter()
-        .map(|text| Cow::Borrowed(*text))
-        .collect()
+    in_units(figures_envelope(field, bits))
 }
 
+/// Samples written in the traditional byte symbols, in the chosen ones.
+fn in_units(samples: &'static [&'static str]) -> Vec<Cow<'static, str>> {
+    let units = ByteUnit::current();
+    samples.iter().map(|text| units.relabel(text)).collect()
+}
+
+/// The widest figures in practice, in traditional byte symbols: the decimal
+/// units count no higher than the binary ones, and IEC symbols are relabelled.
 fn figures_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
     match field.kind {
         CellKind::Percent => &["100%", "8.8%"],
@@ -122,12 +127,12 @@ fn figures_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
 /// a busy machine's totals reach these within moments (the disks' I/O runs
 /// into hundreds of megabytes a second), so the column is that wide from the
 /// start rather than widening, and cutting the total short, as they climb.
-fn total_envelope(field: &Field, bits: bool) -> &'static [&'static str] {
-    match field.key {
+fn total_envelope(field: &Field, bits: bool) -> Vec<Cow<'static, str>> {
+    in_units(match field.key {
         "cpu" | "mem" | "gpu" => &["100%"],
         _ if field.kind != CellKind::Percent => figures_envelope(field, bits),
         _ => &[],
-    }
+    })
 }
 
 /// Whether every row of the list is measured for `field`, not only the
@@ -736,7 +741,7 @@ impl AutoWidths {
         };
         let mut total = self.measure(&shown, Role::Total, system, cx);
         for text in total_envelope(field, contents.bits) {
-            total = total.max(self.measure(text, Role::Total, system, cx));
+            total = total.max(self.measure(&text, Role::Total, system, cx));
         }
         // The name's total has the filter mark beside it while searching.
         let mark = if field.key == "name" { 17. } else { 0. };

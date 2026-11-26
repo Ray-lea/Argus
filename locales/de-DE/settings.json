@@ -304,6 +304,13 @@
       "option": "Nach {minutes} Min.",
       "never": "Nie"
     },
+    "byteUnit": {
+      "title": "Byte-Einheiten",
+      "desc": "Die Einheiten für Arbeitsspeicher, Speicherkapazität, Übertragungsraten und andere Angaben in Bytes. Bitraten zählen immer in Vielfachen von 1000.",
+      "iec": "Binär IEC (1 MiB = 1024 KiB)",
+      "si": "Dezimal SI (1 MB = 1000 KB)",
+      "traditional": "Herkömmlich (1 MB = 1024 KB)"
+    },
     "netUnit": {
       "title": "Einheit der Netzwerkgeschwindigkeit",
       "desc": "Bytes entsprechen der Einheit der Festplattengeschwindigkeit; Bits passen zu den Verbindungsgeschwindigkeiten der Netzwerkadapter und den Breitbandplänen."

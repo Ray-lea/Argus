@@ -1,5 +1,7 @@
 //! The process details pane: the selected row looked up in the snapshot, or this computer's parts.
 use super::*;
+use crate::frontend::charts::{bit_rate, byte_rate};
+use crate::frontend::units::{ByteUnit, GIGA};
 use argus_core::ExtraCounters;
 use gpui_kit::base::ElementExt;
 use gpui_kit::base::SelectableText;
@@ -70,9 +72,6 @@ struct Part {
     detail: String,
 }
 
-const KB: f64 = 1024.;
-const MB: f64 = KB * 1024.;
-const GB: f64 = MB * 1024.;
 /// Narrowest box around the fact names; it widens to the longest name.
 const FACT_NAME_WIDTH: f32 = 84.;
 /// Widest share of the pane's content the names take: a longer name wraps
@@ -1597,7 +1596,7 @@ impl Desktop {
                 name: joined_with(
                     " ",
                     [
-                        crate::regional::number!("{:.0} GB", installed / GB),
+                        ByteUnit::current().figure(installed, GIGA, 0),
                         text(memory, "kind").into(),
                     ],
                 ),
@@ -1693,7 +1692,7 @@ impl Desktop {
                 detail: if dedicated > 0. {
                     tr!(
                         "details.overview.vram",
-                        size = crate::regional::number!("{:.1} GB", dedicated / GB)
+                        size = ByteUnit::current().figure(dedicated, GIGA, 1)
                     )
                 } else {
                     label("details.overview.sharedMemory")
@@ -1831,33 +1830,6 @@ fn duration_of(key: &str) -> Duration {
         .unwrap_or_else(theme::motion_duration)
 }
 
-/// Byte rate with its unit even when idle.
-fn byte_rate(bytes_per_second: f64) -> String {
-    if bytes_per_second < 1. {
-        "0 KB/s".into()
-    } else if bytes_per_second < MB {
-        crate::regional::number!("{:.0} KB/s", (bytes_per_second / KB).round().max(1.))
-    } else if bytes_per_second < GB {
-        crate::regional::number!("{:.1} MB/s", bytes_per_second / MB)
-    } else {
-        crate::regional::number!("{:.2} GB/s", bytes_per_second / GB)
-    }
-}
-
-/// Rate in bits per second.
-fn bit_rate(bytes_per_second: f64) -> String {
-    let bits = bytes_per_second * 8.;
-    if bits < 1. {
-        "0 Kbps".into()
-    } else if bits < 1e6 {
-        crate::regional::number!("{:.*} Kbps", if bits < 1e4 { 1 } else { 0 }, bits / 1e3)
-    } else if bits < 1e9 {
-        crate::regional::number!("{:.*} Mbps", if bits < 1e7 { 2 } else { 1 }, bits / 1e6)
-    } else {
-        crate::regional::number!("{:.2} Gbps", bits / 1e9)
-    }
-}
-
 /// CPU time as h:mm:ss.
 pub(in crate::frontend) fn cpu_time(milliseconds: f64) -> String {
     let seconds = (milliseconds.max(0.) / 1000.) as u64;
@@ -1883,13 +1855,9 @@ pub(in crate::frontend) fn date_time(unix_ms: f64) -> String {
     crate::regional::date_time(value)
 }
 
-/// Capacity in binary units, the way Windows reports drive sizes.
+/// A drive's capacity in the chosen byte units.
 fn capacity(bytes: f64) -> String {
-    if bytes >= 1024. * GB {
-        crate::regional::number!("{:.1} TB", bytes / (1024. * GB))
-    } else {
-        crate::regional::number!("{:.0} GB", (bytes / GB).round())
-    }
+    ByteUnit::current().capacity(bytes)
 }
 
 fn link_speed(bits_per_second: f64) -> String {
@@ -1938,9 +1906,12 @@ fn disk_kind(info: &Value) -> String {
 #[cfg(test)]
 mod tests {
     // Named imports keep the glob-imported GPUI `test` macro out of scope.
-    use super::{GB, MB, bit_rate, byte_rate, capacity, cpu_time, disk_kind, joined, link_speed};
+    use super::{bit_rate, byte_rate, capacity, cpu_time, disk_kind, joined, link_speed};
     use crate::regional;
     use serde_json::json;
+
+    const MB: f64 = 1_048_576.;
+    const GB: f64 = 1_073_741_824.;
 
     #[test]
     fn rates_match_the_table_formats() {

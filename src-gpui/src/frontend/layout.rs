@@ -1236,7 +1236,8 @@ impl Desktop {
             .h(px(17.) + theme::text_growth(12., 1.4))
             .overflow_hidden()
             .gap_x(px(20.));
-        let cached = crate::regional::number!("{:.1} GB", number(sys, "cached") / 1073741824.);
+        let cached =
+            super::units::ByteUnit::current().figure(number(sys, "cached"), super::units::GIGA, 1);
         for (key, value) in [
             (
                 "shell.status.threads",

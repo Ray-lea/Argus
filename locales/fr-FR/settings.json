@@ -304,6 +304,13 @@
       "option": "Après {minutes} min",
       "never": "Jamais"
     },
+    "byteUnit": {
+      "title": "Unités d’octets",
+      "desc": "Les unités de la mémoire, de la capacité de stockage, des débits de transfert et des autres quantités en octets. Les débits en bits comptent toujours en multiples de 1000.",
+      "iec": "Binaire IEC (1 MiB = 1024 KiB)",
+      "si": "Décimal SI (1 MB = 1000 KB)",
+      "traditional": "Traditionnel (1 MB = 1024 KB)"
+    },
     "netUnit": {
       "title": "Unité de vitesse réseau",
       "desc": "Les octets correspondent à l’unité de vitesse du disque ; les bits correspondent aux vitesses de liaison de l’adaptateur réseau et aux forfaits haut débit."

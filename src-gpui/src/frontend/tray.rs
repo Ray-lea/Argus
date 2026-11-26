@@ -17,6 +17,7 @@ mod monitor;
 
 use super::monitors::TaskbarPanel;
 use super::pages::components::TaskbarChoice;
+use super::units::{ByteUnit, GIGA};
 use super::*;
 use crate::shell::Anchor;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1258,14 +1259,15 @@ impl Desktop {
         let sent = nics.iter().map(|n| number(n, "tx")).sum::<f64>();
         let rate = |value: f64| {
             if value < 1. {
-                if bits { "0 Kbps" } else { "0 KB/s" }.to_owned()
+                theme::idle_rate(bits)
             } else {
                 theme::network(value, bits)
             }
         };
         let network = history("totals.network");
         let network_top = network.iter().copied().fold(1., f64::max);
-        let gb = |bytes: f64| crate::regional::number!("{:.1}", bytes / 1073741824.);
+        let units = ByteUnit::current();
+        let gb = |bytes: f64| units.gigabytes(bytes);
         let tiles = [
             Tile {
                 figure: format!("{}%", number(sys, "cpu").round()),
@@ -1275,7 +1277,12 @@ impl Desktop {
             },
             Tile {
                 figure: format!("{}%", (mem_used / mem_total * 100.).round()),
-                detail: format!("{} / {} GB", gb(mem_used), gb(mem_total)),
+                detail: format!(
+                    "{} / {} {}",
+                    gb(mem_used),
+                    gb(mem_total),
+                    units.symbol(GIGA)
+                ),
                 curve: history("system.memUsed")
                     .iter()
                     .map(|v| v / mem_total)

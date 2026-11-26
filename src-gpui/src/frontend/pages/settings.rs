@@ -4,6 +4,7 @@ use super::section_rail::RailEntry;
 use super::*;
 use crate::frontend::recorder::{self, Effect, Mods, Verdict};
 use crate::frontend::recorder::{hotkey_error_text, issue_text};
+use crate::frontend::units::{self, ByteUnit, MEGA};
 use crate::frontend::widgets::{
     ButtonExt, Field, HotkeyMessage, HotkeyMode, ToastKind, Tone, service_connected, service_state,
 };
@@ -1904,12 +1905,39 @@ impl Desktop {
             "settings.data.releaseHidden.desc",
             vec![release],
         ));
+        let byte_unit = ByteUnit::load(&self.prefs);
+        let byte_units = self.select(
+            "settings-byte-unit",
+            label("settings.data.byteUnit.title"),
+            ByteUnit::ALL
+                .iter()
+                .map(|unit| label(&format!("settings.data.byteUnit.{}", unit.key())))
+                .collect(),
+            ByteUnit::ALL.iter().position(|unit| *unit == byte_unit),
+            false,
+            move |this, index, window, cx| {
+                this.preference(
+                    units::PREFERENCE,
+                    json!(ByteUnit::ALL[index].key()),
+                    window,
+                    cx,
+                );
+            },
+            cx,
+        );
+        cards.push(self.setting_text(
+            "byteUnit",
+            "ByteUnitIcon",
+            "settings.data.byteUnit.title",
+            "settings.data.byteUnit.desc",
+            vec![byte_units],
+        ));
         let unit = self.prefs.get::<String>("netUnit", "bytes".into());
         let units = self.segments(
             "setting-netUnit",
             vec![
                 (
-                    "MB/s".into(),
+                    byte_unit.rate_symbol(MEGA).into(),
                     None,
                     Action::Preference("netUnit".into(), json!("bytes")),
                     unit != "bits",
