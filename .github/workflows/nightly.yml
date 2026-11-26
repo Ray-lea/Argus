@@ -282,19 +282,6 @@ jobs:
         run: |
           cargo build --locked -p argus --bin argus
           cargo build --locked --release -p argus-window-probe --features capture
-      # Windows places each new window a little further along, so a pointer
-      # resting on the screen lights a different table row in each run. The
-      # taskbar stays above the test windows: a pointer there hovers none.
-      # Three quarters along is empty on both taskbar layouts and away from
-      # the Show desktop corner, which peeks through all windows.
-      - name: Park the pointer on the taskbar
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.Windows.Forms
-          $screen = [System.Windows.Forms.Screen]::PrimaryScreen
-          $x = $screen.Bounds.Left + [int]($screen.Bounds.Width * 0.75)
-          [System.Windows.Forms.Cursor]::Position = [System.Drawing.Point]::new($x, $screen.Bounds.Bottom - 4)
-          "pointer at $([System.Windows.Forms.Cursor]::Position); screen $($screen.Bounds); work area $($screen.WorkingArea)"
       - name: Smoke check
         run: node scripts/ui-smoke.mjs nightly-smoke --dev
       # Windows.Graphics.Capture refuses windows on hosted runners: the probe
