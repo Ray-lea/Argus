@@ -10,7 +10,7 @@
 
     { "note": "The column menu: auto-fit this column (nothing to restore yet) and full width." },
     { "control": { "pointer": { "at": "header:cpu", "event": "context" } }, "wait": 600, "inspect": "menu", "label": "header-menu",
-      "expect": { "state.items.3": "自动调整此列宽度", "state.disabled.3": true, "state.items.14": "全宽" }, "capture": "header-menu" },
+      "expect": { "state.items.3": "自动调整此列宽度", "state.disabled.3": true, "state.items.7": "全宽" }, "capture": "header-menu" },
     { "control": { "keys": ["escape"] }, "wait": 300 },
 
     { "note": "Hover the CPU column's edge: an accent line on the edge, then the hint." },

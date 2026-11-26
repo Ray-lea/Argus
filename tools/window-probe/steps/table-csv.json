@@ -14,7 +14,7 @@
     {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-startup","expect":{"page":"startup","tableCsv.content":"\uFEFF名称,发布者,状态,位置,命令\r\nOldUpdater,—,已启用,注册表（所有用户，32 位）,\"\"\"C:\\Program Files (x86)\\Gone\\updater.exe\"\" /silent\"\r\n"}},
     {"control":{"page":"network","query":"135","pointerOutside":true},"wait":850},
     {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-network","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
-    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-network","expect":{"page":"network","tableCsv.content":"\uFEFF进程,PID,协议,本地地址,本地端口,远程地址,远程端口,状态\r\n已退出,1785,TCP,0.0.0.0,135,,,监听\r\n已退出,1785,TCP,::,135,,,监听\r\n"}},
+    {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-network","expect":{"page":"network","tableCsv.content":"\uFEFF进程,PID,协议,本地地址,本地端口,远程地址,远程端口,状态\r\n已退出,1785,TCP,0.0.0.0,135,,,监听\r\n已退出,1785,TCPv6,::,135,,,监听\r\n"}},
     {"control":{"query":"NoSuchContosoConnection"},"wait":400},
     {"control":{"clickAnchor":"toolbar-more"},"wait":300,"inspect":"menu","label":"menu-empty","expect":{"state.items.2":"导出当前页为 CSV…","state.disabled.2":false}},
     {"control":{"keys":["down","down","enter"]},"wait":300,"inspect":"layout","label":"csv-empty","expect":{"page":"network","tableCsv.content":"\uFEFF进程,PID,协议,本地地址,本地端口,远程地址,远程端口,状态\r\n"}},
