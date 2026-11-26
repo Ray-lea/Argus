@@ -57,10 +57,10 @@
     "totals": "Cumuls",
     "location": "Emplacement du fichier",
     "commandLine": "Ligne de commande",
-    "openFiles": "Fichiers ouverts",
+    "openedFiles": "Fichiers ouverts",
     "version": "Version du fichier"
   },
-  "openFiles": {
+  "openedFiles": {
     "loading": "Recherche des fichiers ouverts…",
     "empty": "Aucun fichier disque trouvé",
     "denied": "Les fichiers ouverts sont indisponibles avec les autorisations actuelles. Essayez d’exécuter Argus en tant qu’administrateur."

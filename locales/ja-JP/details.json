@@ -51,10 +51,10 @@
     "totals": "累計",
     "location": "ファイルの場所",
     "commandLine": "コマンドライン",
-    "openFiles": "開いているファイル",
+    "openedFiles": "開いているファイル",
     "version": "ファイルバージョン"
   },
-  "openFiles": {
+  "openedFiles": {
     "loading": "開いているファイルを検索しています…",
     "empty": "ディスク ファイルが見つかりません",
     "denied": "現在の権限では開いているファイルを取得できません。Argus を管理者として実行してください。"

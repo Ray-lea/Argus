@@ -54,13 +54,13 @@
     "totals": "Totals",
     "location": "File location",
     "commandLine": "Command line",
-    "openFiles": "Open files",
+    "openedFiles": "Opened files",
     "version": "File version"
   },
-  "openFiles": {
-    "loading": "Looking up open files…",
+  "openedFiles": {
+    "loading": "Looking up opened files…",
     "empty": "No disk files found",
-    "denied": "Open files are unavailable with current permissions. Try running Argus as administrator."
+    "denied": "Opened files are unavailable with current permissions. Try running Argus as administrator."
   },
   "parent": "Parent process",
   "parentLink": "{name} ({pid})",

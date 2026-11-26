@@ -45,10 +45,10 @@
     "totals": "累計",
     "location": "檔案位置",
     "commandLine": "命令列",
-    "openFiles": "開啟的檔案",
+    "openedFiles": "開啟的檔案",
     "version": "檔案版本"
   },
-  "openFiles": {
+  "openedFiles": {
     "loading": "正在尋找開啟的檔案…",
     "empty": "未發現磁碟檔案",
     "denied": "目前的權限無法讀取開啟的檔案，可使用系統管理員權限重試。"

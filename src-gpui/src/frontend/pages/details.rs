@@ -667,12 +667,17 @@ impl Desktop {
         body.into_any_element()
     }
 
-    fn details_open_files(&self, key: &str, mono: &SharedString, cx: &Context<Self>) -> AnyElement {
+    fn details_open_files(
+        &self,
+        key: &str,
+        mono: &SharedString,
+        _cx: &Context<Self>,
+    ) -> AnyElement {
         let p = self.palette;
         let cache = format!("open-files:{key}");
         let report = self.data.get(&cache);
         let mut section =
-            div().child(self.details_section_title(label("details.section.openFiles")));
+            div().child(self.details_section_title(label("details.section.openedFiles")));
         match report {
             None => {
                 section = section.child(
@@ -680,7 +685,7 @@ impl Desktop {
                         .mt(px(6.))
                         .text_color(p.muted)
                         .text_size(theme::font(12.))
-                        .child(label("details.openFiles.loading")),
+                        .child(label("details.openedFiles.loading")),
                 );
             }
             Some(report) => {
@@ -693,7 +698,7 @@ impl Desktop {
                             .mt(px(6.))
                             .text_color(p.muted)
                             .text_size(theme::font(12.))
-                            .child(label("details.openFiles.denied")),
+                            .child(label("details.openedFiles.denied")),
                     );
                 } else if files.is_empty() {
                     section = section.child(
@@ -701,28 +706,37 @@ impl Desktop {
                             .mt(px(6.))
                             .text_color(p.muted)
                             .text_size(theme::font(12.))
-                            .child(label("details.openFiles.empty")),
+                            .child(label("details.openedFiles.empty")),
                     );
                 } else {
+                    let paths: Vec<&str> = files
+                        .iter()
+                        .filter_map(|file| file["path"].as_str())
+                        .filter(|path| !path.is_empty())
+                        .take(512)
+                        .collect();
+                    // One bordered box for the whole list (like Command line), no
+                    // per-path reveal/copy buttons.
                     let mut list = div()
-                        .id("process-open-files")
+                        .id("process-opened-files")
                         .mt(px(6.))
                         .max_h(px(220.))
                         .overflow_y_scroll()
+                        .px(px(10.))
+                        .py(px(8.))
+                        .border_1()
+                        .border_color(p.stroke)
+                        .rounded(px(6.))
+                        .bg(p.layer)
+                        .font_family(mono.clone())
+                        .text_size(theme::font(12.))
+                        .line_height(relative(1.5))
                         .flex()
                         .flex_col()
-                        .gap(px(4.));
-                    for (index, file) in files.iter().take(512).enumerate() {
-                        let path = file["path"].as_str().unwrap_or_default();
-                        if path.is_empty() {
-                            continue;
-                        }
-                        list = list.child(self.details_path_row(
-                            &format!("open-file-{index}"),
-                            path,
-                            mono,
-                            cx,
-                        ));
+                        .gap(px(2.));
+                    for (index, path) in paths.into_iter().enumerate() {
+                        let id = format!("opened-file-{index}");
+                        list = list.child(selectable(&id, path));
                     }
                     section = section.child(list);
                 }
