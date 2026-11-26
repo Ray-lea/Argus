@@ -144,9 +144,11 @@ mod tests {
     use super::*;
     #[test]
     fn a_manifest_without_a_signed_artifact_cannot_be_offered() {
+        // This machine's own platform: on ARM64 an x86_64 entry is no release at all.
+        let [platform, _] = crate::platform::update_targets();
         assert!(matches!(
             parse_release(
-                serde_json::json!({"version":"999.0.0","platforms":{"windows-x86_64":{"url":"https://example.invalid/update.exe"}}}),
+                serde_json::json!({"version":"999.0.0","platforms":{platform:{"url":"https://example.invalid/update.exe"}}}),
                 "unused"
             ),
             Err(Error::MissingSignedVersion)

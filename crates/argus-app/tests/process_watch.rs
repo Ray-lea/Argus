@@ -24,6 +24,9 @@ fn request(
 #[ignore = "real Windows collector integration, run explicitly with --ignored"]
 fn observes_and_deletes_through_the_real_sampler() {
     let dir = std::env::temp_dir().join(format!("argus-sampler-watch-{}", std::process::id()));
+    // Watch files live only in a folder Argus has marked as its own, as the
+    // host prepares its history folder.
+    argus_core::history::prepare_directory(&dir, None).unwrap();
     let rules = Arc::new(argus_service::RuleRunner::spawn(false));
     // No rules are installed and no service operations or system settings are changed.
     let sampler = Sampler::spawn(|| Collector::new(MetaStore::new()), rules);
@@ -93,5 +96,7 @@ fn observes_and_deletes_through_the_real_sampler() {
     assert_eq!(WatchRecorder::storage_bytes(&dir), 0);
     drop(sampler);
     drop(rx);
-    std::fs::remove_dir(dir).unwrap();
+    // Only the folder's ownership marker is left.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    std::fs::remove_dir_all(dir).unwrap();
 }
