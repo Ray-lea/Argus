@@ -66,6 +66,8 @@ test("a frontend file runs its step files; one no rule names runs localization",
   assert.deepEqual(stepFilesFor("src-gpui/src/frontend/something_new.rs"), ["localization"]);
   // Every file of a page split into a folder runs that page's step files.
   assert.deepEqual(stepFilesFor("src-gpui/src/frontend/pages/settings/hotkey.rs"), ["section-rail", "service-damaged", "hardware-acceleration", "history-settings"]);
+  // The byte unit setting is a card of the data section.
+  assert.deepEqual(stepFilesFor("src-gpui/src/frontend/pages/settings/data.rs"), ["section-rail", "service-damaged", "hardware-acceleration", "history-settings", "byte-units"]);
   assert.deepEqual(stepFilesFor("tools/window-probe/steps/header-menu.json"), ["header-menu"]);
   assert.deepEqual(stepFilesFor("tools/window-probe/steps/known-failures.json"), []);
   assert.deepEqual(stepFilesFor("crates/argus-core/src/util.rs"), []);
