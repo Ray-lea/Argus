@@ -41,6 +41,7 @@
 | `ARGUS_PROBE_CLOCK_DLL` | `clock-hook.dll` 的路径 | 探针收到 `clock` 命令时把它注入测试实例以加快其时钟；仅限带 `--test` 与独立测试标识的实例。`leak-native.mjs` 自动设置 |
 | `ARGUS_TEST_CLOCK_RATE` | 1–3600 的整数 | 时钟加快的倍数，由注入的 DLL 在测试实例中读取 |
 | `ARGUS_TEST_CLOCK_LOG` | 尚不存在的文件路径 | 时钟记录的输出文件，每秒一行 JSON；文件无法新建时不安装时钟钩子 |
+| `ARGUS_PROBE_CAPTURE` | `print` | 由探针的 `capture`、`capture-flyout`、`capture-window` 读取：截图改用 `PrintWindow`（`PW_RENDERFULLCONTENT`），不经 Windows.Graphics.Capture。用于核对两种方法的结果；未设置时只在窗口捕获拒绝该窗口时改用它（托管的 CI 运行器）。两种方法截出的图尺寸相同，四周 1 像素的窗口边框与圆角不同，比较只在同一方法之间进行 |
 
 ## 测试实例
 

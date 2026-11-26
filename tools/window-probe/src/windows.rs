@@ -899,8 +899,8 @@ pub fn run(args: &[String]) -> Result<()> {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
-    let gpu = Gpu::new()?;
-    let job = Arc::new(Job::limited()?);
+    let gpu = Gpu::new().context("GPU counters")?;
+    let job = Arc::new(Job::limited().context("job object for the owned test")?);
     let mut child = Command::new(&args[0])
         .args(&args[1..])
         .creation_flags((CREATE_NO_WINDOW | CREATE_SUSPENDED).0)
@@ -950,31 +950,46 @@ pub fn run(args: &[String]) -> Result<()> {
         ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
         StateMask: 0,
     };
-    unsafe {
+    // Windows Server answers ERROR_INVALID_PARAMETER: it has no EcoQoS to opt
+    // out of, so the run goes on and says so.
+    let throttling = unsafe {
         SetProcessInformation(
             windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
             ProcessPowerThrottling,
             (&power as *const PROCESS_POWER_THROTTLING_STATE).cast(),
             size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
-        )?;
-    }
-    let mut actual = PROCESS_POWER_THROTTLING_STATE {
-        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-        ..Default::default()
+        )
     };
-    unsafe {
-        GetProcessInformation(
-            windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
-            ProcessPowerThrottling,
-            (&mut actual as *mut PROCESS_POWER_THROTTLING_STATE).cast(),
-            size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
-        )?;
+    match throttling {
+        Err(error) if error.code() == windows::Win32::Foundation::E_INVALIDARG => {
+            println!(
+                "{}",
+                serde_json::json!({"event":"power-throttling","supported":false})
+            );
+        }
+        Err(error) => {
+            return Err(anyhow::Error::from(error).context("owned process power throttling"));
+        }
+        Ok(()) => {
+            let mut actual = PROCESS_POWER_THROTTLING_STATE {
+                Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ..Default::default()
+            };
+            unsafe {
+                GetProcessInformation(
+                    windows::Win32::Foundation::HANDLE(child.as_raw_handle()),
+                    ProcessPowerThrottling,
+                    (&mut actual as *mut PROCESS_POWER_THROTTLING_STATE).cast(),
+                    size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+                )?;
+            }
+            anyhow::ensure!(
+                actual.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
+                    && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
+                "owned process power throttling remains enabled"
+            );
+        }
     }
-    anyhow::ensure!(
-        actual.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED != 0
-            && actual.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED == 0,
-        "owned process power throttling remains enabled"
-    );
     let affinity = if std::env::var_os("ARGUS_PROBE_PERFORMANCE_CORES").is_some() {
         let handle = windows::Win32::Foundation::HANDLE(child.as_raw_handle());
         let (mut allowed, mut system) = (0, 0);
@@ -1121,9 +1136,10 @@ pub fn run(args: &[String]) -> Result<()> {
                         0,
                         0,
                         SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
-                    )?;
+                    )
+                    .context("show the owned window at the bottom")?;
                     let mut rect = RECT::default();
-                    GetClientRect(search.hwnd, &mut rect)?;
+                    GetClientRect(search.hwnd, &mut rect).context("owned window client area")?;
                     println!(
                         "{}",
                         serde_json::json!({"event":"shown","pid":search.pid,"uiThread":GetWindowThreadProcessId(search.hwnd,None),"hwnd":search.hwnd.0 as usize,"width":rect.right,"height":rect.bottom,"atMs":start.elapsed().as_millis()})
@@ -1542,88 +1558,107 @@ fn capture_window(
         let _ = EnumWindows(Some(find), LPARAM((&mut search as *mut Search) as isize));
     }
     anyhow::ensure!(!search.hwnd.0.is_null(), "owned Argus window missing");
-    unsafe {
-        RoInitialize(RO_INIT_MULTITHREADED)?;
-    }
-    let (mut device, mut context) = (None, None);
-    unsafe {
-        D3D11CreateDevice(
-            None,
-            D3D_DRIVER_TYPE_WARP,
-            Default::default(),
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            Some(&[D3D_FEATURE_LEVEL_11_0]),
-            D3D11_SDK_VERSION,
-            Some(&mut device),
-            None,
-            Some(&mut context),
+    let wgc = || -> Result<(usize, usize, Vec<u8>)> {
+        unsafe {
+            RoInitialize(RO_INIT_MULTITHREADED)?;
+        }
+        let (mut device, mut context) = (None, None);
+        unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_WARP,
+                Default::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                Some(&[D3D_FEATURE_LEVEL_11_0]),
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                Some(&mut context),
+            )?;
+        }
+        let device = device.unwrap();
+        let context = context.unwrap();
+        let dxgi: IDXGIDevice = device.cast()?;
+        let runtime: IDirect3DDevice =
+            unsafe { CreateDirect3D11DeviceFromDXGIDevice(&dxgi)? }.cast()?;
+        let factory: IGraphicsCaptureItemInterop =
+            windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
+        let item: GraphicsCaptureItem = unsafe { factory.CreateForWindow(search.hwnd)? };
+        let size = item.Size()?;
+        let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
+            &runtime,
+            if preview.is_some() {
+                DirectXPixelFormat::R16G16B16A16Float
+            } else {
+                DirectXPixelFormat::B8G8R8A8UIntNormalized
+            },
+            2,
+            size,
         )?;
-    }
-    let device = device.unwrap();
-    let context = context.unwrap();
-    let dxgi: IDXGIDevice = device.cast()?;
-    let runtime: IDirect3DDevice =
-        unsafe { CreateDirect3D11DeviceFromDXGIDevice(&dxgi)? }.cast()?;
-    let factory: IGraphicsCaptureItemInterop =
-        windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
-    let item: GraphicsCaptureItem = unsafe { factory.CreateForWindow(search.hwnd)? };
-    let size = item.Size()?;
-    let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-        &runtime,
-        if preview.is_some() {
-            DirectXPixelFormat::R16G16B16A16Float
-        } else {
-            DirectXPixelFormat::B8G8R8A8UIntNormalized
-        },
-        2,
-        size,
-    )?;
-    let session = pool.CreateCaptureSession(&item)?;
-    session.SetIsCursorCaptureEnabled(false)?;
-    session.StartCapture()?;
-    let start = Instant::now();
-    let mut image = None;
-    while start.elapsed() < Duration::from_secs(5) {
-        if let Ok(frame) = pool.TryGetNextFrame() {
-            let size = frame.ContentSize()?;
-            let access: IDirect3DDxgiInterfaceAccess = frame.Surface()?.cast()?;
-            let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
-            let mut desc = D3D11_TEXTURE2D_DESC::default();
-            unsafe { texture.GetDesc(&mut desc) };
-            desc.Usage = D3D11_USAGE_STAGING;
-            desc.BindFlags = 0;
-            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
-            desc.MiscFlags = 0;
-            let mut staging = None;
-            unsafe { device.CreateTexture2D(&desc, None, Some(&mut staging))? };
-            let staging = staging.unwrap();
-            unsafe { context.CopyResource(&staging, &texture) };
-            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-            unsafe { context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
-            let (w, h) = (size.Width as usize, size.Height as usize);
-            let stride = mapped.RowPitch as usize;
-            let bytes =
-                unsafe { std::slice::from_raw_parts(mapped.pData as *const u8, stride * h) };
-            let mut pixels = Vec::with_capacity(w * h * if preview.is_some() { 8 } else { 3 });
-            for row in bytes.chunks_exact(stride) {
-                if preview.is_some() {
-                    pixels.extend_from_slice(&row[..w * 8]);
-                } else {
-                    for &[b, g, r, _] in row[..w * 4].as_chunks::<4>().0 {
-                        pixels.extend_from_slice(&[r, g, b]);
+        let session = pool.CreateCaptureSession(&item)?;
+        session.SetIsCursorCaptureEnabled(false)?;
+        session.StartCapture()?;
+        let start = Instant::now();
+        let mut image = None;
+        while start.elapsed() < Duration::from_secs(5) {
+            if let Ok(frame) = pool.TryGetNextFrame() {
+                let size = frame.ContentSize()?;
+                let access: IDirect3DDxgiInterfaceAccess = frame.Surface()?.cast()?;
+                let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
+                let mut desc = D3D11_TEXTURE2D_DESC::default();
+                unsafe { texture.GetDesc(&mut desc) };
+                desc.Usage = D3D11_USAGE_STAGING;
+                desc.BindFlags = 0;
+                desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+                desc.MiscFlags = 0;
+                let mut staging = None;
+                unsafe { device.CreateTexture2D(&desc, None, Some(&mut staging))? };
+                let staging = staging.unwrap();
+                unsafe { context.CopyResource(&staging, &texture) };
+                let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+                unsafe { context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+                let (w, h) = (size.Width as usize, size.Height as usize);
+                let stride = mapped.RowPitch as usize;
+                let bytes =
+                    unsafe { std::slice::from_raw_parts(mapped.pData as *const u8, stride * h) };
+                let mut pixels = Vec::with_capacity(w * h * if preview.is_some() { 8 } else { 3 });
+                for row in bytes.chunks_exact(stride) {
+                    if preview.is_some() {
+                        pixels.extend_from_slice(&row[..w * 8]);
+                    } else {
+                        for &[b, g, r, _] in row[..w * 4].as_chunks::<4>().0 {
+                            pixels.extend_from_slice(&[r, g, b]);
+                        }
                     }
                 }
+                unsafe { context.Unmap(&staging, 0) };
+                frame.Close()?;
+                image = Some((w, h, pixels));
+                break;
             }
-            unsafe { context.Unmap(&staging, 0) };
-            frame.Close()?;
-            image = Some((w, h, pixels));
-            break;
+            std::thread::sleep(Duration::from_millis(10));
         }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    session.Close()?;
-    pool.Close()?;
-    let (w, h, data) = image.context("window capture timed out")?;
+        session.Close()?;
+        pool.Close()?;
+        image.context("window capture timed out")
+    };
+    // Windows.Graphics.Capture refuses windows in some sessions (hosted CI
+    // runners answer E_INVALIDARG); stills then come from PrintWindow, which
+    // ARGUS_PROBE_CAPTURE=print also forces for a check against WGC.
+    let forced = std::env::var("ARGUS_PROBE_CAPTURE").is_ok_and(|value| value == "print");
+    let (method, (w, h, data)) = if forced && preview.is_none() {
+        ("print", print_window(search.hwnd)?)
+    } else {
+        match wgc() {
+            Ok(image) => ("wgc", image),
+            Err(error) if preview.is_none() => (
+                "print",
+                print_window(search.hwnd)
+                    .with_context(|| format!("window capture: {error}; PrintWindow also failed"))?,
+            ),
+            Err(error) => return Err(error),
+        }
+    };
     let data = if let Some((inactive, active)) = preview {
         crate::preview::background(w, h, &data, inactive, active)?
     } else {
@@ -1636,6 +1671,87 @@ fn capture_window(
         encoder.set_source_srgb(png::SrgbRenderingIntent::RelativeColorimetric);
     }
     encoder.write_header()?.write_image_data(&data)?;
-    println!("{}", serde_json::json!({"width":w,"height":h,"path":path}));
+    println!(
+        "{}",
+        serde_json::json!({"width":w,"height":h,"path":path,"method":method})
+    );
     Ok(())
+}
+
+/// The window drawn by `PrintWindow` with `PW_RENDERFULLCONTENT` (DWM's copy
+/// of its content), cropped to the extended frame bounds as Windows.Graphics.
+/// Capture frames it, as RGB rows.
+#[cfg(feature = "capture")]
+fn print_window(hwnd: HWND) -> Result<(usize, usize, Vec<u8>)> {
+    use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+        DeleteDC, DeleteObject, GetDC, HDC, ReleaseDC, SelectObject,
+    };
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn PrintWindow(hwnd: HWND, dc: HDC, flags: u32) -> i32;
+    }
+    const PW_RENDERFULLCONTENT: u32 = 2;
+    unsafe {
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+    let mut outer = RECT::default();
+    unsafe { GetWindowRect(hwnd, &mut outer) }.context("window bounds")?;
+    let mut frame = outer;
+    let _ = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            (&mut frame as *mut RECT).cast(),
+            size_of::<RECT>() as u32,
+        )
+    };
+    let (width, height) = (
+        (outer.right - outer.left) as usize,
+        (outer.bottom - outer.top) as usize,
+    );
+    anyhow::ensure!(width > 0 && height > 0, "empty window");
+    let info = BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width as i32,
+            biHeight: -(height as i32),
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let mut bits = std::ptr::null_mut();
+    let pixels = unsafe {
+        let screen = GetDC(None);
+        let dc = CreateCompatibleDC(Some(screen));
+        let bitmap = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0);
+        let result = bitmap.context("bitmap").and_then(|bitmap| {
+            let previous = SelectObject(dc, bitmap.into());
+            let printed = PrintWindow(hwnd, dc, PW_RENDERFULLCONTENT) != 0;
+            let copy = std::slice::from_raw_parts(bits as *const u8, width * height * 4).to_vec();
+            SelectObject(dc, previous);
+            let _ = DeleteObject(bitmap.into());
+            anyhow::ensure!(printed, "PrintWindow failed");
+            Ok(copy)
+        });
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, screen);
+        result?
+    };
+    // The part inside the extended frame, as WGC returns it.
+    let left = (frame.left - outer.left).clamp(0, width as i32) as usize;
+    let top = (frame.top - outer.top).clamp(0, height as i32) as usize;
+    let w = ((frame.right - frame.left) as usize).min(width - left);
+    let h = ((frame.bottom - frame.top) as usize).min(height - top);
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for row in pixels.chunks_exact(width * 4).skip(top).take(h) {
+        for &[b, g, r, _] in row[left * 4..(left + w) * 4].as_chunks::<4>().0 {
+            rgb.extend_from_slice(&[r, g, b]);
+        }
+    }
+    Ok((w, h, rgb))
 }
