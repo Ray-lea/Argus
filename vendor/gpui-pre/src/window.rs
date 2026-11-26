@@ -69,8 +69,17 @@ use uuid::Uuid;
 
 pub(crate) mod a11y;
 mod prompts;
+// Argus patches, in files of their own.
+mod argus_a11y;
+mod argus_frames;
+mod argus_hover;
+mod argus_paint;
+mod argus_platform;
+mod argus_replay;
+mod argus_retained;
 
 pub use a11y::A11ySubtreeBuilder;
+pub use argus_retained::PaintedPrimitive;
 
 use self::a11y::A11y;
 #[cfg(not(target_family = "wasm"))]
@@ -202,59 +211,6 @@ impl WindowInvalidator {
         }
     }
 
-    /// Marks `entity` for redrawing in the next frame because it animates.
-    /// Unlike [`Self::invalidate_view`], observers aren't notified (its state
-    /// didn't change), and cached views nested in it can be replayed.
-    pub fn invalidate_view_for_animation(&self, entity: EntityId) {
-        self.invalidate_view_for_frame(entity, false);
-    }
-
-    /// [`Self::invalidate_view_for_animation`] for an animation that changes
-    /// nothing outside the cached view around `entity`: the cached views
-    /// around that one replay around it (see `Window::request_isolated_animation_frame`).
-    pub fn invalidate_view_for_isolated_animation(&self, entity: EntityId) {
-        self.invalidate_view_for_frame(entity, true);
-    }
-
-    fn invalidate_view_for_frame(&self, entity: EntityId, isolated: bool) {
-        let mut inner = self.inner.borrow_mut();
-        inner.update_count += 1;
-        if isolated {
-            inner.isolated_views.insert(entity);
-        } else {
-            inner.animation_views.insert(entity);
-        }
-        if inner.draw_phase == DrawPhase::None {
-            #[cfg(feature = "profiler")]
-            let dirty_at = Self::record_frame_dirty(&mut inner);
-            let became_dirty = !inner.dirty;
-            inner.dirty = true;
-            let waker = became_dirty.then(|| inner.platform_waker.clone()).flatten();
-            #[cfg(feature = "profiler")]
-            let window_id = inner.window_id;
-            drop(inner);
-            #[cfg(feature = "profiler")]
-            if became_dirty {
-                profiler::journal::record_frame_pending(window_id, dirty_at);
-            }
-            if let Some(waker) = waker {
-                waker();
-            }
-        }
-    }
-
-    /// Whether a view notified during the draw in progress is `view` or lies
-    /// inside it (in the last rendered frame).
-    fn pending_within(&self, view: EntityId, tree: &DispatchTree) -> bool {
-        let inner = self.inner.borrow();
-        inner.dirty_views.iter().any(|pending| {
-            *pending == view
-                || tree
-                    .view_path_reversed(*pending)
-                    .any(|ancestor| ancestor == view)
-        })
-    }
-
     pub fn is_dirty(&self) -> bool {
         self.inner.borrow().dirty
     }
@@ -323,14 +279,6 @@ impl WindowInvalidator {
 
     pub fn take_views(&self) -> FxHashSet<EntityId> {
         mem::take(&mut self.inner.borrow_mut().dirty_views)
-    }
-
-    pub fn take_animation_views(&self) -> FxHashSet<EntityId> {
-        mem::take(&mut self.inner.borrow_mut().animation_views)
-    }
-
-    pub fn take_isolated_views(&self) -> FxHashSet<EntityId> {
-        mem::take(&mut self.inner.borrow_mut().isolated_views)
     }
 
     pub fn replace_views(&self, views: FxHashSet<EntityId>) {
@@ -1161,173 +1109,6 @@ pub(crate) struct PaintIndex {
     line_layout_index: LineLayoutIndex,
 }
 
-/// The border colour [`Style::paint`] gives a background quad: the fill
-/// without its alpha, so that the quad's antialiased edge fades to nothing
-/// rather than to black.
-fn hover_edge_color(background: Background) -> Hsla {
-    let mut color = background.solid;
-    color.a = 0.;
-    color
-}
-
-/// `index`, counted inside a stretch of a list starting at `from`, where that
-/// stretch was copied starting at `to`. `None` if it lies before the stretch.
-fn rebase_index(index: usize, from: usize, to: usize) -> Option<usize> {
-    index.checked_sub(from).map(|offset| to + offset)
-}
-
-impl PrepaintStateIndex {
-    /// This index, taken inside the stretch of the last frame that starts at
-    /// `from`, where a replay of that stretch starting at `to` put it: a
-    /// replay copies every list it counts entry for entry.
-    pub(crate) fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
-        Some(Self {
-            hitboxes_index: rebase_index(
-                self.hitboxes_index,
-                from.hitboxes_index,
-                to.hitboxes_index,
-            )?,
-            tooltips_index: rebase_index(
-                self.tooltips_index,
-                from.tooltips_index,
-                to.tooltips_index,
-            )?,
-            deferred_draws_index: rebase_index(
-                self.deferred_draws_index,
-                from.deferred_draws_index,
-                to.deferred_draws_index,
-            )?,
-            dispatch_tree_index: rebase_index(
-                self.dispatch_tree_index,
-                from.dispatch_tree_index,
-                to.dispatch_tree_index,
-            )?,
-            accessed_element_states_index: rebase_index(
-                self.accessed_element_states_index,
-                from.accessed_element_states_index,
-                to.accessed_element_states_index,
-            )?,
-            line_layout_index: self
-                .line_layout_index
-                .rebased(&from.line_layout_index, &to.line_layout_index)?,
-        })
-    }
-
-    /// Whether this index lies at or before `end` in every list it counts.
-    pub(crate) fn not_after(&self, end: &Self) -> bool {
-        self.hitboxes_index <= end.hitboxes_index
-            && self.tooltips_index <= end.tooltips_index
-            && self.deferred_draws_index <= end.deferred_draws_index
-            && self.dispatch_tree_index <= end.dispatch_tree_index
-            && self.accessed_element_states_index <= end.accessed_element_states_index
-            && self.line_layout_index.not_after(&end.line_layout_index)
-    }
-
-    /// The element states used between two indices of one frame.
-    pub(crate) fn accessed_element_states(range: &Range<Self>) -> Range<usize> {
-        range.start.accessed_element_states_index..range.end.accessed_element_states_index
-    }
-
-    /// Argus patch: how many dispatch nodes the frame had at this index.
-    pub(crate) fn dispatch_nodes(&self) -> usize {
-        self.dispatch_tree_index
-    }
-
-    /// Argus patch: how many element states the frame had used at this index.
-    pub(crate) fn element_states(&self) -> usize {
-        self.accessed_element_states_index
-    }
-
-    /// Argus patch: this index without the element state used last. A
-    /// cached view's range starts just after the use of its own state.
-    pub(crate) fn before_last_state(&self) -> Self {
-        let mut index = self.clone();
-        index.accessed_element_states_index = index.accessed_element_states_index.saturating_sub(1);
-        index
-    }
-}
-
-impl PaintIndex {
-    /// See [`PrepaintStateIndex::rebased`].
-    pub(crate) fn rebased(&self, from: &Self, to: &Self) -> Option<Self> {
-        Some(Self {
-            scene_index: rebase_index(self.scene_index, from.scene_index, to.scene_index)?,
-            #[cfg(any(test, feature = "test-support"))]
-            debug_bounds_index: rebase_index(
-                self.debug_bounds_index,
-                from.debug_bounds_index,
-                to.debug_bounds_index,
-            )?,
-            mouse_listeners_index: rebase_index(
-                self.mouse_listeners_index,
-                from.mouse_listeners_index,
-                to.mouse_listeners_index,
-            )?,
-            input_handlers_index: rebase_index(
-                self.input_handlers_index,
-                from.input_handlers_index,
-                to.input_handlers_index,
-            )?,
-            cursor_styles_index: rebase_index(
-                self.cursor_styles_index,
-                from.cursor_styles_index,
-                to.cursor_styles_index,
-            )?,
-            window_control_hitboxes_index: rebase_index(
-                self.window_control_hitboxes_index,
-                from.window_control_hitboxes_index,
-                to.window_control_hitboxes_index,
-            )?,
-            accessed_element_states_index: rebase_index(
-                self.accessed_element_states_index,
-                from.accessed_element_states_index,
-                to.accessed_element_states_index,
-            )?,
-            tab_handle_index: rebase_index(
-                self.tab_handle_index,
-                from.tab_handle_index,
-                to.tab_handle_index,
-            )?,
-            line_layout_index: self
-                .line_layout_index
-                .rebased(&from.line_layout_index, &to.line_layout_index)?,
-        })
-    }
-
-    /// See [`PrepaintStateIndex::element_states`].
-    pub(crate) fn element_states(&self) -> usize {
-        self.accessed_element_states_index
-    }
-
-    /// See [`PrepaintStateIndex::before_last_state`].
-    pub(crate) fn before_last_state(&self) -> Self {
-        let mut index = self.clone();
-        index.accessed_element_states_index = index.accessed_element_states_index.saturating_sub(1);
-        index
-    }
-
-    /// See [`PrepaintStateIndex::not_after`].
-    pub(crate) fn not_after(&self, end: &Self) -> bool {
-        #[cfg(any(test, feature = "test-support"))]
-        if self.debug_bounds_index > end.debug_bounds_index {
-            return false;
-        }
-        self.scene_index <= end.scene_index
-            && self.mouse_listeners_index <= end.mouse_listeners_index
-            && self.input_handlers_index <= end.input_handlers_index
-            && self.cursor_styles_index <= end.cursor_styles_index
-            && self.window_control_hitboxes_index <= end.window_control_hitboxes_index
-            && self.accessed_element_states_index <= end.accessed_element_states_index
-            && self.tab_handle_index <= end.tab_handle_index
-            && self.line_layout_index.not_after(&end.line_layout_index)
-    }
-
-    /// The element states used between two indices of one frame.
-    pub(crate) fn accessed_element_states(range: &Range<Self>) -> Range<usize> {
-        range.start.accessed_element_states_index..range.end.accessed_element_states_index
-    }
-}
-
 impl Frame {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn record_debug_bounds(&mut self, selector: String, bounds: Bounds<Pixels>) {
@@ -1460,56 +1241,6 @@ enum InputModality {
     Mouse,
     Keyboard,
     Touch,
-}
-
-/// A decorative primitive whose layout and hit boxes remain fixed. Handles are
-/// valid only until the next full window draw; callers redraw on a failed update.
-#[derive(Clone, Copy)]
-pub struct PaintedPrimitive {
-    window_id: WindowId,
-    generation: u64,
-    operation: usize,
-    layer: Bounds<ScaledPixels>,
-    image: Option<(crate::ImageId, usize)>,
-    background: Option<Background>,
-    // A fully clipped image has no scene primitive. Keep its effective device
-    // mask so invisible translations can still complete without a new paint.
-    culled_mask: Option<Bounds<ScaledPixels>>,
-}
-impl PaintedPrimitive {
-    /// Whether the last full paint found this image entirely outside its clip.
-    pub fn is_clipped_out(&self) -> bool {
-        self.culled_mask.is_some()
-    }
-    fn find_index(&self, scene: &Scene) -> Option<usize> {
-        use crate::scene::{PaintOperation, Primitive};
-        match scene.paint_operations.get(self.operation)? {
-            PaintOperation::Primitive(Primitive::PolychromeSprite(value)) => {
-                let mut hits = scene
-                    .polychrome_sprites
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, sprite)| {
-                        sprite.order == value.order
-                            && sprite.tile == value.tile
-                            && sprite.bounds == value.bounds
-                            && sprite.content_mask.bounds == value.content_mask.bounds
-                    });
-                let first = hits.next()?.0;
-                hits.next().is_none().then_some(first)
-            }
-            PaintOperation::Primitive(Primitive::Quad(value)) => {
-                let mut hits = scene.quads.iter().enumerate().filter(|(_, quad)| {
-                    quad.order == value.order
-                        && quad.bounds == value.bounds
-                        && quad.content_mask.bounds == value.content_mask.bounds
-                });
-                let first = hits.next()?.0;
-                hits.next().is_none().then_some(first)
-            }
-            _ => None,
-        }
-    }
 }
 
 /// Holds the state for a specific window.
@@ -3338,16 +3069,6 @@ impl Window {
         self.invalidator.wake_platform();
     }
 
-    /// Argus patch: whether the window still has something to draw or
-    /// present: a dirty view, a next-frame callback (an animation's next
-    /// step), or a drawn frame not yet presented. Timers that will change the
-    /// window later are not counted.
-    pub fn has_frame_demand(&self) -> bool {
-        self.invalidator.is_dirty()
-            || !self.next_frame_callbacks.borrow().is_empty()
-            || self.needs_present.get()
-    }
-
     /// Schedule a frame to be drawn on the next animation frame.
     ///
     /// This is useful for elements that need to animate continuously, such as a video player or an animated GIF.
@@ -3365,267 +3086,6 @@ impl Window {
         self.on_next_frame(move |window, _| {
             window.invalidator.invalidate_view_for_animation(entity)
         });
-    }
-
-    /// Argus patch: [`Self::request_animation_frame`] for an animation that
-    /// changes nothing outside the nearest cached view around this view (the
-    /// view itself if it is cached), such as a glide of a list it scrolls.
-    /// Cached views further out replay their last frame around that one,
-    /// which is drawn again in its place: their own trees are not built,
-    /// laid out or painted again. What they paint from the animated state
-    /// (a scrollbar of the list drawn outside it, say) stays as it was, so
-    /// it must ask for its own frames (`ScrollHandle::gliding`).
-    ///
-    /// A cached view around it renders as usual when anything else asks it
-    /// to, when it was not drawn in the last frame, or while assistive
-    /// technology reads the window.
-    pub fn request_isolated_animation_frame(&self) {
-        let entity = self.current_view();
-        self.on_next_frame(move |window, _| {
-            window
-                .invalidator
-                .invalidate_view_for_isolated_animation(entity)
-        });
-    }
-
-    /// Redraw a view without notifying observers or invalidating its cached
-    /// children. The caller must separately notify any child whose inputs changed.
-    /// Use outside drawing when only uncached content owned by this view changed.
-    pub fn request_view_redraw(&self, entity: EntityId) {
-        self.invalidator.invalidate_view_for_animation(entity);
-    }
-
-    /// Argus patch: [`Self::request_view_redraw`] for a redraw that changes
-    /// nothing outside the nearest cached view around `entity`, as an
-    /// isolated animation frame does ([`Self::request_isolated_animation_frame`]).
-    pub fn request_isolated_view_redraw(&self, entity: EntityId) {
-        self.invalidator
-            .invalidate_view_for_isolated_animation(entity);
-    }
-
-    /// Draws `view` again because an element it painted changed how it looks
-    /// or what it listens for, without the view's state changing: a hover, a
-    /// press, a tooltip coming or going. Its observers aren't notified and the
-    /// cached views inside it replay (their keys hold what they inherit from
-    /// it), where [`Self::refresh`] would render every view of the window.
-    ///
-    /// During a draw (a tooltip found gone while the window prepaints it) the
-    /// view draws again in the next frame. `refresh` does nothing then, which
-    /// left the tooltip's request in the view's prepaint until something else
-    /// drew the view: every frame that replayed the view laid the tooltip out
-    /// again to find it gone, and showed it at once if its element was waiting
-    /// to show it anew. Views now replay for as long as nothing changes them.
-    pub(crate) fn redraw_view_for_interaction(&self, view: EntityId) {
-        if self.invalidator.not_drawing() {
-            self.invalidator.invalidate_view_for_animation(view);
-        } else {
-            self.on_next_frame(move |window, _| {
-                window.invalidator.invalidate_view_for_animation(view)
-            });
-        }
-    }
-
-    /// [`Self::redraw_view_for_interaction`] for an element that may have
-    /// been painted outside any view, where the window is refreshed.
-    pub(crate) fn redraw_for_interaction(&mut self, view: Option<EntityId>) {
-        match view {
-            Some(view) => self.redraw_view_for_interaction(view),
-            None => self.refresh(),
-        }
-    }
-
-    /// Paints the background of an element whose hover style sets a solid
-    /// background and nothing else, at `bounds`, as a quad that takes either
-    /// fill in place. A row or a button under a moving pointer changes fill
-    /// far more often than anything else about it changes: drawing its view
-    /// again for each change builds, lays out and paints everything in the
-    /// view to change one quad. With no background at rest the quad is still
-    /// there, transparent, so that hovering has something to fill.
-    ///
-    /// The quad is what [`Self::paint_quad`] makes of the same fill, and
-    /// [`Self::set_hover_fill`] changes it later.
-    pub(crate) fn paint_hover_background(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        corner_radii: Corners<Pixels>,
-        border_style: BorderStyle,
-        hover: &crate::style::HoverBackground,
-    ) {
-        self.invalidator.debug_assert_paint();
-        let opacity = self.element_opacity();
-        let fills = (
-            hover.base.unwrap_or_default().opacity(opacity),
-            hover.hover.opacity(opacity),
-        );
-        hover.link.fills.set(fills);
-        let background = if hover.hovered { fills.1 } else { fills.0 };
-        let quad = Quad {
-            order: 0,
-            bounds: self.snap_bounds(bounds),
-            content_mask: self.snapped_content_mask(),
-            background,
-            border_color: hover_edge_color(background),
-            corner_radii: corner_radii.scale(self.scale_factor()),
-            border_widths: Edges::default(),
-            border_style,
-        };
-        self.next_frame.scene.insert_hover_quad(quad, &hover.link);
-    }
-
-    /// Gives the quad that [`Self::paint_hover_background`] painted for `link`
-    /// the fill for `hovered`, in the scene on screen, and presents it: no
-    /// view draws again. Returns `false` when the quad is not in that scene as
-    /// it was painted (its view was drawn inside a transform, or another quad
-    /// equals it); the caller then draws the element's view again.
-    ///
-    /// The paint operation changes with the quad, so a later frame that
-    /// replays the view shows the same fill.
-    pub(crate) fn set_hover_fill(
-        &mut self,
-        link: &crate::scene::HoverQuadLink,
-        hovered: bool,
-    ) -> bool {
-        use crate::scene::{PaintOperation, Primitive};
-        if !self.invalidator.not_drawing() {
-            return false;
-        }
-        let Some(operation) = link.operation.get() else {
-            return false;
-        };
-        let (base, hover) = link.fills.get();
-        let background = if hovered { hover } else { base };
-        let scene = &mut self.rendered_frame.scene;
-        // The scene on screen is the one the link was last noted in.
-        let Some(entry) = scene
-            .hover_quads
-            .binary_search_by_key(&operation, |quad| quad.operation)
-            .ok()
-            .filter(|index| std::ptr::eq(Rc::as_ptr(&scene.hover_quads[*index].link), link))
-        else {
-            return false;
-        };
-        let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
-            scene.paint_operations.get(operation)
-        else {
-            return false;
-        };
-        if recorded.background == background {
-            return true;
-        }
-        // The quad among the scene's quads, as the transforms around the
-        // element placed it. Clipped out, there is none to show.
-        let placed = scene.hover_quads[entry].placed;
-        let opacity = scene.hover_quads[entry].opacity;
-        let index = match placed {
-            Some(placed) => {
-                let quads = &scene.quads;
-                let Some(index) = *self
-                    .painted_primitive_indices
-                    .entry(operation)
-                    .or_insert_with(|| {
-                        let mut hits = quads.iter().enumerate().filter(|(_, quad)| {
-                            quad.order == placed.order
-                                && quad.bounds == placed.bounds
-                                && quad.content_mask.bounds == placed.content_mask.bounds
-                                && quad.background == placed.background
-                        });
-                        let first = hits.next()?.0;
-                        hits.next().is_none().then_some(first)
-                    })
-                else {
-                    return false;
-                };
-                if scene.quads.get(index).is_none_or(|quad| {
-                    quad.bounds != placed.bounds || quad.background != placed.background
-                }) {
-                    return false;
-                }
-                Some(index)
-            }
-            None => None,
-        };
-        if let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
-            scene.paint_operations.get_mut(operation)
-        {
-            recorded.background = background;
-            recorded.border_color = hover_edge_color(background);
-        }
-        let Some(index) = index else {
-            return true;
-        };
-        let shown = background.opacity(opacity);
-        let quad = &mut scene.quads[index];
-        quad.background = shown;
-        quad.border_color = hover_edge_color(shown);
-        scene.hover_quads[entry].placed = Some(*quad);
-        scene.mark_repainted();
-        self.needs_present.set(true);
-        self.invalidator.wake_platform();
-        true
-    }
-
-    /// Calls `f` with the state of type `S` kept by each element that used
-    /// one within `accessed`, a stretch of the element states the last frame
-    /// used. A view replayed from the last frame moves what the cached views
-    /// drawn inside it recorded there to where the replay put it.
-    pub(crate) fn for_reused_element_states<S: 'static>(
-        &mut self,
-        accessed: Range<usize>,
-        mut f: impl FnMut(&GlobalElementId, &mut S),
-    ) {
-        let state_type = TypeId::of::<S>();
-        let Frame {
-            accessed_element_states,
-            element_states,
-            ..
-        } = &mut self.rendered_frame;
-        let Some(keys) = accessed_element_states.get(accessed) else {
-            return;
-        };
-        for key in keys {
-            if key.1 != state_type {
-                continue;
-            }
-            if let Some(state) = element_states
-                .get_mut(key)
-                .and_then(|state| state.inner.downcast_mut::<Option<S>>())
-                .and_then(Option::as_mut)
-            {
-                f(&key.0, state);
-            }
-        }
-    }
-
-    /// Argus patch: whether the last frame used the state of type `S` of the
-    /// element `global_id` just before `index` (a count of the element states
-    /// it had used).
-    pub(crate) fn rendered_state_used_before<S: 'static>(
-        &self,
-        index: usize,
-        global_id: &GlobalElementId,
-    ) -> bool {
-        index
-            .checked_sub(1)
-            .and_then(|index| self.rendered_frame.accessed_element_states.get(index))
-            .is_some_and(|(id, state_type)| id == global_id && *state_type == TypeId::of::<S>())
-    }
-
-    /// Argus patch, test support: how many element states the last frame used.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn used_element_states(&self) -> usize {
-        self.rendered_frame.accessed_element_states.len()
-    }
-
-    /// Argus patch: the state of type `S` an element kept in the last frame.
-    pub(crate) fn rendered_element_state<S: 'static>(
-        &self,
-        global_id: &GlobalElementId,
-    ) -> Option<&S> {
-        self.rendered_frame
-            .element_states
-            .get(&(global_id.clone(), TypeId::of::<S>()))
-            .and_then(|state| state.inner.downcast_ref::<Option<S>>())
-            .and_then(Option::as_ref)
     }
 
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
@@ -3679,22 +3139,6 @@ impl Window {
         })
     }
 
-    /// Notify position observers without invalidating unchanged local geometry.
-    fn position_changed(&mut self, cx: &mut App) {
-        if self.scale_factor != self.platform_window.scale_factor()
-            || self.viewport_size != self.platform_window.content_size()
-        {
-            self.bounds_changed(cx);
-            return;
-        }
-        // The platform already updated its screen origin. Local layout and
-        // paint caches remain valid while only the window's position changes.
-        self.mouse_position = self.platform_window.mouse_position();
-        self.bounds_observers
-            .clone()
-            .retain(|callback| callback(self, cx));
-    }
-
     /// Refresh size-dependent state and invalidate local layout and paint.
     ///
     /// Normally called by the platform resize callback; also exposed for explicit
@@ -3709,61 +3153,6 @@ impl Window {
         self.bounds_observers
             .clone()
             .retain(|callback| callback(self, cx));
-    }
-
-    fn try_touch_input(
-        handle: AnyWindowHandle,
-        cx: &crate::AsyncApp,
-        touches: &RefCell<VecDeque<TouchEvent>>,
-    ) -> bool {
-        let Some(app) = cx.app.upgrade() else {
-            touches.borrow_mut().clear();
-            return true;
-        };
-        let Ok(mut app) = app.try_borrow_mut() else {
-            return false;
-        };
-        // Native modal loops can deliver cancellation while the outer window
-        // update is still borrowed. Keep contacts ordered until it returns.
-        let result = app.update(|cx| {
-            handle.update(cx, |_, window, cx| {
-                loop {
-                    let event = touches.borrow_mut().pop_front();
-                    let Some(event) = event else { break };
-                    window.dispatch_event(PlatformInput::Touch(event), cx);
-                }
-            })
-        });
-        if result.is_err() {
-            touches.borrow_mut().clear();
-        }
-        true
-    }
-
-    fn try_display_changed(handle: AnyWindowHandle, cx: &crate::AsyncApp) -> bool {
-        let Some(app) = cx.app.upgrade() else {
-            return true;
-        };
-        let Ok(mut app) = app.try_borrow_mut() else {
-            return false;
-        };
-        app.update(|cx| Self::display_changed(handle, cx));
-        true
-    }
-
-    fn try_bounds_changed(handle: AnyWindowHandle, cx: &crate::AsyncApp) -> bool {
-        let Some(app) = cx.app.upgrade() else {
-            return true;
-        };
-        let Ok(mut app) = app.try_borrow_mut() else {
-            return false;
-        };
-        app.update(|cx| {
-            handle
-                .update(cx, |_, window, cx| window.bounds_changed(cx))
-                .log_err();
-        });
-        true
     }
 
     fn display_changed(handle: AnyWindowHandle, cx: &mut App) {
@@ -4081,21 +3470,6 @@ impl Window {
         self.scale_factor
     }
 
-    /// Scales everything in the window by `zoom` on top of the display scale
-    /// factor, like page zoom in a browser: the scale factor grows by `zoom`,
-    /// the viewport shrinks by it and pointer positions arrive in the zoomed
-    /// coordinates, so layout, painting and hit testing stay consistent. The
-    /// window keeps its size and position on screen. Platforms without
-    /// support ignore it.
-    pub fn set_content_zoom(&mut self, zoom: f32, cx: &mut App) {
-        self.platform_window.set_content_zoom(zoom);
-        if self.scale_factor != self.platform_window.scale_factor()
-            || self.viewport_size != self.platform_window.content_size()
-        {
-            self.bounds_changed(cx);
-        }
-    }
-
     /// Overrides the display scale factor for tests.
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
@@ -4170,24 +3544,6 @@ impl Window {
     /// The line height associated with the current text style.
     pub fn line_height(&self) -> Pixels {
         self.text_style().line_height_in_pixels(self.rem_size())
-    }
-
-    /// Argus: tells the renderer that the content painted inside `bounds`
-    /// (within the current content mask) is drawn `offset` away from where it
-    /// was laid out, as a scroll container or a sliding page draws it, under
-    /// an `id` that stays the same while it moves. A renderer may copy what
-    /// only moved by whole device pixels since its last frame, after checking
-    /// each primitive (`ScrollRegion`).
-    pub fn report_moving_region(&mut self, id: usize, bounds: Bounds<Pixels>, offset: Point<Pixels>) {
-        let scale = self.scale_factor();
-        let clip = bounds.intersect(&self.content_mask().bounds);
-        if clip.size.width > Pixels::ZERO && clip.size.height > Pixels::ZERO {
-            self.next_frame.scene.scroll_regions.push(crate::ScrollRegion {
-                id,
-                clip: clip.scale(scale),
-                offset: point(offset.x.scale(scale), offset.y.scale(scale)),
-            });
-        }
     }
 
     /// Rounds a logical value to the nearest device pixel.
@@ -4318,36 +3674,6 @@ impl Window {
             point(ScaledPixels(left), ScaledPixels(top)),
             point(ScaledPixels(right), ScaledPixels(bottom)),
         )
-    }
-
-    /// Device bounds and fill of an animated bar. Its sides and baseline snap to
-    /// device pixels; its top keeps a fractional position, drawn as a coverage
-    /// ramp one device pixel tall, so the bar grows smoothly between pixel rows
-    /// instead of jumping a whole row at a time. None when nothing would show.
-    ///
-    /// The quad starts half a pixel above the top, where the ramp begins, rather
-    /// than at the pixel row holding the top: its rounded corners then move with
-    /// the top instead of jumping a whole row each time the top crosses one. It
-    /// never starts above `ceiling` (the top of the bar's reserved region).
-    fn retained_bar(
-        &self,
-        bounds: Bounds<Pixels>,
-        color: Hsla,
-        ceiling: ScaledPixels,
-    ) -> crate::RetainedBar {
-        let scale_factor = self.scale_factor();
-        let left = round_to_device_pixel(bounds.left().0, scale_factor);
-        let right = round_to_device_pixel(bounds.right().0, scale_factor).max(left);
-        let bottom = round_to_device_pixel(bounds.bottom().0, scale_factor);
-        let top = (bounds.top().0 * scale_factor).min(bottom);
-        crate::RetainedBar {
-            bounds: Bounds::from_corners(
-                point(ScaledPixels(left), ScaledPixels(top)),
-                point(ScaledPixels(right), ScaledPixels(bottom)),
-            ),
-            ceiling,
-            color,
-        }
     }
 
     /// Rounds half-to-zero but clamps any non-zero input up to 1 dp so thin strokes do not disappear.
@@ -4676,32 +4002,6 @@ impl Window {
         }
     }
 
-    /// Whether a cached view must render again although its own cache key
-    /// matches: it, or a view inside it, was notified during this draw.
-    pub(crate) fn view_notified_during_draw(&self, view: EntityId) -> bool {
-        self.invalidator
-            .pending_within(view, &self.rendered_frame.dispatch_tree)
-    }
-
-    /// The number of the draw in progress; a cached view replays its last
-    /// ranges only if it was drawn in the one before.
-    pub(crate) fn paint_generation(&self) -> u64 {
-        self.paint_generation
-    }
-
-    /// Keep the last presented scene while this prepaint measures content for
-    /// a scheduled layout pass. The next draw can present normally.
-    pub fn defer_presentation_until_layout(&mut self) {
-        self.invalidator.debug_assert_prepaint();
-        self.next_frame.layout_only = true;
-    }
-
-    /// Whether this prepaint is measuring a frame that will not be presented.
-    pub fn is_layout_only(&self) -> bool {
-        self.invalidator.debug_assert_prepaint();
-        self.next_frame.layout_only
-    }
-
     #[profiling::function]
     fn present(&mut self) {
         if self.rendered_frame.layout_only {
@@ -4917,28 +4217,6 @@ impl Window {
                 }
             }
         }
-    }
-
-    /// Argus patch: draws a complete frame, which sends assistive technology
-    /// the tree that a frame replaying cached views could not build: right
-    /// away after a pause, and at most once per `REPLAY_REFRESH_INTERVAL`
-    /// while something animates. A refresh renders every view instead of
-    /// replaying it (a focus change refreshes already).
-    fn refresh_for_a11y(&mut self, cx: &mut App) {
-        if self.a11y.refresh_pending {
-            return;
-        }
-        self.a11y.refresh_pending = true;
-        let delay = self.a11y.refresh_delay();
-        self.spawn(cx, async move |cx| {
-            cx.background_executor.timer(delay).await;
-            cx.update(|window, _| {
-                window.a11y.refresh_pending = false;
-                window.refresh();
-            })
-            .ok();
-        })
-        .detach();
     }
 
     fn prepaint_tooltip(&mut self, cx: &mut App) -> Option<AnyElement> {
@@ -5204,133 +4482,6 @@ impl Window {
         );
     }
 
-    /// Argus patch: [`Self::reuse_prepaint`] for one stretch of a view that
-    /// replays around views drawn again in its place (`splice` in view.rs).
-    /// The dispatch nodes it copies stay open for what is drawn next.
-    pub(crate) fn reuse_prepaint_stretch(
-        &mut self,
-        range: Range<PrepaintStateIndex>,
-        reuse: &mut StretchReuse,
-    ) {
-        // Argus patch: the replay adds no accessibility nodes (splices are
-        // not used while assistive technology reads the window anyway).
-        self.a11y.note_replay();
-        self.next_frame.hitboxes.extend(
-            self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
-                .iter()
-                .cloned(),
-        );
-        self.next_frame.tooltip_requests.extend(
-            self.rendered_frame.tooltip_requests
-                [range.start.tooltips_index..range.end.tooltips_index]
-                .iter_mut()
-                .map(|request| request.take()),
-        );
-        self.next_frame.accessed_element_states.extend(
-            self.rendered_frame.accessed_element_states[range.start.accessed_element_states_index
-                ..range.end.accessed_element_states_index]
-                .iter()
-                .map(|(id, type_id)| (id.clone(), *type_id)),
-        );
-        self.text_system
-            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-
-        if self.next_frame.dispatch_tree.reuse_stretch(
-            reuse,
-            range.start.dispatch_tree_index..range.end.dispatch_tree_index,
-            &mut self.rendered_frame.dispatch_tree,
-            self.focus,
-        ) {
-            self.next_frame.focus = self.focus;
-        }
-
-        let active = self.next_frame.dispatch_tree.active_node_id();
-        self.next_frame.deferred_draws.extend(
-            self.rendered_frame.deferred_draws
-                [range.start.deferred_draws_index..range.end.deferred_draws_index]
-                .iter()
-                .map(|deferred_draw| DeferredDraw {
-                    current_view: deferred_draw.current_view,
-                    // `splice_fits` checked that it lies in a stretch.
-                    parent_node: reuse
-                        .refresh_node_id(deferred_draw.parent_node)
-                        .or(active)
-                        .expect("a deferred draw outside the replayed view"),
-                    element_id_stack: deferred_draw.element_id_stack.clone(),
-                    text_style_stack: deferred_draw.text_style_stack.clone(),
-                    content_mask: deferred_draw.content_mask,
-                    rem_size: deferred_draw.rem_size,
-                    priority: deferred_draw.priority,
-                    element: None,
-                    absolute_offset: deferred_draw.absolute_offset,
-                    prepaint_range: deferred_draw.prepaint_range.clone(),
-                    paint_range: deferred_draw.paint_range.clone(),
-                    accessed_entities: deferred_draw.accessed_entities.clone(),
-                }),
-        );
-    }
-
-    /// Argus patch: whether a view drawn in the last frame inside the
-    /// prepaint range `outer` (of the view around it) can be drawn again in
-    /// place while that view replays around it: `inner` is its range, it
-    /// started inside the node drawn for it, and every deferred draw outside
-    /// it belongs to a node outside it too.
-    pub(crate) fn splice_fits(
-        &self,
-        view: EntityId,
-        outer: &Range<PrepaintStateIndex>,
-        inner: &Range<PrepaintStateIndex>,
-    ) -> bool {
-        let tree = &self.rendered_frame.dispatch_tree;
-        let (start, end) = (
-            inner.start.dispatch_tree_index,
-            inner.end.dispatch_tree_index,
-        );
-        // The node drawn for the view itself comes just before its range.
-        if start <= outer.start.dispatch_tree_index
-            || tree.node_view(DispatchNodeId::from_index(start - 1)) != Some(view)
-        {
-            return false;
-        }
-        let draws = &self.rendered_frame.deferred_draws;
-        let outside = (outer.start.deferred_draws_index..inner.start.deferred_draws_index)
-            .chain(inner.end.deferred_draws_index..outer.end.deferred_draws_index);
-        outside.into_iter().all(|index| {
-            draws.get(index).is_some_and(|draw| {
-                let node = draw.parent_node.index();
-                (outer.start.dispatch_tree_index..outer.end.dispatch_tree_index).contains(&node)
-                    && !(start..end).contains(&node)
-            })
-        })
-    }
-
-    /// Argus patch: the node of the last frame drawn for a view that is about
-    /// to be drawn again in place (just before its range, see `splice_fits`):
-    /// its copy, open after the stretch before, takes the new nodes.
-    pub(crate) fn enter_spliced_view(
-        &mut self,
-        reuse: &mut StretchReuse,
-        range: &Range<PrepaintStateIndex>,
-    ) -> Option<DispatchNodeId> {
-        let parent = DispatchNodeId::from_index(range.start.dispatch_tree_index.checked_sub(1)?);
-        self.next_frame
-            .dispatch_tree
-            .reuse_enter(reuse, parent)
-            .then(|| self.next_frame.dispatch_tree.active_node_id())
-            .flatten()
-    }
-
-    /// Argus patch: closes the nodes the stretches of a replay left open.
-    pub(crate) fn finish_prepaint_reuse(&mut self, reuse: &mut StretchReuse) {
-        self.next_frame.dispatch_tree.finish_reuse(reuse);
-    }
-
-    /// Argus patch: makes `node` (of the frame being drawn) the active node
-    /// for painting a view drawn again in place.
-    pub(crate) fn activate_dispatch_node(&mut self, node: DispatchNodeId) {
-        self.next_frame.dispatch_tree.set_active_node(node);
-    }
-
     pub(crate) fn paint_index(&self) -> PaintIndex {
         PaintIndex {
             scene_index: self.next_frame.scene.len(),
@@ -5502,69 +4653,6 @@ impl Window {
         self.element_offset_stack.push(offset);
         let result = f(self);
         self.element_offset_stack.pop();
-        result
-    }
-
-    /// Paints `f` moved by `offset` and faded by `opacity` without changing
-    /// layout, element bounds or hit testing (transforms nest). Cached views
-    /// painted inside replay their last paint at the new place and opacity, so
-    /// moving a cached subtree costs no rendering. Call during paint.
-    pub fn with_visual_transform<R>(
-        &mut self,
-        offset: Point<Pixels>,
-        opacity: f32,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        self.invalidator.debug_assert_paint();
-        let transform =
-            crate::VisualTransform::moved(offset.scale(self.scale_factor()), opacity.clamp(0., 1.));
-        self.next_frame.scene.push_transform(transform);
-        let result = f(self);
-        self.next_frame.scene.pop_transform();
-        result
-    }
-
-    /// Paints `f` inside `transform` about `anchor` (window coordinates): like
-    /// [`Self::with_visual_transform`], layout, element bounds and hit testing
-    /// stay as laid out. The transform's value is read whenever the scene is
-    /// built, so a cached view painted inside (or around) it that replays its
-    /// last paint draws with the value set since: an animation can change the
-    /// value every frame without rendering the views it moves. Call during paint.
-    pub fn with_live_transform<R>(
-        &mut self,
-        transform: &crate::LiveTransform,
-        anchor: Point<Pixels>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        self.invalidator.debug_assert_paint();
-        let scale_factor = self.scale_factor();
-        self.next_frame.scene.push_live_transform(
-            transform.clone(),
-            anchor.scale(scale_factor),
-            scale_factor,
-        );
-        let result = f(self);
-        self.next_frame.scene.pop_transform();
-        result
-    }
-
-    /// Paints `f` clipped to `bounds` without changing content masks, layout
-    /// or hit testing (clips nest, with transforms too). Unlike an overflow
-    /// clip, a cached view painted inside replays its last paint under a new
-    /// clip instead of rendering again. Call during paint.
-    pub fn with_visual_clip<R>(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        self.invalidator.debug_assert_paint();
-        let transform = crate::VisualTransform {
-            clip: Some(bounds.scale(self.scale_factor())),
-            ..crate::VisualTransform::moved(Point::default(), 1.)
-        };
-        self.next_frame.scene.push_transform(transform);
-        let result = f(self);
-        self.next_frame.scene.pop_transform();
         result
     }
 
@@ -5910,27 +4998,6 @@ impl Window {
         result
     }
 
-    /// Whether this window can present an overlay on its own composition surface.
-    pub fn supports_composition_overlay(&self) -> bool {
-        self.platform_window.supports_composition_overlay()
-    }
-
-    /// Begin a full-window overlay. A compositing backend can keep the already
-    /// painted content in one surface and the overlay and later paint in another.
-    pub fn paint_composition_overlay<R>(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        draw: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        if bounds.intersect(&self.content_mask().bounds).is_empty() {
-            return draw(self);
-        }
-        self.paint_layer(bounds, |window| {
-            window.next_frame.scene.mark_composition_overlay();
-            draw(window)
-        })
-    }
-
     /// Paint the drop (non-inset) shadows from `shadows` into the scene at the current
     /// z-index. Inset shadows are skipped; paint those with [`Self::paint_inset_shadows`]
     /// after the element's background so they layer on top of the fill.
@@ -6128,27 +5195,6 @@ impl Window {
                 });
             }
         }
-    }
-
-    /// Paint a solid axis-aligned rule. Its short side is a stroke width, snapped
-    /// independently of its position, including when a cached scene moves or scales.
-    pub fn paint_rule(&mut self, axis: crate::Axis, bounds: Bounds<Pixels>, color: Hsla) {
-        self.invalidator.debug_assert_paint();
-        if bounds.is_empty() {
-            return;
-        }
-        let mut snapped = self.snap_bounds(bounds);
-        match axis {
-            crate::Axis::Horizontal => snapped.size.height = self.snap_stroke(bounds.size.height),
-            crate::Axis::Vertical => snapped.size.width = self.snap_stroke(bounds.size.width),
-        }
-        let quad = Quad {
-            bounds: snapped,
-            content_mask: self.snapped_content_mask(),
-            background: color.opacity(self.element_opacity()).into(),
-            ..Default::default()
-        };
-        self.next_frame.scene.insert_rule(axis, quad);
     }
 
     /// Paint the given `Path` into the scene for the next frame at the current z-index.
@@ -6550,300 +5596,6 @@ impl Window {
         Ok(())
     }
 
-    /// Paint a complete image at fractional device coordinates, clipped by the
-    /// current content mask. Animated raster layers must retain their subpixel
-    /// position instead of snapping bounds or rounding a cropped atlas tile.
-    /// The Windows renderer area-filters these images (see
-    /// [`PolychromeSprite::AREA_FILTER`]), so a raster drawn at a multiple of the
-    /// device resolution keeps the same antialiasing at every position.
-    pub fn paint_image_subpixel(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        data: Arc<RenderImage>,
-        frame_index: usize,
-    ) -> Result<Option<PaintedPrimitive>> {
-        self.paint_filtered_image(bounds, data, frame_index, PolychromeSprite::AREA_FILTER)
-    }
-
-    /// Paint a premultiplied BGRA image with subpixel area filtering on Windows.
-    /// Use a separate RenderImage from any straight-alpha representation.
-    pub fn paint_image_subpixel_premultiplied(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        data: Arc<RenderImage>,
-        frame_index: usize,
-    ) -> Result<Option<PaintedPrimitive>> {
-        self.paint_filtered_image(
-            bounds,
-            data,
-            frame_index,
-            PolychromeSprite::PREMULTIPLIED_AREA_FILTER,
-        )
-    }
-
-    /// Paint a premultiplied image whose displayed pixels must include its backdrop.
-    /// Retained bounds can still move without repainting its parent element.
-    pub fn paint_image_subpixel_in_scene(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        data: Arc<RenderImage>,
-        frame_index: usize,
-    ) -> Result<Option<PaintedPrimitive>> {
-        self.paint_filtered_image(
-            bounds,
-            data,
-            frame_index,
-            PolychromeSprite::IN_SCENE_AREA_FILTER,
-        )
-    }
-
-    fn paint_filtered_image(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        data: Arc<RenderImage>,
-        frame_index: usize,
-        filter: u32,
-    ) -> Result<Option<PaintedPrimitive>> {
-        self.invalidator.debug_assert_paint();
-        let params = RenderImageParams {
-            image_id: data.id,
-            frame_index,
-        };
-        let tile = self
-            .sprite_atlas
-            .get_or_insert_with(params.into(), &mut || {
-                Ok(Some((
-                    data.size(frame_index),
-                    Cow::Borrowed(data.as_bytes(frame_index).expect("valid image frame")),
-                )))
-            })?
-            .expect("image tile");
-        let content_mask = self.snapped_content_mask();
-        let sprite = PolychromeSprite {
-            order: 0,
-            pad: filter,
-            grayscale: false.into(),
-            bounds: bounds.scale(self.scale_factor()),
-            content_mask,
-            corner_radii: Corners::default(),
-            tile,
-            opacity: self.element_opacity(),
-        };
-        // Reserve the full clip region so subsequent translations cannot change
-        // this image's ordering relative to other primitives.
-        let region = self.content_mask().bounds;
-        let layer = self.cover_bounds(region);
-        let handle = self.paint_layer(region, |window| {
-            let operation = window.next_frame.scene.len();
-            window.next_frame.scene.insert_primitive(sprite);
-            let culled_mask =
-                (window.next_frame.scene.len() == operation).then_some(content_mask.bounds);
-            PaintedPrimitive {
-                window_id: window.handle.window_id(),
-                generation: window.paint_generation,
-                operation,
-                layer,
-                image: Some((data.id, frame_index)),
-                background: None,
-                culled_mask,
-            }
-        });
-        Ok(Some(handle))
-    }
-
-    /// Paint an antialiased solid rectangle, with optionally rounded corners, in
-    /// a fixed animation region. Empty rectangles retain an invisible primitive,
-    /// allowing a bar to grow again without changing scene ordering or
-    /// introducing a nonzero reading.
-    pub fn paint_animated_rect(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        region: Bounds<Pixels>,
-        color: Hsla,
-        corner_radius: Pixels,
-    ) -> Option<PaintedPrimitive> {
-        use crate::scene::{PaintOperation, Primitive};
-        let layer = self.cover_bounds(region.intersect(&self.content_mask().bounds));
-        // The fill as painted, with the element opacity applied.
-        let retained =
-            self.retained_bar(bounds, color.opacity(self.element_opacity()), layer.top());
-        let bar = retained.paint();
-        self.paint_layer(region, |window| {
-            let operation = window.next_frame.scene.len();
-            window.paint_quad(crate::fill(region, color).corner_radii(corner_radius));
-            if window.next_frame.scene.len() != operation + 1 {
-                return None;
-            }
-            let scene = &mut window.next_frame.scene;
-            let Some(PaintOperation::Primitive(Primitive::Quad(recorded))) =
-                scene.paint_operations.get_mut(operation)
-            else {
-                return None;
-            };
-            let background = recorded.background;
-            let quad = scene.quads.last_mut()?;
-            // A retained bar stays inside its reserved animation region.
-            // Keep its restoration mask equally tight so an enclosing plot
-            // clip cannot force unrelated charts back through background copies.
-            quad.content_mask.bounds = quad.content_mask.bounds.intersect(&layer);
-            match bar {
-                Some((bounds, fill)) => {
-                    quad.bounds = bounds;
-                    quad.background = fill;
-                }
-                None => quad.background = background.opacity(0.),
-            }
-            *recorded = *quad;
-            scene.retained_bars.insert(scene.quads.len() - 1, retained);
-            Some(PaintedPrimitive {
-                window_id: window.handle.window_id(),
-                generation: window.paint_generation,
-                operation,
-                layer,
-                image: None,
-                background: Some(background),
-                culled_mask: None,
-            })
-        })
-    }
-
-    /// Request a complete paint and rebuild the platform's cached drawing.
-    pub fn invalidate_render_cache(&mut self) {
-        self.force_full_render = true;
-        self.refresh();
-    }
-
-    /// Update a decorative image translation or bar extent in an otherwise clean
-    /// scene from an `on_next_frame` callback. Dirty views, expired handles,
-    /// incompatible image resizes and movement outside the reserved region require a full redraw.
-    pub fn update_painted_bounds(
-        &mut self,
-        handle: &PaintedPrimitive,
-        bounds: Bounds<Pixels>,
-    ) -> bool {
-        use crate::scene::{PaintOperation, Primitive};
-        if handle.window_id != self.handle.window_id()
-            || handle.generation != self.paint_generation
-            || self.invalidator.is_dirty()
-        {
-            return false;
-        }
-        if ![
-            bounds.left(),
-            bounds.top(),
-            bounds.size.width,
-            bounds.size.height,
-        ]
-        .iter()
-        .all(|value| f32::from(*value).is_finite())
-            || bounds.size.width < px(0.)
-            || bounds.size.height < px(0.)
-        {
-            return false;
-        }
-        let tile = if let Some((image_id, frame_index)) = handle.image {
-            let params = RenderImageParams {
-                image_id,
-                frame_index,
-            };
-            let Ok(Some(tile)) = self
-                .sprite_atlas
-                .get_or_insert_with(params.into(), &mut || Ok(None))
-            else {
-                return false;
-            };
-            Some(tile)
-        } else {
-            None
-        };
-        let requested = bounds.scale(self.scale_factor());
-        if let Some(mask) = handle.culled_mask {
-            // Entering the visible region needs a full paint to create the
-            // primitive and its order. Remaining outside changes no pixels.
-            return requested.intersect(&mask).is_empty();
-        }
-        let scene = &self.rendered_frame.scene;
-        let Some(index) = *self
-            .painted_primitive_indices
-            .entry(handle.operation)
-            .or_insert_with(|| handle.find_index(scene))
-        else {
-            return false;
-        };
-        let bar = match (tile, handle.background.and_then(|b| b.as_solid())) {
-            (None, Some(color)) => Some(self.retained_bar(bounds, color, handle.layer.top())),
-            _ => None,
-        };
-        let scene = &mut self.rendered_frame.scene;
-        let Some(PaintOperation::Primitive(recorded)) =
-            scene.paint_operations.get_mut(handle.operation)
-        else {
-            return false;
-        };
-        let fits = |bounds: Bounds<ScaledPixels>, mask: Bounds<ScaledPixels>| {
-            let clipped = bounds.intersect(&mask);
-            !clipped.is_empty()
-                && clipped.left() >= handle.layer.left()
-                && clipped.top() >= handle.layer.top()
-                && clipped.right() <= handle.layer.right()
-                && clipped.bottom() <= handle.layer.bottom()
-        };
-        let changed = match (recorded, tile) {
-            (Primitive::PolychromeSprite(recorded), Some(tile)) => {
-                let Some(sprite) = scene.polychrome_sprites.get_mut(index) else {
-                    return false;
-                };
-                if sprite.tile != tile
-                    || recorded.tile != tile
-                    || (sprite.bounds.size != requested.size
-                        && !(sprite.pad == PolychromeSprite::IN_SCENE_AREA_FILTER
-                            && sprite.bounds.size.width == requested.size.width))
-                    || !fits(requested, sprite.content_mask.bounds)
-                {
-                    return false;
-                }
-                let changed = sprite.bounds != requested;
-                sprite.bounds = requested;
-                recorded.bounds = requested;
-                changed
-            }
-            (Primitive::Quad(recorded), None) => {
-                let Some(quad) = scene.quads.get_mut(index) else {
-                    return false;
-                };
-                let Some(background) = handle.background else {
-                    return false;
-                };
-                let Some(bar) = bar else {
-                    return false;
-                };
-                let (target, fill) = bar
-                    .paint()
-                    .unwrap_or((handle.layer, background.opacity(0.)));
-                if !fits(target, quad.content_mask.bounds) {
-                    return false;
-                }
-                scene.retained_bars.insert(index, bar);
-                let changed = quad.bounds != target || quad.background != fill;
-                quad.bounds = target;
-                quad.background = fill;
-                *recorded = *quad;
-                changed
-            }
-            _ => return false,
-        };
-        let order = match &scene.paint_operations[handle.operation] {
-            PaintOperation::Primitive(Primitive::PolychromeSprite(sprite)) => sprite.order,
-            PaintOperation::Primitive(Primitive::Quad(quad)) => quad.order,
-            _ => return false,
-        };
-        scene.animated_order = Some(scene.animated_order.map_or(order, |old| old.min(order)));
-        if changed {
-            self.needs_present.set(true);
-        }
-        true
-    }
-
     /// Paint a surface into the scene for the next frame at the current z-index.
     ///
     /// This method should only be called as part of the paint phase of element drawing.
@@ -6946,32 +5698,6 @@ impl Window {
             .request_measured_layout(style, rem_size, scale_factor, measure)
     }
 
-    /// As [`Window::request_measured_layout`], for an element that also reports how far its
-    /// first baseline lies below its top edge, as text does. Containers aligning their items to
-    /// baselines (`items_baseline`) align that baseline; an element without one counts as having
-    /// its baseline at its bottom edge.
-    ///
-    /// This method should only be called as part of the request_layout or prepaint phase of element drawing.
-    pub fn request_measured_layout_with_baseline<F>(&mut self, style: Style, measure: F) -> LayoutId
-    where
-        F: Fn(
-                Size<Option<Pixels>>,
-                Size<AvailableSpace>,
-                &mut Window,
-                &mut App,
-            ) -> (Size<Pixels>, Option<Pixels>)
-            + 'static,
-    {
-        self.invalidator.debug_assert_prepaint();
-
-        let rem_size = self.rem_size();
-        let scale_factor = self.scale_factor();
-        self.layout_engine
-            .as_mut()
-            .unwrap()
-            .request_measured_layout_with_baseline(style, rem_size, scale_factor, measure)
-    }
-
     /// Compute the layout for the given id within the given available space.
     /// This method is called for its side effect, typically by the framework prior to painting.
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
@@ -7036,26 +5762,6 @@ impl Window {
     pub fn insert_window_control_hitbox(&mut self, area: WindowControlArea, hitbox: Hitbox) {
         self.invalidator.debug_assert_paint();
         self.next_frame.window_control_hitboxes.push((area, hitbox));
-    }
-
-    /// Return the native window control under a point in local window coordinates.
-    pub fn window_control_area_at(&self, position: Point<Pixels>) -> Option<WindowControlArea> {
-        let hit_test = self.rendered_frame.hit_test(position);
-        self.rendered_frame
-            .window_control_hitboxes
-            .iter()
-            .find(|(_, hitbox)| hit_test.ids.contains(&hitbox.id))
-            .map(|(area, _)| *area)
-    }
-
-    /// Return native control regions from the most recently presented scene.
-    #[cfg(feature = "profiler")]
-    pub fn window_control_regions(&self) -> Vec<(WindowControlArea, Bounds<Pixels>)> {
-        self.rendered_frame
-            .window_control_hitboxes
-            .iter()
-            .map(|(area, hitbox)| (*area, hitbox.bounds))
-            .collect()
     }
 
     /// Sets the key context for the current element. This context will be used to translate
@@ -8821,58 +7527,6 @@ impl Window {
     /// Debug representation of the last frame's accessibility information.
     pub fn debug_a11y_tree_json(&self) -> Option<String> {
         self.a11y.debug_tree_json()
-    }
-
-    /// Argus patch: reports text that an element without an element id
-    /// draws in `bounds` to assistive technology, while it prepaints. GPUI's
-    /// own text elements (strings, [`StyledText`]) call this; an element
-    /// that lays out and draws text itself should too. Depending on the
-    /// nearest accessibility node around it, the text names, describes or
-    /// gives the value of that node, or becomes a label of its own (see
-    /// `A11y::report_text`). Does nothing while no assistive technology
-    /// reads the window, or inside [`Self::with_a11y_text_hidden`].
-    pub fn report_a11y_text(&mut self, text: &str, bounds: Bounds<Pixels>) {
-        if !self.a11y.is_active() {
-            return;
-        }
-        let scope = self.element_id_stack.hash();
-        let scale_factor = self.scale_factor();
-        let _node = self.a11y.report_text(scope, text, bounds, scale_factor);
-        #[cfg(debug_assertions)]
-        if let Some(node_id) = _node {
-            let view = self.a11y.view_type_names.get(&self.current_view()).copied();
-            self.a11y.nodes.record_node_info(
-                node_id,
-                crate::window::a11y::debug::NodeDebugInfo {
-                    synthetic: true,
-                    view,
-                    element_id: None,
-                    source_location: None,
-                },
-            );
-        }
-    }
-
-    /// Argus patch: acts as if assistive technology had started reading the
-    /// window, which the test platform has no adapter for, and draws a
-    /// complete frame as the activation does.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn activate_a11y_for_test(&mut self) {
-        self.a11y.activate_for_test();
-        self.refresh();
-    }
-
-    /// Argus patch: text reported while `f` prepaints is not reported if
-    /// `hidden`: it lies in a box that is not painted, as one with
-    /// `visibility: hidden` (which `div` does here itself) is not.
-    pub fn with_a11y_text_hidden<R>(&mut self, hidden: bool, f: impl FnOnce(&mut Self) -> R) -> R {
-        if !hidden || !self.a11y.is_active() {
-            return f(self);
-        }
-        self.a11y.hidden_text += 1;
-        let result = f(self);
-        self.a11y.hidden_text -= 1;
-        result
     }
 
     /// Register a listener for an accessibility action on a specific node.
