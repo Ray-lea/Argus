@@ -29,7 +29,7 @@
 | 特权服务与任务管理器替换 | `windows-latest`、`windows-2022` | `scripts/privileged-smoke.mjs`：为当前账户安装特权服务，更新；删掉授权记录后修复；开启任务管理器替换并确认 `taskmgr.exe` 打开 Argus，再恢复；最后用卸载程序的命令删除服务，确认注册与服务文件都已清除 |
 | 实机测试 | `windows-latest`、`windows-2022`、`windows-11-arm` | `scripts/live-tests.mjs` 按组运行标了 `#[ignore]`、需要真实机器的测试（实时采集、计划任务、回收站、自有子进程、跨卷移动历史、非活动桌面上的窗口激活），组的清单在 `scripts/lib/live-tests.mjs`。运行器以管理员身份运行且关闭了 UAC，需要标准权限或 UAC 的组记为跳过并写明原因（它们在开启 UAC 的虚拟机里以标准账户运行）；`windows-11-arm` 只有一个卷，跨卷的组同样跳过 |
 | ARM64 测试 | `windows-11-arm` | 在 ARM64 上原生运行 `cargo test --workspace` |
-| 界面检查 | `windows-latest`、`windows-2022` | 开发构建的 `ui-smoke` 与步骤文件。运行器没有显卡，靠软件渲染，字体也与开发机不同：结果只与同一运行器上一次的结果比较，不与开发机的截图比较。窗口捕获（Windows.Graphics.Capture）在运行器上拒绝测试窗口，探针改用 `PrintWindow` 截取静态画面；录制帧的步骤文件记为跳过（`ui-steps.mjs --skip-recordings`） |
+| 界面检查 | `windows-latest`、`windows-2022` | 开发构建的 `ui-smoke` 与步骤文件。运行器没有显卡，靠软件渲染，字体也与开发机不同：结果只与同一运行器上一次的结果比较，不与开发机的截图比较。窗口捕获（Windows.Graphics.Capture）在运行器上拒绝测试窗口，探针改用 `PrintWindow` 截取静态画面；录制帧的步骤文件记为跳过（`ui-steps.mjs --skip-recordings`）。检查前把鼠标指针停到任务栏上，免得它悬停在测试窗口上；两条绘制路径的逐像素对照允许色差 2（`--parity-tolerance 2`），软件渲染下滚动后的表格每次运行都有这样的差异 |
 
 `windows-2022` 是 Windows 10 那一代的系统（内部版本 20348，早于 24H2），用来覆盖旧版任务栏与旧系统上的采集路径。各任务的报告、日志与截图作为制品保留 7 天，任务摘要列出各任务的结果。
 

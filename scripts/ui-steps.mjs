@@ -3,11 +3,13 @@
 // the regression check for interface changes that the unit tests cannot see.
 //
 //   node scripts/ui-steps.mjs [NAME…] [--release | --executable PATH] [--probe PATH]
-//     [--language TAG] [--theme dark|light] [--skip-recordings] [--list]
+//     [--language TAG] [--theme dark|light] [--skip-recordings] [--parity-tolerance N] [--list]
 //
 // --skip-recordings reports step files that record frames as skipped: where
 // Windows.Graphics.Capture refuses windows (hosted CI runners), stills still
-// come from PrintWindow but nothing can record.
+// come from PrintWindow but nothing can record. --parity-tolerance N lets the
+// parity captures differ by up to N per channel: the software rasterizer of
+// CI runners draws scrolled tables a little differently on every run.
 //
 // NAME is a step file without `.json`; none runs them all. Each run writes
 // target/native-validation/steps-<name>, and the outcome of all of them goes
@@ -32,11 +34,14 @@ const argv = process.argv.slice(2);
 const PASSED = ["--release", "--executable", "--probe", "--language", "--theme"];
 const passed = [];
 const names = [];
+let parityTolerance = 0;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--release") passed.push(argv[i]);
   else if (PASSED.includes(argv[i])) passed.push(argv[i], argv[++i]);
+  else if (argv[i] === "--parity-tolerance") parityTolerance = Number(argv[++i]);
   else if (argv[i] !== "--list" && argv[i] !== "--skip-recordings") names.push(argv[i]);
 }
+assert(Number.isInteger(parityTolerance) && parityTolerance >= 0 && parityTolerance < 255, "--parity-tolerance is a whole channel difference");
 const skipRecordings = argv.includes("--skip-recordings");
 const directory = "tools/window-probe/steps";
 const all = readdirSync(directory).filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -5)).sort();
@@ -92,10 +97,11 @@ async function parity(name, file, limit, switches) {
     const failed = await run(other, file, limit, { executable, env: switches });
     if (failed.length) return [`with ${spelled}:`, ...failed];
     labels.theirs.push(other);
-    const { compared, differ, missing } = parityDifferences(labels.ours.map(folder), labels.theirs.map(folder));
+    const { compared, differ, missing } = parityDifferences(labels.ours.map(folder), labels.theirs.map(folder), parityTolerance);
     if (!differ.length && !missing.length) {
       for (const label of used) rmSync(copy(label), { force: true, maxRetries: 5, retryDelay: 200 });
-      console.log(`    ${compared} captures identical with ${spelled}${attempt > 1 ? " (some only on the second attempt)" : ""}`);
+      const same = parityTolerance ? `within ${parityTolerance}` : "identical";
+      console.log(`    ${compared} captures ${same} with ${spelled}${attempt > 1 ? " (some only on the second attempt)" : ""}`);
       return [];
     }
     if (attempt === 2) {
