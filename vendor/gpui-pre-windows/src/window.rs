@@ -770,6 +770,13 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn mouse_position(&self) -> Point<Pixels> {
+        // Argus patch: windows that leave the system's pointer out do not
+        // read it either (`windows_system_pointer_ignored`): the window
+        // refreshes its pointer from here when it is created, moved to
+        // another scale or resized, and the real cursor would hover it.
+        if gpui::windows_system_pointer_ignored() {
+            return point(px(-1.), px(-1.));
+        }
         let scale_factor = self.scale_factor();
         let point = unsafe {
             let mut point: POINT = std::mem::zeroed();
