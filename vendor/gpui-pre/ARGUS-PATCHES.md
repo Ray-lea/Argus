@@ -22,6 +22,8 @@ Source: crates.io `gpui-pre` 0.3.12, based on Zed revision `d2a4fb6ded7c470be25d
 
 The vendored package omits standalone examples and their media, the standalone benchmark, the package-local lockfile and the unnormalized manifest. The small EXIF fixture referenced by upstream source tests is retained. Source, build resources, license and upstream documentation remain available.
 
+The local branch `vendor-upstream` holds the published package; `node scripts/vendor-patches.mjs stat gpui-pre` lists the lines each file adds and removes against it, and `diff` prints them (see `docs/development/gpui.md`).
+
 Local changes:
 
 - Window display notifications try to borrow the app before updating it. Synchronous native placement changes coalesce into one deferred notification while the app is borrowed; a nested native message loop retries after the outer update releases the borrow. The update reads the latest platform display and preserves synchronous delivery when the app is available. `TestAppContext::test_window` is public for integration tests of native callback reentry.
