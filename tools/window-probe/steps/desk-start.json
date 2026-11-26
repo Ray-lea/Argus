@@ -1,0 +1,10 @@
+{
+  "about": "以保存了“已开启桌面监控”的设置启动（`run.settings`），不发送任何开启桌面监控的测试控制，核对第一份采样后桌面监控即显示在工作区内（`inspectLayout.monitors.desktop` 的 `visible`、`placed` 与 `onScreen`）并捕获画面：开机启动时窗口隐藏在托盘，只有这一步会打开桌面监控。",
+  "window": [1100, 900],
+  "run": { "settings": { "desktopMonitor": { "enabled": true } } },
+  "steps": [
+    {"wait": 2500},
+    {"inspect":"layout","label":"start","expect":{"monitors.desktop.visible":true,"monitors.desktop.placed":true,"monitors.desktop.onScreen":true}},
+    {"captureWindow":{"name":"desk-start","class":"Zed::Window","title":"桌面监控"}}
+  ]
+}

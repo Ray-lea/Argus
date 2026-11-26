@@ -41,7 +41,7 @@ const [config] = testDirectories(identifier);
 mkdirSync(config, { recursive: true });
 writeFileSync(
   resolve(config, "settings.json"),
-  JSON.stringify({ language: option("--language", "zh-CN"), theme: option("--theme", "dark"), closeToTray: false, updateCheck: false }),
+  JSON.stringify({ language: option("--language", "zh-CN"), theme: option("--theme", "dark"), closeToTray: false, updateCheck: false, ...needs.settings }),
 );
 // The development build is enough to look at the interface; measure with --release.
 const source = option("--executable", flag("--release") ? "target/release/argus.exe" : "target/debug/argus.exe");
@@ -54,7 +54,15 @@ const args = ["run", executable, "--hidden", "--test", "--identifier", identifie
 if (!live) {
   // Keys and presses only act with a fixture, where nothing reaches real processes.
   const fixture = resolve(output, "fixture.json");
-  copyFileSync(option("--fixture", "tools/window-probe/fixtures/desktop.json"), fixture);
+  const from = option("--fixture", "tools/window-probe/fixtures/desktop.json");
+  if (Object.keys(needs.settings).length) {
+    // The interface reads the fixture's settings in place of the saved ones.
+    const data = JSON.parse(readFileSync(from, "utf8"));
+    data.settings = { ...data.settings, ...needs.settings };
+    writeFileSync(fixture, JSON.stringify(data));
+  } else {
+    copyFileSync(from, fixture);
+  }
   args.push("--fixture", fixture);
 }
 if (size) args.push("--width", String(size[0]), "--height", String(size[1]));
