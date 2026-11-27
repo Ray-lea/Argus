@@ -15,6 +15,7 @@ Windows 开发环境使用 Visual Studio C++ Build Tools 和 stable MSVC Rust。
 | `node scripts/supporters.mjs` | 按 `website/src/data/supporters.json` 生成各语言 README 的项目支持与特别致谢卡片，并更新 README 中的卡片区块 |
 | `start.bat clean` | 清理应用产物，保留依赖缓存 |
 | `start.bat clean all` | 清空 Cargo 构建缓存 |
+| `node scripts/vendor-patches.mjs init` | 新克隆或换机后运行一次：建立本地分支 `vendor-upstream`（vendored GPUI 的上游原样包），查看与升级 GPUI 补丁时要用。该分支不随克隆到来，见[新克隆与换机](gpui.md#新克隆与换机) |
 
 开发脚本在编译成功后将 EXE 复制到独立目录，再请求上一份开发实例退出。编译失败时可继续使用正在运行的版本。不同工作区使用独立的设置与单实例锁。
 

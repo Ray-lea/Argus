@@ -11,6 +11,10 @@
 - 视图重放的时间变长之后，上游靠频繁重绘掩盖的问题会暴露出来（提示隐藏后留下的请求、指针离开后残留的悬停底色）。对这类改动，合入前请一次独立的只读审阅。
 - `src-gpui/src/frontend/plain.rs`、`tables/cell_text.rs` 与 `tables/body.rs` 逐段复现了这里的 `Div`、`Interactivity`、`TextLayout` 和组件库表格的布局与取整：修改或升级这几处时同步核对它们，并运行 `node scripts/ui-steps.mjs table-rows`，它逐像素对照 Argus 自绘的行与组件库绘制的行（见 `src-gpui/AGENTS.md`）。
 
+## 上游原样分支
+
+- 补丁相对本地分支 `vendor-upstream` 计算（`node scripts/vendor-patches.mjs stat`、`diff`）。它不在远端，新克隆里没有：脚本提示缺少它时运行 `node scripts/vendor-patches.mjs init` 建立（需要联网），不要另找途径比较补丁。别人提交了上游升级后，脚本提示缺少新版本时运行 `import <版本>`。做法与原因见 `docs/development/gpui.md` 的“新克隆与换机”。
+
 ## 升级上游
 
 - `gpui-kit` 以 `=x.y.z` 固定 `gpui-pre` 的版本，组件库与这里的快照要一起升级；`src-gpui/Cargo.toml` 的 `gpui-kit`、`gpui_test`、`gpui_windows` 一并修改。

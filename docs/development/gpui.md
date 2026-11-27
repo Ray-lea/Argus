@@ -217,7 +217,7 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 
 [`vendor/gpui-pre`](../../vendor/gpui-pre) 与 [`vendor/gpui-pre-windows`](../../vendor/gpui-pre-windows) 是 crates.io 上同名包的快照加本地补丁。快照省略 Cargo 打包时加入的文件（`Cargo.lock`、`Cargo.toml.orig`、`.cargo_vcs_info.json`），`gpui-pre` 另省略独立示例及其素材和基准测试，保留上游源码测试读取的 EXIF 样图；规则见 [`scripts/lib/vendor-patches.mjs`](../../scripts/lib/vendor-patches.mjs) 的 `VENDORED`。
 
-本地分支 `vendor-upstream` 按同样的路径与取舍保存各上游版本的原样包，每个版本一个提交，提交说明记录包的 SHA-256。`git diff vendor-upstream -- vendor/gpui-pre vendor/gpui-pre-windows` 即完整的补丁集。该分支不推送，各克隆用 `init` 自行建立：
+本地分支 `vendor-upstream` 按同样的路径与取舍保存各上游版本的原样包，每个版本一个提交，提交说明记录包的 SHA-256。`git diff vendor-upstream -- vendor/gpui-pre vendor/gpui-pre-windows` 即完整的补丁集。该分支只在本地，不随克隆或拉取到来，新克隆或换机后的建立方法见[新克隆与换机](#新克隆与换机)。脚本的命令：
 
 | 命令 | 用途 |
 |---|---|
@@ -230,6 +230,14 @@ README 的四张预览图通过 `node scripts/readme-previews.mjs` 生成，为 
 `stat` 与 `diff` 比较工作区，`--rev <提交>` 改为比较该提交。上游一侧取分支中与被比较一侧清单版本相同的提交，`--upstream <引用>` 可直接指定。路径相对 `vendor/` 或仓库根目录，不给路径时比较两个包。比较不计重命名：从上游文件移出的代码计为本地文件的新增行。
 
 本地新增的类型、函数和整段逻辑放在独立的文件中（如 `gpui-pre-windows/src` 下的 `frame_clock.rs`、`scene_split.rs`、`retained_frame.rs`、`chart_composition.rs`，`gpui-pre/src` 下的 `window/argus_*.rs`、`view/argus_splice.rs`、`scene/argus_*.rs`），上游文件只保留接入点。升级时只有上游文件中的补丁可能与上游的改动冲突，其规模即 `stat` 中 `M` 一类的行数。
+
+### 新克隆与换机
+
+`vendor-upstream` 不在 GitHub 上：`git clone`、`git pull` 都不会带来它，换机时重新克隆仓库（而不是复制整个仓库目录）也要重新建立。构建、运行与测试 Argus 都不需要它，只有查看补丁（`stat`、`diff`）与升级上游（`import`、`upgrade`）时用到；缺少它时脚本提示先运行 `init`。
+
+在新的克隆里运行一次 `node scripts/vendor-patches.mjs init`。它读取 `vendor/` 中两个包清单的版本，取得这一版本的原样包，用 crates.io 索引核对 SHA-256，再提交到新建的分支。Argus 构建时这两个包走 `vendor/` 中的路径依赖，Cargo 缓存里通常没有它们，`init` 因此在临时工程中运行 `cargo fetch` 从 crates.io 下载，需要联网；它们的依赖一并下载，已在缓存中的跳过。Cargo 缓存为空时，这一步实测下载约 830 MB。同一版本在任何机器上建出的分支内容相同（目录树哈希一致），只有提交的作者与时间、因而提交哈希不同，比较只看内容，不受影响。
+
+之后有人提交了 vendored GPUI 的升级，其他克隆的分支里还没有新版本，`stat` 与 `diff` 会提示用 `import <新版本>` 加入；分支损坏或想从头建立时运行 `init --force`。需要各克隆共用同一个分支时也可以推送它（`git push origin vendor-upstream`，其他克隆以 `git fetch origin vendor-upstream:vendor-upstream` 取得），它只含两个包的原样源码，与 `main` 没有共同的历史。
 
 ### 升级上游
 

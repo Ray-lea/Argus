@@ -24,7 +24,7 @@ Source: crates.io `gpui-pre` 0.3.12, based on Zed revision `d2a4fb6ded7c470be25d
 
 The vendored package omits standalone examples and their media, the standalone benchmark, the package-local lockfile and the unnormalized manifest. The small EXIF fixture referenced by upstream source tests is retained. Source, build resources, license and upstream documentation remain available.
 
-The local branch `vendor-upstream` holds the published package; `node scripts/vendor-patches.mjs stat gpui-pre` lists the lines each file adds and removes against it, and `diff` prints them (see `docs/development/gpui.md`).
+The local branch `vendor-upstream` holds the published package (it is not pushed: a new clone creates it once with `node scripts/vendor-patches.mjs init`); `node scripts/vendor-patches.mjs stat gpui-pre` lists the lines each file adds and removes against it, and `diff` prints them (see `docs/development/gpui.md`).
 
 Local changes:
 
