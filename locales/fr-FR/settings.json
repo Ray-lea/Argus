@@ -84,6 +84,7 @@
     "inputHint": "Les raccourcis intégrés à l’application n’affectent pas les autres applications. Les raccourcis de fin de processus sont inactifs dans les champs de texte, les boîtes de dialogue et les menus.",
     "disabled": "Non activé",
     "navigation": "Changer de page",
+    "cyclePages": "Page suivante / précédente",
     "pauseTitle": "Suspendre pendant l’appui",
     "searchTitle": "Rechercher des processus",
     "search": "Accédez à la recherche de processus. La touche / fonctionne également lorsque vous ne tapez pas, et sur la page Processus, la saisie d’une lettre ou d’un chiffre lance une recherche.",

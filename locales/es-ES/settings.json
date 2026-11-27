@@ -84,6 +84,7 @@
     "inputHint": "Los atajos de la ventana no afectan a otras aplicaciones. Los atajos para finalizar procesos no se activan en campos de texto, diálogos ni menús.",
     "disabled": "No habilitado",
     "navigation": "Cambiar de página",
+    "cyclePages": "Página siguiente / anterior",
     "pauseTitle": "Pausar mientras se mantiene pulsado",
     "searchTitle": "Buscar procesos",
     "search": "Ir a búsqueda de procesos. La tecla / también funciona cuando no se escribe y, en la página Procesos, al escribir una letra o un dígito se inicia una búsqueda.",

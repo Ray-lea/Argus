@@ -1126,6 +1126,17 @@ impl Desktop {
         if self.modal.is_some() {
             return;
         }
+        // Ctrl+Tab and Ctrl+Shift+Tab: the next and the previous page, as
+        // Ctrl+1–9 also while typing in the search box.
+        if key == "tab" && m.control && !m.alt && !m.platform {
+            self.act(
+                Action::Page(cycle_page(&self.page, m.shift).into()),
+                window,
+                cx,
+            );
+            cx.stop_propagation();
+            return;
+        }
         if m.control && !m.alt && !m.shift && !m.platform {
             if let Ok(index) = key.parse::<usize>()
                 && index > 0

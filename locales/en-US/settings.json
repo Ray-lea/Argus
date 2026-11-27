@@ -84,6 +84,7 @@
     "inputHint": "In-app shortcuts do not affect other apps. End-process shortcuts are inactive in text fields, dialogs and menus.",
     "disabled": "Not enabled",
     "navigation": "Switch pages",
+    "cyclePages": "Next / previous page",
     "pauseTitle": "Pause while held",
     "searchTitle": "Search processes",
     "search": "Go to process search. The / key also works when not typing, and on the Processes page typing a letter or digit starts a search.",

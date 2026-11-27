@@ -342,7 +342,18 @@ impl Desktop {
                     )
                     .child(self.shortcut_keys(&format!("Ctrl+1–{}", PAGES.len()))),
             )
-            .child(div().mb(px(20.)).child(pages));
+            .child(div().mb(px(12.)).child(pages))
+            .child(
+                div()
+                    .mb(px(20.))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .text_size(theme::font(12.))
+                    .text_color(p.muted)
+                    .child(self.shortcut_keys("Ctrl+Tab / Ctrl+Shift+Tab"))
+                    .child(label("settings.shortcuts.cyclePages")),
+            );
         for (key, glyph, title, items) in groups {
             let expanded = boolean(&open, key);
             body = body.child(

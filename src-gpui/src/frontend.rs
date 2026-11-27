@@ -86,6 +86,16 @@ fn start_pages() -> impl Iterator<Item = &'static (&'static str, &'static str)> 
         .iter()
         .filter(|(page, _)| !matches!(*page, "components" | "settings" | "about"))
 }
+/// The page after `page` in the navigation's order (Ctrl+Tab), or before it
+/// with `back` (Ctrl+Shift+Tab), going round at either end.
+fn cycle_page(page: &str, back: bool) -> &'static str {
+    let at = PAGES
+        .iter()
+        .position(|(name, _)| *name == page)
+        .unwrap_or(0);
+    let step = if back { PAGES.len() - 1 } else { 1 };
+    PAGES[(at + step) % PAGES.len()].0
+}
 /// The page a start opens on: the saved `startPage` when it names one of
 /// `start_pages`, the process page otherwise.
 fn start_page(saved: &Value) -> &'static str {
@@ -978,8 +988,29 @@ impl Render for DesktopRoot {
 
 #[cfg(test)]
 mod tests {
-    use super::{DetailsMode, PAGES, start_page, start_pages, tray_page};
+    use super::{DetailsMode, PAGES, cycle_page, start_page, start_pages, tray_page};
     use serde_json::{Value, json};
+
+    #[test]
+    fn ctrl_tab_steps_through_every_page_and_goes_round() {
+        let mut page = PAGES[0].0;
+        let mut forward = Vec::new();
+        for _ in 0..PAGES.len() {
+            page = cycle_page(page, false);
+            forward.push(page);
+        }
+        // Each page once, back where it started.
+        let mut expected = PAGES.iter().map(|(page, _)| *page).collect::<Vec<_>>();
+        expected.rotate_left(1);
+        assert_eq!(forward, expected);
+        // Backward undoes forward, round the first page too.
+        assert_eq!(cycle_page(PAGES[0].0, true), PAGES[PAGES.len() - 1].0);
+        for (page, _) in PAGES {
+            assert_eq!(cycle_page(cycle_page(page, false), true), page);
+        }
+        // An unknown page counts as the first.
+        assert_eq!(cycle_page("unknown", false), PAGES[1].0);
+    }
 
     #[test]
     fn the_details_mode_keeps_an_earlier_choice_and_cycles_through_three() {

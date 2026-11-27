@@ -84,6 +84,7 @@
     "inputHint": "In-App-Tastenkombinationen wirken sich nicht auf andere Apps aus. Tastenkombinationen zum Beenden des Prozesses sind in Textfeldern, Dialogen und Menüs inaktiv.",
     "disabled": "Nicht aktiviert",
     "navigation": "Seiten wechseln",
+    "cyclePages": "Nächste / vorherige Seite",
     "pauseTitle": "Anhalten, solange gedrückt",
     "searchTitle": "Prozesse suchen",
     "search": "Gehen Sie zur Prozesssuche. Die /-Taste funktioniert auch, wenn Sie nichts eingeben. Wenn Sie auf der Seite „Prozesse“ einen Buchstaben oder eine Ziffer eingeben, wird eine Suche gestartet.",
