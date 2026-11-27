@@ -1389,16 +1389,29 @@ function detailsSheet(row: Row, proc: Process, ctx: SheetContext): Sheet {
   const members = row.pids.map((pid) => ctx.byPid.get(pid)).filter(Boolean) as Process[];
   const v = row.values;
   const cell = (key: string) => factOf(ctx, row, key);
+  // Peaks and address ranges are a single process's (sheet.rs `peak`).
+  const peak = (key: string) => (group ? undefined : `（峰值 ${cell(key)}）`);
+  const perSecond = (key: string) => `（${cell(key)} 次/秒）`;
+  // A rate column's cell, written as the pane's other rates when idle.
+  const rateOf = (key: string) => (cell(key) === "0" ? byteRate(0) : cell(key));
   const resources: Fact[] = [
+    { name: "内核 CPU", value: cell("cpuKernel") },
+    { name: "用户 CPU", value: cell("cpuUser") },
+    { name: "上下文切换", value: `${cell("contextSwitchRate")} 次/秒` },
     { name: "专用工作集", value: memory(v.mem) },
-    { name: "工作集", value: cell("workingSet") },
-    // Peaks and address ranges are a single process's.
-    ...(group ? [] : [{ name: "工作集峰值", value: cell("peakWorkingSet") }]),
-    { name: "提交大小", value: cell("commit") },
-    ...(group ? [] : [{ name: "虚拟地址空间", value: cell("virtualSize") }]),
-    { name: "磁盘读取", value: byteRate(v.read), hint: "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
-    { name: "磁盘写入", value: byteRate(v.write), hint: "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
+    { name: "工作集", value: cell("workingSet"), quiet: peak("peakWorkingSet") },
+    { name: "共享工作集", value: cell("sharedWs") },
+    { name: "提交大小", value: cell("commit"), quiet: peak("peakCommit") },
+    ...(group ? [] : [{ name: "虚拟地址空间", value: cell("virtualSize"), quiet: peak("peakVirtualSize") }]),
+    { name: "分页池", value: cell("pagedPool") },
+    { name: "非分页池", value: cell("nonPagedPool") },
+    { name: "缺页", value: `${cell("pageFaultRate")} 次/秒`, quiet: `（其中硬缺页 ${cell("hardFaultRate")} 次/秒）` },
+    { name: "磁盘读取", value: byteRate(v.read), quiet: perSecond("diskReadOps"), hint: "每秒磁盘读取字节数，不包含网络及其他设备 I/O" },
+    { name: "磁盘写入", value: byteRate(v.write), quiet: perSecond("diskWriteOps"), hint: "每秒磁盘写入字节数，不包含网络及其他设备 I/O" },
     { name: "I/O", value: byteRate(v.io), hint: "读、写及其他 I/O 合计，包含文件、网络和设备访问" },
+    { name: "I/O 读取", value: rateOf("ioRead"), quiet: perSecond("ioReadOps"), hint: "每秒 I/O 读取字节数，含文件、网络和设备访问。" },
+    { name: "I/O 写入", value: rateOf("ioWrite"), quiet: perSecond("ioWriteOps"), hint: "每秒 I/O 写入字节数，含文件、网络和设备访问。" },
+    { name: "其他 I/O", value: rateOf("ioOther"), quiet: perSecond("ioOtherOps"), hint: "其他 I/O 操作每秒传输的字节数。" },
     // The share of the busiest engine, which it names.
     { name: "GPU", value: `${percent(Math.min(100, v.gpu))}%`, quiet: v.gpu >= 0.05 ? `（${gpuEngine(row.pids)}）` : undefined },
     { name: "专用 GPU 内存", value: cell("gpuDedicated") },
@@ -1409,7 +1422,7 @@ function detailsSheet(row: Row, proc: Process, ctx: SheetContext): Sheet {
       value: `${POWER_LEVELS[powerLevel(powerEstimate(v))]} · 趋势：${POWER_LEVELS[powerLevel(members.reduce((a, p) => a + trendEstimate(p), 0))]}`,
       context: "power",
     },
-    { name: "线程", value: thousands(members.reduce((a, p) => a + p.threads, 0)) },
+    { name: "线程", value: thousands(members.reduce((a, p) => a + p.threads, 0)), quiet: peak("peakThreads") },
     { name: "句柄", value: thousands(members.reduce((a, p) => a + p.handles, 0)) },
     ...(group ? [{ name: "最早启动", value: members.map((p) => p.started).sort()[0] ?? MISSING }] : []),
   ];
@@ -1422,7 +1435,9 @@ function detailsSheet(row: Row, proc: Process, ctx: SheetContext): Sheet {
         parent
           ? { name: "父进程", value: `${parent.exe}（${parent.pid}）`, link: parent.pid }
           : { name: "父进程", value: `无（PID ${proc.ppid}）`, faint: true },
+        { name: "子进程", value: cell("children") },
         { name: "启动时间", value: proc.started },
+        { name: "运行时长", value: cell("runtime") },
         { name: "用户", value: proc.user },
         { name: "完整性", value: proc.integrity },
         { name: "架构", value: architecture(proc) || MISSING },
@@ -1434,14 +1449,18 @@ function detailsSheet(row: Row, proc: Process, ctx: SheetContext): Sheet {
         { name: "会话", value: String(sessionOf(proc)) },
       ];
   // Counts since the start, added up over an app group's members.
+  const operations = (key: string) => `（${cell(key)} 次）`;
   const totals: Fact[] = [
     { name: "CPU 时间", value: cell("cpuTime") },
     { name: "用户 CPU 时间", value: cell("cpuUserTime") },
     { name: "内核 CPU 时间", value: cell("cpuKernelTime") },
-    { name: "I/O 读取", value: cell("ioReadTotal") },
-    { name: "I/O 写入", value: cell("ioWriteTotal") },
-    { name: "其他 I/O", value: cell("ioOtherTotal") },
-    { name: "缺页次数", value: cell("pageFaults") },
+    { name: "上下文切换", value: cell("contextSwitches") },
+    { name: "缺页次数", value: cell("pageFaults"), quiet: `（其中硬缺页 ${cell("hardFaults")} 次）` },
+    { name: "磁盘读取", value: cell("diskReadTotal"), quiet: operations("diskReadOpsTotal"), hint: "进程生存期内累计从磁盘读取的字节数。" },
+    { name: "磁盘写入", value: cell("diskWriteTotal"), quiet: operations("diskWriteOpsTotal"), hint: "进程生存期内累计写入磁盘的字节数。" },
+    { name: "I/O 读取", value: cell("ioReadTotal"), quiet: operations("ioReadOpsTotal") },
+    { name: "I/O 写入", value: cell("ioWriteTotal"), quiet: operations("ioWriteOpsTotal") },
+    { name: "其他 I/O", value: cell("ioOtherTotal"), quiet: operations("ioOtherOpsTotal") },
   ];
   const version = versionInfo(proc);
   return {
@@ -1464,7 +1483,10 @@ export function detailsText(row: Row, ctx: SheetContext) {
   if (!proc) return row.label;
   const sheet = detailsSheet(row, proc, ctx);
   const group = row.count > 1;
-  const line = (f: Fact) => translate(`${f.name}：${f.value}${f.quiet ?? ""}`, f.context);
+  // Each part in its own words, as the app fills details.copy.field.
+  const field = translate("{name}：{value}");
+  const line = (f: Fact) =>
+    field.replace("{name}", translate(f.name)).replace("{value}", translate(f.value, f.context) + (f.quiet ? translate(f.quiet) : ""));
   const lines = (facts: Fact[]) => facts.filter((f) => f.value !== MISSING).map(line);
   const hosted = services.filter((s) => s.pid && row.pids.includes(s.pid));
   const members = row.pids.map((pid) => ctx.byPid.get(pid)).filter(Boolean) as Process[];
@@ -1645,9 +1667,24 @@ function ProcessDetails(d: DetailsProps & { row: Row; proc: Process }) {
   const sheet = detailsSheet(row, proc, ctx);
   const vendor = company(proc);
   const leak = row.pids.some((pid) => d.leaks.has(pid));
+  // The names take the width of the longest one, shared by every section so
+  // the readings line up (details.rs `fact_name_width`); CSS keeps it between
+  // 84 px and four tenths of the pane.
+  const scroll = useRef<HTMLDivElement>(null);
+  const lang = language();
+  useIsoLayoutEffect(() => {
+    const el = scroll.current;
+    const names = el ? [...el.querySelectorAll<HTMLElement>(".a-facts dt")] : [];
+    if (!el || !names.length) return;
+    const pen = document.createElement("canvas").getContext("2d");
+    if (!pen) return;
+    pen.font = getComputedStyle(names[0]).font;
+    const widest = Math.max(...names.map((name) => pen.measureText(name.textContent ?? "").width));
+    el.style.setProperty("--a-fact-name", Math.ceil(widest) + "px");
+  }, [lang, group, row.key]);
   return (
     <div className="a-details-body" ref={settle}>
-      <div className="a-details-scroll a-scroll">
+      <div className="a-details-scroll a-scroll" ref={scroll}>
         <header className="a-details-head">
           <span className="a-head-glyph">
             <ProcessIcon glyph={proc.glyph} size={32} />

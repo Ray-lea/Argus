@@ -1835,7 +1835,9 @@ button.a-th:active {
 }
 .a-facts dt {
   flex: none;
-  width: 84px;
+  /* The longest name in the pane (set on .a-details-scroll), at least 84 px
+     and at most four tenths of the row; longer translations wrap. */
+  width: min(max(84px, var(--a-fact-name, 84px)), 40%);
   color: var(--a-ink-2);
 }
 .a-facts dd {
@@ -4245,7 +4247,16 @@ button.a-th:active {
   display: flex;
   flex-wrap: wrap;
   row-gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+}
+/* Ctrl+Tab under the pages, in quiet text (shortcuts.rs). */
+.a-shortcuts-cycle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px;
+  color: var(--a-ink-2);
+  font-size: calc(12px * var(--a-text));
 }
 .a-shortcuts-pages > span {
   display: flex;
@@ -5718,6 +5729,41 @@ button.a-th:active {
   padding: 0;
   max-width: calc(100% - 48px);
 }
+/* usePageBarFit (Replica.tsx) measures the bar in one row at natural widths,
+   then settles on text tabs, icon tabs, or icon tabs over a second row. */
+.a-page-bar.is-measuring {
+  flex-wrap: nowrap;
+}
+.a-page-bar.is-measuring > * {
+  flex: none;
+  max-width: none;
+}
+.a-page-bar.is-measuring .a-page-actions {
+  width: max-content;
+}
+.a-page-bar.is-icons .a-nav-label {
+  display: none;
+}
+.a-page-bar.is-icons .a-nav .a-nav-icon {
+  display: flex;
+}
+.a-page-bar.is-icons:not(.is-measuring) .a-nav .a-nav-icon {
+  animation: a-fade 167ms linear;
+}
+.a-page-bar.is-icons .a-nav button {
+  padding-inline: 10px;
+}
+.a-page-bar.is-wrapped .a-page-actions:not(:empty) {
+  order: 3;
+  flex-basis: 100%;
+  margin-left: 0;
+}
+.a-page-bar.is-wrapped .a-more {
+  margin-left: auto;
+}
+.a-page-bar.is-wrapped .a-page-actions::after {
+  display: none;
+}
 .a-page-bar > strong {
   font-size: 20px;
   font-weight: 500;
@@ -5908,17 +5954,6 @@ button.a-th:active {
 @container argus (max-width: 1099px) {
   .a-page-bar {
     position: relative;
-  }
-  .a-page-bar:has(.a-nav-pane) .a-page-actions:not(:empty) {
-    order: 3;
-    flex-basis: 100%;
-    margin-left: 0;
-  }
-  .a-page-bar .a-more {
-    margin-left: auto;
-  }
-  .a-page-actions::after {
-    display: none;
   }
   .h-tabs b {
     display: none;
@@ -6360,17 +6395,6 @@ button.a-th:active {
   touch-action: auto;
   user-select: text;
 }
-@container argus (max-width: 760px) {
-  .a-page-bar:has(.h-follow) .a-page-actions {
-    order: 0;
-    flex: 0 0 auto;
-    margin-left: auto;
-  }
-  .a-page-bar:has(.h-follow) .a-more {
-    margin-left: 0;
-  }
-}
-
 .h-follow.a-btn[aria-pressed="true"] {
   background: transparent;
   color: var(--a-ink);

@@ -151,6 +151,8 @@
   "Category": "カテゴリ",
   "The demo window doesn't restart Windows Explorer.": "このデモはエクスプローラーを再起動しません。",
   "The demo window doesn't open Windows Services.": "このデモは Windows のサービス管理画面を開きません。",
+  "The demo window doesn't start a debugger.": "このデモはデバッガーを起動しません。",
+  "The demo window doesn't create a memory dump file for {name}.": "このデモは {name} のメモリ ダンプ ファイルを作成しません。",
   "The demo window doesn't stop kernel sensor collection.": "デモ ウィンドウでは、カーネル センサーのデータ収集は停止しません。",
   "The demo window doesn't clear the history.": "デモ ウィンドウでは履歴を消去しません。",
   "The demo window doesn't save rules.": "デモ ウィンドウではルールを保存しません。",

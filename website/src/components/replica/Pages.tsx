@@ -1309,9 +1309,11 @@ export function Settings({
     windowMotion: true,
     hardwareAcceleration: true,
     autoUpdate: true,
+    updateNotify: true,
     whatsNew: true,
     star: true,
     bits: false,
+    byteUnit: "traditional",
     startPage: "processes",
     trayPage: "current",
     minimized: 5000,
@@ -1612,6 +1614,19 @@ export function Settings({
               }))}
             />
           </Setting>
+          {/* Kept as chosen: the demo's readings stay in the traditional units. */}
+          <Setting icon="binary" title="字节单位" desc="内存、存储容量与传输速率等以字节计的数值采用的单位。比特速率始终按 1000 进位。">
+            <Select
+              label="字节单位"
+              value={values.byteUnit}
+              onChange={(v) => set("byteUnit", v)}
+              options={[
+                { value: "iec", label: "二进制 IEC（1 MiB = 1024 KiB）" },
+                { value: "si", label: "十进制 SI（1 MB = 1000 KB）" },
+                { value: "traditional", label: "传统风格（1 MB = 1024 KB）" },
+              ]}
+            />
+          </Setting>
           <Setting
             icon="transfer"
             title="网络速率单位"
@@ -1707,6 +1722,9 @@ export function Settings({
           </Setting>
           <Setting icon="timer" title="自动检查更新" desc="每天检查一次，新版本在后台下载，安装前需手动确认。">
             <Switch state label="自动检查更新" checked={values.autoUpdate} onChange={(v) => set("autoUpdate", v)} />
+          </Setting>
+          <Setting icon="bell" title="有新版本时发送通知" desc="窗口隐藏在托盘或未处于前台时，通过 Windows 通知提示新版本，单击通知可查看更新内容。关闭后仅在窗口中提示。">
+            <Switch state label="有新版本时发送通知" checked={values.updateNotify} onChange={(v) => set("updateNotify", v)} />
           </Setting>
           <Setting icon="notes" title="更新后显示更新内容" desc="关闭后仅在右下角提示已更新。">
             <Button onClick={onWhatsNew}>查看本版本更新</Button>

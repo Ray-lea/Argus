@@ -151,6 +151,8 @@
   "Category": "類別",
   "The demo window doesn't restart Windows Explorer.": "演示視窗不會重新啟動 Windows 檔案總管。",
   "The demo window doesn't open Windows Services.": "此演示在瀏覽器內執行，不會開啟 Windows 服務管理工具。",
+  "The demo window doesn't start a debugger.": "演示視窗不會啟動偵錯工具。",
+  "The demo window doesn't create a memory dump file for {name}.": "演示視窗不會為 {name} 建立記憶體傾印檔案。",
   "The demo window doesn't stop kernel sensor collection.": "演示視窗不會停止核心感測器的資料擷取。",
   "The demo window doesn't clear the history.": "演示視窗不會清除歷程記錄。",
   "The demo window doesn't save rules.": "演示視窗不會儲存規則。",

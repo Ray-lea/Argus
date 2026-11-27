@@ -34,7 +34,8 @@ import type { Row } from "./Processes";
 import { Button, Segments, useIsoLayoutEffect } from "./widgets";
 
 export type Category = "general" | "cpu" | "memory" | "io" | "network" | "gpu";
-type Format = "name" | "text" | "id" | "count" | "percent" | "memory" | "space" | "rate" | "duration" | "time" | "bool" | "power";
+/** "events": a count per second, in whole numbers (columns.rs `EventRate`). */
+type Format = "name" | "text" | "id" | "count" | "events" | "percent" | "memory" | "space" | "rate" | "duration" | "time" | "bool" | "power";
 export interface ColumnDef {
   key: string;
   category: Category;
@@ -94,32 +95,59 @@ export const COLUMNS: ColumnDef[] = [
   col("sessionId", "general", "id", 80, false, "会话 ID", "进程所属的 Windows 会话编号。"),
   col("createTime", "general", "time", 160, false, "启动时间", "进程创建时间，以本地时间显示。"),
   col("threads", "general", "count", 76, true, "线程", "线程数"),
+  col("peakThreads", "general", "count", 100, false, "线程峰值", "单进程自启动以来同时存在的最多线程数；展开应用分组查看各进程。"),
   col("handles", "general", "count", 86, true, "句柄", "句柄数"),
+  col("children", "general", "count", 90, false, "子进程", "由该进程启动、仍在运行的进程数；展开应用分组查看各进程。"),
+  col("runtime", "general", "duration", 110, false, "运行时长", "单进程自启动以来经过的时间；展开应用分组查看各进程。"),
   col("suspended", "general", "bool", 90, false, "已暂停", "进程的全部线程处于暂停等待状态。"),
   col("efficiency", "general", "bool", 100, false, "效率模式", "进程的 EcoQoS 节能状态。"),
   col("power", "general", "power", 120, true, "电源使用情况", "按 CPU、GPU 与磁盘活动估算的当前耗电水平；分组显示成员合计。", "power"),
   col("powerTrend", "general", "power", 140, true, "电源使用情况趋势", "最近约两分钟的平均耗电水平，按 CPU、GPU 与磁盘活动估算；分组显示成员合计。", "power"),
   col("cpu", "cpu", "percent", 70, true, "CPU", "占全部处理器能力的百分比", "percent"),
+  col("cpuKernel", "cpu", "percent", 90, true, "内核 CPU", "CPU 占用中内核态的部分，按本次刷新间隔内核态与用户态 CPU 时间之比拆分；分组显示成员合计。", "percent"),
+  col("cpuUser", "cpu", "percent", 90, true, "用户 CPU", "CPU 占用中用户态的部分，按本次刷新间隔内核态与用户态 CPU 时间之比拆分；分组显示成员合计。", "percent"),
   col("cpuTime", "cpu", "duration", 100, true, "CPU 时间", "累计用户态与内核态 CPU 时间；分组显示成员合计。"),
   col("cpuUserTime", "cpu", "duration", 115, true, "用户 CPU 时间", "进程累计使用的用户态 CPU 时间。"),
   col("cpuKernelTime", "cpu", "duration", 115, true, "内核 CPU 时间", "进程累计使用的内核态 CPU 时间。"),
   col("basePriority", "cpu", "id", 100, false, "基本优先级", "通常显示优先级类别，介于两类之间的基本优先级显示为数值。"),
+  col("contextSwitchRate", "cpu", "events", 130, true, "每秒上下文切换", "进程各线程每秒的上下文切换次数；分组显示成员合计。"),
+  col("contextSwitches", "cpu", "count", 120, true, "上下文切换次数", "进程现有线程累计的上下文切换次数，不含已退出的线程；分组显示成员合计。"),
   col("mem", "memory", "memory", 96, true, "内存", "专用工作集：进程独占的物理内存", "memory"),
   col("workingSet", "memory", "memory", 110, true, "工作集", "当前驻留的物理内存，含共享页面；分组为成员工作集之和。", "memory"),
+  col("sharedWs", "memory", "memory", 120, true, "共享工作集", "工作集中可与其他进程共享的部分，即工作集减去专用工作集；分组为成员之和。"),
   col("peakWorkingSet", "memory", "memory", 125, false, "工作集峰值", "单进程自启动以来的工作集峰值；展开应用分组查看各进程。"),
   col("commit", "memory", "memory", 110, true, "提交大小", "进程专用的已提交内存。", "memory"),
+  col("peakCommit", "memory", "memory", 125, false, "提交大小峰值", "单进程自启动以来专用已提交内存的峰值；展开应用分组查看各进程。"),
   col("virtualSize", "memory", "space", 150, false, "虚拟地址空间", "单进程预留与已提交的虚拟地址范围；已提交内存见“提交大小”。"),
+  col("peakVirtualSize", "memory", "space", 160, false, "虚拟地址空间峰值", "单进程自启动以来预留与已提交虚拟地址范围的峰值；展开应用分组查看各进程。"),
+  col("pagedPool", "memory", "memory", 100, true, "分页池", "记在该进程名下的内核分页池内存；分组显示成员合计。"),
+  col("nonPagedPool", "memory", "memory", 110, true, "非分页池", "记在该进程名下的内核非分页池内存，始终驻留物理内存；分组显示成员合计。"),
   col("pageFaults", "memory", "count", 110, true, "缺页次数", "累计缺页次数，包含软缺页与硬缺页。"),
+  col("pageFaultRate", "memory", "events", 120, true, "每秒缺页次数", "每秒缺页次数，包含软缺页与硬缺页；分组显示成员合计。"),
+  col("hardFaults", "memory", "count", 110, true, "硬缺页次数", "累计硬缺页次数，即需从磁盘读入页面的缺页；分组显示成员合计。"),
+  col("hardFaultRate", "memory", "events", 130, true, "每秒硬缺页次数", "每秒需从磁盘读入页面的缺页次数，持续偏高通常表示物理内存不足；分组显示成员合计。"),
   col("memoryPriority", "memory", "text", 120, false, "内存优先级", "内存紧张时回收该进程内存页的先后，越低越先回收。"),
   col("diskRead", "io", "rate", 104, true, "磁盘读取", "每秒磁盘读取字节数，不包含网络及其他设备 I/O", "rate"),
   col("diskWrite", "io", "rate", 104, true, "磁盘写入", "每秒磁盘写入字节数，不包含网络及其他设备 I/O", "rate"),
+  col("diskReadOps", "io", "events", 130, true, "每秒磁盘读取次数", "每秒向磁盘发出的读取请求数，不包含网络及其他设备 I/O。"),
+  col("diskWriteOps", "io", "events", 130, true, "每秒磁盘写入次数", "每秒向磁盘发出的写入请求数，不包含网络及其他设备 I/O。"),
+  col("diskReadTotal", "io", "memory", 130, true, "累计磁盘读取", "进程生存期内累计从磁盘读取的字节数。"),
+  col("diskWriteTotal", "io", "memory", 130, true, "累计磁盘写入", "进程生存期内累计写入磁盘的字节数。"),
+  col("diskReadOpsTotal", "io", "count", 140, true, "累计磁盘读取次数", "进程生存期内累计的磁盘读取请求数。"),
+  col("diskWriteOpsTotal", "io", "count", 140, true, "累计磁盘写入次数", "进程生存期内累计的磁盘写入请求数。"),
   col("io", "io", "rate", 92, true, "I/O", "读、写及其他 I/O 合计，包含文件、网络和设备访问", "rate"),
   col("ioRead", "io", "rate", 110, true, "I/O 读取", "每秒 I/O 读取字节数，含文件、网络和设备访问。", "rate"),
   col("ioWrite", "io", "rate", 110, true, "I/O 写入", "每秒 I/O 写入字节数，含文件、网络和设备访问。", "rate"),
   col("ioOther", "io", "rate", 110, true, "其他 I/O", "其他 I/O 操作每秒传输的字节数。", "rate"),
+  col("ioReadOps", "io", "events", 140, true, "每秒 I/O 读取次数", "每秒 I/O 读取操作数，含文件、网络和设备访问。"),
+  col("ioWriteOps", "io", "events", 140, true, "每秒 I/O 写入次数", "每秒 I/O 写入操作数，含文件、网络和设备访问。"),
+  col("ioOtherOps", "io", "events", 140, true, "每秒其他 I/O 次数", "每秒读写以外的 I/O 操作数，如设备控制请求。"),
   col("ioReadTotal", "io", "memory", 130, true, "累计 I/O 读取", "进程生存期内累计读取的 I/O 字节数。"),
   col("ioWriteTotal", "io", "memory", 130, true, "累计 I/O 写入", "进程生存期内累计写入的 I/O 字节数。"),
   col("ioOtherTotal", "io", "memory", 130, true, "累计其他 I/O", "进程生存期内其他 I/O 累计传输的字节数。"),
+  col("ioReadOpsTotal", "io", "count", 150, true, "累计 I/O 读取次数", "进程生存期内累计的 I/O 读取操作数。"),
+  col("ioWriteOpsTotal", "io", "count", 150, true, "累计 I/O 写入次数", "进程生存期内累计的 I/O 写入操作数。"),
+  col("ioOtherOpsTotal", "io", "count", 150, true, "累计其他 I/O 次数", "进程生存期内累计的其他 I/O 操作数。"),
   col("ioPriority", "io", "text", 110, false, "I/O 优先级", "进程磁盘与其他 I/O 请求的优先级提示。"),
   col("net", "network", "rate", 92, true, "网络", "每秒发送和接收的字节数", "rate"),
   col("netReceived", "network", "rate", 110, true, "网络接收", "进程每秒接收的网络流量。", "rate"),
@@ -131,6 +159,8 @@ export const COLUMNS: ColumnDef[] = [
 ];
 const byKey = new Map(COLUMNS.map((c) => [c.key, c]));
 export const columnDef = (key: string) => byKey.get(key);
+/** Memory columns shown in bytes to the kilobyte (columns.rs `byte_count`): transfer totals and kernel pools. */
+const byteCount = new Set(["ioReadTotal", "ioWriteTotal", "ioOtherTotal", "diskReadTotal", "diskWriteTotal", "pagedPool", "nonPagedPool"]);
 const DEFAULTS = ["name", "pid", "cpu", "mem", "diskRead", "diskWrite", "io", "gpu", "net", "threads", "handles"];
 const VIRTUAL_ALIASES = "虚拟内存 虚拟字节 地址预留";
 
@@ -304,6 +334,24 @@ function ioTotal(p: Process, tick: number, seed: number, share: number) {
   const base = (p.mem * 1.6 + disk * 900 * MB + 24 * MB) * share * (0.5 + noise(p.pid * 13 + seed, 0));
   return base + (p.suspended ? 0 : tick * (disk * 0.22 * MB + 3 * 1024) * share);
 }
+// The counters 0.7.0 added: made-up but steady, growing with each sample.
+const kernelShare = (list: Process[]) => {
+  const all = list.reduce((a, p) => a + p.cpuTime, 0);
+  return all ? list.reduce((a, p) => a + p.cpuTime - userTime(p), 0) / all : 0.3;
+};
+const switchRate = (p: Process, tick: number) =>
+  p.suspended ? 0 : Math.round((p.cpu ?? 0) * 260 + p.threads * 2.5 + noise(p.pid * 17, tick) * 40);
+const switches = (p: Process, tick: number) => Math.round(p.cpuTime * 1100 + p.threads * 5200) + tick * switchRate(p, 0);
+const hardFaultRate = (p: Process, tick: number) =>
+  p.suspended || !(p.disk ?? 0) ? 0 : Math.round((p.disk ?? 0) * 0.6 * noise(p.pid * 23, tick));
+const hardFaults = (p: Process, tick: number) => Math.round(faults(p, 0) * 0.004) + tick * hardFaultRate(p, 0);
+// Disk traffic is a share of all I/O; requests average 32 KB read, 16 KB written.
+const diskTotal = (p: Process, tick: number, seed: number) => ioTotal(p, tick, seed, 0.7);
+/** Seconds since a start time "YYYY/M/D H:MM:SS" on the demo's day, at the demo's 10:24 plus the samples since. */
+function runtimeOf(p: Process, tick: number) {
+  const [h, m, s] = (p.started.split(" ")[1] ?? "0:0:0").split(":").map(Number);
+  return Math.max(0, 10 * 3600 + 24 * 60 + tick - (h * 3600 + m * 60 + s));
+}
 const dedicated = (p: Process) => (p.gpu ? Math.round(p.gpu * 24 + 12) * MB : 0);
 const sharedGpu = (p: Process) => (p.gpu ? Math.round(p.gpu * 5 + 6) * MB : 0);
 /** The power estimates the demo makes up: now from a row's readings, the trend from its processes' steady loads. */
@@ -369,7 +417,10 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "sessionId": value = instance(sessionOf); break;
     case "createTime": value = instance((p) => p.started); break;
     case "threads": value = total((p) => p.threads); break;
+    case "peakThreads": value = instance((p) => p.threads + 2 + Math.round(noise(p.pid * 19, 0) * p.threads * 0.6)); break;
     case "handles": value = total((p) => p.handles); break;
+    case "children": value = instance((p) => [...ctx.byPid.values()].filter((c) => c.ppid === p.pid && c.pid !== p.pid).length); break;
+    case "runtime": value = instance((p) => runtimeOf(p, ctx.tick)); break;
     case "suspended": value = instance((p) => (p.suspended ? "是" : "否")); break;
     // The app names EcoQoS on and off (common.on / common.off).
     case "efficiency": value = instance((p) => (ctx.efficiency.has(p.pid) ? "开启" : "关闭")); break;
@@ -388,6 +439,10 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
       return { text: name, sort: levels.indexOf(name), faint: true };
     }
     case "cpu": value = v.cpu; break;
+    case "cpuKernel": value = v.cpu * kernelShare(members()); break;
+    case "cpuUser": value = v.cpu * (1 - kernelShare(members())); break;
+    case "contextSwitchRate": value = total((p) => switchRate(p, ctx.tick)); break;
+    case "contextSwitches": value = total((p) => switches(p, ctx.tick)); break;
     case "cpuTime": value = total((p) => p.cpuTime); break;
     case "cpuUserTime": value = total(userTime); break;
     case "cpuKernelTime": value = total((p) => p.cpuTime - userTime(p)); break;
@@ -400,18 +455,38 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
     case "mem": value = v.mem; break;
     case "workingSet": value = v.mem * 1.38; break;
     case "peakWorkingSet": value = instance((p) => p.mem * (1.46 + noise(p.pid * 5 + 2, 0) * 0.5)); break;
+    case "sharedWs": value = v.mem * 0.38; break;
     case "commit": value = v.mem * 1.17; break;
+    case "peakCommit": value = instance((p) => p.mem * 1.17 * (1.18 + noise(p.pid * 5 + 4, 0) * 0.4)); break;
     case "virtualSize": value = instance(addressSpace); break;
+    case "peakVirtualSize": value = instance((p) => addressSpace(p) * (1.02 + noise(p.pid * 7 + 5, 0) * 0.08)); break;
+    case "pagedPool": value = total((p) => p.handles * 180 + 96 * 1024); break;
+    case "nonPagedPool": value = total((p) => p.handles * 22 + p.threads * 640 + 6 * 1024); break;
     case "pageFaults": value = total((p) => faults(p, ctx.tick)); break;
+    case "pageFaultRate": value = total((p) => (p.suspended ? 0 : Math.round((p.cpu ?? 0) * 40 + 2))); break;
+    case "hardFaults": value = total((p) => hardFaults(p, ctx.tick)); break;
+    case "hardFaultRate": value = total((p) => hardFaultRate(p, ctx.tick)); break;
     case "diskRead": value = v.read; break;
     case "diskWrite": value = v.write; break;
+    case "diskReadOps": value = v.read / (32 * 1024); break;
+    case "diskWriteOps": value = v.write / (16 * 1024); break;
+    case "diskReadTotal": value = total((p) => diskTotal(p, ctx.tick, 4)); break;
+    case "diskWriteTotal": value = total((p) => diskTotal(p, ctx.tick, 5) * 0.55); break;
+    case "diskReadOpsTotal": value = total((p) => Math.round(diskTotal(p, ctx.tick, 4) / (32 * 1024))); break;
+    case "diskWriteOpsTotal": value = total((p) => Math.round((diskTotal(p, ctx.tick, 5) * 0.55) / (16 * 1024))); break;
     case "io": value = v.io; break;
     case "ioRead": value = ioRead; break;
     case "ioWrite": value = ioWrite; break;
     case "ioOther": value = Math.max(0, v.io - ioRead - ioWrite); break;
+    case "ioReadOps": value = ioRead / (8 * 1024); break;
+    case "ioWriteOps": value = ioWrite / (12 * 1024); break;
+    case "ioOtherOps": value = total((p) => (p.suspended ? 0 : p.threads * 0.5 + (p.cpu ?? 0) * 24)); break;
     case "ioReadTotal": value = total((p) => ioTotal(p, ctx.tick, 1, 1)); break;
     case "ioWriteTotal": value = total((p) => ioTotal(p, ctx.tick, 2, 0.55)); break;
     case "ioOtherTotal": value = total((p) => ioTotal(p, ctx.tick, 3, 0.12)); break;
+    case "ioReadOpsTotal": value = total((p) => Math.round(ioTotal(p, ctx.tick, 1, 1) / (8 * 1024))); break;
+    case "ioWriteOpsTotal": value = total((p) => Math.round(ioTotal(p, ctx.tick, 2, 0.55) / (12 * 1024))); break;
+    case "ioOtherOpsTotal": value = total((p) => Math.round(ioTotal(p, ctx.tick, 3, 0.12) / 512)); break;
     case "net": value = v.net; break;
     case "netReceived": value = v.net * 0.78; break;
     case "netSent": value = v.net * 0.22; break;
@@ -432,7 +507,7 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
       return { text: percent(value) + "%", sort: value, faint: value < 0.05, heat: heat("percent", value) };
     case "memory":
       return {
-        text: c.key.startsWith("io") ? transferred(value) : memory(value),
+        text: byteCount.has(c.key) ? transferred(value) : memory(value),
         sort: value,
         heat: c.heat ? heat("memory", value) : 0,
       };
@@ -440,6 +515,8 @@ export function cellOf(c: ColumnDef, row: Row, ctx: CellContext): Cell {
       return { text: rate(value), sort: value, faint: value < 1, heat: heat("rate", value) };
     case "count":
       return { text: thousands(value), sort: value };
+    case "events":
+      return { text: thousands(Math.round(value)), sort: value, faint: value < 1 };
     case "duration":
       return { text: hms(value), sort: value };
     case "space":
@@ -458,9 +535,9 @@ export const columnSortValue = (key: string, row: Row, ctx: CellContext) => {
 
 // ---------------------------------------------------------------------------
 // The header's menu: in the tree, every branch opened or folded; the column
-// under the pointer sorted or hidden; every column by category, checked where
-// it is (the submenu stays open); then the dialog, automatic widths and the
-// defaults.
+// under the pointer sorted or hidden; then the dialog, automatic widths and
+// the defaults. Columns are chosen in the dialog only: with 0.7.0's columns
+// a category no longer fits a menu that does not scroll.
 export function headerMenu(o: {
   column: string | null;
   prefs: ColumnPrefs;
@@ -503,24 +580,7 @@ export function headerMenu(o: {
       "-",
     );
   }
-  for (const category of CATEGORIES) {
-    const children: MenuEntry[] = COLUMNS.filter((c) => c.category === category).map((c) => ({
-      label: columnLabel(c),
-      checked: o.prefs.selected.includes(c.key),
-      disabled: c.key === "name",
-      stay: true,
-      run: () => o.onToggle(c.key),
-    }));
-    const checked = children.filter((c) => c !== "-" && c.checked).length;
-    items.push({
-      label: categoryLabel[category],
-      icon: categoryIcon[category],
-      detail: `${checked}/${children.length}`,
-      children,
-    });
-  }
   items.push(
-    "-",
     { label: "选择列…", icon: "columns", run: o.onChoose },
     { label: "自动宽度", checked: o.prefs.autoWidth, run: o.onAutoWidth },
     // Widths set by hand are kept as they are.
@@ -603,7 +663,7 @@ function envelope(c: ColumnDef): string[] {
     case "percent":
       return ["100%", "8.8%"];
     case "memory":
-      return c.key.startsWith("io") ? ["888.8 GB", "8888 KB"] : ["88.8 GB", "8.88 GB", "888.8 MB"];
+      return byteCount.has(c.key) ? ["888.8 GB", "8888 KB"] : ["88.8 GB", "8.88 GB", "888.8 MB"];
     case "space":
       return ["888.8 TB", "888.8 GB"];
     case "rate":

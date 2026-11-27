@@ -151,6 +151,8 @@
   "Category": "Catégorie",
   "The demo window doesn't restart Windows Explorer.": "La démo ne redémarre pas l’Explorateur Windows.",
   "The demo window doesn't open Windows Services.": "La démo n’ouvre pas la console Services Windows.",
+  "The demo window doesn't start a debugger.": "La démo ne lance aucun débogueur.",
+  "The demo window doesn't create a memory dump file for {name}.": "La démo ne crée pas de fichier de vidage mémoire pour {name}.",
   "The demo window doesn't stop kernel sensor collection.": "La démo n’arrête pas la collecte des données des capteurs du noyau.",
   "The demo window doesn't clear the history.": "La démo n’efface pas l’historique.",
   "The demo window doesn't save rules.": "La démo n’enregistre pas les règles.",

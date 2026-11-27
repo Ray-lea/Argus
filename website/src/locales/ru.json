@@ -151,6 +151,8 @@
   "Category": "Категория",
   "The demo window doesn't restart Windows Explorer.": "Демонстрация не перезапускает Проводник Windows.",
   "The demo window doesn't open Windows Services.": "Демонстрация не открывает консоль служб Windows.",
+  "The demo window doesn't start a debugger.": "Демонстрация не запускает отладчик.",
+  "The demo window doesn't create a memory dump file for {name}.": "Демонстрация не создаёт файл дампа памяти для {name}.",
   "The demo window doesn't stop kernel sensor collection.": "Демонстрационное окно не останавливает сбор данных с датчиков ядра.",
   "The demo window doesn't clear the history.": "Демонстрационное окно не очищает историю.",
   "The demo window doesn't save rules.": "Демонстрационное окно не сохраняет правила.",

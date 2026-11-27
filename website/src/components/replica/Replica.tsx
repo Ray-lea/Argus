@@ -881,6 +881,27 @@ export default function Replica({
       { label: "观察进程", icon: "eye" as UiIcon, run: () => startWatch(row.pids[0], tick) },
       "-",
       ...(row.expandable && !branch ? [{ label: row.expanded ? "折叠" : "展开", run: () => toggleRow(row) }] : []),
+      // Task Manager's "Debug" and "Create memory dump file", for one process
+      // (menus.rs): the demo's machine has a just-in-time debugger registered.
+      // The System process and Idle have no program; lsass.exe holds credentials.
+      ...(group || !proc
+        ? []
+        : ([
+            {
+              label: "调试",
+              icon: "bug",
+              disabled: proc.pid <= 4,
+              run: () => say("演示窗口不会启动调试器。", "info"),
+            },
+            proc.exe === "lsass.exe"
+              ? { label: "创建内存转储文件", icon: "fileDown", disabled: true, detail: "存有登录凭据" }
+              : {
+                  label: "创建内存转储文件",
+                  icon: "fileDown",
+                  disabled: proc.pid <= 4,
+                  run: () => say(`演示窗口不会为 ${row.label} 创建内存转储文件。`, "info"),
+                },
+          ] satisfies MenuEntry[])),
       {
         label: "打开文件位置",
         icon: "folder",
@@ -1075,6 +1096,12 @@ export default function Replica({
     if (event.ctrlKey && !event.altKey && /^[1-9]$/.test(event.key)) {
       event.preventDefault();
       go(pages[Number(event.key) - 1][0]);
+    } else if (event.ctrlKey && !event.altKey && event.key === "Tab" && !dialog) {
+      // The next or previous page in the navigation's order, round from the
+      // other end (most browsers keep Ctrl+Tab for their own tabs).
+      event.preventDefault();
+      const at = pages.findIndex(([id]) => id === page);
+      go(pages[(at + (event.shiftKey ? pages.length - 1 : 1)) % pages.length][0]);
     } else if (
       // The process list: Ctrl+C copies the selected row's name, Ctrl+Shift+C
       // its details as the pane lists them, unless text is selected (backend.rs).
@@ -1302,6 +1329,8 @@ export default function Replica({
   const navigation = (
     <Navigation page={page} side={navLeft} open={navOpen} onToggle={() => setNavOpen(!navOpen)} onPage={go} />
   );
+  const pageBar = useRef<HTMLDivElement>(null);
+  usePageBarFit(pageBar, [page, navLeft, lang]);
   const goHistorySettings = () => {
     setSettingsSection("data");
     go("settings");
@@ -1421,7 +1450,7 @@ export default function Replica({
             />
           )}
           <div className="a-body">
-            <div className="a-page-bar">
+            <div className="a-page-bar" ref={pageBar}>
               {navLeft ? <strong data-i18n="nav">{pages[pageIndex][1]}</strong> : navigation}
               <div className="a-page-actions">{controls}</div>
               <button
@@ -2290,6 +2319,46 @@ function Navigation({
       </nav>
     </div>
   );
+}
+
+// The page bar as the app lays it out (layout.rs): when the navigation's tabs,
+// the page's controls and "More actions" do not fit in one row, the tabs first
+// collapse to their icons (named on hover), and only if that is not enough do
+// the controls move to a row of their own. Decided by what actually fits, so
+// pages with more controls collapse sooner. Both forms are measured at once,
+// before paint, by classes on the bar rather than React state.
+function usePageBarFit(bar: { current: HTMLDivElement | null }, deps: unknown[]) {
+  useIsoLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const fit = () => {
+      const style = getComputedStyle(el);
+      const room = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const gap = parseFloat(style.columnGap) || 0;
+      const parts = [...el.children] as HTMLElement[];
+      // Layout widths (offsetWidth), unaffected by the desktop's scaling.
+      const need = () => parts.reduce((sum, part) => sum + part.offsetWidth, 0) + gap * (parts.length - 1);
+      el.classList.remove("is-icons", "is-wrapped");
+      el.classList.add("is-measuring");
+      let icons = false;
+      let wrapped = false;
+      if (need() > room + 0.5) {
+        if (el.querySelector(".a-nav-pane")) {
+          el.classList.add("is-icons");
+          icons = true;
+        }
+        wrapped = need() > room + 0.5;
+      }
+      el.classList.remove("is-measuring");
+      el.classList.toggle("is-icons", icons);
+      el.classList.toggle("is-wrapped", wrapped);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    for (const part of el.children) observer.observe(part);
+    return () => observer.disconnect();
+  }, deps);
 }
 
 // Flips a check that keeps its menu open where it is drawn (menus.rs

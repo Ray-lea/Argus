@@ -103,11 +103,11 @@ export default function Components() {
                   title="托盘图标"
                   desc="走势按列显示最近几次采样的 CPU 占用，占比以点阵显示当前占用，数字显示百分比；占用达到 80% 时变为琥珀色。"
                 >
-                  <Segments
+                  <Select
                     label="托盘图标"
                     value={w.icon}
                     onChange={(icon) => setWidgets({ icon })}
-                    items={opts(["应用图标", "走势", "占比", "数字"])}
+                    options={opts(["应用图标", "走势", "占比", "数字"])}
                   />
                 </Row>
                 <Row

@@ -146,6 +146,10 @@ export default function Shortcuts({
               </span>
             ))}
           </div>
+          <p className="a-shortcuts-cycle">
+            <Keys keys="Ctrl+Tab / Ctrl+Shift+Tab" />
+            切换到下一个 / 上一个页面
+          </p>
           {groups.map(([key, icon, title, items]) => (
             <section key={key} className="a-shortcut-group">
               <button type="button" aria-expanded={!!open[key]} onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}>

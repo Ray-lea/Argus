@@ -84,7 +84,8 @@ const monitor = (keys: string[]) => ({
 });
 export const initialWidgets = {
   section: "托盘",
-  icon: "走势",
+  // The app icon, as in the app since 0.7.0 (settings.rs `TrayIcon` default).
+  icon: "应用图标",
   card: true,
   trayMenu: "快捷面板",
   closeToTray: true,
