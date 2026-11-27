@@ -3,19 +3,27 @@
 use super::{Identity, telemetry::CoreSampler, valid};
 use argus_core::hardware::{CpuMetricKind as Kind, CpuSensorSource as Source, CpuSensors};
 
-pub(super) fn eligible(version: u32, id: Identity, cores: &[CoreSampler]) -> bool {
+/// The table's package-wide fields hold on every core count of the family
+/// and model the layout was measured on.
+pub(super) fn eligible(version: u32, id: Identity) -> bool {
     let profile = match version {
-        0x620205 => Some((0x1a, 0x40..=0x4f, 16, 16)),
-        0x620105 => Some((0x1a, 0x40..=0x4f, 8, 8)),
+        0x620205 | 0x620105 => Some((0x1a, 0x40..=0x4f)),
         _ => None,
     };
-    profile.is_none_or(|(family, models, count, slots)| {
-        !id.intel
-            && id.family == family
-            && models.contains(&id.model)
-            && cores.len() == count
-            && cores.iter().all(|c| c.smu_slot.is_some_and(|s| s < slots))
+    profile.is_none_or(|(family, models)| {
+        !id.intel && id.family == family && models.contains(&id.model)
     })
+}
+
+/// Per-core blocks need a verified lane for every core: CoreIds of full
+/// CCDs, or the fuse map of partial ones (see `telemetry::core_slots`).
+fn lanes_mapped(version: u32, cores: &[CoreSampler]) -> bool {
+    let lanes = match version {
+        0x620205 => 16,
+        0x620105 => 8,
+        _ => return true,
+    };
+    !cores.is_empty() && cores.iter().all(|c| c.smu_slot.is_some_and(|s| s < lanes))
 }
 
 pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: &[CoreSampler]) {
@@ -81,6 +89,9 @@ pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: 
     } else if version == 0x620105 {
         frame.core_vid = field(269, 0.1, 2.);
     }
+    if !lanes_mapped(version, cores) {
+        return;
+    }
     for reading in &mut frame.cores {
         let Some(slot) = cores
             .iter()
@@ -142,8 +153,7 @@ mod tests {
     use argus_core::hardware::CpuCoreSensors;
     #[test]
     fn fused_middle_lanes_do_not_become_missing_voltage_or_false_full_cc6() {
-        let slots =
-            super::super::telemetry::vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x330).unwrap();
+        let slots = super::super::telemetry::core_slots(&[0, 1, 2, 3, 4, 5], &[0x330]).unwrap();
         let cores: Vec<_> = slots
             .iter()
             .enumerate()
@@ -272,8 +282,78 @@ mod tests {
             model: 0x44,
             thermal: 0,
         };
-        assert!(eligible(0x620205, id, &cores));
-        assert!(!eligible(0x620205, id, &cores[..8]));
-        assert!(!eligible(0x620205, Identity { family: 0x19, ..id }, &cores));
+        assert!(eligible(0x620205, id));
+        assert!(!eligible(0x620205, Identity { family: 0x19, ..id }));
+        assert!(!eligible(0x620105, Identity { intel: true, ..id }));
+    }
+
+    #[test]
+    fn granite_620205_on_twelve_cores_reads_package_fields_and_mapped_lanes_only() {
+        // 2 x 6 with CCD0 slots 2-3 and CCD1 slots 0 and 7 fused off.
+        let lanes = super::super::telemetry::core_slots(
+            &[0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13],
+            &[0x0c, 0x81],
+        )
+        .unwrap();
+        let mut raw = vec![f32::NAN; 613];
+        raw[2] = 162.;
+        raw[3] = 81.;
+        raw[8] = 120.;
+        raw[9] = 30.;
+        raw[71] = 2000.;
+        for lane in 0..16 {
+            // Fused lanes: zero voltage and residency, as on Vermeer.
+            raw[317 + lane] = 0.;
+            raw[333 + lane] = 40.;
+            raw[381 + lane] = 0.;
+            raw[397 + lane] = 0.;
+            raw[413 + lane] = 100.;
+        }
+        for &lane in &lanes {
+            raw[317 + lane] = 1. + lane as f32 / 100.;
+            raw[333 + lane] = 50. + lane as f32;
+            raw[381 + lane] = 20.;
+            raw[397 + lane] = 10.;
+            raw[413 + lane] = 70.;
+        }
+        let decode_with = |cores: &[CoreSampler]| {
+            let mut frame = CpuSensors {
+                cores: (0..12)
+                    .map(|core| CpuCoreSensors {
+                        core,
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            decode(0x620205, &raw, &mut frame, cores);
+            percentages(&mut frame);
+            frame
+        };
+        let mut cores: Vec<_> = lanes
+            .iter()
+            .enumerate()
+            .map(|(core, lane)| CoreSampler::fixture(core as u32, *lane, core as u8 * 2))
+            .collect();
+        let mapped = decode_with(&cores);
+        assert_eq!(mapped.value(Kind::PptPercent), Some(50.));
+        assert_eq!(mapped.cores[2].celsius, Some(54.));
+        assert_eq!(mapped.cores[6].celsius, Some(59.));
+        assert_eq!(mapped.cores[11].celsius, Some(64.));
+        assert!(mapped.cores.iter().all(|c| c.c6_percent == Some(70.)));
+        assert!(mapped.value(Kind::CoreSmuVoltage).is_some());
+        // Unverified lanes withhold every per-core field, not the package.
+        cores[5].smu_slot = None;
+        let pending = decode_with(&cores);
+        assert_eq!(pending.value(Kind::PptWatts), Some(81.));
+        assert_eq!(pending.value(Kind::TdcPercent), Some(25.));
+        assert_eq!(pending.value(Kind::FabricMhz), Some(2000.));
+        assert!(
+            pending
+                .cores
+                .iter()
+                .all(|c| c.celsius.is_none() && c.voltage.is_none() && c.c6_percent.is_none())
+        );
+        assert_eq!(pending.value(Kind::CoreSmuVoltage), None);
     }
 }

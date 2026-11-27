@@ -100,7 +100,7 @@ impl Smu {
             frame.smu_state = Some(SmuState::UnsupportedTable);
             return;
         };
-        if !known_smu::eligible(layout.version, id, cores) {
+        if !known_smu::eligible(layout.version, id) {
             self.cached = None;
             frame.smu_state = Some(SmuState::UnsupportedTable);
             return;

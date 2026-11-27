@@ -45,12 +45,75 @@ impl CoreSampler {
     }
 }
 
+/// Chiplet packages whose SMU tables keep fused-off core lanes while CPUID
+/// CoreId may number the enabled cores densely. Their per-core SMU fields wait
+/// for the fixed topology fuses (ZenStates-Core `GetTopologyFuses`), read
+/// through the existing signed module.
+#[derive(Clone, Copy, Debug)]
+enum TopologyFuses {
+    Vermeer,
+    GraniteRidge,
+}
+
+impl TopologyFuses {
+    fn needed(id: Identity, cores: &[CoreSampler]) -> Option<Self> {
+        if id.intel {
+            return None;
+        }
+        if id.family == 0x19 && id.model == 0x21 && cores.len() == 6 {
+            return Some(Self::Vermeer);
+        }
+        if id.family != 0x1a || !(0x40..=0x4f).contains(&id.model) {
+            return None;
+        }
+        // A CCD with all eight cores enabled has no lane gap, so its CoreIds
+        // are the SMU lanes either way. Only partial CCDs (9900X, 9600X, BIOS
+        // downcoring) need the fuse map.
+        let mut ccds = BTreeMap::<usize, usize>::new();
+        for core_id in cores.iter().filter_map(|c| c.cpuid_core) {
+            *ccds.entry(core_id / 8).or_default() += 1;
+        }
+        ccds.values().any(|n| *n != 8).then_some(Self::GraniteRidge)
+    }
+
+    fn ccd_fuses(self) -> (u32, u32) {
+        match self {
+            Self::Vermeer => (0x5d218, 0x5d21c),
+            Self::GraniteRidge => (0x5d3bc, 0x5d3c0),
+        }
+    }
+
+    /// Core disable fuse of CCD0; CCD n is at `+ (n << 25)`, mask in [7:0].
+    fn core_fuse(self) -> u32 {
+        match self {
+            Self::Vermeer => 0x3008_1d98,
+            Self::GraniteRidge => 0x304a_03dc,
+        }
+    }
+
+    /// Enabled physical CCDs, ascending.
+    fn enabled_ccds(self, present: u32, down: u32) -> Option<Vec<u32>> {
+        if present == u32::MAX || down == u32::MAX {
+            return None;
+        }
+        let disabled = (present >> 30) | ((down & 0x3f) << 2);
+        let (mask, max) = match self {
+            // Zen 3 packages mark absent CCDs down; a 6-core part has one.
+            Self::Vermeer => (!disabled & 0xff, 1),
+            // Zen 4 / Zen 5 desktop: present in [23:22], up to two CCDs.
+            Self::GraniteRidge => ((present >> 22) & 3 & !disabled, 2),
+        };
+        let ccds: Vec<_> = (0..8).filter(|ccd| mask & (1 << ccd) != 0).collect();
+        (!ccds.is_empty() && ccds.len() <= max && mask & !3 == 0).then_some(ccds)
+    }
+}
+
 pub(super) struct Telemetry {
     pub cores: Vec<CoreSampler>,
     tsc_mhz: Option<f32>,
     bus_mhz: Option<f32>,
     energy: [EnergyCounter; 4],
-    vermeer_mapping_pending: bool,
+    mapping_pending: Option<TopologyFuses>,
     mapping_attempt: Option<Instant>,
 }
 
@@ -118,10 +181,9 @@ impl Telemetry {
                 core.smu_slot = None;
             }
         }
-        let vermeer_mapping_pending =
-            !id.intel && id.family == 0x19 && id.model == 0x21 && cores.len() == 6;
-        if vermeer_mapping_pending {
-            // Vermeer's PM table retains fused-off lanes; CoreId can be dense.
+        let mapping_pending = TopologyFuses::needed(id, &cores);
+        if mapping_pending.is_some() {
+            // The PM table retains fused-off lanes; CoreId can be dense.
             // Keep per-core SMU fields unknown until the fuse map is verified.
             for core in &mut cores {
                 core.smu_slot = None;
@@ -132,7 +194,7 @@ impl Telemetry {
             tsc_mhz: tsc,
             bus_mhz,
             energy: Default::default(),
-            vermeer_mapping_pending,
+            mapping_pending,
             mapping_attempt: None,
         };
         result.resolve_smu_mapping(module);
@@ -140,10 +202,12 @@ impl Telemetry {
     }
 
     pub fn resolve_smu_mapping(&mut self, module: &Module) {
-        if !self.vermeer_mapping_pending
-            || self
-                .mapping_attempt
-                .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
+        let Some(topology) = self.mapping_pending else {
+            return;
+        };
+        if self
+            .mapping_attempt
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
         {
             return;
         }
@@ -151,29 +215,29 @@ impl Telemetry {
         let Some(_guard) = PciGuard::acquire() else {
             return;
         };
-        let mut fuses = [None; 3];
+        let (present, down) = topology.ccd_fuses();
+        let ccd_fuses = [module.smn(present), module.smn(down)];
+        let mut core_fuses = Vec::new();
         let ids: Option<Vec<_>> = self.cores.iter().map(|core| core.cpuid_core).collect();
         let result = (|| {
-            fuses[0] = module.smn(0x5d218);
-            fuses[1] = module.smn(0x5d21c);
-            let ccd = vermeer_ccd(fuses[0]?, fuses[1]?)?;
-            // Fixed Vermeer topology fuses, through the existing signed module.
-            fuses[2] = module.smn(if ccd == 0 { 0x3008_1d98 } else { 0x3208_1d98 });
-            vermeer_core_slots(ids.as_deref()?, fuses[2]?)
+            let ccds = topology.enabled_ccds(ccd_fuses[0]?, ccd_fuses[1]?)?;
+            for ccd in ccds {
+                core_fuses.push(module.smn(topology.core_fuse() + (ccd << 25)));
+            }
+            let disabled: Option<Vec<_>> = core_fuses.iter().copied().collect();
+            core_slots(ids.as_deref()?, &disabled?)
         })();
         if let Some(slots) = result {
             for (core, slot) in self.cores.iter_mut().zip(slots) {
                 core.smu_slot = Some(slot);
             }
-            self.vermeer_mapping_pending = false;
+            self.mapping_pending = None;
         } else {
             argus_core::diagnostics::warn(
                 "AMD SMU core mapping",
                 format!(
-                    "Vermeer fuse map unavailable or inconsistent; cores={}; core_ids={ids:?}; ccd_fuses={:?}; core_fuse={:?}; per-core SMU fields withheld",
+                    "{topology:?} fuse map unavailable or inconsistent; cores={}; core_ids={ids:?}; ccd_fuses={ccd_fuses:x?}; core_fuses={core_fuses:x?}; per-core SMU fields withheld",
                     self.cores.len(),
-                    &fuses[..2],
-                    fuses[2]
                 ),
             );
         }
@@ -424,32 +488,37 @@ impl Telemetry {
     }
 }
 
-fn vermeer_ccd(present: u32, down: u32) -> Option<u32> {
-    if present == u32::MAX || down == u32::MAX {
+/// SMU lane of each core from its CPUID CoreId. `disabled` holds the core
+/// disable fuse of each enabled CCD in physical order: the n-th CoreId group
+/// (CoreId / 8) is the n-th enabled CCD, whose eight lanes start at n * 8.
+/// Within a CCD the CoreIds either name the physical slots or number the
+/// enabled slots densely; any other layout or count is rejected.
+pub(super) fn core_slots(ids: &[usize], disabled: &[u32]) -> Option<Vec<usize>> {
+    let mut groups: Vec<_> = ids.iter().map(|id| id / 8).collect();
+    groups.sort_unstable();
+    groups.dedup();
+    if ids.is_empty() || ids.iter().any(|id| *id >= 16) || groups.len() != disabled.len() {
         return None;
     }
-    let disabled = (present >> 30) | ((down & 0x3f) << 2);
-    let enabled = !disabled & 0xff;
-    (enabled.count_ones() == 1 && enabled & !3 == 0).then(|| enabled.trailing_zeros())
-}
-
-pub(super) fn vermeer_core_slots(ids: &[usize], disabled: u32) -> Option<Vec<usize>> {
-    if ids.len() != 6 || disabled == u32::MAX {
-        return None;
+    let mut lanes = vec![0; ids.len()];
+    for (ccd, (group, fuse)) in groups.into_iter().zip(disabled).enumerate() {
+        if *fuse == u32::MAX {
+            return None;
+        }
+        let slots: Vec<_> = (0..8).filter(|slot| fuse & (1 << slot) == 0).collect();
+        let members: Vec<_> = (0..ids.len()).filter(|i| ids[*i] / 8 == group).collect();
+        let mut ordered: Vec<_> = members.iter().map(|i| ids[*i] % 8).collect();
+        ordered.sort_unstable();
+        let physical = ordered == slots;
+        if !physical && ordered != (0..slots.len()).collect::<Vec<_>>() {
+            return None;
+        }
+        for i in members {
+            let local = ids[i] % 8;
+            lanes[i] = ccd * 8 + if physical { local } else { slots[local] };
+        }
     }
-    let slots: Vec<_> = (0..8).filter(|slot| disabled & (1 << slot) == 0).collect();
-    if slots.len() != ids.len() || ids.iter().any(|id| *id >= 16 || id / 8 != ids[0] / 8) {
-        return None;
-    }
-    let mut ordered: Vec<_> = ids.iter().map(|id| id % 8).collect();
-    ordered.sort_unstable();
-    if ordered == slots {
-        Some(ids.iter().map(|id| id % 8).collect())
-    } else if ordered == (0..ids.len()).collect::<Vec<_>>() {
-        Some(ids.iter().map(|id| slots[id % 8]).collect())
-    } else {
-        None
-    }
+    Some(lanes)
 }
 
 fn mean(values: &[f32]) -> Option<f32> {
@@ -478,24 +547,25 @@ mod tests {
 
     #[test]
     fn vermeer_fuses_map_dense_and_sparse_ids_without_guessing_disabled_lanes() {
-        assert_eq!(vermeer_ccd(0x80400000, 0x3f), Some(0));
-        assert_eq!(vermeer_ccd(0x40400000, 0x3f), Some(1));
-        assert_eq!(vermeer_ccd(0, 0), None);
-        assert_eq!(vermeer_ccd(u32::MAX, 0), None);
+        let vermeer = TopologyFuses::Vermeer;
+        assert_eq!(vermeer.enabled_ccds(0x80400000, 0x3f), Some(vec![0]));
+        assert_eq!(vermeer.enabled_ccds(0x40400000, 0x3f), Some(vec![1]));
+        assert_eq!(vermeer.enabled_ccds(0, 0), None);
+        assert_eq!(vermeer.enabled_ccds(u32::MAX, 0), None);
         assert_eq!(
-            vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x330),
+            core_slots(&[0, 1, 2, 3, 4, 5], &[0x330]),
             Some(vec![0, 1, 2, 3, 6, 7])
         );
         assert_eq!(
-            vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0x30c),
+            core_slots(&[0, 1, 2, 3, 4, 5], &[0x30c]),
             Some(vec![0, 1, 4, 5, 6, 7])
         );
         assert_eq!(
-            vermeer_core_slots(&[7, 0, 1, 4, 5, 6], 0x30c),
+            core_slots(&[7, 0, 1, 4, 5, 6], &[0x30c]),
             Some(vec![7, 0, 1, 4, 5, 6])
         );
         assert_eq!(
-            vermeer_core_slots(&[8, 9, 10, 11, 12, 13], 0x330),
+            core_slots(&[8, 9, 10, 11, 12, 13], &[0x330]),
             Some(vec![0, 1, 2, 3, 6, 7])
         );
         for ids in [
@@ -503,10 +573,103 @@ mod tests {
             &[0, 1, 2, 3, 8, 9],
             &[0, 1, 2, 3, 5, 7],
         ] {
-            assert_eq!(vermeer_core_slots(ids, 0x330), None);
+            assert_eq!(core_slots(ids, &[0x330]), None);
         }
-        assert_eq!(vermeer_core_slots(&[0, 1, 2, 3, 4, 5], 0), None);
-        assert_eq!(vermeer_core_slots(&[0, 1, 2, 3, 4, 5], u32::MAX), None);
+        assert_eq!(core_slots(&[0, 1, 2, 3, 4, 5], &[0]), None);
+        assert_eq!(core_slots(&[0, 1, 2, 3, 4, 5], &[u32::MAX]), None);
+    }
+
+    #[test]
+    fn granite_ridge_partial_ccds_map_each_ccd_to_its_own_lanes() {
+        let granite = TopologyFuses::GraniteRidge;
+        // Upstream readings: Granite Ridge 9600X and Raphael 7950X.
+        assert_eq!(granite.enabled_ccds(0x024BEBA3, 0), Some(vec![0]));
+        assert_eq!(granite.enabled_ccds(0x00E97051, 0), Some(vec![0, 1]));
+        assert_eq!(granite.enabled_ccds(0x40E97051, 0), Some(vec![1]));
+        assert_eq!(granite.enabled_ccds(0, 0), None);
+        assert_eq!(granite.enabled_ccds(0x00E97051, u32::MAX), None);
+        // 9900X3D-like 2 x 6: dense CoreIds per CCD, different fused slots.
+        let dense = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13];
+        assert_eq!(
+            core_slots(&dense, &[0x0c, 0x81]),
+            Some(vec![0, 1, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14])
+        );
+        // CoreIds that already name the physical slots stay where they are.
+        let sparse = [0, 1, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14];
+        assert_eq!(core_slots(&sparse, &[0x0c, 0x81]), Some(sparse.to_vec()));
+        // Windows core order need not follow CoreId order.
+        assert_eq!(
+            core_slots(&[8, 0, 9, 1], &[0xfc, 0xfc]),
+            Some(vec![8, 0, 9, 1])
+        );
+        assert_eq!(
+            core_slots(&[0, 1, 2, 3, 4, 5], &[0x0c]),
+            Some(vec![0, 1, 4, 5, 6, 7])
+        );
+        for (ids, fuses) in [
+            // Fuses disagree with the cores Windows reports (BIOS downcoring).
+            (&dense[..], &[0, 0][..]),
+            // One CCD per fuse, not a CoreId range spanning both.
+            (
+                &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                &[0x0c, 0x81][..],
+            ),
+            (&dense[..], &[0x0c][..]),
+            (&dense[..], &[0x0c, u32::MAX][..]),
+            (
+                &[0, 1, 2, 3, 4, 5, 16, 17, 18, 19, 20, 21][..],
+                &[0x0c, 0x81][..],
+            ),
+        ] {
+            assert_eq!(core_slots(ids, fuses), None);
+        }
+    }
+
+    #[test]
+    fn only_granite_ridge_ccds_with_fused_cores_wait_for_the_fuse_map() {
+        let id = Identity {
+            intel: false,
+            family: 0x1a,
+            model: 0x44,
+            thermal: 0,
+        };
+        let cores = |ids: &[usize]| -> Vec<_> {
+            ids.iter()
+                .enumerate()
+                .map(|(core, id)| {
+                    let mut sampler = CoreSampler::fixture(core as u32, *id, core as u8 * 2);
+                    sampler.cpuid_core = Some(*id);
+                    sampler
+                })
+                .collect()
+        };
+        let full: Vec<_> = (0..16).collect();
+        let twelve = [0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13];
+        assert!(TopologyFuses::needed(id, &cores(&full)).is_none());
+        assert!(TopologyFuses::needed(id, &cores(&full[..8])).is_none());
+        assert!(matches!(
+            TopologyFuses::needed(id, &cores(&twelve)),
+            Some(TopologyFuses::GraniteRidge)
+        ));
+        assert!(matches!(
+            TopologyFuses::needed(id, &cores(&full[..6])),
+            Some(TopologyFuses::GraniteRidge)
+        ));
+        let raphael = Identity {
+            family: 0x19,
+            model: 0x61,
+            ..id
+        };
+        assert!(TopologyFuses::needed(raphael, &cores(&twelve)).is_none());
+        let vermeer = Identity {
+            family: 0x19,
+            model: 0x21,
+            ..id
+        };
+        assert!(matches!(
+            TopologyFuses::needed(vermeer, &cores(&full[..6])),
+            Some(TopologyFuses::Vermeer)
+        ));
     }
 
     #[test]
