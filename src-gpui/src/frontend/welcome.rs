@@ -232,26 +232,30 @@ impl Desktop {
         }
     }
 
-    /// Says once per version that an update waits, with a way to its dialog;
-    /// after an update, offers to update an older privileged service.
+    /// Says once per version that an update waits, with a way to its dialog:
+    /// in the window while it is in use, otherwise in a Windows notification
+    /// (`update_notice`). After an update, offers to update an older
+    /// privileged service.
     pub(in crate::frontend) fn announce_update(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        use argus_view_logic::update_notice::{self, Notice, Offer, Shown};
         let onboarding = self
             .modal
             .iter()
             .chain(&self.ui.below)
             .any(|m| m.kind == "onboarding");
+        if onboarding || self.options.test {
+            return;
+        }
         let visible = self
             .host
             .get_window("main")
             .is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false));
-        if onboarding || !visible || self.options.test {
-            return;
-        }
-        if self.modal.is_none()
+        if visible
+            && self.modal.is_none()
             && self.ui.errors.contains_key("offerService")
             && let Some(service) = self.data.get("privilege").cloned()
         {
@@ -282,19 +286,59 @@ impl Desktop {
         };
         let state = text(status, "state").to_owned();
         let version = text(status, "version").to_owned();
-        if version.is_empty() || !matches!(state.as_str(), "ready" | "available") {
-            return;
-        }
         let announced = self.prefs.get::<Option<String>>("update.announced", None);
-        if announced.as_deref() == Some(version.as_str()) {
+        let dismissed = self.prefs.get::<String>("updateDismissed", String::new());
+        let offer = Offer {
+            state: &state,
+            version: &version,
+            announced: announced.as_deref(),
+            dismissed: &dismissed,
+        };
+        let shown = Shown {
+            visible,
+            active: visible && window.is_window_active(),
+        };
+        let notify = boolean(&self.data["settings"], "updateNotify");
+        let Some(notice) = update_notice::notice(offer, shown, notify) else {
             return;
-        }
+        };
         self.prefs.set("update.announced", &version);
+        // The open dialog says it already.
         if self.modal.as_ref().is_some_and(|m| m.kind == "update") {
             return;
         }
-        self.show_update_notice(&state, &version);
-        cx.notify();
+        match notice {
+            Notice::System => self.notify_update(&state, &version, cx),
+            Notice::Window => {
+                self.show_update_notice(&state, &version);
+                cx.notify();
+            }
+        }
+    }
+
+    /// The Windows notification that an update waits; a click on it opens
+    /// the update dialog (`frontend::run`).
+    fn notify_update(&self, state: &str, version: &str, cx: &mut Context<Self>) {
+        let (title, body) = if state == "available" {
+            ("updates.availableToast", "updates.notification.available")
+        } else {
+            ("updates.readyToast", "updates.notification.ready")
+        };
+        let notification = SystemNotification {
+            tag: crate::notifications::UPDATE.into(),
+            title: argus_core::i18n::format(title, &[("version", &version)]).into(),
+            body: label(body).into(),
+            actions: Vec::new(),
+        };
+        let host = self.host.clone();
+        let registered = cx
+            .background_executor()
+            .spawn(async move { crate::notifications::register(&host) });
+        cx.spawn(async move |_, cx| {
+            registered.await;
+            cx.update(|cx| cx.show_system_notification(notification));
+        })
+        .detach();
     }
 
     pub(in crate::frontend) fn show_update_notice(&mut self, state: &str, version: &str) {

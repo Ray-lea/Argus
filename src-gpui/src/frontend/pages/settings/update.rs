@@ -213,6 +213,22 @@ impl Desktop {
             "settings.update.auto.desc",
             vec![auto],
         ));
+        let notify = self.setting_toggle(
+            "updateNotify",
+            "settings.update.notify.title",
+            boolean(settings, "updateNotify"),
+            "set_update_notify",
+            "enabled",
+            window,
+            cx,
+        );
+        cards.push(self.setting_text(
+            "updateNotify",
+            "BellIcon",
+            "settings.update.notify.title",
+            "settings.update.notify.desc",
+            vec![notify],
+        ));
         let view = self
             .btn(
                 "whats-new-view",

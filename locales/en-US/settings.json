@@ -534,6 +534,10 @@
     "star": {
       "title": "Star reminder",
       "desc": "Shows a card in the bottom-right corner of the window once a day, asking for a star on GitHub."
+    },
+    "notify": {
+      "title": "Notify me when an update is available",
+      "desc": "While the window is hidden in the system tray or not in front, a Windows notification announces new versions. Click it to see what's new. When off, only the window shows the notice."
     }
   },
   "about": {

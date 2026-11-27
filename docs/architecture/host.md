@@ -67,6 +67,8 @@
 
 更新器负责下载、取消和安装前复验。客户端用 `resources/app.json` 中的公钥验证安装包与更新说明的签名，并核对签名绑定的版本。安装程序退出运行中的界面副本，更新已有管理员启动记录并刷新特权服务。通过管理员启动或任务管理器替换运行的安装版仍可应用内更新，免安装版提供下载入口。`--argus-updater-check` 在启动界面前返回安装类型，供打包流程检查。
 
+新版本的 Windows 通知经 vendored GPUI 的 `App::show_system_notification`（WinRT toast）发出，由界面决定何时发送（`argus-view-logic` 的 `update_notice`：每个版本一次，窗口处于前台时改为右下角提示）。界面启动时在创建窗口之前以 `App::set_app_identity` 把进程的 AppUserModelID 设为应用标识，与安装程序写入快捷方式的标识一致，通知按此标识归属。未打包的应用须在 `HKCU\Software\Classes\AppUserModelId\<标识>` 登记显示名称与图标，否则通知不显示图标：`notifications.rs` 在每次运行首次发送通知前，于后台线程把应用图标中最大的 PNG 写到本地数据目录的 `notification-icon.png`，并写入 `DisplayName` 与指向它的 `IconUri`。单击通知由 GPUI 的响应回调显示主窗口并打开更新对话框；Argus 未运行时单击已留在通知中心的旧通知不启动 Argus。卸载（不含覆盖升级）删除该注册表项。测试实例不发送通知。
+
 平台职责与 macOS 边界见[GPUI 开发](../development/gpui.md)。
 
 界面的系统进程隐藏借鉴 [System Informer 的筛选实现](https://github.com/winsiderss/systeminformer/blob/32ef60573927b26a153df29c258e63db15ab4f7c/SystemInformer/mwpgproc.c#L399)：依据进程元数据筛选展示结果，并保存筛选状态。System Informer 使用 Windows 签名，未启用签名查询时按 Microsoft 公司名称筛选；Argus 复用已有的 `windowsProcess`（系统目录、Windows 产品与公司信息，或内核伪进程身份），避免额外采集或验签。`frontend/visibility.rs` 编辑例外和额外隐藏名单，规则本身在 `argus-view-logic` 的 `visibility`，筛选在应用分组与进程树构建之前执行；连接列表的缓存输入包含筛选规则与归属进程的 Windows 标识，规则或身份变化后重新构建。

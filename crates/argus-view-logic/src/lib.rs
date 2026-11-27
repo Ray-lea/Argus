@@ -1,7 +1,7 @@
 //! The interface's logic that needs no GPUI: process rows and their grouping,
 //! the process columns, display filtering, the preference store, regional
-//! formats, sort keys, the history page's series and the taskbar monitor's
-//! layout.
+//! formats, sort keys, the history page's series, the taskbar monitor's
+//! layout and where an update is announced.
 //!
 //! It lives outside the interface crate (`argus`, `src-gpui`) so that a
 //! change here, and its tests, compile in seconds instead of rebuilding the
@@ -19,4 +19,5 @@ pub mod model;
 pub mod prefs;
 pub mod regional;
 pub mod taskbar_layout;
+pub mod update_notice;
 pub mod visibility;

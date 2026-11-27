@@ -545,6 +545,17 @@ pub fn set_whats_new(
     Ok(settings_view(&app))
 }
 
+/// Whether a Windows notification says that an update waits.
+pub fn set_update_notify(
+    app: crate::native_runtime::Host,
+    enabled: bool,
+) -> Result<SettingsView, String> {
+    app.state::<SettingsStore>()
+        .update(|s| s.update_notify = enabled)
+        .map_err(|e| e.to_string())?;
+    Ok(settings_view(&app))
+}
+
 /// Draws the interface with the graphics card or, turned off, with the
 /// system's software rasterizer. The open windows change renderer in place.
 pub fn set_hardware_acceleration(

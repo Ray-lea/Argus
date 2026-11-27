@@ -540,6 +540,10 @@
     "star": {
       "title": "Rappel d’étoile",
       "desc": "Affiche une fois par jour, en bas à droite de la fenêtre, une carte invitant à attribuer une étoile sur GitHub."
+    },
+    "notify": {
+      "title": "Signaler les nouvelles versions",
+      "desc": "Lorsque la fenêtre est masquée dans la zone de notification ou n’est pas au premier plan, une notification Windows signale les nouvelles versions. Cliquez dessus pour voir les nouveautés. Désactivé, seule la fenêtre affiche l’avis."
     }
   },
   "about": {

@@ -4723,6 +4723,7 @@
     "history": true,
     "kernelSensors": false,
     "updateCheck": true,
+    "updateNotify": true,
     "updateChannel": "stable",
     "updateRoute": "auto",
     "updateProxy": "https://gh-proxy.com/",

@@ -97,6 +97,7 @@ product_icons! {
     "ComponentsIcon" => Blocks,
     "DashboardIcon" => LayoutDashboard,
     "TimerIcon" => Timer,
+    "BellIcon" => Bell,
     "TransferIcon" => ArrowUpDown,
     "ByteUnitIcon" => Binary,
     // The filled one is the same outline, filled as it is loaded (`icon_path`).

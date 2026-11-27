@@ -57,5 +57,9 @@
     "body": "Le service privilégié est la version {serviceVersion}, qui ne correspond pas à Argus {version}. Certaines fonctionnalités peuvent ne pas fonctionner. La mise à jour nécessite l’autorisation de l’administrateur.",
     "bodyOlder": "Le service privilégié est une ancienne version qui n’est pas compatible avec Argus {version}. Jusqu’à ce qu’il soit mis à jour, les actions nécessitant des droits d’administrateur (fin des processus d’administrateurs ou d’autres comptes, gestion des services système, fermeture des connexions réseau, etc.) ne peuvent pas être effectuées et les données fournies par le service, telles que le trafic réseau par processus, ne sont pas affichées. La mise à jour nécessite l’autorisation de l’administrateur.",
     "confirm": "Mettre le service à jour"
+  },
+  "notification": {
+    "ready": "La mise à jour a été téléchargée et sa signature vérifiée. Cliquez pour voir les nouveautés et l’installer.",
+    "available": "La version portable se met à jour en téléchargeant la nouvelle version depuis la page de publication. Cliquez pour voir les nouveautés."
   }
 }

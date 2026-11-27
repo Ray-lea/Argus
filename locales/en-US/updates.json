@@ -56,5 +56,9 @@
     "body": "The privileged service is version {serviceVersion}, which doesn't match Argus {version}. Some features may not work. Updating requires administrator permission.",
     "bodyOlder": "The privileged service is an older version that isn't compatible with Argus {version}. Until it's updated, actions that need administrator rights (ending processes of administrators or other accounts, managing system services, closing network connections and so on) can't be completed, and data the service provides, such as per-process network traffic, isn't shown. Updating requires administrator permission.",
     "confirm": "Update service"
+  },
+  "notification": {
+    "ready": "The update has been downloaded and its signature verified. Click to see what's new and install it.",
+    "available": "The portable version is updated by downloading the new version from the release page. Click to see what's new."
   }
 }

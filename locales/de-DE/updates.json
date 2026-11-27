@@ -56,5 +56,9 @@
     "body": "Der privilegierte Dienst ist die Version {serviceVersion}, die nicht mit Argus {version} übereinstimmt. Einige Funktionen funktionieren möglicherweise nicht. Für die Aktualisierung ist eine Administratorberechtigung erforderlich.",
     "bodyOlder": "Der privilegierte Dienst ist eine ältere Version, die nicht mit Argus {version} kompatibel ist. Bis zur Aktualisierung können Aktionen, für die Administratorrechte erforderlich sind (Beenden von Prozessen von Administratoren oder anderen Konten, Verwalten von Systemdiensten, Schließen von Netzwerkverbindungen usw.), nicht abgeschlossen werden, und vom Dienst bereitgestellte Daten, wie z. B. der Netzwerkverkehr pro Prozess, werden nicht angezeigt. Für die Aktualisierung ist eine Administratorberechtigung erforderlich.",
     "confirm": "Dienst aktualisieren"
+  },
+  "notification": {
+    "ready": "Das Update wurde heruntergeladen und seine Signatur geprüft. Klicken Sie, um die Neuerungen zu sehen und es zu installieren.",
+    "available": "Die portable Version wird aktualisiert, indem Sie die neue Version von der Release-Seite herunterladen. Klicken Sie, um die Neuerungen zu sehen."
   }
 }

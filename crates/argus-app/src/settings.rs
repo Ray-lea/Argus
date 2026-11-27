@@ -667,6 +667,9 @@ pub struct Settings {
     pub kernel_sensors: bool,
     /// Check for updates in the background.
     pub update_check: bool,
+    /// Say in a Windows notification that an update waits while the window
+    /// is not the one in use; off, only the window says it once shown.
+    pub update_notify: bool,
     pub update_channel: UpdateChannel,
     pub update_route: UpdateRoute,
     /// GitHub proxy prefix, e.g. `https://gh-proxy.com/`.
@@ -706,6 +709,7 @@ impl Default for Settings {
             history_processes: Recording::default().processes,
             kernel_sensors: false,
             update_check: true,
+            update_notify: true,
             update_channel: UpdateChannel::default(),
             update_route: UpdateRoute::default(),
             update_proxy: crate::config::PROXY_PRESETS[0].into(),
@@ -1303,6 +1307,15 @@ mod tests {
             serde_json::from_str(r#"{"whatsNew": false, "seenVersion": "0.2.0"}"#).unwrap();
         assert!(!saved.whats_new);
         assert_eq!(saved.seen_version, "0.2.0");
+    }
+
+    #[test]
+    fn update_notifications_are_on_until_turned_off() {
+        // Settings saved before the choice existed.
+        let old: Settings = serde_json::from_str(r#"{"updateCheck": true}"#).unwrap();
+        assert!(old.update_notify);
+        let saved: Settings = serde_json::from_str(r#"{"updateNotify": false}"#).unwrap();
+        assert!(!saved.update_notify);
     }
 
     #[test]

@@ -281,7 +281,7 @@ impl Desktop {
             }
             "history_open_dir" => self.notify_toast(ToastKind::Error, message.to_owned()),
             "set_rules" => self.notify_toast(ToastKind::Error, wrapped("settings.rules.error")),
-            "set_update_settings" | "set_whats_new" => {
+            "set_update_settings" | "set_whats_new" | "set_update_notify" => {
                 self.notify_toast(ToastKind::Error, wrapped("settings.update.error"))
             }
             "set_hardware_acceleration" => self.notify_toast(

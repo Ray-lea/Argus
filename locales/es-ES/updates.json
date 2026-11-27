@@ -57,5 +57,9 @@
     "body": "El servicio privilegiado es la versión {serviceVersion}, que no coincide con Argus {version}. Es posible que algunas funciones no funcionen. La actualización requiere permiso de administrador.",
     "bodyOlder": "El servicio privilegiado es una versión anterior que no es compatible con Argus {version}. Hasta que se actualice, las acciones que necesitan derechos de administrador (finalizar procesos de administradores u otras cuentas, administrar servicios del sistema, cerrar conexiones de red, etc.) no se pueden completar y los datos que proporciona el servicio, como el tráfico de red por proceso, no se muestran. La actualización requiere permiso de administrador.",
     "confirm": "Actualizar servicio"
+  },
+  "notification": {
+    "ready": "La actualización se ha descargado y su firma se ha verificado. Haga clic para ver las novedades e instalarla.",
+    "available": "La versión portátil se actualiza descargando la nueva versión desde la página de lanzamiento. Haga clic para ver las novedades."
   }
 }

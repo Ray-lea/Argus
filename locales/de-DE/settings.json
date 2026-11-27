@@ -534,6 +534,10 @@
     "star": {
       "title": "Stern-Erinnerung",
       "desc": "Zeigt einmal täglich unten rechts im Fenster eine Karte mit der Bitte um einen Stern auf GitHub an."
+    },
+    "notify": {
+      "title": "Bei neuen Versionen benachrichtigen",
+      "desc": "Ist das Fenster im Infobereich ausgeblendet oder nicht im Vordergrund, meldet eine Windows-Benachrichtigung neue Versionen. Ein Klick darauf zeigt die Neuerungen. Ausgeschaltet zeigt nur das Fenster den Hinweis."
     }
   },
   "about": {

@@ -17,6 +17,7 @@ mod leftovers;
 mod logging;
 mod memory_pressure;
 mod native_runtime;
+mod notifications;
 mod packaging;
 mod platform;
 mod regional;

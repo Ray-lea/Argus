@@ -540,6 +540,10 @@
     "star": {
       "title": "Recordatorio de estrella",
       "desc": "Muestra una vez al día una tarjeta en la esquina inferior derecha de la ventana que invita a dar una estrella en GitHub."
+    },
+    "notify": {
+      "title": "Notificar las nuevas versiones",
+      "desc": "Mientras la ventana está oculta en la bandeja o no está en primer plano, una notificación de Windows avisa de las nuevas versiones. Haga clic en ella para ver las novedades. Si se desactiva, solo la ventana muestra el aviso."
     }
   },
   "about": {
