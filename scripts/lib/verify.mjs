@@ -48,9 +48,9 @@ export const STEP_RULES = [
   [/^src-gpui\/src\/frontend\/motion\.rs$|^src-gpui\/src\/window_motion/, ["window-motion", "vitals-visibility", "tray-reopen"]],
   [/^src-gpui\/src\/frontend\/(theme|appearance|assets)\.rs$/, ["localization", "backdrop-fallback", "caption-buttons"]],
   [/^src-gpui\/src\/frontend\/units\.rs$/, ["byte-units", "column-widths", "monitor-metrics", "vitals-visibility"]],
-  [/^src-gpui\/src\/frontend\.rs$|^src-gpui\/src\/frontend\/(layout|pages|widgets|inline)\.rs$/, ["localization", "status-rate"]],
+  [/^src-gpui\/src\/frontend\.rs$|^src-gpui\/src\/frontend\/(layout|pages|widgets|inline)\.rs$/, ["localization", "status-rate", "nav-icons"]],
   [/^src-gpui\/src\/(window_state|platform\/)/, ["window-maximized-restore", "window-restore"]],
-  [/^src-gpui\/src\/frontend\/backend\.rs$/, ["localization", "process-order-held"]],
+  [/^src-gpui\/src\/frontend\/backend\.rs$/, ["localization", "process-order-held", "nav-icons"]],
   // The rest of the interface's logic outside GPUI, as for a frontend file
   // no rule names.
   [/^crates\/argus-view-logic\/src\/(model|prefs)[/.]/, ["localization"]],

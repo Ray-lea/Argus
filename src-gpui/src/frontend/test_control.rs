@@ -843,6 +843,8 @@ impl Desktop {
             layout["tableCsv"] =
                 json!(self.options.fixture.as_ref().and(self.data.get("tableCsv")));
             layout["caption"] = json!({"keepOnTop":self.keeps_on_top(),"keepOnTopIsClient":keep_on_top_is_client,"underCaptionsDrags":under_captions_drags});
+            let (level, tab_icons) = self.bar_state();
+            layout["pageBar"] = json!({"level":level,"tabIcons":tab_icons});
             println!("{layout}");
         }
         if self.options.fixture.is_some()

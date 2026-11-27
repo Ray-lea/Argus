@@ -1,0 +1,25 @@
+{
+  "about": "检查顶部导航在页面栏空间不足时收为图标，以及 Ctrl+Tab、Ctrl+Shift+Tab 依次切换页面。`inspectLayout.pageBar` 输出页面栏的紧凑级别 `level`（0 完整；2 标签只显示图标；3 页面控件另起一行，标签可换行）与 `tabIcons`（顶部标签是否显示为图标）。进程页在 720 px 宽时收为图标、控件仍在同一行，性能页没有控件，同一宽度下仍显示文字；640 px 时进程页的控件移到下一行。录制 `narrow-morph`、`page-morph`、`wide-morph` 为标签在文字与图标之间的形变：宽度缓动，文字先淡出、图标随后淡入，形变期间放不下的部分在拖动区之前裁去，页面栏末端的控件不移动。侧边导航不经过图标这一级。",
+  "window": [1000, 680],
+  "steps": [
+    {"control": {"page": "processes"}, "wait": 1200, "inspect": "layout", "label": "wide", "expect": {"pageBar.level": 0, "pageBar.tabIcons": false}, "capture": "text-1000"},
+    {"record": {"name": "narrow-morph", "ms": 800}, "wait": 80},
+    {"probe": "size 720 560", "wait": 1000, "inspect": "layout", "label": "narrow", "expect": {"pageBar.level": 2, "pageBar.tabIcons": true}, "capture": "icons-720"},
+    {"sheet": {"name": "narrow-morph-sheet", "from": "narrow-morph", "region": [0, 44, 720, 40], "columns": 1, "every": 2}},
+    {"record": {"name": "page-morph", "ms": 800}, "wait": 80},
+    {"control": {"page": "performance"}, "wait": 1000, "inspect": "layout", "label": "room-on-performance", "expect": {"pageBar.level": 0, "pageBar.tabIcons": false}, "capture": "performance-720"},
+    {"sheet": {"name": "page-morph-sheet", "from": "page-morph", "region": [0, 44, 720, 40], "columns": 1, "every": 2}},
+    {"control": {"keys": ["ctrl-shift-tab"]}, "wait": 600, "inspect": "layout", "label": "previous", "expect": {"page": "processes", "pageBar.tabIcons": true}},
+    {"control": {"keys": ["ctrl-shift-tab"]}, "inspect": "layout", "label": "round-to-last", "expect": {"page": "about"}},
+    {"control": {"keys": ["ctrl-tab", "ctrl-tab"]}, "inspect": "layout", "label": "round-to-second", "expect": {"page": "performance"}},
+    {"control": {"page": "processes"}, "wait": 900},
+    {"control": {"hoverAnchor": "page-nav-history"}, "wait": 1200, "capture": "icons-tooltip"},
+    {"control": {"pointerOutside": true}, "wait": 300},
+    {"record": {"name": "wide-morph", "ms": 800}, "wait": 80},
+    {"probe": "size 1000 680", "wait": 1500, "inspect": "layout", "label": "wide-again", "expect": {"pageBar.level": 0, "pageBar.tabIcons": false}, "capture": "text-again"},
+    {"sheet": {"name": "wide-morph-sheet", "from": "wide-morph", "region": [0, 44, 1000, 40], "columns": 1, "every": 2}},
+    {"probe": "size 640 520", "wait": 1000, "inspect": "layout", "label": "own-row", "expect": {"pageBar.level": 3, "pageBar.tabIcons": true}, "capture": "icons-640"},
+    {"control": {"theme": "light"}, "wait": 1200, "capture": "icons-640-light"},
+    {"control": {"navPosition": "side"}, "wait": 900, "inspect": "layout", "label": "side", "expect": {"pageBar.tabIcons": false}, "expectNot": {"pageBar.level": 2}, "capture": "side-640"}
+  ]
+}

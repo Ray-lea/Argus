@@ -1,6 +1,7 @@
 //! Application layout uses the native component rhythm and theme roles.
 use super::*;
 use gpui_kit::base::ElementExt;
+use gpui_kit::base::motion::MotionStatus;
 use gpui_kit::component::ActiveTheme;
 
 /// The side navigation's default expanded width is 184 px.
@@ -13,6 +14,13 @@ const NAV_RAIL: f32 = 48.;
 const NAV_INSET: f32 = 4.;
 /// Navigation width change per arrow key on its edge.
 const NAV_KEY_STEP: f32 = 16.;
+/// The page bar's compact levels (`fit_toolbar`), after the full bar (0):
+/// the labelled choices fold into drop-downs, the top navigation's tabs show
+/// only their icons, and last the page's controls take a row of their own
+/// (and the tabs may wrap).
+const FOLD: u8 = 1;
+const ICONS: u8 = 2;
+const OWN_ROW: u8 = 3;
 /// The least of the page bar's drag stretch, before it steps down a level.
 const BAR_STRETCH: f32 = 16.;
 /// The page bar's inset after "More", as the title row's before the caption buttons.
@@ -176,6 +184,63 @@ impl Desktop {
         } else {
             12.
         };
+        // Short of room (the compact level `ICONS`), the top tabs show only
+        // their icons, as the collapsed side rail does. In between they morph
+        // on the selection mark's timing: their widths ease from the names'
+        // to the icons' (or back) as the names fade out and the icons in.
+        let (morph, fade, morphing) = if top {
+            let target = if self.ui.toolbar_fit.borrow().level >= ICONS {
+                1.
+            } else {
+                0.
+            };
+            let eased = theme::transition_slow(cx);
+            let linear = theme::transition_slow(cx).ease(|t| t);
+            let mut sample = |id: &'static str, policy| {
+                let motion =
+                    gpui_kit::base::motion::transition_with_status(id, target, policy, window, cx);
+                match motion.status {
+                    MotionStatus::Delayed | MotionStatus::Running => {
+                        (motion.value.clamp(0., 1.), true)
+                    }
+                    _ => (target, false),
+                }
+            };
+            // The widths ease; the names and icons fade on the clock, or
+            // the eased start would swap them within two frames.
+            let (morph, easing) = sample("page-navigation-icons", eased);
+            let (fade, fading) = sample("page-navigation-icons-fade", linear);
+            // A first frame is still at the start: drawn as the morph all
+            // the same, so the tabs already give way to the end controls.
+            (morph, fade, easing || fading)
+        } else {
+            (0., 0., false)
+        };
+        let icons = !morphing && morph >= 1.;
+        let icon_tab = window.rem_size() + px(2. * spacing);
+        // Each tab's width while morphing: its name's in the selected weight
+        // (as the tab reserves at rest), or the icon's, and the insets.
+        let widths = if morphing {
+            let size = cx.theme().font_size;
+            names
+                .iter()
+                .map(|name| {
+                    let named = window
+                        .text_system()
+                        .layout_line(
+                            name,
+                            size,
+                            &[theme::text_run(name, theme::LABEL_WEIGHT, cx)],
+                            None,
+                        )
+                        .width
+                        + px(2. * spacing);
+                    named + (icon_tab - named) * morph
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let regions = *self.navigation_regions.borrow();
         let owner = cx.entity().downgrade();
         let hover = p.hover;
@@ -204,6 +269,15 @@ impl Desktop {
                 mark.selected = selected;
                 mark.size = regions[0].size;
                 self.ui.nav_mark.set(mark);
+                if morphing {
+                    // The morphing tabs keep one row and their widths are
+                    // known now: the mark follows the chosen one in the same
+                    // frame, not a measured frame behind.
+                    let before = widths[..selected]
+                        .iter()
+                        .fold(px(0.), |left, width| left + *width + px(2.));
+                    return before + widths[selected] / 2. - marker_width / 2.;
+                }
                 let chosen = regions[selected + 1];
                 let (id, target) = if top {
                     (
@@ -252,11 +326,20 @@ impl Desktop {
                 })
                 .active(move |s| s.bg(if chosen { hover_strong } else { press }))
                 .tooltip(move |window, cx| widgets::tooltip(title.clone(), window, cx))
-                .on_prepaint(track_region(
-                    index + 1,
-                    self.navigation_regions.clone(),
-                    owner.clone(),
-                ))
+                .on_prepaint({
+                    // While the tabs morph they move every frame: note where
+                    // they are, without drawing the desktop again each time.
+                    let track =
+                        track_region(index + 1, self.navigation_regions.clone(), owner.clone());
+                    let regions = self.navigation_regions.clone();
+                    move |bounds, window, cx| {
+                        if morphing {
+                            regions.borrow_mut()[index + 1] = bounds;
+                        } else {
+                            track(bounds, window, cx);
+                        }
+                    }
+                })
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.act(Action::Page(page.into()), window, cx);
                 }))
@@ -267,7 +350,62 @@ impl Desktop {
                         }
                     }))
                 })
-                .when(top, |tab| {
+                .when(top && morphing, |tab| {
+                    // The name and the icon over each other, centred in the
+                    // easing width: the name fades out over the first 45 % of
+                    // the time, the icon in from 35 % (the other way back).
+                    let name_alpha = (1. - fade / 0.45).clamp(0., 1.);
+                    let icon_alpha = ((fade - 0.35) / 0.65).clamp(0., 1.);
+                    let layer = || {
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                    };
+                    tab.h(px(32.))
+                        .w(widths[index])
+                        .px_0()
+                        .overflow_hidden()
+                        .child(
+                            layer().opacity(name_alpha).child(
+                                div()
+                                    .relative()
+                                    .flex_shrink_0()
+                                    .whitespace_nowrap()
+                                    .when(chosen, |d| d.font_weight(theme::LABEL_WEIGHT))
+                                    .child(name.clone())
+                                    .children(dot().map(|dot| dot.top(px(-1.)).right(px(-7.)))),
+                            ),
+                        )
+                        .child(
+                            layer().opacity(icon_alpha).child(
+                                div()
+                                    .relative()
+                                    .flex_shrink_0()
+                                    .child(theme::glyph(glyph))
+                                    .children(dot().map(|dot| dot.top(px(-2.)).right(px(-3.)))),
+                            ),
+                        )
+                })
+                .when(top && !morphing && icons, |tab| {
+                    // The collapsed side rail's entry, as wide as its icon
+                    // and insets; the tooltip names the page.
+                    tab.h(px(32.))
+                        .w(icon_tab)
+                        .px_0()
+                        .justify_center()
+                        .child(
+                            div()
+                                .relative()
+                                .flex_shrink_0()
+                                .child(self.moving_icon(&control, glyph, None, None))
+                                .children(dot().map(|dot| dot.top(px(-2.)).right(px(-3.)))),
+                        )
+                        .child(self.icon_probe(&control))
+                })
+                .when(top && !morphing && !icons, |tab| {
                     // Reserve the selected weight so choosing a tab never moves its neighbors.
                     tab.h(px(32.)).child(
                         div()
@@ -322,14 +460,22 @@ impl Desktop {
         if top {
             // Up to the last compact level the tabs keep one row and the page
             // bar steps down a level instead; then they wrap beside "More".
-            let wrap = self.ui.toolbar_fit.borrow().level >= 2;
+            // Morphing, they keep one row and give way to the end controls:
+            // what does not fit yet is cut off at the drag stretch.
+            let wrap = self.ui.toolbar_fit.borrow().level >= OWN_ROW && !morphing;
             let tabs = gpui_kit::base::Tabs::new("page-navigation")
                 .relative()
                 .flex()
                 .flex_wrap()
                 .gap(px(2.))
                 .when(wrap, |tabs| tabs.flex_shrink(1.).min_w_0())
-                .when(!wrap, |tabs| tabs.flex_shrink_0())
+                .when(morphing, |tabs| {
+                    tabs.flex_nowrap()
+                        .flex_shrink(1.)
+                        .min_w_0()
+                        .overflow_hidden()
+                })
+                .when(!wrap && !morphing, |tabs| tabs.flex_shrink_0())
                 .on_prepaint(track_region(
                     0,
                     self.navigation_regions.clone(),
@@ -745,7 +891,7 @@ impl Desktop {
             .inset_0()
         };
         let controls = self.page_bar_controls(level, window, cx);
-        let (inline, own_row) = if level < 2 {
+        let (inline, own_row) = if level < OWN_ROW {
             (controls, None)
         } else {
             (None, controls)
@@ -792,8 +938,9 @@ impl Desktop {
             .child(probe(1))
             .into_any_element()
     }
-    /// The current page's own controls in the page bar, if it has any. At
-    /// compact level 1 the labelled choices drop down from a button instead.
+    /// The current page's own controls in the page bar, if it has any. From
+    /// the compact level `FOLD` the labelled choices drop down from a button
+    /// instead, until the controls have a row of their own.
     fn page_bar_controls(
         &self,
         level: u8,
@@ -803,7 +950,7 @@ impl Desktop {
         if !self.has_controls() {
             return None;
         }
-        let compact = level == 1;
+        let compact = (FOLD..OWN_ROW).contains(&level);
         let row = div().flex().items_center().gap_2().flex_shrink_0();
         // The services and connections filters are in their columns' headers
         // (`NativeTable::header_filter`).
@@ -1058,9 +1205,10 @@ impl Desktop {
     /// while its end controls run past the row (the drag stretch before them
     /// already at its least) the bar goes one compact level further each
     /// frame, learning the room the level wanted; it goes back once the bar
-    /// has that room. Level 1 turns the labelled choices into drop-downs
-    /// (pages without any skip it), level 2 moves the page's controls to a
-    /// row of their own. Each page, text size, language, navigation and the
+    /// has that room. `FOLD` turns the labelled choices into drop-downs
+    /// (pages without any skip it), `ICONS` shows the top tabs as their icons
+    /// (the side navigation skips it), `OWN_ROW` moves the page's controls to
+    /// a row of their own. Each page, text size, language, navigation and the
     /// history page's "Latest" button keeps what it learned: coming back, the
     /// bar starts at the level that room allows. Until a level fits, the
     /// frames drawn at the others are not presented (`track_bar`). Returns the
@@ -1097,7 +1245,7 @@ impl Desktop {
             let need = learned.get(&key).copied().unwrap_or_default();
             // The first level this room does not rule out (an unknown need fits).
             let mut level = 0;
-            while level < 2
+            while level < OWN_ROW
                 && need[level as usize] > px(0.)
                 && room + px(0.5) < need[level as usize]
             {
@@ -1123,16 +1271,17 @@ impl Desktop {
             && regions[1].size.width > px(0.)
         {
             let overflow = regions[0].right() - (regions[1].right() - px(BAR_INSET));
-            if overflow > px(0.5) && state.level < 2 {
-                let level = state.level as usize;
-                state.need[level] = room + overflow;
-                if level == 0 && !self.has_choices() {
-                    // Nothing to fold: level 1 would draw the same bar.
-                    state.need[1] = room + overflow;
-                    state.level = 2;
-                } else {
-                    state.level += 1;
+            if overflow > px(0.5) && state.level < OWN_ROW {
+                let need = room + overflow;
+                let mut level = state.level;
+                state.need[level as usize] = need;
+                level += 1;
+                // A level that would draw the same bar needs the same room.
+                while level < OWN_ROW && !self.draws_level(level) {
+                    state.need[level as usize] = need;
+                    level += 1;
                 }
+                state.level = level;
             } else {
                 self.bar_settling.set(false);
             }
@@ -1148,14 +1297,29 @@ impl Desktop {
         }
         level
     }
-    /// Pages whose bar has labelled choices to fold into drop-downs (level 1).
+    /// The page bar's compact level, and whether the top tabs show their
+    /// icons at it (`inspectLayout`).
+    pub(in crate::frontend) fn bar_state(&self) -> (u8, bool) {
+        let level = self.ui.toolbar_fit.borrow().level;
+        (level, self.nav_top && level >= ICONS)
+    }
+    /// Pages whose bar has labelled choices to fold into drop-downs (`FOLD`).
     fn has_choices(&self) -> bool {
         false
+    }
+    /// Whether the compact `level` draws the bar otherwise than the one
+    /// before it: `fit_toolbar` passes over those that do not.
+    fn draws_level(&self, level: u8) -> bool {
+        match level {
+            FOLD => self.has_choices(),
+            ICONS => self.nav_top,
+            _ => true,
+        }
     }
     /// The page bar's height below its first row: the controls' own row at
     /// the last compact level.
     fn bar_extra(&self, level: u8) -> Pixels {
-        if level >= 2 && self.has_controls() {
+        if level >= OWN_ROW && self.has_controls() {
             px(32. + 6.)
         } else {
             px(0.)
@@ -1871,7 +2035,7 @@ fn track_bar(
         if index == 2 {
             return;
         }
-        if settling.get() && level < 2 {
+        if settling.get() && level < OWN_ROW {
             let [trailing, bar, _] = *regions.borrow();
             if trailing.size.width > px(0.)
                 && bar.size.width > px(0.)
