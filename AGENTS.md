@@ -45,7 +45,7 @@ Argus 是 Windows 任务管理器：Rust 采集层 `argus-core`（NT 原生接�
 
 - 核对界面用开发构建（`cargo build -p argus --bin argus`，界面与采集 crate 为 opt-level 2，改一处约 1 分钟）。发布构建是 fat LTO 加单个 codegen unit，界面改动重编约 8–10 分钟，只用于性能测量和交付前的最终确认；从全新的工作树构建时用 `node scripts/build.mjs`，它先构建要嵌入的辅助程序。
 - 需要发布构建的行为、又不需要最终数值时用快速构建（`node scripts/build.mjs --quick`，输出 `target/quick/argus.exe`，重编约 2 分钟）：开发过程中的性能对照、带符号的调用栈采样，以及交给用户在其他机器上试用的测试程序（开发构建换一台机器无法运行）。
-- 截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，用法与全部测试控制见 `docs/development/gpui.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。
+- 截图、录制和检查用 `node scripts/ui-shots.mjs <标签> <步骤文件>`，用法见 `docs/development/gpui/verification.md`，全部测试控制见 `docs/development/gpui/test-controls.md`。测试实例的诊断日志在清理前复制到输出目录的 `logs/`：实例以 `0xc0000409` 退出是 panic，位置在其中的 `panic at` 一行。
 - 改动界面后用 `node scripts/ui-steps.mjs [名称…]` 运行受影响的步骤文件；不应改变画面的改动，用 `node scripts/compare-shots.mjs <新> <旧>…` 逐像素对照改动前后的截图。
 - `start.bat check`（即 `pnpm check`）是完整检查入口，按下节决定是否运行；包含的步骤与其他命令见 `docs/development/README.md`。在部分代理沙箱里 cmd 不会在当前目录查找批处理文件，用绝对路径运行 `start.bat`。
 - 改链接器、工具链或 `RUSTFLAGS` 会让整个依赖缓存失效，不要随手试。增删或升级依赖后运行 `node scripts/notices.mjs` 并提交 `THIRD-PARTY-NOTICES.txt`，CI 会检查它是否最新。

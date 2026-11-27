@@ -17,7 +17,7 @@
 - 表格（`table_view`）与详情窗格里随指针变化的内容：自行请求重绘（`tips` 在指针于一行停留 250 ms 后通知表格），或给元素一个不止改底色的悬停样式（`icon_probe`）。这两处标记了 `hover_fills_in_place`，只改底色的悬停不重绘视图。
 - 标题栏、导航显示的状态：改变时通知桌面或刷新对应区域；采样只重绘内容随之变化的区域（`Desktop::notify_snapshot`）。
 - 内容跟随父视图变化的缓存视图：用 `ViewElement::following`（`TableBody` 即如此：随表格渲染，自身不保存状态）。
-- 核对重绘范围用 `ARGUS_GPUI_FRAME_TRACE=1` 和带 `passive` 的指针控制（`docs/development/gpui.md`）：不带 `passive` 的测试控制都以通知桌面结束，看不到实际范围。
+- 核对重绘范围用 `ARGUS_GPUI_FRAME_TRACE=1` 和带 `passive` 的指针控制（`docs/development/gpui/test-controls.md#指针键盘与触摸`）：不带 `passive` 的测试控制都以通知桌面结束，看不到实际范围。
 
 **曲线与图表层**
 - 曲线、帧调度或缓存：曲线时间取采集时间戳，保留未知区间与暂停语义，不在每帧复制快照或重建表格；用窗口探针核对实际呈现与隐藏开销（`docs/development/performance.md`）。静态排版与文案按根目录规定做局部验证。

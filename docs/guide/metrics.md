@@ -47,7 +47,7 @@ Windows 搜索索引器（`SearchIndexer.exe`）在索引位置内的文件频�
 
 ## 电源使用情况的估算方法
 
-**电源使用情况**与**电源使用情况趋势**两列按进程的 CPU、GPU 与磁盘活动估算耗电水平。Windows 未公开这两列的计算方法，Argus 自行估算，权重与分级见[采集层](../architecture/core.md)的 `power.rs`。
+**电源使用情况**与**电源使用情况趋势**两列按进程的 CPU、GPU 与磁盘活动估算耗电水平。Windows 未公开这两列的计算方法，Argus 自行估算，权重与分级见[电源使用情况](../architecture/core/process.md#电源使用情况)中的 `power.rs`。
 
 估算的等级表示相对水平，不是实际功耗，可能与系统任务管理器的显示不同。
 

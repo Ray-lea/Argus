@@ -1,5 +1,5 @@
 {
-  "about": "检查标题栏的窗口按钮：深浅主题下的静止、悬停关闭与最大化按钮、置顶显示按钮的提示与开启后的图钉，对话框遮罩下的按钮区，150% 界面缩放与最小窗口的侧边导航。`inspectLayout.caption` 输出 `keepOnTop`（偏好）、`keepOnTopIsClient`（置顶按钮不属于原生按钮或拖动区域）与 `underCaptionsDrags`（按钮下方可拖动窗口），`nativeWindow.topmost` 为窗口实际是否置顶：测试实例不改变窗口层级，它始终为假。置顶层的行为由 `activation::pressure_tests` 在独立桌面上核对（见[性能测量](performance.md)）。",
+  "about": "检查标题栏的窗口按钮：深浅主题下的静止、悬停关闭与最大化按钮、置顶显示按钮的提示与开启后的图钉，对话框遮罩下的按钮区，150% 界面缩放与最小窗口的侧边导航。`inspectLayout.caption` 输出 `keepOnTop`（偏好）、`keepOnTopIsClient`（置顶按钮不属于原生按钮或拖动区域）与 `underCaptionsDrags`（按钮下方可拖动窗口），`nativeWindow.topmost` 为窗口实际是否置顶：测试实例不改变窗口层级，它始终为假。置顶层的行为由 `activation::pressure_tests` 在独立桌面上核对（见 docs/development/performance/stress.md#检查置顶与激活）。",
   "window": [1000, 680],
   "steps": [
     {"control": {"page": "processes", "theme": "dark"}, "wait": 1200, "inspect": "layout", "label": "initial", "expect": {"caption.keepOnTop": false, "caption.keepOnTopIsClient": true, "caption.underCaptionsDrags": true, "nativeWindow.topmost": false}, "capture": "dark"},

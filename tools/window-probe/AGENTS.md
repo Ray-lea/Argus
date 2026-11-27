@@ -1,6 +1,6 @@
 # 窗口探针与界面测试的代理须知
 
-沿用仓库根目录的规则。用法见 `docs/development/gpui.md` 的“界面验证”和 `docs/development/performance.md`；本文件只记做法背后的原因和容易踩的地方。
+沿用仓库根目录的规则。用法见 `docs/development/gpui/verification.md` 和 `docs/development/performance.md`；本文件只记做法背后的原因和容易踩的地方。
 
 ## 启动测试实例
 
@@ -13,7 +13,7 @@
 
 ## 步骤文件、模拟快照与场景
 
-- 新增或改动测试控制、探针命令、`inspectLayout` 的字段或环境开关时，同步 `docs/development/gpui.md` 的参考表与 `docs/development/environment.md`：这两处是完整清单，不是示例。
+- 新增或改动测试控制、探针命令、`inspectLayout` 的字段或环境开关时，同步 `docs/development/gpui/test-controls.md`（测试控制与 `inspectLayout` 的字段）、`docs/development/gpui/probe.md`（探针命令）与 `docs/development/environment.md`：这三处是完整清单，不是示例。
 - 改动界面后运行受影响的步骤文件（`node scripts/ui-steps.mjs <名称…>`）；菜单项、对话框或锚点变了，就在同一提交里更新断言。暂时修不了的步骤文件登记到 `known-failures.json` 并写明原因，不要留着失败不管。
 - 每个步骤文件开头的 `about` 说明它检查什么、依赖哪些测试控制和检查字段；新增步骤文件时写上，改动步骤时一并更新（脚本测试会拒绝没有 `about` 的文件）。`node scripts/ui-steps.mjs --list` 列出全部说明。
 - 步骤文件需要实时数据或环境变量时写进它的 `run`，不要依赖运行时另加的参数。两种实现应当画出相同画面时（一个开关切换绘制路径），在 `run.parity` 里写上该开关，`ui-steps.mjs` 会各运行一次并逐像素对照；这类文件关闭界面动画，截图前把指针移出窗口，滚轮之后先单独移出指针再改变缩放或窗口尺寸。断言里的界面文字是简体中文，换 `--language` 运行只用来看排版。
@@ -31,10 +31,10 @@
 
 - 用户报告、本机不复现的滚动、布局或像素问题，先看诊断信息里的系统缩放与界面缩放：测试窗口的缩放取决于运行它的显示器，分数缩放下的取整问题在 100% 缩放的窗口里不会出现。用 `contentZoom`（仅模拟快照）或 `uiScale` 复现。
 - 同一构建的两次运行也会有截图差异：模拟快照下的曲线随真实时间移动，图表区每次差几十到几千个像素。判断改动是否改变了画面，用 `node scripts/compare-shots.mjs` 同时与几次旧运行比对，或先用改动前的步骤再跑一次，量出这份噪声。
-- 测试实例不接收系统的指针（`docs/development/gpui.md` 的“界面验证”），真实的鼠标既不会在截图里留下悬停底色，也点不到测试窗口。探针报告 `owned test became foreground` 就是应用自己取得了前台，不必重跑确认。
+- 测试实例不接收系统的指针（`docs/development/gpui/verification.md`），真实的鼠标既不会在截图里留下悬停底色，也点不到测试窗口。探针报告 `owned test became foreground` 就是应用自己取得了前台，不必重跑确认。
 - 机器正在大量读写磁盘或编译时，开发构建的首帧（启动时编译着色器）可能迟到数十秒；`ui-shots` 在启动时最多等 60 秒空闲，再迟的会报“still busy”或缺少检查结果。这类失败在负载过去后重跑确认，不要据此加长等待。`results.json` 的 `unsettled` 列出没等到空闲的步骤。
 - 测试实例以 `0xc0000409` 退出是 panic；位置在输出目录 `logs/argus.log` 的 `panic at` 一行，常指向 vendored GPUI 里的断言。
 - 开发构建在启动时从源码目录编译着色器：改 `shaders.hlsl` 后重启实例即可看到效果，但这样的程序不能拿到别的机器上运行。
 - `cargo test -p argus` 会重新生成 `target/debug/argus.exe`。界面检查和测试交替进行时，以检查开始时脚本复制到输出目录的那一份为准；`ui-shots` 结束时删除这份副本，要拿它做之后的基准就加 `--keep-executable`。
-- 读 `results.json` 时按名称取：检查结果在 `inspections[label]`，写出的图片在 `captures`（字段见 `docs/development/gpui.md` 的“截图与录制”），不要按 `results` 的下标或猜测的字段去找。
+- 读 `results.json` 时按名称取：检查结果在 `inspections[label]`，写出的图片在 `captures`（字段见 `docs/development/gpui/verification.md#输出与结果`），不要按 `results` 的下标或猜测的字段去找。
 - 沙箱里写不了 `%APPDATA%` 时，启动脚本前设 `ARGUS_TEST_DATA_ROOT`（如 `target\test-profiles`），测试标识的目录就放在其下（`docs/development/environment.md`）。

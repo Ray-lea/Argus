@@ -12,7 +12,7 @@
 
 ## 渲染与帧诊断
 
-本节的变量输出渲染器的诊断，或切换渲染路径。用法与各事件的字段见[性能测量](performance.md#帧跟踪与资源计数)。
+本节的变量输出渲染器的诊断，或切换渲染路径。用法与各事件的字段见[帧跟踪与资源计数](performance/frame-trace.md)。
 
 > [!IMPORTANT]
 > 渲染开关仅用于定位与同一程序上的对照。正式的跨版本对照记录开关状态，并使用默认配置。
@@ -35,7 +35,7 @@
 | `ARGUS_GPUI_DISABLE_LINEAR_AREA` | 设置即开启 | 预乘曲线纹理改用逐纹素面积采样 |
 | `ARGUS_GPUI_DISABLE_SCROLL_COPY` | 设置即开启 | 关闭列表滚动与页面切换时对上一帧像素的复制 |
 | `ARGUS_GPUI_TEST_DYNAMIC_CHARTS` | 设置即开启 | 仅带 `--test` 的实例：强制使用局部重绘表面的路径 |
-| `ARGUS_TABLE_ROWS` | `component` | 表格的行改由组件库绘制，用于与 Argus 自行绘制的行逐像素对照，见[界面对照场景](performance.md#界面对照场景) |
+| `ARGUS_TABLE_ROWS` | `component` | 表格的行改由组件库绘制，用于与 Argus 自行绘制的行逐像素对照，见[表格行的两种绘制](performance/scenarios.md#表格行的两种绘制) |
 
 诊断变量输出的事件：
 
@@ -93,7 +93,7 @@
 > [!IMPORTANT]
 > 与旧构建对照时，不要设置 `ARGUS_TEST_DATA_ROOT`：引入这个变量之前的构建不认它。
 
-模拟快照下，表格导出结果由 `inspectLayout.tableCsv` 提供，见[布局检查的字段](gpui.md#布局检查的字段)。
+模拟快照下，表格导出结果由 `inspectLayout.tableCsv` 提供，见[布局检查的字段](gpui/test-controls.md#布局检查的字段)。
 
 ## 语言
 
@@ -109,7 +109,7 @@
 | `ARGUS_BUILD_ASSETS` | 含 `argus-taskmgr-launcher.exe` 与 `argus-taskmgr-recover.exe` 的目录 | 构建脚本从该目录把任务管理器辅助程序嵌入 `argus.exe` |
 | `ARGUS_NSIS` | `makensis.exe` 的路径 | 优先使用该 NSIS 编译器 |
 | `ARGUS_SIGNING_PRIVATE_KEY`、`ARGUS_SIGNING_PRIVATE_KEY_PASSWORD` | 更新签名私钥及其密码 | 仅发布工作流设置，见[提交与发布](release.md) |
-| `ARGUS_LAB_CONFIG` | `config.json` 的路径 | 虚拟机实验环境的配置位置，见[虚拟机交互对照](performance.md#虚拟机交互对照) |
+| `ARGUS_LAB_CONFIG` | `config.json` 的路径 | 虚拟机实验环境的配置位置，见[管理实验虚拟机](performance/vm.md#管理实验虚拟机) |
 | `ARGUS_DISPOSABLE_MACHINE` | `1` | 允许会改动所在机器的测试脚本在本机运行，仅用于实验虚拟机 |
 | `ARGUS_DOCS_DEV_REF` | Git 引用 | 官网的开发版文档取自该引用，由官网工作流设置 |
 | `ARGUS_NEXT_DIR` | 相对 `website/` 的目录 | 官网 Next.js 的输出目录，默认 `.next` |

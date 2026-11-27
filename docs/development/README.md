@@ -1,6 +1,6 @@
 # 开发指南
 
-本页列出开发环境的要求与常用命令，说明开发版的运行方式，并介绍验证采集数据与分析崩溃转储的工具。构建、测试、发布等专题见[本节的其他页面](#本节的其他页面)。
+本页列出开发环境的要求与常用命令，说明开发版的运行方式，并介绍验证采集数据与分析崩溃转储的工具。
 
 ## 环境要求
 
@@ -37,7 +37,7 @@ rustup override set stable-x86_64-pc-windows-msvc
 | `start.bat clean all` | 清空 Cargo 构建缓存 |
 | `node scripts/vendor-patches.mjs init` | 新克隆或换机后运行一次，建立 vendored GPUI 的上游分支 |
 
-`node scripts/vendor-patches.mjs init` 建立本地分支 `vendor-upstream`，即 vendored GPUI 的上游原样包，查看与升级 GPUI 补丁时使用。该分支不随克隆到来，见[新克隆与换机](gpui.md#新克隆与换机)。
+`node scripts/vendor-patches.mjs init` 建立本地分支 `vendor-upstream`，即 vendored GPUI 的上游原样包，查看与升级 GPUI 补丁时使用。该分支不随克隆到来，见[新克隆与换机](gpui/vendor.md#新克隆与换机)。
 
 ## 按改动运行检查
 
@@ -86,10 +86,14 @@ node scripts/dev-hold.mjs                          # 显示当前的暂停
 1. 设置了 `ARGUS_LOCALE` 时，按该变量。
 2. 未设置时，按 Windows 显示语言，用户设置优先于系统默认。
 
-中文显示为简体中文，其他语言显示为英文。例如，在英文 Windows 上使用中文提示，先在 PowerShell 中运行以下命令；cmd 中为 `set ARGUS_LOCALE=zh-CN`。
+中文显示为简体中文，其他语言显示为英文。例如，在英文 Windows 上使用中文提示，先在 PowerShell 或 cmd 中运行对应的命令：
 
-```powershell
+```powershell tab="PowerShell"
 $env:ARGUS_LOCALE = "zh-CN"
+```
+
+```bat tab="cmd"
+set ARGUS_LOCALE=zh-CN
 ```
 
 该变量不改变应用界面的语言：界面语言取自设置，未设置时取 Windows 显示语言。脚本生成的文件也不受影响，例如第三方许可声明、README 卡片与演示。批处理文件运行结束后，恢复控制台原来的代码页。
@@ -130,19 +134,6 @@ README 预览图在启用透明效果的 Windows 11 上生成。探针让测试�
 五条曲线回放 `tools/window-probe/fixtures/readme-trace.json` 中约每秒一次的 60 个连续读数，保留相对采样时间、CPU 与 GPU 占用、内存占比、磁盘读写速率和网络收发速率。内存占比换算为模拟机器的容量，进程表按模拟进程的占比分配负载。应用图标取自对应程序的 Windows 图标资源。
 
 界面更新后重新运行同一命令，即可用同一组数据对照新旧预览图。
-
-## 本节的其他页面
-
-- [GPUI 开发](gpui.md)：代码结构、平台边界、界面验证、测试控制与 vendored GPUI 的升级
-- [构建与缓存](build.md)：工具链与发行配置、构建脚本、程序资源与图标、开发配置与编译耗时、构建目录与缓存、quick 构建、独立工作树、依赖与版本号
-- [性能测量](performance.md)：测量条件、基线与对照方法
-- [环境变量](environment.md)：渲染诊断、窗口探针、测试实例与构建所用的变量
-- [多语言](i18n.md)：文案目录、用法、检查与术语表
-- [提交与发布](release.md)：持续集成、提交信息、版本号与发布步骤
-- [官网与发行镜像](website.md)：静态站构建、更新清单与域名邮箱
-- [Windows 代码签名](signing.md)：SignPath 配置、签名顺序与产物验证
-- [依赖与安全维护](security.md)：工具链版本、漏洞检查与上游修复
-- [文档规范](docs-style.md)：文档的分类、结构、写法、格式与检查
 
 ## 验证采集数据
 
@@ -263,7 +254,7 @@ cargo build -p argus --example startup_diagnostics --release
 - `gpu-windows`：使用 Windows 的 GPU 查询，不加载 NVML、ADL 与 IGCL。
 - `nvml`：仅初始化 NVIDIA SDK 并执行其既有的读取。
 
-工具不创建界面，不请求特权服务，也不启用网络 ETW。阶段记录同步写入磁盘；输出文件已存在时拒绝覆盖，缺少参数时不执行采集。界面侧的独立图形对照见 [GPUI 开发](gpui.md) 中的 `--fixture` 与 `--startup-trace`。
+工具不创建界面，不请求特权服务，也不启用网络 ETW。阶段记录同步写入磁盘；输出文件已存在时拒绝覆盖，缺少参数时不执行采集。界面侧的独立图形对照见[启动参数](gpui/verification.md#启动参数)中的 `--fixture` 与 `--startup-trace`。
 
 ## 分析崩溃转储
 

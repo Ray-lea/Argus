@@ -1,8 +1,8 @@
 # 架构
 
-本页概述 Argus 的分层、各目录的职责与数据流，并列出架构部分的其他页面。
+本页概述 Argus 的分层、各目录的职责与数据流。
 
-Argus 是 Windows（x64 与 ARM64）原生应用。`argus-core` 读取系统数据，`argus-app` 调度采样和管理设置，`src-gpui` 在桌面进程内以 GPUI Kit 绘制界面。
+Argus 是 Windows（x64 与 ARM64）原生应用。`argus-core` 读取系统数据，`argus-app` 调度采样和管理设置，`src-gpui` 在桌面进程内以 GPUI Kit 绘制界面。GPUI 的平台边界见开发指南的 [GPUI 开发](../development/gpui.md)。
 
 ## 目录与职责
 
@@ -27,15 +27,3 @@ Argus 是 Windows（x64 与 ARM64）原生应用。`argus-core` 读取系统数�
 ## 系统操作与权限
 
 文件占用查询和进程操作由宿主分配给工作线程。修改进程前核对 PID 和创建时间。需要内核权限的传感器读数经特权服务和固定的 PawnIO 模块获取，缺失值标为未知。
-
-## 本节的其他页面
-
-- [技术栈](tech-stack.md)：各层采用的语言、框架、平台接口与工具
-- [采集层 argus-core](core.md)：进程与系统采集、系统操作、历史记录、硬件数据与磁盘详情接口
-- [原生宿主](host.md)：启动与采样调度、窗口与快捷键、托盘与监控窗口、设置与数据、资源管理器重启与更新
-- [原生界面](frontend.md)：窗口布局、虚拟表格、图表、菜单、对话框与各页面
-- [特权服务](privileged-service.md)：安装与授权、受保护目录、IPC 边界、句柄查询、自动规则与内核传感器
-- [管理员启动](administrator-startup.md)：启动通道、权限切换、设置与维护、旧版本迁移
-- [系统任务管理器替换](task-manager.md)：启动路径、开启与恢复、原生回退、更新和卸载
-
-GPUI 的平台边界见开发指南的 [GPUI 开发](../development/gpui.md)。

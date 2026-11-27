@@ -1,6 +1,6 @@
 # 全局快捷键
 
-本页说明全局快捷键的注册与录制方式，以及 `RegisterHotKey` 在 Windows 11 上的实测行为。操作方法见[设置](../guide/settings.md#快捷键)。
+本页说明全局快捷键的注册与录制方式，以及 `RegisterHotKey` 在 Windows 11 上的实测行为。操作方法见[快捷键设置](../guide/settings/shortcuts.md)。
 
 ## 录制与注册
 

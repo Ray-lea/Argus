@@ -1,6 +1,6 @@
 # vendored GPUI 的代理须知
 
-沿用仓库根目录的规则。`gpui-pre` 与 `gpui-pre-windows` 是带本地补丁的上游快照，补丁逐项记录在各自的 `ARGUS-PATCHES.md`。本地分支 `vendor-upstream` 保存上游原样的包，`node scripts/vendor-patches.mjs stat` 列出各文件的补丁量，`diff [<文件>…]` 输出补丁；分支不存在时先运行 `node scripts/vendor-patches.mjs init`。用法见 `docs/development/gpui.md` 的“vendored GPUI 的补丁与升级”。
+沿用仓库根目录的规则。`gpui-pre` 与 `gpui-pre-windows` 是带本地补丁的上游快照，补丁逐项记录在各自的 `ARGUS-PATCHES.md`。本地分支 `vendor-upstream` 保存上游原样的包，`node scripts/vendor-patches.mjs stat` 列出各文件的补丁量，`diff [<文件>…]` 输出补丁；分支不存在时先运行 `node scripts/vendor-patches.mjs init`。用法见 `docs/development/gpui/vendor.md`。
 
 ## 改动补丁
 
@@ -13,7 +13,7 @@
 
 ## 上游原样分支
 
-- 补丁相对本地分支 `vendor-upstream` 计算（`node scripts/vendor-patches.mjs stat`、`diff`）。它不在远端，新克隆里没有：脚本提示缺少它时运行 `node scripts/vendor-patches.mjs init` 建立（需要联网），不要另找途径比较补丁。别人提交了上游升级后，脚本提示缺少新版本时运行 `import <版本>`。做法与原因见 `docs/development/gpui.md` 的“新克隆与换机”。
+- 补丁相对本地分支 `vendor-upstream` 计算（`node scripts/vendor-patches.mjs stat`、`diff`）。它不在远端，新克隆里没有：脚本提示缺少它时运行 `node scripts/vendor-patches.mjs init` 建立（需要联网），不要另找途径比较补丁。别人提交了上游升级后，脚本提示缺少新版本时运行 `import <版本>`。做法与原因见 `docs/development/gpui/vendor.md` 的“新克隆与换机”。
 
 ## 升级上游
 
@@ -21,5 +21,5 @@
 - 升级在 `target/worktrees/` 下的工作树里进行，验证后再快进 `main`：主工作区通常有开发脚本在监视，升级中途的源码会让它反复重建。
 - 用 `node scripts/vendor-patches.mjs upgrade <新版本>` 合并，不要手工从注册表缓存取包：它把新版本的原样包提交到 `vendor-upstream`（快照省略的文件继续省略，规则在 `scripts/lib/vendor-patches.mjs` 的 `VENDORED`），再在工作区逐文件三方合并，基准是旧版本的原样包，本方是这里的文件。没有补丁的文件直接取新版本；冲突的文件留下 `--diff3` 标记，无法自动处理的文件（上游删除了带补丁的文件等）列为待定。它要求 `vendor/` 没有未提交的改动，只把上游新增的文件登记为 `git add --intent-to-add`，不暂存内容也不提交；`vendor-upstream` 只在本地，不要推送。
 - 上游整体重写过的文件不要逐块解冲突：从上游的新文件出发，按 `ARGUS-PATCHES.md` 的记录与 `diff` 输出的旧补丁把补丁重新做一遍。合并后更新两份 `ARGUS-PATCHES.md` 的来源版本，并用 `stat` 核对补丁量与升级前相当。
-- 验证：用升级前后的构建各运行一次 `ui-smoke.mjs` 与 `ui-shots.mjs … localization.json`（`--executable` 指定旧构建），用 `node scripts/compare-shots.mjs` 逐像素对照，页面应当只在预期之处不同；再用 `node scripts/perf-ab.mjs` 对照新旧发布构建。按 `docs/development/gpui.md` 复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行和 Windows 渲染。
+- 验证：用升级前后的构建各运行一次 `ui-smoke.mjs` 与 `ui-shots.mjs … localization.json`（`--executable` 指定旧构建），用 `node scripts/compare-shots.mjs` 逐像素对照，页面应当只在预期之处不同；再用 `node scripts/perf-ab.mjs` 对照新旧发布构建。按 `docs/development/gpui/vendor.md` 的“验证升级”复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行和 Windows 渲染。
 - 升级后用 `cargo tree -p argus -i windows -e features` 核对没有多编一份 `windows`，并运行 `node scripts/notices.mjs`。

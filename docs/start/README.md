@@ -22,7 +22,7 @@ Argus 的目标是快速、现代、信息丰富。它覆盖系统任务管理�
 | 文件占用 | 把文件或文件夹拖入窗口，列出占用它的进程 | [文件占用](../guide/README.md#文件占用) |
 | 进程调整 | 设置优先级、开启效率模式，或添加在每次启动时套用的规则 | [进程页](../guide/processes.md) |
 | 托盘与监控 | 托盘图标实时显示 CPU 占用；桌面监控与任务栏监控常驻显示读数 | [常驻、托盘与快捷键](../guide/resident-mode.md) |
-| 替换任务管理器 | 替换系统任务管理器，按 Ctrl+Shift+Esc 打开 Argus | [设置](../guide/settings.md#替换系统任务管理器) |
+| 替换任务管理器 | 替换系统任务管理器，按 Ctrl+Shift+Esc 打开 Argus | [替换系统任务管理器](../guide/settings/task-manager.md) |
 | 应用内更新 | 稳定版与测试版两个通道，后台下载，可查看更新内容 | [安装与更新](install.md) |
 
 ## 工作方式
@@ -34,7 +34,7 @@ Argus 以标准权限即可查看全部进程。需要管理员权限的操作�
 - **特权服务**：可选安装的 Windows 服务，以标准权限运行 Argus 时代为执行需要管理员权限的操作。
 - **管理员运行**：以管理员身份启动 Argus。
 
-两种方式都可在首次启动的引导或**设置 → 权限**中开启，权限的范围见[权限](../guide/settings.md#权限)。
+两种方式都可在首次启动的引导或**设置 → 权限**中开启，权限的范围见[权限](../guide/settings/permissions.md)。
 
 CPU 的内部传感器（例如每个核心的温度与电压）需要开启**内核传感器**，它依赖特权服务与签名的 PawnIO 驱动。各类读数的来源与限制见[硬件数据的来源与限制](../guide/hardware-data.md)。
 
@@ -43,11 +43,3 @@ CPU 的内部传感器（例如每个核心的温度与电压）需要开启**�
 ## 许可与名称
 
 Argus 以 [GNU Affero General Public License 第 3 版或任何更高版本](../../LICENSE)（AGPL-3.0-or-later）发布，源代码托管在 [GitHub](https://github.com/Ray-lea/Argus)。名称取自希腊神话中的百眼巨人阿尔戈斯（Argus Panoptes）。
-
-## 下一步
-
-入门部分的其他页面：
-
-- [快速入门](quick-start.md)：安装 Argus，完成首次启动，熟悉常用页面。
-- [安装与更新](install.md)：系统要求、两种版本的区别，以及安装、更新与卸载。
-- [与系统任务管理器对比](comparison.md)：两者的共同功能与差异，以及各自适合的场合。

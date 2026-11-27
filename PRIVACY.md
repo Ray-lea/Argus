@@ -23,7 +23,7 @@ Argus 在本机处理进程、硬件、网络连接与资源占用数据，设�
 - QQ 群与 QQ 服务：[腾讯产品隐私政策入口](https://www.tencent.com/zh-cn/policies/)中的 QQ 隐私保护指引。
 - Telegram 频道：[Telegram 隐私政策](https://telegram.org/privacy)。手动访问其他网站时，适用该网站公布的隐私政策。
 
-操作说明见[更新设置](docs/guide/settings.md#更新)和[内核传感器](docs/guide/settings.md#内核传感器)。隐私问题可通过 [GitHub Issues](https://github.com/Ray-lea/Argus/issues) 联系维护者；涉及漏洞或敏感材料时使用[私密安全报告](https://github.com/Ray-lea/Argus/security/advisories/new)。
+操作说明见[更新设置](docs/guide/settings/updates.md)和[内核传感器](docs/guide/settings/kernel-sensors.md)。隐私问题可通过 [GitHub Issues](https://github.com/Ray-lea/Argus/issues) 联系维护者；涉及漏洞或敏感材料时使用[私密安全报告](https://github.com/Ray-lea/Argus/security/advisories/new)。
 
 ## English
 
@@ -46,4 +46,4 @@ Third-party services handle request data under their own privacy rules:
 - QQ groups and QQ services: the QQ Privacy Protection Guidelines linked from [Tencent's product policies](https://www.tencent.com/zh-cn/policies/).
 - Telegram channel: [Telegram Privacy Policy](https://telegram.org/privacy). Other websites opened manually apply their own published privacy policies.
 
-See [update settings](docs/guide/settings.md#更新) and [kernel sensors](docs/guide/settings.md#内核传感器) for instructions (in Chinese). Contact the maintainer through [GitHub Issues](https://github.com/Ray-lea/Argus/issues) about privacy, or use a [private security report](https://github.com/Ray-lea/Argus/security/advisories/new) for vulnerabilities or sensitive material.
+See [update settings](docs/guide/settings/updates.md) and [kernel sensors](docs/guide/settings/kernel-sensors.md) for instructions (in Chinese). Contact the maintainer through [GitHub Issues](https://github.com/Ray-lea/Argus/issues) about privacy, or use a [private security report](https://github.com/Ray-lea/Argus/security/advisories/new) for vulnerabilities or sensitive material.

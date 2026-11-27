@@ -49,6 +49,6 @@ Argus 适合以下场合：
 
 ## 替换系统任务管理器
 
-Argus 可以替换系统任务管理器：开启后，按 Ctrl+Shift+Esc 或从任务栏菜单打开任务管理器时，打开的是 Argus。替换需要特权服务，开启与恢复的方法见[替换系统任务管理器](../guide/settings.md#替换系统任务管理器)。
+Argus 可以替换系统任务管理器：开启后，按 Ctrl+Shift+Esc 或从任务栏菜单打开任务管理器时，打开的是 Argus。替换需要特权服务，开启与恢复的方法见[替换系统任务管理器](../guide/settings/task-manager.md)。
 
 替换后仍可临时打开系统任务管理器，也可随时恢复。替换的实现与卸载时的处理见[系统任务管理器替换](../architecture/task-manager.md)。

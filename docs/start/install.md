@@ -27,16 +27,20 @@ Argus 对系统与硬件的要求如下：
 - 特权服务与任务管理器替换随版本自动更新
 
 > [!WARNING]
-> 免安装版放在标准用户可写的文件夹中时，安装特权服务存在被替换提权的风险。需要特权服务时使用安装版，原因见[权限](../guide/settings.md#权限)。
+> 免安装版放在标准用户可写的文件夹中时，安装特权服务存在被替换提权的风险。需要特权服务时使用安装版，原因见[免安装版的风险](../guide/settings/permissions.md#免安装版的风险)。
 
 ## 下载与校验
 
 最新稳定版在[官网下载页](https://argustask.com/download/)下载，全部版本在 [GitHub Releases](https://github.com/Ray-lea/Argus/releases) 下载。每个版本附带 `SHA256SUMS.txt`，列出各发布文件的 SHA-256 校验值。
 
-在 PowerShell 中计算下载文件的 SHA-256，再与 `SHA256SUMS.txt` 中的值比较：
+按下载的是 x64 还是 ARM64 安装程序，在 PowerShell 中运行对应的命令计算 SHA-256，再与 `SHA256SUMS.txt` 中的值比较：
 
-```powershell
+```powershell tab="x64"
 Get-FileHash .\Argus_<版本>_x64-setup.exe -Algorithm SHA256
+```
+
+```powershell tab="ARM64"
+Get-FileHash .\Argus_<版本>_arm64-setup.exe -Algorithm SHA256
 ```
 
 ## 安装
@@ -59,7 +63,7 @@ Get-FileHash .\Argus_<版本>_x64-setup.exe -Algorithm SHA256
 - 更新通道分为稳定版与测试版。下载线路为**自动**时，依次尝试 GitHub、Argus 官方镜像与加速代理。
 - 安装包与更新内容都经过签名校验，校验不通过的安装包不会安装。
 
-更新的设置与下载线路见[更新](../guide/settings.md#更新)，从 0.x 版本升级时的数据处理见[旧版升级与数据](../guide/settings.md#旧版升级与数据)。
+更新的设置与下载线路见[更新](../guide/settings/updates.md)，从 0.x 版本升级时的数据处理见[旧版升级与数据](../guide/settings/updates.md#旧版升级与数据)。
 
 免安装版不能应用内更新，需要从官网或 GitHub 下载新版本，替换原来的程序文件。
 

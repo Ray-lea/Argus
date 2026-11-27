@@ -106,7 +106,7 @@ CPU 详情页保留当前启用期间已检测到的传感器字段、核心行�
 
 #### 磁盘温度
 
-由 Windows 自带存储驱动管理的 NVMe、SATA 与 ATA 磁盘提供温度时，Argus 显示温度。由厂商存储驱动（Intel RST／VMD、厂商 NVMe 或 RAID 驱动）管理的磁盘，以及 USB、SCSI、SAS 等总线上的磁盘不查询温度，依据见[采集层的 hardware/ 一节](../architecture/core.md#hardware)。
+由 Windows 自带存储驱动管理的 NVMe、SATA 与 ATA 磁盘提供温度时，Argus 显示温度。由厂商存储驱动（Intel RST／VMD、厂商 NVMe 或 RAID 驱动）管理的磁盘，以及 USB、SCSI、SAS 等总线上的磁盘不查询温度，依据见[存储驱动的限定](../architecture/core/hardware.md#存储驱动的限定)。
 
 已停转或断电的磁盘不查询温度，恢复工作后重新读取。机械硬盘仅在有读写后更新温度，空闲时保留上次读数，Windows 可按电源设置将其关闭。
 
@@ -140,7 +140,7 @@ CPU 详情页保留当前启用期间已检测到的传感器字段、核心行�
 - HDD：通电、启停、磁头加载、扇区异常和接口 CRC 计数。
 - SCSI／SAS：健康状态、温度与读写错误统计。
 
-SATA SSD 与 HDD 读数的型号与单位见[磁盘详情接口](../architecture/core.md#磁盘详情接口)。
+SATA SSD 与 HDD 读数的型号与单位见[ATA 健康数据](../architecture/core/disk-details.md#ata-健康数据)。
 
 打开详情页或单击**重新读取**时读取一次。上次读取后 Argus 未正常退出时，打开详情页不读取，由用户单击后读取，见[磁盘详情](performance.md#磁盘详情)。
 
@@ -224,7 +224,7 @@ CPU 占用统计已验证的 x64 系统包括 Windows 10 LTSC 2019（17763）、
 
 ARM64 系统使用 Windows 标准接口与特权服务，不提供内核传感器开关。
 
-PawnIO 的安装、官方 2.0.1／2.1.0 升级与启动均由手动开启触发，并在需要时请求 UAC 授权。完成开启后，应用重启及 Windows 重启会保留设置，通过特权服务恢复读取。具体温度、电压等项目取决于硬件与驱动接口。安装与故障处理见[内核传感器设置](settings.md#内核传感器)。
+PawnIO 的安装、官方 2.0.1／2.1.0 升级与启动均由手动开启触发，并在需要时请求 UAC 授权。完成开启后，应用重启及 Windows 重启会保留设置，通过特权服务恢复读取。具体温度、电压等项目取决于硬件与驱动接口。安装与故障处理见[内核传感器设置](settings/kernel-sensors.md)。
 
 ## 消费级硬件兼容范围
 
@@ -313,4 +313,4 @@ GPU 的 D3DKMT 性能查询和 IGCL 遥测暂时失败后会间隔 5 秒重试�
 - [PawnIO 模块](https://github.com/namazso/PawnIO.Modules)
 - [AMD Family 17h OSRR](https://www.amd.com/content/dam/amd/en/documents/processor-tech-docs/programmer-references/56255_OSRR.pdf)
 
-实现细节见[采集层 argus-core](../architecture/core.md)。
+实现细节见[硬件采集](../architecture/core/hardware.md)。

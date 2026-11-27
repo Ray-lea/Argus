@@ -482,7 +482,7 @@ GitHub Release 包含以下文件：
 安装程序经管理员授权安装到 Program Files，启动时校验系统原生架构，可原地升级旧版本。卸载时可一并移除特权服务，并检查系统任务管理器是否已恢复。
 
 > [!WARNING]
-> 免安装版放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[设置 → 权限](../guide/settings.md#权限)。
+> 免安装版放在标准用户可写的文件夹时，安装特权服务存在被替换提权的风险，见[免安装版的风险](../guide/settings/permissions.md#免安装版的风险)。
 
 免安装版与安装版使用相同的设置、历史和开机启动项，数据同样在 `%APPDATA%`、`%LOCALAPPDATA%`，但不能应用内更新。
 
@@ -531,7 +531,7 @@ GitHub 上最新稳定版的 Release 提供 `releases/latest/download/latest.jso
 
 发布稳定版时，两份清单都指向这个版本，随 Release 一起上传。发布预发布版本时，只把 `beta.json` 改为指向它，覆盖上传到当前最新的稳定版 Release。
 
-**下载线路**为**自动**时，依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings.md#更新)。
+**下载线路**为**自动**时，依次尝试 GitHub、Argus 官方镜像和加速代理。代理使用加前缀的 GitHub 地址，官方镜像使用版本化下载地址。见[设置 → 更新](../guide/settings/updates.md)。
 
 ### 测试版清单的写入
 

@@ -1,6 +1,6 @@
 // An isolated, non-activated test window driven by a steps file: captures,
 // recordings, contact sheets and checked inspections. Usage and step kinds:
-// docs/development/gpui.md#截图与录制.
+// docs/development/gpui/verification.md#截图与录制.
 //
 //   node scripts/ui-shots.mjs <label> <steps.json> [--live | --fixture PATH]
 //     [--release | --executable PATH] [--probe PATH] [--width W --height H]
@@ -214,7 +214,7 @@ try {
   child.stdin.write("stop\n");
   for (let i = 0; i < 400 && !exited; i++) await sleep(50);
   if (!exited) child.kill();
-  // `inspections` and `captures` first: what a reader looks up by name (docs/development/gpui.md).
+  // `inspections` and `captures` first: what a reader looks up by name (docs/development/gpui/verification.md#输出与结果).
   const record = { identifier, live, ...summary(steps, results), unsettled, results, failures, events, stderr: error, exitCode };
   writeFileSync(join(output, "results.json"), JSON.stringify(record, null, 2));
   if (exited) logs.push(...cleanupTestProfile(identifier, { logs: resolve(output, "logs") }));
