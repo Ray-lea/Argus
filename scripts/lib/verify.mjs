@@ -86,6 +86,11 @@ export function stepFilesFor(path) {
 
 const isRust = (path) => /\.rs$|(^|\/)Cargo\.toml$|^Cargo\.lock$|(^|\/)build\.rs$/.test(path);
 
+/** The documentation check itself (`pnpm docs:lint`): a change here lints every document. */
+const DOCS_LINT = /^scripts\/docs-lint\.mjs$|^scripts\/lib\/docs-lint\/|^\.markdownlint-cli2\.jsonc$|^\.autocorrectrc$|^\.autocorrectignore$/;
+/** Markdown the documentation check reads: not the agents' rules or the changelog. */
+const isDocument = (path) => /\.md$/.test(path) && !/(^|\/)AGENTS\.md$/.test(path) && !/^changelog\//.test(path);
+
 /**
  * The checks for `files` (paths relative to the repository, forward slashes),
  * in the order to run them: cheap and broad first. `dependents` maps a
@@ -104,6 +109,11 @@ export function plan(files, { dependents = {}, ui = true, stepNames = null } = {
 
   const biome = why((f) => /^(locales|resources)\//.test(f));
   add("biome", "pnpm", ["lint"], biome);
+  // The changed documents, or all of them when the check itself changed.
+  const documents = why(isDocument);
+  const docsLint = why((f) => DOCS_LINT.test(f));
+  if (docsLint.length) add("docs lint", "pnpm", ["docs:lint"], [...docsLint, ...documents]);
+  else add("docs lint", "pnpm", ["docs:lint", ...documents], documents);
   add("translations", "pnpm", ["i18n"], why((f) => /^locales\//.test(f) || f === "scripts/i18n.mjs" || f === "resources/locales.json"));
   add(
     "generated adapters",
@@ -111,7 +121,7 @@ export function plan(files, { dependents = {}, ui = true, stepNames = null } = {
     ["check:generated"],
     why((f) => ["src-gpui/src/commands.rs", "src-gpui/src/dispatch.rs", "scripts/native-dispatch.mjs"].includes(f)),
   );
-  const scripts = why((f) => /^scripts\/.*\.(mjs|ts)$/.test(f) || /^\.github\/workflows\//.test(f) || /^tools\/window-probe\/(steps|fixtures)\//.test(f));
+  const scripts = why((f) => /^scripts\/.*\.(mjs|ts)$/.test(f) || DOCS_LINT.test(f) || /^\.github\/workflows\//.test(f) || /^tools\/window-probe\/(steps|fixtures)\//.test(f));
   for (const file of scripts.filter((f) => /^scripts\/.*\.mjs$/.test(f))) add(`syntax ${file}`, "node", ["--check", file], [file]);
   add("script tests", "pnpm", ["test"], scripts);
   add("website", "pnpm", ["site:check"], why((f) => /^website\//.test(f)));

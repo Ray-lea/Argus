@@ -24,12 +24,13 @@
     "site:check": "pnpm --filter @argus/website run check",
     "check:generated": "node scripts/native-dispatch.mjs --check",
     "lint": "biome check locales resources",
+    "docs:lint": "node scripts/docs-lint.mjs",
     "format": "biome format --write locales resources",
     "i18n": "node scripts/i18n.mjs",
     "test": "node --test \"scripts/tests/*.test.mjs\" \"scripts/tests/*.test.ts\"",
     "test:startup": "node scripts/test-dev-startup.mjs",
     "test:hold": "node scripts/test-dev-hold.mjs",
-    "check": "pnpm lint && pnpm i18n && pnpm check:generated && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings && cargo test --workspace --target-dir target/rust-analyzer",
+    "check": "pnpm lint && pnpm docs:lint && pnpm i18n && pnpm check:generated && pnpm test && cargo fmt --all --check && cargo clippy --workspace --all-targets --target-dir target/rust-analyzer -- -D warnings && cargo test --workspace --target-dir target/rust-analyzer",
     "verify": "node scripts/verify.mjs",
     "check:arm64": "cargo clippy --workspace --all-targets --target aarch64-pc-windows-msvc --target-dir target/rust-analyzer -- -D warnings",
     "check:security": "pnpm audit --audit-level low && cargo audit",
@@ -37,6 +38,9 @@
     "release": "node scripts/release.mjs bump"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.7"
+    "@biomejs/biome": "^2.6.7",
+    "autocorrect-node": "^2.14.0",
+    "github-slugger": "2.0.0",
+    "markdownlint-cli2": "^0.24.2"
   }
 }

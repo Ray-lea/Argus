@@ -94,13 +94,28 @@ test("the lock file checks the whole workspace and the notices", () => {
   assert(find(result, "clippy").args.includes("--workspace"));
 });
 
-test("documents and workflows need no command, only a look", () => {
-  const result = plan(["docs/development/gpui.md", "AGENTS.md"]);
-  assert.deepEqual(result.checks, []);
+test("changed documents get the docs lint for those files; AGENTS.md, the changelog and workflows only a look", () => {
+  const result = plan(["docs/development/gpui.md", "AGENTS.md", "changelog/zh-CN.md", "README.md"]);
+  assert.deepEqual(names(result), ["docs lint"]);
+  assert.deepEqual(find(result, "docs lint").args, ["docs:lint", "docs/development/gpui.md", "README.md"]);
   assert.match(result.notes.join("\n"), /documents/);
+  const agents = plan(["AGENTS.md", "crates/argus-core/AGENTS.md"]);
+  assert.deepEqual(agents.checks, []);
+  assert.match(agents.notes.join("\n"), /documents/);
   const workflow = plan([".github/workflows/nightly.yml"]);
   assert.deepEqual(names(workflow), ["script tests"]);
   assert.match(workflow.notes.join("\n"), /workflows/);
+});
+
+test("a change to the docs lint itself lints every document and runs the script tests", () => {
+  const result = plan(["scripts/lib/docs-lint/rules/lead.mjs", "docs/guide/settings.md"]);
+  assert.deepEqual(names(result), ["docs lint", "syntax scripts/lib/docs-lint/rules/lead.mjs", "script tests"]);
+  assert.deepEqual(find(result, "docs lint").args, ["docs:lint"]);
+  for (const config of [".markdownlint-cli2.jsonc", ".autocorrectrc", ".autocorrectignore"]) {
+    const own = plan([config]);
+    assert.deepEqual(names(own), ["docs lint", "script tests"], config);
+    assert.deepEqual(find(own, "docs lint").args, ["docs:lint"], config);
+  }
 });
 
 test("changed paths come from git status, renamed files by their new name", () => {

@@ -1,0 +1,129 @@
+// markdownlint-cli2 for `pnpm docs:lint` (scripts/docs-lint.mjs), which names
+// the files itself; `globs` and `ignores` are what a bare markdownlint-cli2
+// checks and match scripts/lib/docs-lint/scope.mjs (a script test holds them
+// to it). The rules carry out docs/development/docs-style.md: change the two
+// together.
+{
+  "globs": ["docs/**/*.md", "README*.md", "PRIVACY.md", ".github/**/*.md"],
+  "ignores": ["**/AGENTS.md", "changelog/**", "vendor/**", "**/node_modules/**", "target/**", "website/content/**"],
+  "customRules": ["./scripts/lib/docs-lint/rules.mjs"],
+  "config": {
+    // Every rule not set below keeps markdownlint's default: each one backs a
+    // part of the style, and none reports anything on the pages without cause.
+    "default": true,
+
+    // Headings: ATX only, one title, no skipped levels, no punctuation at the
+    // end (including ? and ？), not twice on a page.
+    "MD003": { "style": "atx" },
+    "MD024": { "siblings_only": false },
+    "MD026": { "punctuation": ".,;:!?。，；：！？" },
+
+    // Lists: "-" bullets indented by two spaces, steps numbered 1. 2. 3.
+    "MD004": { "style": "dash" },
+    "MD007": { "indent": 2 },
+    "MD029": { "style": "ordered" },
+
+    // A paragraph is one line however long; argus-* rules count characters.
+    "MD013": false,
+    // Two trailing spaces are an invisible line break: the documents have none.
+    "MD009": { "br_spaces": 0 },
+
+    // HTML: links and anchors, keys, sub- and superscript. No <br>: lines do
+    // not break inside paragraphs or table cells.
+    "MD033": { "allowed_elements": ["a", "kbd", "sub", "sup"] },
+
+    // Code: fenced with backticks, always with a language.
+    "MD040": true,
+    "MD046": { "style": "fenced" },
+    "MD048": { "style": "backtick" },
+
+    // Bold with asterisks (italics are not used: argus-emphasis).
+    "MD049": { "style": "asterisk" },
+    "MD050": { "style": "asterisk" },
+
+    "MD035": { "style": "---" },
+    // Anchors on the same page; other pages' anchors are argus-links'.
+    "MD051": true,
+    // Link text names the target, never "here" or "more". The Chinese words are
+    // argus-links' prohibited_texts: MD059 drops every character outside ASCII
+    // before comparing, so a Chinese entry would match any Chinese link text.
+    "MD059": { "prohibited_texts": ["click here", "here", "link", "more"] },
+
+    // Tables: pipes at both ends, one space inside each cell, delimiter rows
+    // included (| --- |).
+    "MD055": { "style": "leading_and_trailing" },
+    "MD060": { "style": "compact" },
+
+    // A blank line between two quotes makes two alerts, which argus-alerts
+    // already reports as adjacent.
+    "MD028": false,
+    // Names of products in their own case are AutoCorrect's spellcheck (.autocorrectrc).
+    "MD044": false,
+
+    // The repository's rules (scripts/lib/docs-lint): `include` is where a rule
+    // applies, `exempt` lists pages (repository paths) left out while they are
+    // brought in line. Limits are those of docs/development/docs-style.md.
+    "argus-lead": { "include": ["docs/**"], "exempt": [], "maximum": 150 },
+    "argus-headings": { "include": ["docs/**"], "exempt": [], "levels": 4 },
+    "argus-paragraph-length": { "include": ["docs/**"], "exempt": [], "maximum": 250, "sentences": 6 },
+    "argus-sentence-length": { "include": ["docs/**"], "exempt": [], "maximum": 120 },
+    "argus-list-item-length": { "include": ["docs/**"], "exempt": [], "maximum": 200, "depth": 2 },
+    "argus-table-cell-length": { "include": ["docs/**"], "exempt": [], "maximum": 80 },
+    "argus-section-blocks": { "include": ["docs/**"], "exempt": [], "maximum": 8 },
+    "argus-alerts": { "include": ["docs/**"], "exempt": [], "sentences": 3 },
+    // An interface path in bold (with " → ") may run to path_maximum.
+    "argus-emphasis": { "include": ["docs/**"], "exempt": [], "maximum": 40, "path_maximum": 80 },
+    "argus-ui-path": { "include": ["docs/**"], "exempt": [] },
+    "argus-wording": {
+      "include": ["docs/**"],
+      "exempt": [],
+      // A word quoted on its own (“你”) is a mention and passes; `except` names
+      // longer words that contain a match and are fine.
+      "words": [
+        { "match": ["你们", "你", "您"], "message": "不用第二人称：改为“用户”，或省略主语", "except": ["迷你"] },
+        { "match": ["我们", "咱们"], "message": "不用第一人称：直接陈述" },
+        { "match": ["点击"], "message": "改为“单击”" },
+        { "match": ["其它"], "message": "改为“其他”" },
+        { "match": ["帐户", "帐号"], "message": "改为“账户”“账号”" },
+        { "match": ["请注意", "需要注意的是", "值得注意的是"], "message": "直接写出条件与结论，需要提醒时用告警块" },
+        { "match": ["搞定", "挺", "蛮", "啥", "其实", "基本上", "一下子", "几乎瞬间", "连不上", "的话"], "message": "口语：改用书面语，如“完成”“较”“可”“仅”“暂无”" },
+        { "match": ["Codex", "Claude"], "message": "给 AI 代理的说明写进对应目录的 AGENTS.md" },
+        { "match": ["……等", "…等"], "message": "省略号不与“等”连用" },
+        { "match": ["「", "」", "『", "』"], "message": "引号用“”，引号内再引用用‘’" }
+      ],
+      "patterns": [{ "regex": "([！？。，、；：])\\1+", "message": "不重复使用标点" }]
+    },
+    "argus-links": {
+      "include": ["docs/**", "README*.md", "PRIVACY.md", ".github/**"],
+      "exempt": [],
+      // Pages that link to the repository's files by relative path only.
+      "relative_only": ["docs/**"],
+      "prohibited_texts": ["这里", "此处", "点此", "链接", "更多"]
+    }
+  },
+  "overrides": [
+    {
+      // README files, the privacy policy and GitHub's community pages: the
+      // structure and link rules only. The README files open with a centered
+      // logo, badges in HTML and a tagline in bold.
+      "filter": ["README*.md", "PRIVACY.md", ".github/**/*.md"],
+      "combine": "merge",
+      "config": {
+        "MD033": false,
+        "MD036": false,
+        "MD041": false,
+        "argus-lead": false,
+        "argus-headings": false,
+        "argus-paragraph-length": false,
+        "argus-sentence-length": false,
+        "argus-list-item-length": false,
+        "argus-table-cell-length": false,
+        "argus-section-blocks": false,
+        "argus-alerts": false,
+        "argus-emphasis": false,
+        "argus-ui-path": false,
+        "argus-wording": false
+      }
+    }
+  ]
+}

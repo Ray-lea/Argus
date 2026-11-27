@@ -1,0 +1,16 @@
+# AutoCorrect reads only the documents `pnpm docs:lint` gives it
+# (AUTOCORRECT in scripts/lib/docs-lint/scope.mjs); everything else is
+# ignored here, so that a bare `autocorrect --lint` checks the same files,
+# except .github, which it skips as a hidden folder unless the files are
+# named. Same syntax as .gitignore.
+/*
+!/docs/
+!/README.md
+!/README.zh-TW.md
+!/PRIVACY.md
+!/.github/
+/.github/*
+!/.github/*.md
+/docs/**/*.*
+!/docs/**/*.md
+**/AGENTS.md

@@ -1,0 +1,45 @@
+# AutoCorrect for `pnpm docs:lint` (scripts/docs-lint.mjs): spaces between
+# Chinese and Latin text, full- and half-width punctuation, and the case of
+# proper names (docs/development/docs-style.md#中英文排版). The script names
+# the files (scripts/lib/docs-lint/scope.mjs); .autocorrectignore keeps a bare
+# `autocorrect --lint` to the same ones. Levels: 0 off, 1 error, 2 warning;
+# the rules left out keep AutoCorrect's defaults.
+rules:
+  # Only the names listed under spellcheck below.
+  spellcheck: 1
+context:
+  # Comments and strings in code blocks stay as written.
+  codeblock: 0
+textRules:
+  # Key combinations take no spaces around "+" (docs-style.md#格式语义), also
+  # when the key is followed by Chinese text, where AutoCorrect would add a
+  # space after "+". An entry matches part of a run of text without spaces
+  # and leaves that whole run unchecked.
+  "+滚轮": 0
+  "+滾輪": 0
+  "+字母": 0
+  "+数字": 0
+  "+左": 0
+  "+右": 0
+  "+单击": 0
+  "+拖动": 0
+spellcheck:
+  # Proper names in their official case, matched as whole words; code, paths
+  # and addresses are not read.
+  words:
+    - GitHub
+    - PowerShell
+    - NVMe
+    - Windows
+    - JavaScript
+    - TypeScript
+    - Node.js
+    - NVIDIA
+    - macOS
+    - Cloudflare
+    - WinGet
+    - SignPath
+    - PawnIO
+    - IPv4
+    - IPv6
+    - UTF-8

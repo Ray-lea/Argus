@@ -3,3 +3,7 @@ packages:
 # fumadocs-mdx loads esbuild through its platform package; the install script is not needed.
 allowBuilds:
   esbuild: false
+# markdownlint parses math through micromark-extension-math and never renders
+# it with KaTeX; 0.18.2 fixes GHSA-238p-pmpm-9mq7, which pnpm audit reports.
+overrides:
+  katex: ^0.18.2
