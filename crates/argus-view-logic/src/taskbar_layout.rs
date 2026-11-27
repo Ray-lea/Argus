@@ -20,7 +20,9 @@
 //! shows labels.
 //!
 //! A vertical taskbar stacks the readings down its width instead, in each
-//! of the four styles (`lay_out_column`, in `column`).
+//! of the four styles (`lay_out_column`, in `column`). Where the taskbar
+//! has less room than the readings take, only the first ones that fit show
+//! (`lay_out_within`, and the room `lay_out_column` takes).
 //!
 //! The layout measures text through `Fonts`; the interface sets and draws it
 //! with DirectWrite (`shell/taskbar_draw.rs` in `src-gpui`, its `Painter`).
@@ -378,6 +380,22 @@ pub fn lay_out(
     fonts: &impl Fonts,
     reserve: Option<(&mut Reserve, Instant)>,
 ) -> Layout {
+    lay_out_within(groups, height, scale, style, fonts, reserve, i32::MAX)
+}
+
+/// Lays out `groups` as `lay_out` does, showing only the first readings
+/// that fit in `room` pixels along the taskbar: whole columns of labels,
+/// whole readings in the other styles. None fitting leaves the layout empty
+/// (no width).
+pub fn lay_out_within(
+    groups: &[Group],
+    height: i32,
+    scale: f32,
+    style: Style,
+    fonts: &impl Fonts,
+    reserve: Option<(&mut Reserve, Instant)>,
+    room: i32,
+) -> Layout {
     let style = if height < (36. * scale).round() as i32 {
         Style::Labels
     } else {
@@ -389,18 +407,52 @@ pub fn lay_out(
         font: font_size(scale),
         ..Layout::default()
     };
+    let mut ends = Vec::new();
     layout.width = match style {
-        Style::Labels => labels(&mut layout, groups, scale, fonts, reserve),
-        Style::Curves => curves(&mut layout, groups, scale, fonts),
-        Style::Capsules => capsules(&mut layout, groups, scale, fonts, reserve),
-        Style::Figures => figures(&mut layout, groups, scale, fonts, reserve),
+        Style::Labels => labels(&mut layout, &mut ends, groups, scale, fonts, reserve),
+        Style::Curves => curves(&mut layout, &mut ends, groups, scale, fonts),
+        Style::Capsules => capsules(&mut layout, &mut ends, groups, scale, fonts, reserve),
+        Style::Figures => figures(&mut layout, &mut ends, groups, scale, fonts, reserve),
     };
+    // The padding after the last reading, as after any.
+    let Some(&(last, ..)) = ends.last() else {
+        return layout;
+    };
+    let pad = layout.width - last;
+    let fit = ends
+        .iter()
+        .take_while(|(end, ..)| end + pad <= room)
+        .count();
+    match fit.checked_sub(1).map(|index| ends[index]) {
+        Some((end, runs, tiles, pills)) => {
+            layout.runs.truncate(runs);
+            layout.tiles.truncate(tiles);
+            layout.pills.truncate(pills);
+            layout.width = end + pad;
+        }
+        None => {
+            layout.runs.clear();
+            layout.tiles.clear();
+            layout.pills.clear();
+            layout.width = 0;
+        }
+    }
     layout
+}
+
+/// Where a column of labels, or a reading in the other styles, ends along
+/// the taskbar, and how many runs, tiles and capsules were laid out by then.
+type End = (i32, usize, usize, usize);
+
+/// Notes that a column or a reading ends at `x`.
+fn ended(ends: &mut Vec<End>, x: i32, layout: &Layout) {
+    ends.push((x, layout.runs.len(), layout.tiles.len(), layout.pills.len()));
 }
 
 /// Labels: names and values in columns of two rows; the layout's width.
 fn labels(
     layout: &mut Layout,
+    ends: &mut Vec<End>,
     groups: &[Group],
     scale: f32,
     fonts: &impl Fonts,
@@ -498,13 +550,20 @@ fn labels(
             });
         }
         x += width;
+        ended(ends, x, layout);
     }
     if columns.is_empty() { 0 } else { x + pad }
 }
 
 /// Curves: a tile per reading, its name and value over its recent curve; a
 /// pair of rates in two rows over theirs. The layout's width.
-fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts) -> i32 {
+fn curves(
+    layout: &mut Layout,
+    ends: &mut Vec<End>,
+    groups: &[Group],
+    scale: f32,
+    fonts: &impl Fonts,
+) -> i32 {
     let px = |logical: f32| (logical * scale).round() as i32;
     let (small, body) = (px(12.), px(14.));
     let tall = px(40.).min(layout.height);
@@ -605,6 +664,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
             paint,
         });
         x += width;
+        ended(ends, x, layout);
     }
     if layout.tiles.is_empty() { 0 } else { x + pad }
 }
@@ -615,6 +675,7 @@ fn curves(layout: &mut Layout, groups: &[Group], scale: f32, fonts: &impl Fonts)
 /// layout's width.
 fn capsules(
     layout: &mut Layout,
+    ends: &mut Vec<End>,
     groups: &[Group],
     scale: f32,
     fonts: &impl Fonts,
@@ -713,6 +774,7 @@ fn capsules(
             dot: dot_at,
             paint: Paint::Tone(group.tone),
         });
+        ended(ends, x, layout);
     }
     if layout.pills.is_empty() { 0 } else { x + pad }
 }
@@ -723,6 +785,7 @@ fn capsules(
 /// width.
 fn figures(
     layout: &mut Layout,
+    ends: &mut Vec<End>,
     groups: &[Group],
     scale: f32,
     fonts: &impl Fonts,
@@ -819,6 +882,7 @@ fn figures(
                 x += width;
             }
         }
+        ended(ends, x, layout);
     }
     if any { x + pad } else { 0 }
 }
@@ -826,7 +890,8 @@ fn figures(
 #[cfg(test)]
 mod tests {
     use super::{
-        Cell, Fonts, Group, Paint, Run, Shade, Tone, columns, font_size, lay_out, size_scale, split,
+        Cell, Fonts, Group, Paint, Run, Shade, Tone, columns, font_size, lay_out, lay_out_within,
+        size_scale, split,
     };
     use argus_app::settings::TaskbarStyle as Style;
 
@@ -904,6 +969,44 @@ mod tests {
         runs.iter()
             .filter(|run| run.value && run.shade == Shade::Full)
             .collect()
+    }
+
+    #[test]
+    fn only_the_first_readings_that_fit_the_room_show() {
+        let groups = vec![
+            single("CPU", "1%"),
+            single("MEM", "3%"),
+            rates("1 KB/s", "2 KB/s"),
+        ];
+        for style in [
+            Style::Labels,
+            Style::Curves,
+            Style::Capsules,
+            Style::Figures,
+        ] {
+            let whole = lay_out(&groups, 48, 1., style, &Even, None);
+            // A pixel short: the rates go, with their tile or capsule, and
+            // the padding stays.
+            let short = lay_out_within(&groups, 48, 1., style, &Even, None, whole.width - 1);
+            assert!(short.width > 0 && short.width < whole.width, "{style:?}");
+            assert_eq!(short.runs, whole.runs[..short.runs.len()], "{style:?}");
+            assert!(short.runs.iter().all(|run| run.text != "↓"), "{style:?}");
+            assert!(short.runs.iter().any(|run| run.text == "MEM"), "{style:?}");
+            assert_eq!(short.tiles.len(), whole.tiles.len().min(2), "{style:?}");
+            assert_eq!(short.pills.len(), whole.pills.len().min(2), "{style:?}");
+            // Its own width holds it all; too little for one, none.
+            assert_eq!(
+                lay_out_within(&groups, 48, 1., style, &Even, None, whole.width),
+                whole
+            );
+            let none = lay_out_within(&groups, 48, 1., style, &Even, None, 20);
+            assert!(none.width == 0 && none.runs.is_empty(), "{style:?}");
+        }
+        // Labels keep a column whole: CPU and MEM go together.
+        let labels = lay_out(&groups, 48, 1., Style::Labels, &Even, None);
+        let first = lay_out_within(&groups, 48, 1., Style::Labels, &Even, None, 8 + 77 + 8);
+        assert_eq!((first.width, first.runs.len()), (8 + 77 + 8, 4));
+        assert!(labels.width > first.width);
     }
 
     #[test]

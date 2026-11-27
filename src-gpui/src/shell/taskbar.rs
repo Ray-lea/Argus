@@ -21,7 +21,9 @@
 //!
 //! Windows 11 draws the taskbar's buttons in content of its own; the monitor
 //! lies over its free space beside the tray, or at its start, past the
-//! widgets button. Windows 10 gives the space before the tray to the task
+//! widgets button. Where the buttons leave less room there than the
+//! readings take, only the first readings that fit show, reckoned from the
+//! start button's place (`rooms`). Windows 10 gives the space before the tray to the task
 //! buttons (`MSTaskSwWClass`): the monitor shortens them by its own length
 //! and gives it back when it goes. The shell may lengthen them again (when a
 //! window opens, say); the next check shortens them once more.
@@ -31,7 +33,7 @@
 //! activation (`--test`); for displays a test names (`displays::set_test`),
 //! one stand-in each, stacked in from the edge of the primary display that
 //! the test puts them on (`set_test_edge`, the bottom unless it says).
-use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out, lay_out_column};
+use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out_column, lay_out_within};
 use super::tray_anchor::Edge;
 use crate::settings::{TaskbarPlace, TaskbarStyle};
 use std::cell::RefCell;
@@ -879,46 +881,32 @@ impl Worker {
         let primary = self.host.as_ref().is_none_or(|host| host.primary);
         let geometry = Geometry::read(host, bar, scale, stand_in, primary);
         let now = Instant::now();
-        let (layout, room) = if vertical {
-            // The first room down the taskbar that holds a reading, with
-            // the readings that fit it.
-            let found = rooms(&geometry, state.place).into_iter().find_map(|room| {
-                let layout = lay_out_column(
-                    &state.groups,
-                    width,
-                    scale,
-                    state.style,
-                    painter,
-                    Some((&mut self.reserve, now)),
-                    room.end - room.start,
-                );
-                (layout.width > 0).then_some((layout, Some(room)))
-            });
-            let Some(found) = found else {
-                self.detach();
-                return;
-            };
-            found
-        } else {
+        // The first room along the taskbar that holds a reading, with the
+        // readings that fit it.
+        let found = rooms(&geometry, state.place).into_iter().find_map(|room| {
+            let (groups, style) = (&state.groups, state.style);
             let reserve = Some((&mut self.reserve, now));
-            let layout = lay_out(&state.groups, height, scale, state.style, painter, reserve);
-            (layout, None)
-        };
-        if layout.width <= 0 || layout.height <= 0 {
+            let length = room.end - room.start;
+            let layout = if vertical {
+                lay_out_column(groups, width, scale, style, painter, reserve, length)
+            } else {
+                lay_out_within(groups, height, scale, style, painter, reserve, length)
+            };
+            (layout.width > 0 && layout.height > 0).then_some((layout, room))
+        });
+        let Some((layout, room)) = found else {
             self.detach();
             return;
-        }
+        };
         let length = if vertical {
             layout.height
         } else {
             layout.width
         };
-        let (x, y) = match (self.squeeze_for(&geometry, length), room) {
-            (Some(at), Some(_)) => (0, at),
-            (Some(at), None) => (at, 0),
-            (None, Some(room)) => (0, room.at(length)),
-            (None, None) => (place(&geometry, length, state.place), 0),
-        };
+        let at = self
+            .squeeze_for(&geometry, length)
+            .unwrap_or_else(|| room.at(length));
+        let (x, y) = if vertical { (0, at) } else { (at, 0) };
         let placed = (x, y, layout.width, layout.height);
         let on_top = unsafe { GetWindow(host, GW_CHILD) }.ok() == Some(window);
         if self.placed != Some(placed) || !on_top {
@@ -1175,8 +1163,8 @@ pub(crate) struct Geometry {
     /// taskbar, turned on and not disabled by group policy): at the start
     /// of a centred taskbar, beside the tray otherwise.
     pub widgets: bool,
-    /// The start button down a vertical taskbar, screen pixels: the shell's
-    /// `Start` window, which keeps the button's place though hidden.
+    /// The start button, screen pixels: the shell's `Start` window, which
+    /// keeps the button's place though hidden.
     pub start: Option<[i32; 4]>,
     pub scale: f32,
     pub stand_in: bool,
@@ -1204,7 +1192,7 @@ impl Geometry {
             windows11: shell || stand_in,
             centred: stand_in || (shell && explorer_flag(w!("TaskbarAl")).unwrap_or(true)),
             widgets: shell && primary && widgets_shown(),
-            start: vertical.then(|| child(w!("Start"))).flatten(),
+            start: child(w!("Start")),
             scale,
             stand_in,
         }
@@ -1216,43 +1204,20 @@ impl Geometry {
     }
 }
 
-/// The monitor's left edge in the taskbar's client pixels, `width` wide,
-/// along a horizontal taskbar.
-pub(crate) fn place(geometry: &Geometry, width: i32, place: TaskbarPlace) -> i32 {
-    let px = |logical: f32| (logical * geometry.scale).round() as i32;
-    let [left, _, right, _] = geometry.bar;
-    // The widgets button with the weather beside it.
-    let widgets = if geometry.widgets { px(160.) } else { 0 };
-    if place == TaskbarPlace::Start && geometry.windows11 && geometry.centred {
-        return px(4.) + widgets;
-    }
-    let end = match geometry.tray {
-        Some(tray) => tray[0] - left - px(4.),
-        // The clock and a few icons.
-        None => right - left - px(160.),
-    };
-    let end = if geometry.windows11 && !geometry.centred {
-        end - widgets
-    } else {
-        end
-    };
-    (end - width).max(0)
-}
-
-/// Room down a vertical taskbar: from `start` to `end` along it, in its
-/// client pixels; the monitor lies at its end (above the tray) when `low`,
-/// else at its start.
+/// Room along the taskbar: from `start` to `end` in its client pixels
+/// (across a horizontal taskbar, down a vertical one); the monitor lies at
+/// its end (by the tray) when `at_end`, else at its start.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Room {
     pub start: i32,
     pub end: i32,
-    pub low: bool,
+    pub at_end: bool,
 }
 
 impl Room {
     /// Where a monitor `length` long starts in it.
     fn at(&self, length: i32) -> i32 {
-        if self.low {
+        if self.at_end {
             self.end - length
         } else {
             self.start
@@ -1260,48 +1225,64 @@ impl Room {
     }
 }
 
-/// The rooms down a vertical taskbar the monitor may take, in the order
-/// tried, each holding the readings that fit it: with Windows 11's buttons
-/// centred, the free space before them (the taskbar's top, `Start`) or
-/// after them (above the tray), the one asked for first and the other
-/// should it hold no reading; else above the tray, past the start button.
-/// Centred buttons lie about the taskbar's middle as far as the tray lets
-/// them, as long a space after them as before them, none once the tray
-/// pushes them. Without the start button known, a room reaches the tray.
+/// The rooms along the taskbar the monitor may take, in the order tried,
+/// each holding the readings that fit it. With Windows 11's buttons
+/// centred: the free space before them (the taskbar's start, past the
+/// widgets button: `TaskbarPlace::Start`) and after them (by the tray), the
+/// one asked for first and the other should it hold no reading. Centred
+/// buttons lie about the taskbar's middle as far as the tray lets them, as
+/// long a space after them as before them from the start button on, none
+/// once the tray pushes them. Otherwise by the tray, past the start button
+/// (Windows 10's task buttons make room of their own: `squeeze_for`).
+/// Without the start button known, a room reaches the tray, or the
+/// taskbar's start.
 pub(crate) fn rooms(geometry: &Geometry, place: TaskbarPlace) -> Vec<Room> {
     let px = |logical: f32| (logical * geometry.scale).round() as i32;
-    let [_, top, _, bottom] = geometry.bar;
+    let vertical = geometry.vertical();
+    let axis = usize::from(vertical);
+    let from = geometry.bar[axis];
+    let length = geometry.bar[axis + 2] - from;
     let gap = px(4.);
-    // Where the tray starts; another display's taskbar keeps its clock
-    // there, two lines and the desktop button.
-    let tray = geometry
-        .tray
-        .map_or(bottom - top - px(72.), |tray| tray[1] - top);
-    // The widgets button, a button high: at the top of a centred taskbar,
-    // by the tray otherwise.
-    let widgets = if geometry.widgets { px(48.) } else { 0 };
-    let start = geometry.start.map(|start| (start[1] - top, start[3] - top));
+    // Where the room by the tray ends: a gap before it, or, on another
+    // display's taskbar, before the clock (with a few icons beside it along
+    // a horizontal taskbar, its two lines and the desktop button down a
+    // vertical one).
+    let tray = geometry.tray.map_or_else(
+        || length - if vertical { px(72.) } else { px(160.) },
+        |tray| tray[axis] - from - gap,
+    );
+    // The widgets button: the weather beside it along a horizontal
+    // taskbar, a button high down a vertical one; at the start of a
+    // centred taskbar, by the tray otherwise.
+    let widgets = match (geometry.widgets, vertical) {
+        (false, _) => 0,
+        (true, false) => px(160.),
+        (true, true) => px(48.),
+    };
+    let start = geometry
+        .start
+        .map(|start| (start[axis] - from, start[axis + 2] - from));
     if !(geometry.windows11 && geometry.centred) {
         return vec![Room {
-            start: start.map_or(0, |(_, end)| end) + gap,
-            end: tray - gap - widgets,
-            low: true,
+            start: start.map_or(0, |(_, end)| end + gap),
+            end: tray - widgets,
+            at_end: true,
         }];
     }
-    let upper = Room {
+    let before = Room {
         start: gap + widgets,
-        end: start.map_or(tray, |(start, _)| start) - gap,
-        low: false,
+        end: start.map_or(tray, |(start, _)| start - gap),
+        at_end: false,
     };
-    let lower = Room {
-        start: start.map_or(0, |(start, _)| bottom - top - start) + gap,
-        end: tray - gap,
-        low: true,
+    let after = Room {
+        start: start.map_or(0, |(start, _)| length - start + gap),
+        end: tray,
+        at_end: true,
     };
     if place == TaskbarPlace::Start {
-        vec![upper, lower]
+        vec![before, after]
     } else {
-        vec![lower, upper]
+        vec![after, before]
     }
 }
 
@@ -1440,7 +1421,7 @@ fn widgets_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Geometry, Room, place, rooms, unsqueezed, widgets_allowed};
+    use super::{Geometry, Room, rooms, unsqueezed, widgets_allowed};
     use crate::settings::TaskbarPlace;
 
     #[test]
@@ -1490,23 +1471,35 @@ mod tests {
         }
     }
 
+    /// Where a monitor `length` long goes along the taskbar: in the first
+    /// room that holds it.
+    fn place(geometry: &Geometry, length: i32, place: TaskbarPlace) -> Option<i32> {
+        rooms(geometry, place)
+            .into_iter()
+            .find(|room| room.end - room.start >= length)
+            .map(|room| room.at(length))
+    }
+
     #[test]
     fn the_monitor_sits_beside_the_tray_or_at_the_start() {
         let g = geometry();
         assert!(!g.vertical());
-        assert_eq!(place(&g, 200, TaskbarPlace::Tray), 2047 - 4 - 200);
-        assert_eq!(place(&g, 200, TaskbarPlace::Start), 4);
+        assert_eq!(place(&g, 200, TaskbarPlace::Tray), Some(2047 - 4 - 200));
+        assert_eq!(place(&g, 200, TaskbarPlace::Start), Some(4));
         // The widgets button takes the start of a centred taskbar…
         let widgets = Geometry { widgets: true, ..g };
-        assert_eq!(place(&widgets, 200, TaskbarPlace::Start), 164);
-        assert_eq!(place(&widgets, 200, TaskbarPlace::Tray), 1843);
+        assert_eq!(place(&widgets, 200, TaskbarPlace::Start), Some(164));
+        assert_eq!(place(&widgets, 200, TaskbarPlace::Tray), Some(1843));
         // …and the end of one whose buttons start at the left, where the
         // start belongs to them.
         let left = Geometry {
             centred: false,
             ..widgets
         };
-        assert_eq!(place(&left, 200, TaskbarPlace::Start), 2047 - 4 - 160 - 200);
+        assert_eq!(
+            place(&left, 200, TaskbarPlace::Start),
+            Some(2047 - 4 - 160 - 200)
+        );
         // Windows 10 always puts it beside the tray.
         let ten = Geometry {
             windows11: false,
@@ -1514,7 +1507,7 @@ mod tests {
             widgets: false,
             ..g
         };
-        assert_eq!(place(&ten, 200, TaskbarPlace::Start), 1843);
+        assert_eq!(place(&ten, 200, TaskbarPlace::Start), Some(1843));
     }
 
     #[test]
@@ -1525,11 +1518,47 @@ mod tests {
             scale: 1.5,
             ..geometry()
         };
-        assert_eq!(place(&g, 300, TaskbarPlace::Tray), 1920 - 240 - 300);
-        // A tray outside the taskbar does not count.
+        assert_eq!(place(&g, 300, TaskbarPlace::Tray), Some(1920 - 240 - 300));
+        // Longer than the taskbar has room for: nowhere.
+        assert_eq!(place(&g, 5000, TaskbarPlace::Tray), None);
+    }
+
+    #[test]
+    fn centred_buttons_leave_as_much_room_after_them_as_before() {
+        // The shell's start button at 796 on a 2560 px taskbar: its
+        // buttons ended at 1765, the mirror of where they start.
+        let g = Geometry {
+            start: Some([796, 1392, 841, 1440]),
+            ..geometry()
+        };
+        let before = Room {
+            start: 4,
+            end: 792,
+            at_end: false,
+        };
+        let after = Room {
+            start: 2560 - 796 + 4,
+            end: 2043,
+            at_end: true,
+        };
+        assert_eq!(rooms(&g, TaskbarPlace::Start), [before, after]);
+        assert_eq!(rooms(&g, TaskbarPlace::Tray), [after, before]);
+        // Beside the tray while it fits there, else at the start.
+        assert_eq!(place(&g, 200, TaskbarPlace::Tray), Some(1843));
+        assert_eq!(place(&g, 768, TaskbarPlace::Tray), Some(4));
+        // Buttons that start at the left: past the start button.
+        let left = Geometry {
+            centred: false,
+            start: Some([12, 1392, 57, 1440]),
+            ..g
+        };
         assert_eq!(
-            place(&Geometry { tray: None, ..g }, 5000, TaskbarPlace::Tray),
-            0
+            rooms(&left, TaskbarPlace::Start),
+            [Room {
+                start: 61,
+                end: 2043,
+                at_end: true
+            }]
         );
     }
 
@@ -1548,14 +1577,14 @@ mod tests {
         let top = Room {
             start: 4,
             end: 157,
-            low: false,
+            at_end: false,
         };
         // No room above the tray: as much after the buttons as before them
         // would reach past it.
         let pushed = Room {
             start: 1440 - 161 + 4,
             end: 920,
-            low: true,
+            at_end: true,
         };
         assert_eq!(rooms(&g, TaskbarPlace::Start), [top, pushed]);
         assert_eq!(rooms(&g, TaskbarPlace::Tray), [pushed, top]);
@@ -1592,7 +1621,7 @@ mod tests {
         let only = Room {
             start: 45,
             end: 920 - 48,
-            low: true,
+            at_end: true,
         };
         assert_eq!(rooms(&from_top, TaskbarPlace::Start), [only]);
         // Another display's taskbar, without a tray, leaves the clock its
@@ -1607,9 +1636,9 @@ mod tests {
         assert_eq!(
             rooms(&secondary, TaskbarPlace::Tray)[0],
             Room {
-                start: 6,
-                end: 1440 - 108 - 6,
-                low: true
+                start: 0,
+                end: 1440 - 108,
+                at_end: true
             }
         );
     }
