@@ -63,7 +63,12 @@ export function GET() {
     ...stable.nav.flatMap((group) => [
       "## " + group.label,
       "",
-      ...group.items.map((item) => `- [${item.label}](${markdown(item.path)})` + (item.note ? ": " + item.note : "")),
+      ...group.items.flatMap((item) => [
+        `- [${item.label}](${markdown(item.path)})` + (item.note ? ": " + item.note : ""),
+        ...(item.children ?? []).map(
+          (child) => `  - [${child.label}](${markdown(child.path)})` + (child.note ? ": " + child.note : ""),
+        ),
+      ]),
       "",
     ]),
     "## Optional",

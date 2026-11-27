@@ -21,7 +21,12 @@ export interface DocLink {
   file: string;
   path: string;
   note: string;
+  /** The page's own pages, a folder in the sidebar (scripts/content.mjs). */
+  children?: DocLink[];
 }
+
+/** A chapter's pages in reading order, each followed by its own pages. */
+export const chapterPages = (items: DocLink[]) => items.flatMap((item) => [item, ...(item.children ?? [])]);
 interface Snapshot {
   softwareLanguages: string[];
   release: {

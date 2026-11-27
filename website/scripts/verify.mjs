@@ -203,14 +203,16 @@ async function local() {
   const sitemap = await readFile(join(dir, "sitemap.xml"), "utf8");
   for (const edition of editions) {
     const index = pages.get(edition.base.slice(1) + "index.html");
-    // The sidebar folds each chapter into a folder and opens the folder of the
-    // page being read; the documentation home links every chapter's first page.
-    const chapterStart = new Map(
-      edition.nav.flatMap((group) => group.items.map((item) => [item.path, group.items[0].path])),
+    // The sidebar lists every chapter's pages; a page with pages of its own is a
+    // folder that opens on its page, so those pages are linked from there.
+    const openedFrom = new Map(
+      edition.nav.flatMap((group) =>
+        group.items.flatMap((item) => (item.children ?? []).map((child) => [child.path, item.path])),
+      ),
     );
     const linked = (url) =>
       index.links.includes(url) ||
-      Boolean(pages.get(chapterStart.get(url)?.slice(1) + "index.html")?.links.includes(url));
+      Boolean(pages.get(openedFrom.get(url)?.slice(1) + "index.html")?.links.includes(url));
     for (const [file, url] of Object.entries(edition.routes)) {
       const page = pages.get(url.slice(1) + "index.html");
       assert(page, "Missing document " + url);

@@ -1,5 +1,5 @@
 import { markdownBody } from "@/lib/docs";
-import { about, origin, stable } from "@/lib/site";
+import { about, chapterPages, origin, stable } from "@/lib/site";
 import { pathOf, source } from "@/lib/source";
 
 export const dynamic = "force-static";
@@ -16,7 +16,7 @@ export async function GET() {
   const parts = [
     `# Argus documentation (${stable.label})\n\n> ${about.en.description}\n\nThe documentation is written in Chinese. 以下为 Argus 稳定版文档全文。`,
   ];
-  for (const item of stable.nav.flatMap((group) => group.items)) {
+  for (const item of stable.nav.flatMap((group) => chapterPages(group.items))) {
     const page = pages.get(item.file);
     if (page) parts.push(`# ${page.data.heading}\n\n${origin + pathOf(page)}\n\n${(await markdownBody(page)).trim()}`);
   }

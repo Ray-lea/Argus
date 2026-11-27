@@ -1,8 +1,27 @@
+import type { Node, Root } from "fumadocs-core/page-tree";
 import { DocsLayout } from "fumadocs-ui/layouts/spacious";
 import { Download, House } from "lucide-react";
 import { ViewTransition, type ReactNode } from "react";
+import { SidebarFollow, type SidebarTrails } from "@/components/docs-sidebar-follow";
 import { repo, site } from "@/lib/site";
 import { source } from "@/lib/source";
+
+// The folders on the way to each page (the editions' root folders are the
+// selector, not folders in the sidebar), for SidebarFollow.
+function trailsOf(tree: Root): SidebarTrails {
+  const trails: SidebarTrails = {};
+  const walk = (nodes: Node[], path: string[]) => {
+    for (const node of nodes) {
+      if (node.type === "page") trails[node.url] = path;
+      if (node.type !== "folder") continue;
+      const inner = node.root || typeof node.name !== "string" ? path : [...path, node.name];
+      if (node.index) trails[node.index.url] = inner;
+      walk(node.children, inner);
+    }
+  };
+  walk(tree.children, []);
+  return trails;
+}
 
 // The layout of fumadocs.dev: the sidebar on the page background with the
 // edition selector and search, the page on an inset panel beside it.
@@ -42,6 +61,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       sidebar={{ defaultOpenLevel: 0 }}
       themeSwitch={{ mode: "light-dark-system" }}
     >
+      <SidebarFollow trails={trailsOf(source.getPageTree())} />
       {children}
     </DocsLayout>
     </ViewTransition>

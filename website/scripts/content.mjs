@@ -48,7 +48,10 @@ export function routeFor(file, base) {
 // docs/guide/README.md is the folder's index page; other names keep their stem.
 const pageName = (file) =>
   file.slice("docs/".length).replace(/(^|\/)README\.md$/, "$1index.md").replace(/\.md$/, "");
-export const contentFile = (file, id) => "docs/" + folders[id] + "/" + pageName(file) + ".md";
+// A page that opens a folder of its pages (folderPages) is that folder's index:
+// its address does not change.
+export const contentFile = (file, id, opensFolder = false) =>
+  "docs/" + folders[id] + "/" + pageName(file) + (opensFolder ? "/index" : "") + ".md";
 
 // Sidebar icons (lucide names, resolved in src/lib/source.ts); a new document simply has none.
 const pageIcons = {
@@ -71,6 +74,7 @@ const pageIcons = {
   "docs/development/build.md": "Hammer",
   "docs/development/performance.md": "Gauge",
   "docs/development/gpui.md": "AppWindow",
+  "docs/development/environment.md": "Variable",
   "docs/development/release.md": "Tag",
   "docs/development/website.md": "Globe",
   "docs/development/signing.md": "BadgeCheck",
@@ -103,7 +107,7 @@ export function excerpt(text, limit = 150) {
   return end >= 40 ? cut.slice(0, end + 1).trimEnd() : cut.slice(0, limit - 1) + "…";
 }
 
-export function documentPage(file, text, id, { updated = "", label = "" } = {}) {
+export function documentPage(file, text, id, { updated = "", label = "", opensFolder = false } = {}) {
   const body = text.replace(/\r\n/g, "\n");
   const heading = /^# (.+)$/m.exec(body);
   if (!heading) throw Error("Missing document title in " + file);
@@ -137,7 +141,7 @@ export function documentPage(file, text, id, { updated = "", label = "" } = {}) 
   };
   return {
     path: routeFor(file, bases[id]),
-    file: contentFile(file, id),
+    file: contentFile(file, id, opensFolder),
     markdown:
       "---\n" +
       Object.entries(front)
@@ -155,10 +159,13 @@ export async function workspaceDocuments() {
     .sort();
 }
 
-// The documentation index lists every chapter in reading order; the sidebar follows it.
+// The documentation index lists every chapter in reading order; the sidebar
+// follows it. An item indented under another is one of its pages: x/y.md's
+// pages live in x/y/, and x/y.md opens the folder they make in the sidebar.
 export function navigation(index, routes) {
   const groups = [];
   let group;
+  const seen = new Set();
   for (const line of index.replace(/\r\n/g, "\n").split("\n")) {
     const heading = /^## (.+)$/.exec(line);
     if (heading) {
@@ -166,18 +173,17 @@ export function navigation(index, routes) {
       groups.push(group);
       continue;
     }
-    const item = /^[-*] \[([^\]]+)\]\(([^)#]+)\)(?:\s*[：:]\s*(.+))?/.exec(line);
+    const item = /^( *)[-*] \[([^\]]+)\]\(([^)#]+)\)(?:\s*[：:]\s*(.+))?/.exec(line);
     if (!item || !group) continue;
-    const file = posix.normalize(posix.join("docs", item[2]));
-    if (routes[file] && !group.items.some((i) => i.file === file))
-      group.items.push({
-        label: item[1],
-        file,
-        path: routes[file],
-        note: item[3]?.replaceAll("`", "").trim() ?? "",
-      });
+    const file = posix.normalize(posix.join("docs", item[3]));
+    if (!routes[file] || seen.has(file)) continue;
+    const entry = { label: item[2], file, path: routes[file], note: item[4]?.replaceAll("`", "").trim() ?? "" };
+    const parent = group.items.at(-1);
+    if (item[1] && parent && file.startsWith(parent.file.slice(0, -3) + "/")) (parent.children ??= []).push(entry);
+    else group.items.push(entry);
+    seen.add(file);
   }
-  const listed = new Set(groups.flatMap((g) => g.items.map((i) => i.file)));
+  const listed = new Set(groups.flatMap((g) => g.items.flatMap((i) => [i.file, ...(i.children ?? []).map((c) => c.file)])));
   const rest = Object.keys(routes).filter(
     (file) => file !== "docs/README.md" && !listed.has(file),
   );
@@ -194,44 +200,34 @@ export function navigation(index, routes) {
   return groups.filter((g) => g.items.length);
 }
 
-// Sidebar folders for the chapters of the index, named and drawn like the
-// chapter cards on the documentation home; the first chapters start open.
-const chapterIcons = { 入门: "Compass", 使用指南: "BookOpen", 开发指南: "Code", 架构: "Layers", 设计: "Palette" };
-const openChapters = new Set(["入门", "使用指南"]);
-
-// The folder of docs/ that holds all of a chapter's pages, or undefined.
-const chapterFolder = (group) => {
-  const folders = new Set(group.items.map((item) => /^docs\/([^/]+)\//.exec(item.file)?.[1]));
-  return folders.size === 1 ? [...folders][0] : undefined;
-};
+// The pages that open a folder of their own pages (x/y.md with pages in x/y/).
+export const folderPages = (nav) =>
+  new Set(nav.flatMap((group) => group.items.filter((item) => item.children?.length).map((item) => item.file)));
 
 // The edition's meta.json files by path. The edition folder is a root folder,
 // so the selector at the top of the sidebar lists both editions and moves to
-// the same page in the other one. A chapter whose pages share one folder of
-// docs/ becomes that folder, collapsible, its pages in the index's order with
-// the folder's README listed first like any other page (listing "index" keeps
-// it out of the folder's own link). Other chapters stay separators.
+// the same page in the other one. As on fumadocs.dev, each chapter of the
+// index is a section under a separator; a page with pages of its own is a
+// folder that its page opens, with those pages in the index's order.
 export function editionMetas(edition) {
   const metas = {};
   const rootPages = ["index"];
-  const taken = new Set();
+  const folders = folderPages(edition.nav);
   for (const group of edition.nav) {
-    const folder = chapterFolder(group);
-    if (folder && !taken.has(folder)) {
-      taken.add(folder);
+    rootPages.push("---" + group.label + "---");
+    for (const item of group.items) {
+      if (!folders.has(item.file)) {
+        rootPages.push(pageName(item.file));
+        continue;
+      }
+      const folder = pageName(item.file);
       rootPages.push(folder);
       metas[folder + "/meta.json"] = JSON.stringify(
-        {
-          title: group.label,
-          ...(chapterIcons[group.label] && { icon: chapterIcons[group.label] }),
-          ...(openChapters.has(group.label) && { defaultOpen: true }),
-          pages: group.items.map((item) => pageName(item.file).slice(folder.length + 1)),
-        },
+        { title: item.label, pages: item.children.map((child) => pageName(child.file).slice(folder.length + 1)) },
         null,
         2,
       );
-    } else
-      rootPages.push("---" + group.label + "---", ...group.items.map((item) => pageName(item.file)));
+    }
   }
   metas["meta.json"] = JSON.stringify(
     { title: edition.label, description: edition.note, icon: icons[edition.id], root: true, pages: rootPages },
@@ -257,7 +253,10 @@ async function prepareEdition({ id, label, requested, worktree }, written) {
   const routes = Object.fromEntries(names.map((file) => [file, routeFor(file, base)]));
   if (!routes["docs/README.md"]) throw Error("Missing " + label + " documentation index");
   const nav = navigation((await source(docs, "docs/README.md")).toString(), routes);
-  const labels = new Map(nav.flatMap((group) => group.items.map((i) => [i.file, i.label])));
+  const labels = new Map(
+    nav.flatMap((group) => group.items.flatMap((i) => [i, ...(i.children ?? [])])).map((i) => [i.file, i.label]),
+  );
+  const opensFolder = folderPages(nav);
   // One git call gives the date of the last commit that touched each document in this edition.
   const updated = {};
   let date = "";
@@ -271,6 +270,7 @@ async function prepareEdition({ id, label, requested, worktree }, written) {
     const page = documentPage(file, (await source(docs, file)).toString(), id, {
       updated: updated[file] ?? "",
       label: file === "docs/README.md" ? "文档首页" : labels.get(file),
+      opensFolder: opensFolder.has(file),
     });
     await putIfChanged(contentDir, page.file, page.markdown);
     written.add(join(contentDir, page.file));

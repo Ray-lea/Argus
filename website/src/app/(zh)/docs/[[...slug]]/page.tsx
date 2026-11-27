@@ -1,3 +1,4 @@
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { Callout } from "fumadocs-ui/components/callout";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import {
@@ -82,6 +83,9 @@ export default async function Page({ params }: Props) {
                 <Link {...props} href={resolveHref(edition, page.data.source, props.href)} />
               ),
               blockquote: DocsBlockquote,
+              // <details> disclosures in the documents (source.ts).
+              Accordion,
+              Accordions,
             }}
           />
         )}
