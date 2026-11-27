@@ -116,6 +116,7 @@ cargo build --release -p argus-window-probe --features capture
 | `inspect` | 发送检查，结果写入 `results.json` |
 | `expect` | 以点分路径核对 `inspect` 的结果 |
 | `expectNot` | 以点分路径给出 `inspect` 的结果不应等于的值 |
+| `expectSame` | 以点分路径要求 `inspect` 的结果与之前某次检查的值相同 |
 | `capture` | 捕获窗口为 PNG |
 | `captureFlyout` | 捕获托盘的悬停卡片或快捷面板为 PNG |
 | `captureWindow` | 捕获测试实例中指定的可见窗口 |
@@ -129,6 +130,7 @@ cargo build --release -p argus-window-probe --features capture
 - `inspect`：`columns`、`menu`、`layout` 或 `vitals`，配合 `label` 命名。
 - `expect`：如 `{ "state.focus.item.label": "CPU 时间" }`。
 - `expectNot`：如 `{ "state.scroll.y": 0 }`，只知道状态必须已经离开某个值时使用。
+- `expectSame`：如 `{ "state.visible.0.width": "folded-widths" }`，值为之前某次检查的 `label`。用于随机器而变、只需保持不变的值，例如随系统字体变化的列宽。
 - `captureFlyout`：捕获的是测试实例的可见工具窗口。
 - `captureWindow`：`{ "name", "class", "title"? }`，捕获指定窗口类、标题含 `title` 的可见窗口。例如桌面监控（`Zed::Window`，标题为界面语言的“桌面监控”）与替身任务栏（`ArgusTestTaskbar`）。
 - `crop`：`{ "from", "name", "region": [x, y, 宽, 高], "scale"? }`。

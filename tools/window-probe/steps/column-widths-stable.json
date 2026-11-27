@@ -1,5 +1,5 @@
 {
-  "about": "在进程树中折叠、展开分支和搜索，检查各列宽度保持不变。",
+  "about": "在进程树中折叠、展开分支和搜索，检查各列宽度保持不变：之后各步的名称列宽度用 expectSame 与折叠时相同，不写死数值（宽度随 Windows 的字体而变，windows-2022 比 Windows 11 宽 8 px）。",
   "window": [1600, 1000],
   "steps": [
     { "note": "A tree whose deepest branch has the longest names: the automatic widths measure it folded or not." },
@@ -15,18 +15,18 @@
         ] } } },
       "wait": 1500, "inspect": "layout", "label": "folded",
       "expect": { "processTree.visibleRows": 2, "processTree.visibleChildren": 0 } },
-    { "inspect": "columns", "label": "folded-widths", "capture": "folded", "expect": { "state.visible.0.width": 448 } },
+    { "inspect": "columns", "label": "folded-widths", "capture": "folded" },
 
     { "note": "Every branch open: the widths stay." },
     { "control": { "headerMenu": "name" } },
     { "control": { "keys": ["enter"] }, "inspect": "layout", "label": "expanded",
       "expect": { "processTree.visibleRows": 6 } },
-    { "inspect": "columns", "label": "expanded-widths", "capture": "expanded", "expect": { "state.visible.0.width": 448 } },
+    { "inspect": "columns", "label": "expanded-widths", "capture": "expanded", "expectSame": { "state.visible.0.width": "folded-widths" } },
 
     { "note": "A search that leaves only the short names: the widths stay." },
     { "control": { "query": "beta" }, "wait": 800, "inspect": "layout", "label": "search",
       "expect": { "processTree.visibleRows": 1, "processTree.searching": true } },
-    { "inspect": "columns", "label": "search-widths", "capture": "search", "expect": { "state.visible.0.width": 448 } },
-    { "control": { "query": "" }, "wait": 800, "inspect": "columns", "label": "cleared-widths", "expect": { "state.visible.0.width": 448 } }
+    { "inspect": "columns", "label": "search-widths", "capture": "search", "expectSame": { "state.visible.0.width": "folded-widths" } },
+    { "control": { "query": "" }, "wait": 800, "inspect": "columns", "label": "cleared-widths", "expectSame": { "state.visible.0.width": "folded-widths" } }
   ]
 }

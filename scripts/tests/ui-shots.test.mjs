@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
+import { aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unlike, unmet, unwanted, verdict } from "../lib/ui-shots.mjs";
 import { windowProbe } from "../lib/window-probe.mjs";
 
 test("results name each inspection and every image a run wrote", () => {
@@ -63,6 +63,23 @@ test("a value that must have changed is compared with the one it must not be", (
   assert.deepEqual(unwanted(event, { settingsTop: 0, "state.scroll.y": 0 }), ["settingsTop: must not be 0"]);
   assert.throws(() => parseSteps([{ expectNot: { a: 1 } }]), /expectNot needs inspect/);
   assert.equal(parseSteps([{ inspect: "layout", expectNot: { settingsTop: 0 } }])[0].label, "step-1");
+});
+
+test("a value that must not have changed is compared with an earlier inspection", () => {
+  const earlier = new Map([["folded", { state: { visible: [{ width: 456 }] } }]]);
+  assert.deepEqual(unlike({ state: { visible: [{ width: 456 }] } }, { "state.visible.0.width": "folded" }, earlier), []);
+  assert.deepEqual(unlike({ state: { visible: [{ width: 464 }] } }, { "state.visible.0.width": "folded" }, earlier), [
+    "state.visible.0.width: expected 456 as in folded, got 464",
+  ]);
+  // A path the earlier inspection does not have is no agreement.
+  assert.deepEqual(unlike({}, { "state.missing": "folded" }, earlier), ["state.missing: expected undefined as in folded, got undefined"]);
+  assert.throws(() => parseSteps([{ expectSame: { a: "x" } }]), /expectSame needs inspect/);
+  assert.throws(() => parseSteps([{ inspect: "columns", label: "later", expectSame: { a: "later" } }]), /earlier inspection/);
+  const steps = parseSteps([
+    { inspect: "columns", label: "folded" },
+    { inspect: "columns", label: "expanded", expectSame: { "state.visible.0.width": "folded" } },
+  ]);
+  assert.deepEqual(steps[1].expectSame, { "state.visible.0.width": "folded" });
 });
 
 test("a steps file may say what it is for", () => {

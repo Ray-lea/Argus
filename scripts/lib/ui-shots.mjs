@@ -10,7 +10,7 @@ export const INSPECTIONS = {
   vitals: ["inspectVitals", "ui-vitals"],
 };
 
-const KINDS = ["note", "control", "probe", "record", "wait", "settle", "inspect", "expect", "expectNot", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
+const KINDS = ["note", "control", "probe", "record", "wait", "settle", "inspect", "expect", "expectNot", "expectSame", "capture", "captureFlyout", "captureWindow", "crop", "sheet"];
 const NAME = /^[\w.-]+$/;
 
 /**
@@ -60,6 +60,7 @@ export function parseSteps(value) {
   assert(Array.isArray(value), "steps must be an array");
   const captures = new Set();
   const recordings = new Set();
+  const inspected = new Set();
   const expanded = value.flatMap((raw, index) => {
     if (!raw || typeof raw !== "object" || !("drag" in raw)) return [raw];
     const extra = Object.keys(raw).filter((key) => !["drag", "record", "wait", "note"].includes(key));
@@ -88,6 +89,15 @@ export function parseSteps(value) {
       assert("inspect" in step, `${where}: expectNot needs inspect`);
       assert(step.expectNot && typeof step.expectNot === "object", `${where}: expectNot maps paths to values`);
     }
+    // Values that must not have changed since an earlier inspection, whatever
+    // they are on this machine (widths follow the fonts Windows has).
+    if ("expectSame" in step) {
+      assert("inspect" in step, `${where}: expectSame needs inspect`);
+      assert(step.expectSame && typeof step.expectSame === "object", `${where}: expectSame maps paths to labels`);
+      for (const label of Object.values(step.expectSame))
+        assert(inspected.has(label), `${where}: expectSame names an earlier inspection, not ${JSON.stringify(label)}`);
+    }
+    if ("inspect" in step) inspected.add(step.label);
     if ("capture" in step) {
       assert(NAME.test(step.capture), `${where}: capture names a file`);
       captures.add(step.capture);
@@ -205,6 +215,18 @@ export function unwanted(event, expectNot) {
   return Object.entries(expectNot)
     .filter(([path, value]) => isDeepStrictEqual(valueAt(event, path), value))
     .map(([path, value]) => `${path}: must not be ${JSON.stringify(value)}`);
+}
+
+/**
+ * Which values an inspected event fails to share with earlier inspections,
+ * as messages: `expectSame` maps a path to the label of the inspection whose
+ * value at the same path it must equal; `earlier` holds the events by label.
+ */
+export function unlike(event, expectSame, earlier) {
+  return Object.entries(expectSame)
+    .map(([path, label]) => [path, label, valueAt(earlier.get(label), path), valueAt(event, path)])
+    .filter(([, , want, got]) => want === undefined || !isDeepStrictEqual(got, want))
+    .map(([path, label, want, got]) => `${path}: expected ${JSON.stringify(want)} as in ${label}, got ${JSON.stringify(got)}`);
 }
 
 /** Which of `count` frames a sheet shows: every `every`th, the last always, at most `limit`. */

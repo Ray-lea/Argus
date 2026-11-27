@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import assert from "node:assert/strict";
 import { cleanupTestProfile, panics, testDirectories } from "./lib/owned-test.mjs";
-import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unmet, unwanted } from "./lib/ui-shots.mjs";
+import { INSPECTIONS, aboutOf, parseSteps, pickFrames, runOptions, runSeconds, settles, summary, unlike, unmet, unwanted } from "./lib/ui-shots.mjs";
 import { windowProbe } from "./lib/window-probe.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -141,6 +141,8 @@ const settle = async (name, within = 5000) => {
 };
 
 const results = [];
+// The inspections so far by label, for the values later steps must share (`expectSame`).
+const inspected = new Map();
 const failures = [];
 const logs = [];
 try {
@@ -169,7 +171,12 @@ try {
       send({ [control]: step.label });
       const event = await pending;
       result.inspect = event;
-      const missed = [...(step.expect ? unmet(event, step.expect) : []), ...(step.expectNot ? unwanted(event, step.expectNot) : [])];
+      inspected.set(step.label, event);
+      const missed = [
+        ...(step.expect ? unmet(event, step.expect) : []),
+        ...(step.expectNot ? unwanted(event, step.expectNot) : []),
+        ...(step.expectSame ? unlike(event, step.expectSame, inspected) : []),
+      ];
       for (const message of missed) failures.push(`step ${index + 1} (${step.label}): ${message}`);
       console.log(`inspect ${step.label}: ${missed.length ? `${missed.length} unmet` : "ok"}`);
     }
