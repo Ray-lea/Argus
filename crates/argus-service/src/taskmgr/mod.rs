@@ -1028,7 +1028,16 @@ fn finish_enable(
 /// Opens the fixed Windows executable once, preserving replacement settings.
 /// Runs locally, independently of service installation or authorization.
 pub fn open_native() -> Result<()> {
-    launch::native()
+    let native = launch::native()?;
+    // The marker for its elevated copy outlives the command.
+    std::thread::spawn(move || native.wait());
+    Ok(())
+}
+
+/// Windows Task Manager from the launcher, which stays until its elevated
+/// copy has been taken over.
+fn launch_native() -> Result<()> {
+    launch::native().map(launch::Native::wait)
 }
 
 pub fn manage(action: &str) -> std::result::Result<Status, Box<Failure>> {
@@ -1307,7 +1316,17 @@ pub fn launcher_main() -> i32 {
                 }
             }
         }
-        Some("--native") if args.len() == 1 => code(launch::native()),
+        Some("--native") if args.len() == 1 => code(launch_native()),
+        // The elevated copy that a Task Manager from `native` asked for. This
+        // launcher is elevated too, so the Task Manager it starts stays.
+        Some("--task-manager") if launch::relaunched_native() => {
+            log_fixed("Windows Task Manager restarted elevated", "opening it");
+            let native = launch_native();
+            if let Err(error) = &native {
+                log_line("Windows Task Manager launch failed", error);
+            }
+            code(native)
+        }
         Some("--task-manager") => {
             let result = (|| {
                 let machine = machine()?;
@@ -1326,7 +1345,7 @@ pub fn launcher_main() -> i32 {
                 Ok(()) => 0,
                 Err(error) => {
                     log_line("Argus launch failed; opening Windows Task Manager", &error);
-                    let native = launch::native();
+                    let native = launch_native();
                     if let Err(error) = &native {
                         log_line("Windows Task Manager launch failed", error);
                     }

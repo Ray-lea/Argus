@@ -5,10 +5,13 @@ use argus_core::tr;
 use std::ffi::c_void;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::{E_ACCESSDENIED, HANDLE, WAIT_OBJECT_0};
+use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
+use windows::Win32::Foundation::{
+    E_ACCESSDENIED, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, WAIT_EVENT, WAIT_OBJECT_0,
+};
 use windows::Win32::Security::{
     GetTokenInformation, TOKEN_ACCESS_MASK, TOKEN_DUPLICATE, TOKEN_ELEVATION_TYPE, TOKEN_QUERY,
-    TokenElevationType, TokenElevationTypeFull,
+    TokenElevationType, TokenElevationTypeFull, TokenElevationTypeLimited,
 };
 use windows::Win32::System::Diagnostics::Debug::{
     DebugActiveProcessStop, DebugSetProcessKillOnExit,
@@ -258,6 +261,19 @@ fn create(
     parent: Option<HANDLE>,
     own_environment: bool,
 ) -> Result<Handle> {
+    start(exe, args, bypass, parent, own_environment, |_| Ok(())).map(|(process, ())| process)
+}
+
+/// `create`, running `before` with the new process's ID once it exists: with
+/// `bypass`, before it runs. A failure there ends the new process.
+fn start<T>(
+    exe: &Path,
+    args: &[String],
+    bypass: bool,
+    parent: Option<HANDLE>,
+    own_environment: bool,
+    before: impl FnOnce(u32) -> Result<T>,
+) -> Result<(Handle, T)> {
     let file = wide(&exe.to_string_lossy());
     let mut command = wide(
         &std::iter::once(exe.to_string_lossy().into_owned())
@@ -303,6 +319,11 @@ fn create(
     .map_err(|e| e.to_string())?;
     let process = Handle(info.hProcess);
     let thread = Handle(info.hThread);
+    let end = || unsafe {
+        let _ = TerminateProcess(process.0, 1);
+        WaitForSingleObject(process.0, 1000);
+    };
+    let value = before(info.dwProcessId).inspect_err(|_| end())?;
     if bypass {
         let result = (|| {
             unsafe {
@@ -315,14 +336,11 @@ fn create(
             Ok(())
         })();
         if let Err(error) = result {
-            unsafe {
-                let _ = TerminateProcess(process.0, 1);
-                WaitForSingleObject(process.0, 1000);
-            }
+            end();
             return Err(tr!("taskManager.detachFailed", error = error));
         }
     }
-    Ok(process)
+    Ok((process, value))
 }
 
 pub fn exit_code(process: &Handle, timeout: Duration) -> Result<u32> {
@@ -340,8 +358,124 @@ pub fn exit_code(process: &Handle, timeout: Duration) -> Result<u32> {
     Ok(code)
 }
 
-pub fn native() -> Result<()> {
-    spawn(&system_directory()?.join("taskmgr.exe"), &[], true).map(|_| ())
+/// Windows Task Manager started past IFEO, with what its elevated copy needs.
+///
+/// Started with an administrator's standard (limited) token, Task Manager asks
+/// Windows for an elevated copy of itself (it is `autoElevate`) and exits with
+/// E_ABORT. Windows creates that copy with the first one as its parent and
+/// without the debug flag, so IFEO hands it to the launcher, which would open
+/// Argus. The starter therefore leaves a marker named after the first one's
+/// process ID (`relaunched_native` answers it) and keeps that process's handle,
+/// so that no other process takes the ID meanwhile: the first one has exited
+/// by the time the launcher runs, and an exited process reports no image.
+pub struct Native {
+    process: Handle,
+    marker: Option<Handle>,
+}
+
+/// How long a Task Manager may run before its elevated copy (a consent prompt
+/// may wait for the user), and how long the launcher may take after it exits.
+const RELAUNCH_WAIT: Duration = Duration::from_secs(60);
+const ANSWER_WAIT: Duration = Duration::from_secs(15);
+
+pub fn native() -> Result<Native> {
+    // Neither an elevated token nor an account without a split token gets a
+    // copy. Without the answer, Task Manager still opens, unmarked.
+    let limited = own_token(TOKEN_QUERY)
+        .and_then(|token| elevation_type(token.0))
+        .is_ok_and(|kind| kind == TokenElevationTypeLimited);
+    let (process, marker) = start(
+        &system_directory()?.join("taskmgr.exe"),
+        &[],
+        true,
+        None,
+        false,
+        |pid| Ok(limited.then(|| mark(pid)).flatten()),
+    )?;
+    Ok(Native { process, marker })
+}
+
+impl Native {
+    /// Keeps the marker until the launcher answers it, until `ANSWER_WAIT`
+    /// after Task Manager exits, or until it has run for `RELAUNCH_WAIT`.
+    pub fn wait(self) {
+        let Some(marker) = self.marker else { return };
+        let exited = WAIT_EVENT(WAIT_OBJECT_0.0 + 1);
+        let millis = |d: Duration| d.as_millis() as u32;
+        let handles = [marker.0, self.process.0];
+        if unsafe { WaitForMultipleObjects(&handles, false, millis(RELAUNCH_WAIT)) } == exited {
+            unsafe { WaitForSingleObject(marker.0, millis(ANSWER_WAIT)) };
+        }
+    }
+}
+
+fn marker_name(pid: u32) -> Vec<u16> {
+    wide(&format!("Local\\Argus.Taskmgr.Native.{pid}"))
+}
+
+/// A name some other process already holds is not this starter's marker; the
+/// copy then takes the launcher's usual path.
+fn mark(pid: u32) -> Option<Handle> {
+    let name = marker_name(pid);
+    let event = Handle(unsafe { CreateEventW(None, true, false, PCWSTR(name.as_ptr())) }.ok()?);
+    (unsafe { GetLastError() } != ERROR_ALREADY_EXISTS).then_some(event)
+}
+
+/// Whether this process is the elevated copy that a Task Manager from `native`
+/// asked for. Answers the marker of the starter, which may then let it go.
+pub fn relaunched_native() -> bool {
+    let Some(parent) = parent_id() else {
+        return false;
+    };
+    let name = marker_name(parent);
+    let Ok(marker) = (unsafe { OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(name.as_ptr())) })
+    else {
+        return false;
+    };
+    let marker = Handle(marker);
+    // A parent ID outlives the parent: the process now holding it must have
+    // been started before this one to be the one that asked.
+    let Ok(process) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, parent) })
+    else {
+        return false;
+    };
+    let process = Handle(process);
+    if !matches!(
+        (identity(process.0), identity(unsafe { GetCurrentProcess() })),
+        (Ok(started), Ok(own)) if started <= own
+    ) {
+        return false;
+    }
+    let _ = unsafe { SetEvent(marker.0) };
+    true
+}
+
+/// `PROCESS_BASIC_INFORMATION`, which the `windows` crate gates behind a
+/// feature this workspace does not enable.
+#[repr(C)]
+#[derive(Default)]
+struct BasicInformation {
+    exit_status: i32,
+    peb: usize,
+    affinity_mask: usize,
+    base_priority: i32,
+    id: usize,
+    parent: usize,
+}
+
+fn parent_id() -> Option<u32> {
+    let mut info = BasicInformation::default();
+    unsafe {
+        NtQueryInformationProcess(
+            GetCurrentProcess(),
+            ProcessBasicInformation,
+            (&raw mut info).cast(),
+            size_of::<BasicInformation>() as u32,
+            std::ptr::null_mut(),
+        )
+    }
+    .is_ok()
+    .then_some(info.parent as u32)
 }
 
 pub fn identity(process: HANDLE) -> Result<u64> {
@@ -400,6 +534,46 @@ mod tests {
         .unwrap();
         assert_eq!(exit_code(&process, Duration::from_secs(5)).unwrap(), 0);
     }
+
+    #[test]
+    #[ignore = "child fixture used by a_relaunch_is_recognized_from_the_marker_of_its_parent"]
+    fn relaunch_child() {
+        assert!(relaunched_native());
+    }
+    #[test]
+    #[ignore = "child fixture used by a_relaunch_is_recognized_from_the_marker_of_its_parent"]
+    fn marked_parent() {
+        let child = spawn(
+            &std::env::current_exe().unwrap(),
+            &fixture("relaunch_child"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(exit_code(&child, Duration::from_secs(10)).unwrap(), 0);
+    }
+
+    /// The handoff `native` and the launcher rely on: a process started with
+    /// a marker named after it is recognized from its child, which answers.
+    #[test]
+    fn a_relaunch_is_recognized_from_the_marker_of_its_parent() {
+        let (parent, marker) = start(
+            &std::env::current_exe().unwrap(),
+            &fixture("marked_parent"),
+            true,
+            None,
+            false,
+            |pid| Ok(mark(pid)),
+        )
+        .unwrap();
+        let marker = marker.unwrap();
+        assert_eq!(exit_code(&parent, Duration::from_secs(20)).unwrap(), 0);
+        assert_eq!(unsafe { WaitForSingleObject(marker.0, 0) }, WAIT_OBJECT_0);
+        // The name is this starter's alone while it holds it.
+        assert!(mark(unsafe { GetProcessId(parent.0) }).is_none());
+        // No marker carries the name of this test's own parent.
+        assert!(!relaunched_native());
+    }
+
     #[test]
     fn windows_arguments_are_quoted_without_shell_interpretation() {
         assert_eq!(quote(r"C:\with space\"), "\"C:\\with space\\\\\"");
