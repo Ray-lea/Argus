@@ -1,20 +1,22 @@
 # 路线图
 
+本页列出计划中的工作，按平台与硬件、界面与操作、依赖维护分组。现有功能与使用方法见[使用指南](guide/README.md)，已发布的版本变化见[更新日志](../changelog/zh-CN.md)。
+
 ## 平台与硬件
 
-- [ ] **macOS 支持**。复用 GPUI 界面和共享应用服务，适配采集、进程控制、托盘、快捷键、权限和分发。
-- [ ] **更多磁盘协议**。在现有 NVMe 控制器／设备级查询回退、ATA／SATA、USB-SAT、SCSI／SAS 查询、主流 SATA SSD 映射及 SATA/PATA HDD 运行与扇区统计基础上，继续扩展其余型号与固件的 SMART 属性解释，核对尚未确定的主机计数单位，并补充需要厂商专用命令的 USB／RAID 桥接设备。
-- [ ] **厂商存储驱动管理的磁盘**。由 Intel RST／VMD、厂商 NVMe 或 RAID 驱动管理的磁盘暂不查询温度与 NVMe 健康日志。按驱动及版本确认查询能够正常返回后，对确认的范围开放。
-- [ ] **旧款 Intel 核显**。在已支持的 Comet Lake S/H 基础上，按型号扩展寄存器布局，并核对驱动频率和实测基准时钟的来源。
-- [ ] **ARM64 内核传感器**。PawnIO 驱动提供 ARM64 版本，Argus 内嵌的签名模块（IntelMSR、IntelMCHBAR、AMDFamily10、AMDFamily17、RyzenSMU、LpcIO）均限定在 x64 上加载。截至 PawnIO.Modules 0.2.12，官方唯一的 ARM64 模块 ARMMSR 仅允许读取处理器标识寄存器 `MIDR_EL1`，不提供温度、频率或功耗。官方签名模块提供这些读数后，再为 ARM64 开放内核传感器开关。
-- [ ] **其他消费级硬件**。按已确认的接口和传感器布局扩展 2010 年以来的机型。[硬件数据](guide/hardware-data.md)列出当前覆盖范围。
+- [ ] **macOS 支持**：复用 GPUI 界面和共享应用服务，适配采集、进程控制、托盘、快捷键、权限和分发。
+- [ ] **更多磁盘协议**：现有支持包括 NVMe 控制器／设备级查询回退，ATA／SATA、USB-SAT、SCSI／SAS 查询，主流 SATA SSD 映射，以及 SATA/PATA HDD 的运行与扇区统计。在此基础上，继续扩展其余型号与固件的 SMART 属性解释，核对尚未确定的主机计数单位，并补充需要厂商专用命令的 USB／RAID 桥接设备。
+- [ ] **厂商存储驱动管理的磁盘**：由 Intel RST／VMD、厂商 NVMe 或 RAID 驱动管理的磁盘暂不查询温度与 NVMe 健康日志。按驱动及版本确认查询能够正常返回后，对确认的范围开放。
+- [ ] **旧款 Intel 核显**：在已支持的 Comet Lake S/H 基础上，按型号扩展寄存器布局，并核对驱动频率和实测基准时钟的来源。
+- [ ] **ARM64 内核传感器**：官方签名模块提供温度、频率或功耗读数后，再为 ARM64 开放内核传感器开关。目前的情况如下：
+  - PawnIO 驱动提供 ARM64 版本，但 Argus 内嵌的签名模块（IntelMSR、IntelMCHBAR、AMDFamily10、AMDFamily17、RyzenSMU、LpcIO）均限定在 x64 上加载。
+  - 截至 PawnIO.Modules 0.2.12，官方唯一的 ARM64 模块 ARMMSR 仅允许读取处理器标识寄存器 `MIDR_EL1`，不提供温度、频率或功耗。
+- [ ] **其他消费级硬件**：按已确认的接口和传感器布局扩展 2010 年以来的机型。[硬件数据](guide/hardware-data.md)列出当前覆盖范围。
 
 ## 界面与操作
 
-- [ ] **扩展全局快捷键**。评估区分左右修饰键、纯修饰键及双主键组合的输入方案。验证管理员窗口在前台时的行为与全局输入延迟。当前规则见[全局快捷键](design/hotkey.md)。
+- [ ] **扩展全局快捷键**：评估区分左右修饰键、纯修饰键及双主键组合的输入方案，验证管理员窗口在前台时的行为与全局输入延迟。当前规则见[全局快捷键](design/hotkey.md)。
 
 ## 依赖维护
 
-- [ ] **迁移停维护的间接依赖**。后续处理 `instant`、`paste`、`rustybuzz`、`ttf-parser`，保留现有 GPUI 行为并复核字体、图标、交互与性能。当前引入路径和候选方案见[依赖与安全维护](development/security.md#停维护依赖的后续迁移)。
-
-现有功能与使用方法见[使用指南](guide/README.md)，已发布的版本变化见[更新记录](../changelog/zh-CN.md)。
+- [ ] **迁移停维护的间接依赖**：后续处理 `instant`、`paste`、`rustybuzz`、`ttf-parser`，保留现有 GPUI 行为，并复核字体、图标、交互与性能。当前引入路径和候选方案见[依赖与安全维护](development/security.md#停维护依赖的后续迁移)。
