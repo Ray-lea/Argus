@@ -1,11 +1,11 @@
 {
-  "about": "用 `sample` 把模拟快照的显卡改为已断电（`lowPower` 为真，驱动读数为空），核对性能页不显示温度、频率与功耗，规格中出现“电源状态”一行及其悬停说明，并覆盖浅色主题与最小窗口加 20 px 字号；再改回使用中，核对该行消失、读数恢复。",
+  "about": "用 `sample` 把模拟快照的显卡改为已断电（`lowPower` 为真，驱动读数为空，只保留采集层沿用的最高核心频率），核对性能页不显示温度、频率与功耗，规格中出现“电源状态”一行及其悬停说明，“最高核心频率”一行保持显示，并覆盖浅色主题与最小窗口加 20 px 字号；再改回使用中，核对该行消失、读数恢复。",
   "window": [1600, 1054],
   "steps": [
-    {"note":"A GPU that has powered down: the readings its driver gives are absent, and the specs name the power state with the reason in a hint. In use again, the row leaves and the readings return."},
+    {"note":"A GPU that has powered down: the readings its driver gives are absent, and the specs name the power state with the reason in a hint. The highest core clock, a capability the collector keeps, stays in the specs. In use again, the row leaves and the readings return."},
     {"probe":"size 1600 1054","wait":700},
     {"control":{"page":"performance","deviceKind":"gpu","pointerOutside":true},"inspect":"layout","label":"awake","capture":"gpu-awake"},
-    {"control":{"sample":{"at":-1000,"set":{"/hardware/gpus/0/lowPower":true,"/hardware/gpus/0/util":0,"/hardware/gpus/0/engines":[0,0,0,0,0,0],"/hardware/gpus/0/temperature":null,"/hardware/gpus/0/boardPower":null,"/hardware/gpus/0/boardPowerLimit":null,"/hardware/gpus/0/powerSource":null,"/hardware/gpus/0/clockMhz":null,"/hardware/gpus/0/clockMaxMhz":null,"/hardware/gpus/0/memoryClockMhz":null}}},"wait":400},
+    {"control":{"sample":{"at":-1000,"set":{"/hardware/gpus/0/lowPower":true,"/hardware/gpus/0/util":0,"/hardware/gpus/0/engines":[0,0,0,0,0,0],"/hardware/gpus/0/temperature":null,"/hardware/gpus/0/boardPower":null,"/hardware/gpus/0/boardPowerLimit":null,"/hardware/gpus/0/powerSource":null,"/hardware/gpus/0/clockMhz":null,"/hardware/gpus/0/memoryClockMhz":null}}},"wait":400},
     {"control":{"sample":{"at":0,"set":{}}},"wait":1300},
     {"control":{"pointerOutside":true},"inspect":"layout","label":"asleep","capture":"gpu-asleep"},
     {"control":{"pointer":{"at":"gpu-power-state","event":"hover"}},"wait":1200,"capture":"gpu-asleep-hint"},

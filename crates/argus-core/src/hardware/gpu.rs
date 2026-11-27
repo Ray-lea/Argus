@@ -117,11 +117,14 @@ pub struct GpuStats {
     pub integrated_sensors: Option<super::IntegratedGpuSensors>,
     /// The adapter has powered down (the idle discrete GPU of a hybrid
     /// laptop). Its driver is not asked meanwhile, so the readings that come
-    /// from the driver are absent.
+    /// from the driver are absent; the engine's highest clock, as last
+    /// reported, stays.
     pub low_power: bool,
 }
 
-/// What only the adapter's driver or its vendor library reports.
+/// What only the adapter's driver or its vendor library reports, as of the
+/// moment it was asked. The engine's highest clock describes the adapter
+/// instead and is kept apart (`hold`).
 #[derive(Clone, Default)]
 struct DriverReadings {
     temperature: Option<f32>,
@@ -131,7 +134,6 @@ struct DriverReadings {
     board_power_limit: Option<f32>,
     power_source: Option<GpuPowerSource>,
     clock_mhz: Option<f32>,
-    clock_max_mhz: Option<f32>,
     voltage_mv: Option<u32>,
     memory_clock_mhz: Option<f32>,
 }
@@ -146,7 +148,6 @@ impl DriverReadings {
             board_power_limit: stats.board_power_limit,
             power_source: stats.power_source,
             clock_mhz: stats.clock_mhz,
-            clock_max_mhz: stats.clock_max_mhz,
             voltage_mv: stats.voltage_mv,
             memory_clock_mhz: stats.memory_clock_mhz,
         }
@@ -160,7 +161,6 @@ impl DriverReadings {
         stats.board_power_limit = self.board_power_limit;
         stats.power_source = self.power_source;
         stats.clock_mhz = self.clock_mhz;
-        stats.clock_max_mhz = self.clock_max_mhz;
         stats.voltage_mv = self.voltage_mv;
         stats.memory_clock_mhz = self.memory_clock_mhz;
     }
@@ -206,8 +206,23 @@ struct Adapter {
     /// The driver readings of the last sample, shown while the driver is left
     /// alone.
     kept: DriverReadings,
+    /// The 3D engine's highest clock as last reported, MHz.
+    clock_max_mhz: Option<f32>,
     /// The driver reported work that the engine counters do not show.
     driver_busy: bool,
+}
+
+/// The engine's highest clock is what the adapter can reach ("the max
+/// frequency the engine can normally reach while not overclocked"), not a
+/// reading of the moment: the last one its driver reported stands while the
+/// driver is not asked, powered down or idle between reads, and while the
+/// query fails. Unknown until the driver first reports it; an adapter that
+/// starts powered down shows it once woken.
+fn hold(kept: &mut Option<f32>, read: Option<f32>) -> Option<f32> {
+    if read.is_some() {
+        *kept = read;
+    }
+    *kept
 }
 
 pub(crate) struct GpuTracker {
@@ -389,6 +404,7 @@ impl GpuTracker {
                     a.kept = DriverReadings::default();
                     a.driver_busy = false;
                     stats.low_power = true;
+                    stats.clock_max_mhz = hold(&mut a.clock_max_mhz, None);
                     continue;
                 }
                 Access::Keep => a.kept.apply(stats),
@@ -448,6 +464,7 @@ impl GpuTracker {
                     .or(reading.memory_clock.map(|v| v as f32));
                 stats.voltage_mv = stats.voltage_mv.or(reading.voltage);
             }
+            stats.clock_max_mhz = hold(&mut a.clock_max_mhz, stats.clock_max_mhz);
             a.kept = DriverReadings::of(stats);
         }
         samples.into_iter().map(|(stats, _)| stats).collect()
@@ -737,6 +754,7 @@ fn describe(a: &D3DKMT_ADAPTERINFO, metadata: &mut metadata::Metadata) -> Option
         device: driver.device,
         gate: power::Gate::new(powers_down),
         kept: DriverReadings::default(),
+        clock_max_mhz: None,
         driver_busy: false,
     })
 }
@@ -803,6 +821,19 @@ mod tests {
         assert_eq!(mhz(1_194_400_000), Some(1194.4));
         assert_eq!(mhz(0), None);
         assert_eq!(mhz(u64::MAX), None);
+    }
+
+    #[test]
+    fn the_highest_clock_outlasts_samples_that_do_not_ask_the_driver() {
+        let mut kept = None;
+        // Powered down since startup: never reported, so unknown.
+        assert_eq!(hold(&mut kept, None), None);
+        assert_eq!(hold(&mut kept, Some(1575.0)), Some(1575.0));
+        // Powered down, idle between reads, or a failed query.
+        assert_eq!(hold(&mut kept, None), Some(1575.0));
+        assert_eq!(hold(&mut kept, None), Some(1575.0));
+        // A new report replaces it.
+        assert_eq!(hold(&mut kept, Some(1620.0)), Some(1620.0));
     }
 
     #[test]
@@ -1069,7 +1100,8 @@ mod tests {
                         "name": stats.info.name, "powersDown": adapter.gate.powers_down(),
                         "access": format!("{:?}", adapter.gate.last), "lowPower": stats.low_power,
                         "util": stats.util, "temperature": stats.temperature,
-                        "boardPower": stats.board_power, "clockMhz": stats.clock_mhz})
+                        "boardPower": stats.board_power, "clockMhz": stats.clock_mhz,
+                        "clockMaxMhz": stats.clock_max_mhz})
                 );
             }
         }
