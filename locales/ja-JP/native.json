@@ -94,6 +94,9 @@
     },
     "services": {
       "stopTimeout": "20秒以内にサービスが停止しませんでした"
+    },
+    "debugger": {
+      "unregistered": "デバッガーが登録されていません。"
     }
   },
   "service": {

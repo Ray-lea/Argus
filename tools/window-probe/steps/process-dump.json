@@ -1,0 +1,21 @@
+{
+  "about": "核对进程菜单的“调试”与“创建内存转储文件”：单个进程在登记了调试器时两项都有，应用组没有，lsass.exe 的转储项禁用并注明原因；调试的确认框；转储进行中、完成与失败的通知（用 `resolve` 给出结果）。模拟快照不启动调试器、不写转储；真实路径由采集层的子进程测试验证。",
+  "window": [1200, 900],
+  "steps": [
+    {"control":{"page":"processes","view":"apps","details":"closed","motion":"off","preference":{"processSort":{"key":"cpu","desc":true}},"data":{"debugger":"vsjitdebugger.exe"},"sample":{"set":{"/processes":[{"pid":10001,"createTime":100,"name":"Review.exe","path":"C:/Program Files/Contoso/Review.exe","cpu":3,"workingSet":10485760},{"pid":700,"createTime":50,"name":"lsass.exe","path":"C:/Windows/System32/lsass.exe","cpu":2,"workingSet":10485760},{"pid":10002,"createTime":200,"name":"Pair.exe","path":"C:/Program Files/Contoso/Pair.exe","cpu":1,"workingSet":10485760},{"pid":10003,"createTime":300,"name":"Pair.exe","path":"C:/Program Files/Contoso/Pair.exe","cpu":0.5,"workingSet":10485760}]}},"pointerOutside":true},"wait":500},
+    {"control":{"rowMenu":0},"inspect":"menu","label":"single-process","expect":{"state.open":true,"state.items.11":"调试","state.items.12":"创建内存转储文件","state.items.13":"打开文件位置","state.disabled.11":false,"state.disabled.12":false},"capture":"single-process-menu"},
+    {"control":{"keys":["escape"]}},
+    {"control":{"rowMenu":1},"inspect":"menu","label":"credentials","expect":{"state.items.12":"创建内存转储文件","state.disabled.12":true},"capture":"lsass-menu"},
+    {"control":{"keys":["escape"]}},
+    {"control":{"rowMenu":2},"inspect":"menu","label":"group","expect":{"state.open":true,"state.items.10":"展开","state.items.11":"打开文件位置"},"capture":"group-menu"},
+    {"control":{"keys":["escape"]}},
+    {"control":{"data":{"debugger":null}}},
+    {"control":{"rowMenu":0},"inspect":"menu","label":"no-debugger","expect":{"state.items.11":"创建内存转储文件","state.items.12":"打开文件位置"}},
+    {"control":{"keys":["escape"]}},
+    {"control":{"dialog":"debug","args":{"pid":10001,"createTime":100,"name":"Review","debugger":"vsjitdebugger.exe"}},"wait":400,"inspect":"layout","label":"debug-confirmation","expect":{"dialog.kind":"debug"},"capture":"debug-confirmation"},
+    {"control":{"keys":["escape"]},"inspect":"layout","label":"debug-cancelled","expect":{"dialog":null}},
+    {"control":{"dialog":"dump","args":{"pid":10001,"createTime":100,"name":"Review"}},"wait":300,"inspect":"layout","label":"dump-writing","expect":{"dialog":null,"toasts.0":"正在为 Review 创建内存转储文件…","skippedRequest.command":"create_dump"},"capture":"dump-writing"},
+    {"control":{"resolve":{"command":"create_dump","args":{"pid":10001,"createTime":100,"name":"Review"},"ok":true,"value":"C:\\Users\\Contoso\\AppData\\Local\\Temp\\Review.DMP"}},"wait":500,"inspect":"layout","label":"dump-done","expect":{"toasts.0":"C:\\\u200bUsers\\\u200bContoso\\\u200bAppData\\\u200bLocal\\\u200bTemp\\\u200bReview.DMP"},"capture":"dump-done"},
+    {"control":{"theme":"light","resolve":{"command":"create_dump","args":{"pid":10001,"createTime":100,"name":"Review"},"ok":false,"value":{"kind":"accessDenied"}}},"wait":500,"capture":"dump-denied-light"}
+  ]
+}

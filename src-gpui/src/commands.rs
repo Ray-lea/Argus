@@ -432,6 +432,53 @@ pub fn set_suspended(
     result
 }
 
+/// Writes a full memory dump of a process instance to the temporary folder,
+/// as Task Manager's "Create memory dump file" does, and returns its path.
+/// Acts with Argus's own rights: the privileged service writes no dumps.
+pub fn create_dump(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+) -> Result<String, ActionError> {
+    action_result(
+        "create memory dump",
+        if state.elevated {
+            "local elevated"
+        } else {
+            "local"
+        },
+        guarded(state.elevated, argus_core::dump::create(pid, create_time)),
+    )
+    .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// The file name of the debugger registered for crashing programs, which the
+/// process menu offers as Task Manager's "Debug" does; None without one.
+pub fn registered_debugger() -> Option<String> {
+    argus_core::debugger::registered()
+}
+
+/// Starts the registered debugger on a process instance, with Argus's own
+/// rights (`argus_core::debugger::attach`).
+pub fn debug_process(
+    state: State<'_, AppState>,
+    pid: u32,
+    create_time: i64,
+) -> Result<(), ActionError> {
+    action_result(
+        "debug process",
+        if state.elevated {
+            "local elevated"
+        } else {
+            "local"
+        },
+        guarded(
+            state.elevated,
+            argus_core::debugger::attach(pid, create_time),
+        ),
+    )
+}
+
 /// Opens Explorer with the file selected.
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).exists() {

@@ -139,6 +139,7 @@ impl Desktop {
                 if matches!(
                     pending.command.as_str(),
                     "desktop_shell"
+                        | "registered_debugger"
                         | "list_services"
                         | "list_startup"
                         | "list_connections"
@@ -640,6 +641,14 @@ impl Desktop {
             "processes" => {
                 self.request("desktop_shell", json!({}), Some("desktopShell"), window, cx);
                 self.request("list_services", json!({}), Some("services"), window, cx);
+                // The process menu's "Debug" follows a debugger installed or removed meanwhile.
+                self.request(
+                    "registered_debugger",
+                    json!({}),
+                    Some("debugger"),
+                    window,
+                    cx,
+                );
             }
             "services" => self.request("list_services", json!({}), Some("services"), window, cx),
             "startup" => self.request("list_startup", json!({}), Some("startup"), window, cx),
@@ -729,12 +738,14 @@ impl Desktop {
             })
             .unwrap_or_else(|| text(args, "name").into());
         // The general `actions.error` texts are about ending a process;
-        // suspending and the priority setters have their own wherever the
-        // cause differs.
+        // suspending, the priority setters, dumps and debugging have their
+        // own wherever the cause differs.
         let own = match command {
             "set_suspended" => Some("suspend"),
             "set_io_priority" => Some("ioPriority"),
             "set_memory_priority" => Some("memoryPriority"),
+            "create_dump" => Some("dump"),
+            "debug_process" => Some("debug"),
             _ => None,
         };
         if let Some(action) = own {

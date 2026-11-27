@@ -428,6 +428,11 @@ impl Desktop {
                 self.add_rule_for(&name, window, cx);
                 return;
             }
+            // Task Manager writes a dump without asking.
+            "dump" => {
+                self.create_dump(&args, window, cx);
+                return;
+            }
             "hotkey" => {
                 self.preference("settingsSection", json!("hotkey"), window, cx);
                 self.begin_hotkey(window, cx);
@@ -511,6 +516,16 @@ impl Desktop {
                 label("tasks.explorer.title"),
                 label("tasks.explorer.confirm"),
                 Some((label("tasks.explorer.restart"), false)),
+            ),
+            // Task Manager warns before attaching, too.
+            "debug" => (
+                tr!("actions.debug.title", name = name),
+                tr!(
+                    "actions.debug.body",
+                    pid = args["pid"],
+                    debugger = text(&args, "debugger")
+                ),
+                Some((label("processes.menu.debug"), false)),
             ),
             "signOut" => (
                 tr!("processes.user.signOut.title", name = name),
@@ -1500,6 +1515,11 @@ impl Desktop {
                 self.sign_out_user(args.clone(), window, cx);
                 return;
             }
+            "debug" => {
+                self.close_overlay(window, cx);
+                self.request("debug_process", args.clone(), None, window, cx);
+                return;
+            }
             "end" | "endTree" | "priority" | "suspend" => {
                 self.close_overlay(window, cx);
                 self.process_batch(&modal.kind, args, window, cx);
@@ -1783,6 +1803,16 @@ impl Desktop {
                 self.notify_toast(ToastKind::Success, label("tasks.started"));
             }
             "sign_out_user" => self.signed_out(None),
+            "create_dump" => self.dump_finished(args, Ok(value)),
+            "debug_process" => self.notify_toast_for(
+                ToastKind::Success,
+                tr!(
+                    "actions.debug.started",
+                    name = text(args, "name"),
+                    debugger = text(args, "debugger")
+                ),
+                2500,
+            ),
             "restart_explorer" => {
                 let from_lockers = self.ui.errors.contains_key("explorerLocker");
                 self.explorer_finished(None);
@@ -1868,6 +1898,11 @@ impl Desktop {
                 }
             }
             "restart_explorer" => self.explorer_finished(Some(error)),
+            "create_dump" => self.dump_finished(args, Err(error)),
+            "debug_process" => {
+                let message = self.single_error("debug", command, args, error);
+                self.notify_toast_for(ToastKind::Error, message, 8000);
+            }
             "sign_out_user" => self.signed_out(Some((error, &message))),
             "open_user_accounts" => {
                 self.notify_toast(ToastKind::Error, label("processes.user.manageFailed"));

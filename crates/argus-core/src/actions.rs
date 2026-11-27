@@ -82,7 +82,7 @@ impl ActionError {
 
 /// Opens the process instance identified by `pid` + `create_time` (Unix ms;
 /// 0 skips the identity check), so a reused PID is never acted on.
-fn open_instance(
+pub(crate) fn open_instance(
     pid: u32,
     create_time: i64,
     access: PROCESS_ACCESS_RIGHTS,
@@ -159,7 +159,7 @@ pub fn end_and_wait(targets: &[(u32, i64)], wait: Duration) -> usize {
 /// Query the same instance handle used for termination. IsProcessCritical
 /// requires only QUERY_LIMITED_INFORMATION, which open_instance already has.
 /// A denied or failed check is distinct from a successful negative answer.
-fn criticality(handle: &OwnedHandle) -> Result<bool, ActionError> {
+pub(crate) fn criticality(handle: &OwnedHandle) -> Result<bool, ActionError> {
     let mut critical = windows::core::BOOL::default();
     unsafe { IsProcessCritical(handle.0, &mut critical) }
         .inspect_err(|error| {
@@ -423,7 +423,7 @@ const SETTLE: Duration = Duration::from_millis(250);
 /// Argus's window included, stops updating) and Argus's own privileged
 /// service (`argus-service.exe`, or `argus-service-<pid>-<stamp>.exe` as
 /// Argus 0.5 and earlier named it), which every Argus waits on.
-fn essential_image(name: &str) -> bool {
+pub(crate) fn essential_image(name: &str) -> bool {
     let name = name.to_lowercase();
     name == "dwm.exe"
         || name == "argus-service.exe"
@@ -431,7 +431,9 @@ fn essential_image(name: &str) -> bool {
 }
 
 /// The file name of the process's image, from a handle with limited query rights.
-fn image_name(handle: windows::Win32::Foundation::HANDLE) -> Result<String, ActionError> {
+pub(crate) fn image_name(
+    handle: windows::Win32::Foundation::HANDLE,
+) -> Result<String, ActionError> {
     use windows::Win32::System::Threading::{PROCESS_NAME_WIN32, QueryFullProcessImageNameW};
     let mut buffer = [0u16; 1024];
     let mut length = buffer.len() as u32;

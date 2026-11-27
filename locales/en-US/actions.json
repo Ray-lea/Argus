@@ -146,5 +146,30 @@
     "commandLine": "command line",
     "details": "details",
     "version": "version number"
+  },
+  "dump": {
+    "writing": "Creating a memory dump file of {name}…",
+    "done": "Memory dump file of {name} created",
+    "failed": "Couldn't create a memory dump file of {name}. {error}",
+    "error": {
+      "accessDenied": "Access to {name} was denied. Run Argus as administrator to create its memory dump file; protected processes can't be dumped.",
+      "accessDeniedPrivileged": "{name} is protected by Windows, so its memory dump file can't be created.",
+      "notFound": "{name} has already exited.",
+      "refused": "A memory dump file can't be created for {name}."
+    }
+  },
+  "debug": {
+    "title": "Debug {name}?",
+    "body": "{debugger} will attach to PID {pid}. The process may pause while it is debugged and may exit when debugging ends; unsaved data will be lost.",
+    "started": "Started {debugger} for {name}.",
+    "failed": "Couldn't debug {name}. {error}",
+    "error": {
+      "accessDenied": "Access to {name} was denied. Run Argus as administrator to debug it; protected processes can't be debugged.",
+      "accessDeniedPrivileged": "{name} is protected by Windows and can't be debugged.",
+      "notFound": "{name} has already exited.",
+      "refused": "{name} can't be debugged: while it is paused, the screen or Argus stops responding.",
+      "critical": "{name} is a critical system process. If it exits when debugging ends, Windows crashes, so the action was blocked.",
+      "criticalityUnknown": "Could not check whether {name} is a critical system process. Debugging was blocked."
+    }
   }
 }

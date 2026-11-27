@@ -135,6 +135,22 @@ pub fn invoke(host: &Host, name: &str, args: Value) -> Result<Value, Value> {
         )
         .map(|value| serde_json::to_value(value).expect("serializable command response"))
         .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "create_dump" => crate::commands::create_dump(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
+        "registered_debugger" => Ok(serde_json::to_value(crate::commands::registered_debugger())
+            .expect("serializable command response")),
+        "debug_process" => crate::commands::debug_process(
+            host.state(),
+            argument::<u32>(&args, "pid")?,
+            argument::<i64>(&args, "createTime")?,
+        )
+        .map(|value| serde_json::to_value(value).expect("serializable command response"))
+        .map_err(|error| serde_json::to_value(error).unwrap_or(serde_json::Value::Null)),
         "reveal_in_explorer" => {
             crate::commands::reveal_in_explorer(argument::<String>(&args, "path")?)
                 .map(|value| serde_json::to_value(value).expect("serializable command response"))

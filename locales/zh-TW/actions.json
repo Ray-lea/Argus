@@ -107,5 +107,30 @@
     "commandLine": "命令列",
     "details": "詳細資料",
     "version": "版本號"
+  },
+  "dump": {
+    "writing": "正在為 {name} 建立記憶體傾印檔案…",
+    "done": "已建立 {name} 的記憶體傾印檔案",
+    "failed": "無法為 {name} 建立記憶體傾印檔案。{error}",
+    "error": {
+      "accessDenied": "沒有權限為 {name} 建立記憶體傾印檔案。可改為以系統管理員身分執行 Argus；受保護的處理程序仍無法傾印。",
+      "accessDeniedPrivileged": "{name} 受系統保護，無法建立記憶體傾印檔案。",
+      "notFound": "{name} 已經結束。",
+      "refused": "無法為 {name} 建立記憶體傾印檔案。"
+    }
+  },
+  "debug": {
+    "title": "偵錯 {name}？",
+    "body": "{debugger} 將附加到 PID {pid}。偵錯期間該處理程序可能暫停執行；結束偵錯時處理程序可能隨之結束，未儲存的資料會遺失。",
+    "started": "已為 {name} 啟動 {debugger}。",
+    "failed": "無法偵錯 {name}。{error}",
+    "error": {
+      "accessDenied": "沒有權限偵錯 {name}。可改為以系統管理員身分執行 Argus；受保護的處理程序仍無法偵錯。",
+      "accessDeniedPrivileged": "{name} 受系統保護，無法偵錯。",
+      "notFound": "{name} 已經結束。",
+      "refused": "無法偵錯 {name}：該處理程序暫停時，畫面或 Argus 會停止回應。",
+      "critical": "{name} 是系統關鍵處理程序，結束偵錯時該處理程序若隨之結束會導致系統當機，操作已封鎖。",
+      "criticalityUnknown": "無法確認 {name} 是否為系統關鍵處理程序；已阻止偵錯。"
+    }
   }
 }

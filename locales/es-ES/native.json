@@ -96,6 +96,9 @@
     },
     "services": {
       "stopTimeout": "El servicio no se detuvo en 20 segundos"
+    },
+    "debugger": {
+      "unregistered": "No hay ningún depurador registrado."
     }
   },
   "service": {

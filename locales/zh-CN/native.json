@@ -92,6 +92,9 @@
     },
     "services": {
       "stopTimeout": "服务没有在 20 秒内停止"
+    },
+    "debugger": {
+      "unregistered": "未注册调试器。"
     }
   },
   "service": {

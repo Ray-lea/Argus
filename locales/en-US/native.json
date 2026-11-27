@@ -95,6 +95,9 @@
     },
     "services": {
       "stopTimeout": "The service didn't stop within 20 seconds"
+    },
+    "debugger": {
+      "unregistered": "No debugger is registered."
     }
   },
   "service": {

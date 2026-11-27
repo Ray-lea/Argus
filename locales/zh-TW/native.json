@@ -92,6 +92,9 @@
     },
     "services": {
       "stopTimeout": "服務未在 20 秒內停止"
+    },
+    "debugger": {
+      "unregistered": "未註冊偵錯工具。"
     }
   },
   "service": {

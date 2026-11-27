@@ -97,6 +97,9 @@
     },
     "services": {
       "stopTimeout": "Служба не остановилась за 20 секунд."
+    },
+    "debugger": {
+      "unregistered": "Отладчик не зарегистрирован."
     }
   },
   "service": {

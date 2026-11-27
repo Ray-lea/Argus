@@ -159,5 +159,30 @@
     "commandLine": "ligne de commande",
     "details": "détails",
     "version": "numéro de version"
+  },
+  "dump": {
+    "writing": "Création du fichier de vidage mémoire de {name}…",
+    "done": "Fichier de vidage mémoire de {name} créé",
+    "failed": "Impossible de créer le fichier de vidage mémoire de {name}. {error}",
+    "error": {
+      "accessDenied": "L’accès à {name} a été refusé. Exécutez Argus en tant qu’administrateur pour créer son fichier de vidage mémoire ; les processus protégés ne peuvent pas être vidés.",
+      "accessDeniedPrivileged": "{name} est protégé par Windows ; son fichier de vidage mémoire ne peut pas être créé.",
+      "notFound": "{name} est déjà terminé.",
+      "refused": "Impossible de créer un fichier de vidage mémoire de {name}."
+    }
+  },
+  "debug": {
+    "title": "Déboguer {name} ?",
+    "body": "{debugger} va s’attacher au PID {pid}. Le processus peut s’interrompre pendant le débogage et se fermer à la fin du débogage ; les données non enregistrées seront perdues.",
+    "started": "{debugger} lancé pour {name}.",
+    "failed": "Impossible de déboguer {name}. {error}",
+    "error": {
+      "accessDenied": "L’accès à {name} a été refusé. Exécutez Argus en tant qu’administrateur pour le déboguer ; les processus protégés ne peuvent pas être débogués.",
+      "accessDeniedPrivileged": "{name} est protégé par Windows et ne peut pas être débogué.",
+      "notFound": "{name} est déjà terminé.",
+      "refused": "{name} ne peut pas être débogué : tant qu’il est en pause, l’écran ou Argus ne répond plus.",
+      "critical": "{name} est un processus système critique. S’il se ferme à la fin du débogage, Windows plante ; l’opération a été bloquée.",
+      "criticalityUnknown": "Impossible de vérifier si {name} est un processus système critique. Le débogage a été bloqué."
+    }
   }
 }

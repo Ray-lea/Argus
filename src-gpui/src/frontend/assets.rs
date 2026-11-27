@@ -69,6 +69,8 @@ product_icons! {
     "InfoIcon" => Info,
     "TipIcon" => Lightbulb,
     "CopyIcon" => Copy,
+    "BugIcon" => Bug,
+    "DumpIcon" => FileDown,
     "EyeIcon" => Eye,
     "EyeOffIcon" => EyeOff,
     "AppIcon" | "GenericAppIcon" => AppWindow,

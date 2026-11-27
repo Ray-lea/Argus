@@ -1316,6 +1316,44 @@ impl Desktop {
                 Action::Fold(row.key.clone()),
             ));
         }
+        // Task Manager's "Debug" and "Create memory dump file", for one
+        // process: "Debug" only where a debugger is registered, as there.
+        if !group && let Some(member) = row.members.first() {
+            let pid = member["pid"].as_u64().unwrap_or(0);
+            let target = json!({
+                "pid": member["pid"],
+                "createTime": member["createTime"],
+                "name": row.title,
+            });
+            // The System process and Idle have no program to debug or dump.
+            let kernel = pid == 0 || pid == 4;
+            if let Some(debugger) = self.data.get("debugger").and_then(Value::as_str) {
+                let mut args = target.clone();
+                args["debugger"] = json!(debugger);
+                items.push(
+                    MenuItem::new(
+                        label("processes.menu.debug"),
+                        Action::Dialog("debug".into(), args),
+                    )
+                    .icon("BugIcon")
+                    .disabled(!identity_ready || kernel),
+                );
+            }
+            let dump = MenuItem::new(
+                label("processes.menu.createDump"),
+                Action::Dialog("dump".into(), target),
+            )
+            .icon("DumpIcon")
+            .disabled(!identity_ready || kernel);
+            items.push(
+                if argus_core::dump::holds_credentials(text(member, "name")) {
+                    dump.disabled(true)
+                        .detail(label("processes.menu.dumpCredentials"))
+                } else {
+                    dump
+                },
+            );
+        }
         let path = row.raw["path"].as_str().filter(|p| !p.is_empty());
         items.push(
             MenuItem::new(

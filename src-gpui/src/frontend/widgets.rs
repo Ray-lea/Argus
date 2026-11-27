@@ -125,6 +125,9 @@ pub(in crate::frontend) struct UiState {
     pub focus_rule: Option<(String, Instant)>,
     /// Cards running an action, and the errors they show.
     pub busy: HashSet<String>,
+    /// Memory dumps being written, by process instance (`pid:createTime`),
+    /// and the notice that says so.
+    pub dumps: HashMap<String, u64>,
     pub errors: HashMap<String, String>,
     /// File-lock searches started: each result fades in once and its list
     /// starts at the top.

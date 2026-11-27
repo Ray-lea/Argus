@@ -107,5 +107,30 @@
     "commandLine": "命令行",
     "details": "详细信息",
     "version": "版本号"
+  },
+  "dump": {
+    "writing": "正在为 {name} 创建内存转储文件…",
+    "done": "已创建 {name} 的内存转储文件",
+    "failed": "无法为 {name} 创建内存转储文件。{error}",
+    "error": {
+      "accessDenied": "没有权限为 {name} 创建内存转储文件。可改为以管理员身份运行 Argus；受保护的进程仍无法转储。",
+      "accessDeniedPrivileged": "{name} 受系统保护，无法创建内存转储文件。",
+      "notFound": "{name} 已经退出。",
+      "refused": "不能为 {name} 创建内存转储文件。"
+    }
+  },
+  "debug": {
+    "title": "调试 {name}？",
+    "body": "{debugger} 将附加到 PID {pid}。调试期间该进程可能暂停运行；结束调试时进程可能随之退出，未保存的数据会丢失。",
+    "started": "已为 {name} 启动 {debugger}。",
+    "failed": "无法调试 {name}。{error}",
+    "error": {
+      "accessDenied": "没有权限调试 {name}。可改为以管理员身份运行 Argus；受保护的进程仍无法调试。",
+      "accessDeniedPrivileged": "{name} 受系统保护，无法调试。",
+      "notFound": "{name} 已经退出。",
+      "refused": "不能调试 {name}：该进程暂停时，屏幕或 Argus 会停止响应。",
+      "critical": "{name} 是系统关键进程，结束调试时该进程若随之退出会导致系统崩溃，操作已阻止。",
+      "criticalityUnknown": "无法确认 {name} 是否为系统关键进程；已阻止调试。"
+    }
   }
 }

@@ -412,6 +412,95 @@ impl Desktop {
         }
     }
 
+    /// Writes a memory dump of the process in `args` off the UI thread. A
+    /// full dump of a large process takes a while: a notice shows meanwhile,
+    /// and a second request for the same process waits for the first.
+    pub(super) fn create_dump(
+        &mut self,
+        args: &Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if number(args, "createTime") < 0. {
+            self.notify_toast(ToastKind::Info, label("processes.identityPending"));
+            return;
+        }
+        let key = dump_key(args);
+        if self.ui.dumps.contains_key(&key) {
+            return;
+        }
+        let writing = self.toast_with(
+            ToastKind::Info,
+            tr!("actions.dump.writing", name = text(args, "name")),
+            600_000,
+            vec![],
+        );
+        self.ui.dumps.insert(key, writing);
+        // A fixture writes nothing: a test control (`resolve`) answers instead.
+        self.request("create_dump", args.clone(), None, window, cx);
+        cx.notify();
+    }
+
+    /// Says where the dump went, with a button that shows it in Explorer as
+    /// Task Manager's "Open file location" does, or why there is none.
+    pub(super) fn dump_finished(&mut self, args: &Value, outcome: Result<&Value, &Value>) {
+        if let Some(writing) = self.ui.dumps.remove(&dump_key(args)) {
+            self.dismiss_toast(writing);
+        }
+        let name = text(args, "name");
+        match outcome {
+            Ok(path) => {
+                let path = path.as_str().unwrap_or_default().to_owned();
+                let reveal = path.clone();
+                self.toast_titled(
+                    ToastKind::Success,
+                    Some(tr!("actions.dump.done", name = name)),
+                    breakable_path(&path),
+                    15000,
+                    vec![(
+                        label("common.openFileLocation"),
+                        Rc::new(
+                            move |this: &mut Desktop,
+                                  window: &mut Window,
+                                  cx: &mut Context<Desktop>| {
+                                this.request(
+                                    "reveal_in_explorer",
+                                    json!({"path": reveal}),
+                                    None,
+                                    window,
+                                    cx,
+                                )
+                            },
+                        ),
+                    )],
+                );
+            }
+            Err(error) => {
+                let message = self.single_error("dump", "create_dump", args, error);
+                self.notify_toast_for(ToastKind::Error, message, 8000);
+            }
+        }
+    }
+
+    /// Why one process action failed: Windows's own words after the name of
+    /// what failed (`actions.<action>.failed`), or the action's own text for
+    /// the cause (`actions.<action>.error.<kind>`).
+    pub(super) fn single_error(
+        &self,
+        action: &str,
+        command: &str,
+        args: &Value,
+        error: &Value,
+    ) -> String {
+        match error["message"].as_str() {
+            Some(reason) if text(error, "kind") == "os" => argus_core::i18n::format(
+                &format!("actions.{action}.failed"),
+                &[("name", &text(args, "name")), ("error", &reason)],
+            ),
+            _ => self.action_error(command, args, error),
+        }
+    }
+
     /// Restarts Explorer with a pending notice, then says how it went.
     pub(super) fn restart_explorer(
         &mut self,
@@ -831,5 +920,51 @@ impl Desktop {
                         ),
                 ),
             )
+    }
+}
+
+/// The process instance a dump is written of.
+fn dump_key(args: &Value) -> String {
+    format!("{}:{}", args["pid"], args["createTime"])
+}
+
+/// `path` able to wrap after each folder: line breaking (UAX #14) never
+/// breaks after a backslash, so a long path broke after its drive's colon
+/// and then only at the edge. A zero-width space after each one, shown as
+/// nothing, lets the file name start the second line instead.
+fn breakable_path(path: &str) -> String {
+    path.replace('\\', "\\\u{200B}")
+}
+
+#[cfg(test)]
+mod tests {
+    // Named imports keep the glob-imported GPUI `test` macro out of scope.
+    use super::breakable_path;
+    use gpui_kit::gpui::LineWrapper;
+
+    #[test]
+    fn a_dump_path_wraps_after_its_folders() {
+        let path = breakable_path(r"C:\Users\Contoso\AppData\Local\Temp\Review.DMP");
+        // Each first line it can wrap after, as shown.
+        let lines: Vec<String> = LineWrapper::break_indices(&path)
+            .filter(|&at| at > 0 && at < path.len())
+            .map(|at| path[..at].replace('\u{200B}', ""))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                r"C:",
+                r"C:\",
+                r"C:\Users\",
+                r"C:\Users\Contoso\",
+                r"C:\Users\Contoso\AppData\",
+                r"C:\Users\Contoso\AppData\Local\",
+                r"C:\Users\Contoso\AppData\Local\Temp\",
+            ]
+        );
+        assert_eq!(
+            path.replace('\u{200B}', ""),
+            r"C:\Users\Contoso\AppData\Local\Temp\Review.DMP"
+        );
     }
 }

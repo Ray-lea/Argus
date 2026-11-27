@@ -14,7 +14,7 @@ mod net;
 mod npu;
 mod nvml;
 mod query;
-mod registry;
+pub(crate) mod registry;
 mod sensors;
 pub mod startup_probe;
 mod vendor_gpu;

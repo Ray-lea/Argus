@@ -146,5 +146,30 @@
     "commandLine": "Befehlszeile",
     "details": "Details",
     "version": "Versionsnummer"
+  },
+  "dump": {
+    "writing": "Speicherabbilddatei von {name} wird erstellt…",
+    "done": "Speicherabbilddatei von {name} erstellt",
+    "failed": "Die Speicherabbilddatei von {name} konnte nicht erstellt werden. {error}",
+    "error": {
+      "accessDenied": "Der Zugriff auf {name} wurde verweigert. Führen Sie Argus als Administrator aus, um die Speicherabbilddatei zu erstellen; von geschützten Prozessen lässt sich kein Abbild erstellen.",
+      "accessDeniedPrivileged": "{name} ist von Windows geschützt; die Speicherabbilddatei kann nicht erstellt werden.",
+      "notFound": "{name} wurde bereits beendet.",
+      "refused": "Für {name} kann keine Speicherabbilddatei erstellt werden."
+    }
+  },
+  "debug": {
+    "title": "{name} debuggen?",
+    "body": "{debugger} wird an PID {pid} angehängt. Der Prozess kann beim Debuggen anhalten und mit dem Ende des Debuggens beendet werden; nicht gespeicherte Daten gehen verloren.",
+    "started": "{debugger} für {name} gestartet.",
+    "failed": "{name} konnte nicht gedebuggt werden. {error}",
+    "error": {
+      "accessDenied": "Der Zugriff auf {name} wurde verweigert. Führen Sie Argus als Administrator aus, um den Prozess zu debuggen; geschützte Prozesse lassen sich nicht debuggen.",
+      "accessDeniedPrivileged": "{name} ist von Windows geschützt und kann nicht gedebuggt werden.",
+      "notFound": "{name} wurde bereits beendet.",
+      "refused": "{name} kann nicht gedebuggt werden: Solange der Prozess angehalten ist, reagiert der Bildschirm oder Argus nicht mehr.",
+      "critical": "{name} ist ein kritischer Systemprozess. Wird er mit dem Ende des Debuggens beendet, stürzt Windows ab; die Aktion wurde blockiert.",
+      "criticalityUnknown": "Es konnte nicht geprüft werden, ob {name} ein kritischer Systemprozess ist. Das Debuggen wurde blockiert."
+    }
   }
 }

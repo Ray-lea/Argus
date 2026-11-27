@@ -133,5 +133,30 @@
     "commandLine": "コマンド ライン",
     "details": "詳細",
     "version": "バージョン番号"
+  },
+  "dump": {
+    "writing": "{name} のメモリ ダンプ ファイルを作成しています…",
+    "done": "{name} のメモリ ダンプ ファイルを作成しました",
+    "failed": "{name} のメモリ ダンプ ファイルを作成できませんでした。{error}",
+    "error": {
+      "accessDenied": "{name} へのアクセスが拒否されました。メモリ ダンプ ファイルを作成するには Argus を管理者として実行してください。保護されたプロセスはダンプできません。",
+      "accessDeniedPrivileged": "{name} は Windows によって保護されているため、メモリ ダンプ ファイルを作成できません。",
+      "notFound": "{name} はすでに終了しています。",
+      "refused": "{name} のメモリ ダンプ ファイルは作成できません。"
+    }
+  },
+  "debug": {
+    "title": "{name} をデバッグしますか？",
+    "body": "{debugger} を PID {pid} にアタッチします。デバッグ中はプロセスが一時停止する場合があり、デバッグを終了するとプロセスも終了する場合があります。保存されていないデータは失われます。",
+    "started": "{name} に対して {debugger} を起動しました。",
+    "failed": "{name} をデバッグできませんでした。{error}",
+    "error": {
+      "accessDenied": "{name} へのアクセスが拒否されました。デバッグするには Argus を管理者として実行してください。保護されたプロセスはデバッグできません。",
+      "accessDeniedPrivileged": "{name} は Windows によって保護されているため、デバッグできません。",
+      "notFound": "{name} はすでに終了しています。",
+      "refused": "{name} はデバッグできません。このプロセスが一時停止すると、画面または Argus が応答しなくなります。",
+      "critical": "{name} は重要なシステム プロセスです。デバッグの終了時にプロセスが終了すると Windows がクラッシュするため、操作をブロックしました。",
+      "criticalityUnknown": "{name} が重要なシステム プロセスか確認できませんでした。デバッグはブロックされました。"
+    }
   }
 }

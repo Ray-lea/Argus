@@ -159,5 +159,30 @@
     "commandLine": "línea de comandos",
     "details": "detalles",
     "version": "número de versión"
+  },
+  "dump": {
+    "writing": "Creando el archivo de volcado de memoria de {name}…",
+    "done": "Se creó el archivo de volcado de memoria de {name}",
+    "failed": "No se pudo crear el archivo de volcado de memoria de {name}. {error}",
+    "error": {
+      "accessDenied": "Se denegó el acceso a {name}. Ejecute Argus como administrador para crear su archivo de volcado de memoria; los procesos protegidos no se pueden volcar.",
+      "accessDeniedPrivileged": "{name} está protegido por Windows, por lo que no se puede crear su archivo de volcado de memoria.",
+      "notFound": "{name} ya ha finalizado.",
+      "refused": "No se puede crear un archivo de volcado de memoria de {name}."
+    }
+  },
+  "debug": {
+    "title": "¿Depurar {name}?",
+    "body": "{debugger} se adjuntará al PID {pid}. El proceso puede detenerse mientras se depura y cerrarse al terminar la depuración; se perderán los datos no guardados.",
+    "started": "Se inició {debugger} para {name}.",
+    "failed": "No se pudo depurar {name}. {error}",
+    "error": {
+      "accessDenied": "Se denegó el acceso a {name}. Ejecute Argus como administrador para depurarlo; los procesos protegidos no se pueden depurar.",
+      "accessDeniedPrivileged": "{name} está protegido por Windows y no se puede depurar.",
+      "notFound": "{name} ya ha finalizado.",
+      "refused": "{name} no se puede depurar: mientras está en pausa, la pantalla o Argus dejan de responder.",
+      "critical": "{name} es un proceso crítico del sistema. Si se cierra al terminar la depuración, Windows se bloquea, por lo que se ha bloqueado la operación.",
+      "criticalityUnknown": "No se pudo comprobar si {name} es un proceso crítico del sistema. Se bloqueó la depuración."
+    }
   }
 }
