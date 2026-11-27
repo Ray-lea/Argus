@@ -121,6 +121,7 @@ For code checks, packaging the installer, and cleaning caches, see the [developm
 | Action | Keys |
 | --- | --- |
 | Switch pages | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| Next / previous page | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | Search processes | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Temporarily pause updates | Hold <kbd>Ctrl</kbd>; release to resume (Processes and Performance) |
 | Open details | <kbd>Enter</kbd> |

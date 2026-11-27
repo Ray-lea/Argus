@@ -135,6 +135,7 @@ La [guía de desarrollo](docs/development/README.md), en chino, explica las comp
 | Acción | Teclas |
 | --- | --- |
 | Cambiar de página | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| Página siguiente / anterior | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | Buscar procesos | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Pausar temporalmente las actualizaciones | Mantener <kbd>Ctrl</kbd>; soltar para reanudar, en Procesos y Rendimiento |
 | Abrir detalles | <kbd>Enter</kbd> |

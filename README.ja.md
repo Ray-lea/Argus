@@ -135,6 +135,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 | 操作 | キー |
 | --- | --- |
 | ページの切り替え | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| 次 / 前のページ | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | プロセスの検索 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 更新の一時停止 | <kbd>Ctrl</kbd> を押している間は停止し、離すと再開（プロセス・パフォーマンス ページ） |
 | 詳細を開く | <kbd>Enter</kbd> |

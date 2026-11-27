@@ -135,6 +135,7 @@ Codeprüfungen, das Erstellen des Installationsprogramms und die Cache-Bereinigu
 | Aktion | Tasten |
 | --- | --- |
 | Seite wechseln | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| Nächste / vorherige Seite | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | Prozesse suchen | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Aktualisierung vorübergehend anhalten | <kbd>Ctrl</kbd> gedrückt halten; zum Fortsetzen loslassen, auf den Seiten Prozesse und Leistung |
 | Details öffnen | <kbd>Enter</kbd> |

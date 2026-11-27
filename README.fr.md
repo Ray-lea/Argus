@@ -135,6 +135,7 @@ Le [guide de développement](docs/development/README.md), en chinois, détaille 
 | Action | Touches |
 | --- | --- |
 | Changer de page | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| Page suivante / précédente | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | Rechercher des processus | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Suspendre temporairement l’actualisation | Maintenir <kbd>Ctrl</kbd>, puis relâcher pour reprendre, sur les pages Processus et Performances |
 | Ouvrir les détails | <kbd>Enter</kbd> |

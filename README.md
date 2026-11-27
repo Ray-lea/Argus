@@ -121,6 +121,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 | 操作 | 按键 |
 | --- | --- |
 | 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| 下一个 / 上一个页面 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | 搜索进程 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 临时暂停刷新 | 按住 <kbd>Ctrl</kbd>，松开后恢复（进程页、性能页） |
 | 打开详细信息 | <kbd>Enter</kbd> |

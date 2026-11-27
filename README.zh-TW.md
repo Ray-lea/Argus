@@ -131,6 +131,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 | 操作 | 按鍵 |
 | --- | --- |
 | 切換頁面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
+| 下一個 / 上一個頁面 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd> |
 | 搜尋處理程序 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 暫時停止重新整理 | 按住 <kbd>Ctrl</kbd>，放開後恢復（處理程序頁、效能頁） |
 | 開啟詳細資料 | <kbd>Enter</kbd> |
