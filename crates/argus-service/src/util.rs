@@ -22,6 +22,11 @@ pub const DAMAGED: u32 = 0x2000_0009;
 /// Task Scheduler refused to register the administrator startup task; the
 /// log keeps the code it returned.
 pub const TASK_REJECTED: u32 = 0x2000_000A;
+/// The SCM still holds a service of this name, but its registration is gone
+/// from the registry: another program deleted its key. Windows drops it when
+/// it next starts; until then its configuration cannot be read nor the
+/// service started (both fail with 2), and no service of the name created.
+pub const ORPHANED: u32 = 0x2000_000B;
 
 pub fn message(code: u32) -> String {
     match code {
@@ -35,6 +40,9 @@ pub fn message(code: u32) -> String {
         ADMIN_OUTDATED => tr!("admin.outdated"),
         DAMAGED => tr!("service.damaged.owner"),
         TASK_REJECTED => tr!("admin.taskRejected"),
+        // Status and management treat it as not installed; should it reach
+        // a message anyway, that is what it is.
+        ORPHANED => message(1060),
         1223 => tr!("service.canceled"),
         1460 => tr!("service.timeout"),
         _ => tr!(

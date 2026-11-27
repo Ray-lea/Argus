@@ -31,8 +31,8 @@ use windows::core::{PCWSTR, PWSTR};
 
 use crate::security;
 use crate::util::{
-    DAMAGED, FOREIGN_SERVICE, Handle, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW, UNSAFE_PATH, io,
-    message, wide, win,
+    DAMAGED, FOREIGN_SERVICE, Handle, ORPHANED, OTHER_OWNER, Result, TASK_MANAGER_FOLLOW,
+    UNSAFE_PATH, io, message, wide, win,
 };
 
 static MANAGING: AtomicBool = AtomicBool::new(false);
@@ -427,16 +427,20 @@ fn query(service: &Service) -> Result<SERVICE_STATUS_PROCESS> {
 /// the helper. Only the service's executable in our pinned protected folder
 /// qualifies, under its name or one an earlier version gave it.
 fn binary(service: &Service, dir: &Path) -> Result<PathBuf> {
+    // The configuration of a registration whose key is gone cannot be read
+    // (2): `ORPHANED` says why.
+    let unreadable = |code| if orphaned() { ORPHANED } else { code };
     let mut needed = 0;
     unsafe {
         let _ = QueryServiceConfigW(service.0, None, 0, &mut needed);
     }
     if needed == 0 || needed > 64 * 1024 {
-        return Err(FOREIGN_SERVICE);
+        return Err(unreadable(FOREIGN_SERVICE));
     }
     let mut data = vec![0u64; (needed as usize).div_ceil(8)];
     let config = data.as_mut_ptr().cast::<QUERY_SERVICE_CONFIGW>();
-    unsafe { QueryServiceConfigW(service.0, Some(config), needed, &mut needed) }.map_err(win)?;
+    unsafe { QueryServiceConfigW(service.0, Some(config), needed, &mut needed) }
+        .map_err(|error| unreadable(win(error)))?;
     let config = unsafe { &*config };
     let command = unsafe { config.lpBinaryPathName.to_string() }.map_err(|_| FOREIGN_SERVICE)?;
     let account = unsafe { config.lpServiceStartName.to_string() }.map_err(|_| FOREIGN_SERVICE)?;
@@ -467,17 +471,27 @@ pub fn status() -> std::result::Result<ServiceStatus, String> {
 }
 
 /// Whether a service of this name is registered and stays so, whatever it
-/// has left of its files: one marked for deletion is on its way out.
+/// has left of its files: one marked for deletion is on its way out, and so
+/// is one whose registration another program deleted (`orphaned`).
 pub(crate) fn is_registered() -> bool {
     scm(SC_MANAGER_CONNECT)
         .and_then(|manager| open(&manager, SERVICE_QUERY_STATUS))
         .is_ok_and(|service| service.is_some())
+        && !orphaned()
         && !marked_for_deletion(HKEY_LOCAL_MACHINE, &registration())
 }
 
 /// The registry key of the service's registration.
 fn registration() -> String {
     format!(r"{SERVICES_KEY}\{}", crate::SERVICE_NAME)
+}
+
+/// Whether the registration's key is gone, which for a service the SCM
+/// still opens by name means another program deleted it (`ORPHANED`).
+/// Cleaners and uninstallers that sweep up "leftovers" do; the SCM's own
+/// removal deletes the key only once nothing holds the service.
+fn orphaned() -> bool {
+    matches!(registry_key(HKEY_LOCAL_MACHINE, &registration()), Err(2))
 }
 
 fn inspect() -> Result<ServiceStatus> {
@@ -488,6 +502,16 @@ fn inspect() -> Result<ServiceStatus> {
     let dir = directory()?;
     let image = match binary(&service, &dir) {
         Ok(image) => image,
+        // What the SCM keeps of a registration another program deleted
+        // cannot start, and goes when Windows next starts: as after that, the
+        // service is not installed. Installing or removing deletes it now.
+        Err(ORPHANED) => {
+            argus_core::diagnostics::warn(
+                "privileged service registration orphaned",
+                "registry key deleted by another program; the SCM keeps the service until Windows restarts",
+            );
+            return Ok(ServiceStatus::new("notInstalled"));
+        }
         // Another program's service of this name, or a registration that no
         // longer reads as this one: nothing of it is Argus's to manage.
         Err(code) => return Ok(ServiceStatus::failed("unavailable", code)),
@@ -611,7 +635,12 @@ pub(crate) fn running_pid() -> Result<Option<u32>> {
     let dir = directory()?;
     let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
     let _guard = security::protect_directory(&dir)?;
-    binary(&service, &dir)?;
+    match binary(&service, &dir) {
+        // Not installed, as `status` says: nothing tells it is this
+        // account's, or even Argus's.
+        Err(ORPHANED) => return Ok(None),
+        result => result?,
+    };
     match record(&dir, &security::protect_present) {
         Record::Account(owner) => Ok((owner == security::current_sid()?).then_some(s.dwProcessId)),
         // A service whose record is gone cannot be shown to be this
@@ -873,10 +902,15 @@ impl Machine<'_> {
 impl Steps for Machine<'_> {
     fn registered(&mut self) -> Result<Option<PathBuf>> {
         // Asked of the SCM by name: a deleted registration that another
-        // program's handle keeps is still one.
-        open(self.manager, SERVICE_QUERY_CONFIG)?
-            .map(|service| binary(&service, self.dir))
-            .transpose()
+        // program's handle keeps is still one. One whose key is gone names
+        // nothing that a restart could bring back.
+        match open(self.manager, SERVICE_QUERY_CONFIG)? {
+            Some(service) => match binary(&service, self.dir) {
+                Err(ORPHANED) => Ok(None),
+                image => image.map(Some),
+            },
+            None => Ok(None),
+        }
     }
 
     fn running(&mut self) -> Result<bool> {
@@ -1202,6 +1236,69 @@ fn settle(system: &mut impl Steps, installation_failed: bool) {
     }
 }
 
+/// `existing`, unless its registration is gone from the registry
+/// (`ORPHANED`). What the SCM keeps of it then holds the name until Windows
+/// restarts; `retire` deletes that first, so the name can be used again now.
+fn unless_orphaned(
+    existing: Option<Service>,
+    manager: &Service,
+    dir: &Path,
+    retire: bool,
+) -> Result<Option<Service>> {
+    match existing {
+        Some(service) if orphaned() => {
+            if retire {
+                retire_orphan(service, manager, dir)?;
+            }
+            Ok(None)
+        }
+        existing => Ok(existing),
+    }
+}
+
+/// Deletes what the SCM keeps of an orphaned registration, which needs no
+/// trust in the folder: deleting it only does now what a restart of Windows
+/// would. One that still runs is stopped first, but only when its process
+/// runs one of this service's executables in `dir`, since its configuration
+/// cannot say whose it is; another program's is refused and left running.
+fn retire_orphan(service: Service, manager: &Service, dir: &Path) -> Result<()> {
+    let status = query(&service)?;
+    if status.dwCurrentState != SERVICE_STOPPED {
+        if !runs_image_in(status.dwProcessId, dir) {
+            argus_core::diagnostics::warn(
+                "orphaned service registration kept",
+                format!(
+                    "state={}; the process does not run the service's executable",
+                    status.dwCurrentState.0
+                ),
+            );
+            return Err(FOREIGN_SERVICE);
+        }
+        stop(&service)?;
+    }
+    // Nothing is logged when this succeeds: a helper saves a report of any
+    // warning, which would keep the folder after a removal. The status the
+    // host read before logged the orphan.
+    Machine {
+        manager,
+        service: Some(service),
+        dir,
+    }
+    .delete()
+}
+
+/// Whether process `pid` runs one of the service's executables in `dir`.
+fn runs_image_in(pid: u32, dir: &Path) -> bool {
+    argus_core::details::image_path_of(pid).is_some_and(|path| {
+        let path = Path::new(&path);
+        path.parent().is_some_and(|parent| same_path(parent, dir))
+            && path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(image_name)
+    })
+}
+
 /// Stops and deletes a registered service, then writes that to disk. False
 /// when it could not be written: the files then stay, since a crash could
 /// bring the registration back.
@@ -1232,6 +1329,8 @@ pub(crate) fn run_helper(action: &str, sid: &str) -> Result<()> {
     let existing = open(&manager, SERVICE_ALL_ACCESS)?;
     let dir = directory()?;
     let _parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
+    // An orphaned registration is none; an installation takes its name back.
+    let existing = unless_orphaned(existing, &manager, &dir, action == "install")?;
     match (action, &existing) {
         ("install", Some(_)) => return Err(1073),
         ("install", None) => {}
@@ -1332,6 +1431,9 @@ fn uninstall() -> Result<()> {
     let manager = scm(SC_MANAGER_CONNECT)?;
     let existing = open(&manager, SERVICE_ALL_ACCESS)?;
     let dir = directory()?;
+    // Deleted first, leaving files without a registration: the rest goes on
+    // as when another program deleted the service outright.
+    let existing = unless_orphaned(existing, &manager, &dir, true)?;
     let protected = (|| {
         let parent = security::protect_directory(dir.parent().ok_or(87u32)?)?;
         let directory = security::protect_directory(&dir)?;
@@ -1433,7 +1535,11 @@ pub(crate) fn refresh() -> Result<()> {
             return Ok(());
         };
         let dir = directory()?;
-        let image = binary(&service, &dir)?;
+        let image = match binary(&service, &dir) {
+            // Not installed, as Argus says when it starts and offers to.
+            Err(ORPHANED) => return Ok(()),
+            image => image?,
+        };
         match examine(&dir, &image, &security::protect_present).1 {
             Health::Whole(owner) => owner,
             Health::Unsafe(code) => return Err(code),
@@ -1736,6 +1842,48 @@ mod tests {
         assert_eq!(examine(&dir, &image, &pin).1, Health::Unsafe(5));
         assert_eq!(record(&dir, &pin), Record::Unsafe(5));
         assert_eq!(record(&dir, &pinned), Record::Account(ACCOUNT.into()));
+    }
+
+    #[test]
+    fn an_orphan_is_stopped_only_when_it_runs_the_service_executable_there() {
+        use std::os::windows::process::CommandExt;
+        let folder = Folder::new();
+        let dir = folder.dir();
+        fs::create_dir(&dir).unwrap();
+        let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+        // A console program that waits, under the names an orphan may run.
+        let spawn = |name: &str| {
+            let path = dir.join(name);
+            fs::copy(system.join("PING.EXE"), &path).unwrap();
+            std::process::Command::new(&path)
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .creation_flags(0x0800_0000)
+                .spawn()
+                .unwrap()
+        };
+        let mut children = Vec::new();
+        for (name, ours) in [
+            (IMAGE, true),
+            ("argus-service-1234-5678.exe", true),
+            ("argus-service.old.exe", true),
+            ("argus.exe", false),
+        ] {
+            let child = spawn(name);
+            assert_eq!(runs_image_in(child.id(), &dir), ours, "{name}");
+            children.push(child);
+        }
+        // The same executable elsewhere is not this folder's.
+        assert!(!runs_image_in(children[0].id(), &folder.0));
+        // Nor is no process, as a stopped service reports, or one that is gone.
+        assert!(!runs_image_in(0, &dir));
+        let ours = children[0].id();
+        for mut child in children {
+            child.kill().unwrap();
+            child.wait().unwrap();
+        }
+        assert!(!runs_image_in(ours, &dir));
     }
 
     #[test]
