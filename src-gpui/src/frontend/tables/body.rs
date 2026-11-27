@@ -383,10 +383,11 @@ impl Frame {
                 .position(|(origin, width)| *origin + *width > edge)
                 .unwrap_or(self.widths.len())
         };
-        // Up to the column the viewport ends in; the component draws one
-        // more past it, which its clip hides.
+        // Up to the column the viewport ends in, and one more past it as the
+        // component draws: that one shows in the empty column's space after
+        // the list (`render_last_empty_col`) when it starts there.
         let first = ends_past(viewport.start);
-        let last = (ends_past(viewport.end) + 1)
+        let last = (ends_past(viewport.end) + 2)
             .min(self.widths.len())
             .max(first);
         let lane = Lane {
@@ -602,8 +603,8 @@ impl Element for Cells {
         let rest = snapped(px(ROW_INSET * 2.));
         let list_right = (row_width - rest).max(name_width);
         let after_name = point(px(name_width / scale), px(0.)) + bounds.origin;
-        // Where the row's virtual list of cells would be, and what its cells
-        // would be clipped to as they prepaint.
+        // Where the row's virtual list of cells would be: the viewport the
+        // columns scroll in.
         let list = Bounds::new(
             after_name,
             size(
@@ -613,6 +614,13 @@ impl Element for Cells {
         );
         let content = Bounds::from_corners(list.origin, list.bottom_right());
         let lane = frame.lane(bounds, content);
+        // What the cells are clipped to: the component's list does not clip
+        // them, the box around it and the empty column after it does, so the
+        // column the list ends in shows on into that column's space.
+        let clip = Bounds::new(
+            after_name,
+            size(px((row_width - name_width) / scale), px(row_height / scale)),
+        );
 
         let table = frame.table.clone();
         let (mut name, cells) = table.update(cx, |state, cx| {
@@ -645,7 +653,7 @@ impl Element for Cells {
         // snaps to the device pixels by itself, and it is as wide as its
         // column's width snaps to.
         let cell_height = round_half_toward_zero(f32::from(content.size.height) * scale);
-        let cells = window.with_content_mask(Some(ContentMask { bounds: list }), |window| {
+        let cells = window.with_content_mask(Some(ContentMask { bounds: clip }), |window| {
             cells
                 .into_iter()
                 .map(|(scrolled, cell)| {
@@ -703,10 +711,7 @@ impl Element for Cells {
         });
         Drawn {
             name,
-            lane: Bounds::new(
-                after_name,
-                size(px((row_width - name_width) / scale), px(row_height / scale)),
-            ),
+            lane: clip,
             cells,
         }
     }
