@@ -1,4 +1,23 @@
 use super::*;
+
+/// The reads the pages repeat to keep external state current (`poll_page`
+/// and the like), as opposed to what an action or a control asks for.
+fn polled(command: &str) -> bool {
+    matches!(
+        command,
+        "desktop_shell"
+            | "registered_debugger"
+            | "list_services"
+            | "list_startup"
+            | "list_connections"
+            | "history_usage"
+            | "task_manager_status"
+            | "privileged_service_status"
+            | "update_status"
+            | "rule_stats"
+    )
+}
+
 impl Desktop {
     /// Argus acts with administrator rights: elevated itself, or through a
     /// running privileged service authorized for this account.
@@ -45,11 +64,14 @@ impl Desktop {
                     | "set_taskbar_monitor"
             ) {
                 // Kept for the tests to read (`inspectLayout.skippedRequest`):
-                // what a control asked for, in place of doing it.
-                self.data.insert(
-                    "skippedRequest".into(),
-                    json!({"command": command, "args": args}),
-                );
+                // what a control asked for, in place of doing it. Polls come
+                // on their own every few seconds and would hide it.
+                if !polled(command) {
+                    self.data.insert(
+                        "skippedRequest".into(),
+                        json!({"command": command, "args": args}),
+                    );
+                }
                 return;
             }
         }
@@ -136,22 +158,11 @@ impl Desktop {
             Ok(value) => {
                 // Polling keeps external state current; identical read results do
                 // not invalidate the process table or the rest of the desktop.
-                if matches!(
-                    pending.command.as_str(),
-                    "desktop_shell"
-                        | "registered_debugger"
-                        | "list_services"
-                        | "list_startup"
-                        | "list_connections"
-                        | "history_usage"
-                        | "task_manager_status"
-                        | "privileged_service_status"
-                        | "update_status"
-                        | "rule_stats"
-                ) && pending
-                    .cache
-                    .as_ref()
-                    .is_some_and(|key| self.data.get(key) == Some(&value))
+                if polled(&pending.command)
+                    && pending
+                        .cache
+                        .as_ref()
+                        .is_some_and(|key| self.data.get(key) == Some(&value))
                 {
                     return;
                 }
