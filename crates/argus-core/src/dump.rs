@@ -495,4 +495,50 @@ mod tests {
             Err(crate::actions::ActionError::Refused)
         ));
     }
+
+    /// How far dumps reach with the rights of the account running the test,
+    /// in a disposable VM (`ARGUS_VM_TEST=1`). An elevated test enables
+    /// SeDebugPrivilege first, as an elevated Argus does at start.
+    /// `ARGUS_DUMP_EXPECT` lists `pid=outcome` pairs, comma-separated; an
+    /// outcome is `snapshot`, `direct` or an `ActionError` kind such as
+    /// `accessDenied`. The test's own child is dumped from a snapshot in any
+    /// case. Every result is printed before any is checked.
+    #[test]
+    #[ignore = "dumps processes named by an explicitly configured disposable VM"]
+    fn vm_dump_reach() {
+        assert_eq!(std::env::var("ARGUS_VM_TEST").as_deref(), Ok("1"));
+        let elevated = crate::privilege::is_elevated();
+        let debug = elevated && crate::privilege::enable_debug_privilege();
+        println!("elevated={elevated}; SeDebugPrivilege={debug}");
+        let dir = std::env::temp_dir().join(format!("argus-vm-dumps-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut own = child();
+        let mut expected = vec![(own.id(), "snapshot".to_owned())];
+        let pairs = std::env::var("ARGUS_DUMP_EXPECT").unwrap_or_default();
+        for pair in pairs.split(',').filter(|pair| !pair.is_empty()) {
+            let (pid, outcome) = pair.split_once('=').expect("pid=outcome");
+            expected.push((pid.trim().parse().unwrap(), outcome.trim().to_owned()));
+        }
+        let results: Vec<(u32, String, String)> = expected
+            .into_iter()
+            .map(|(pid, want)| {
+                let got = match create_in(&dir, pid, 0) {
+                    Ok(path) if streams(&path).contains(&HANDLES) => "snapshot".to_owned(),
+                    Ok(_) => "direct".to_owned(),
+                    Err(error) => serde_json::to_value(&error).unwrap()["kind"]
+                        .as_str()
+                        .unwrap()
+                        .to_owned(),
+                };
+                println!("pid {pid}: {got} (expected {want})");
+                (pid, want, got)
+            })
+            .collect();
+        let _ = own.kill();
+        let _ = own.wait();
+        std::fs::remove_dir_all(&dir).unwrap();
+        for (pid, want, got) in results {
+            assert_eq!(got, want, "pid {pid}");
+        }
+    }
 }
