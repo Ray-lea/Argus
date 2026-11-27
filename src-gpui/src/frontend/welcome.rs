@@ -308,7 +308,7 @@ impl Desktop {
             return;
         }
         match notice {
-            Notice::System => self.notify_update(&state, &version, cx),
+            Notice::System => self.notify_update(&state, &version),
             Notice::Window => {
                 self.show_update_notice(&state, &version);
                 cx.notify();
@@ -316,29 +316,18 @@ impl Desktop {
         }
     }
 
-    /// The Windows notification that an update waits; a click on it opens
-    /// the update dialog (`frontend::run`).
-    fn notify_update(&self, state: &str, version: &str, cx: &mut Context<Self>) {
+    /// The Windows notification that an update waits, from the tray icon; a
+    /// click on it opens the update dialog (`shell::notify_update`).
+    fn notify_update(&self, state: &str, version: &str) {
         let (title, body) = if state == "available" {
             ("updates.availableToast", "updates.notification.available")
         } else {
             ("updates.readyToast", "updates.notification.ready")
         };
-        let notification = SystemNotification {
-            tag: crate::notifications::UPDATE.into(),
-            title: argus_core::i18n::format(title, &[("version", &version)]).into(),
-            body: label(body).into(),
-            actions: Vec::new(),
-        };
-        let host = self.host.clone();
-        let registered = cx
-            .background_executor()
-            .spawn(async move { crate::notifications::register(&host) });
-        cx.spawn(async move |_, cx| {
-            registered.await;
-            cx.update(|cx| cx.show_system_notification(notification));
-        })
-        .detach();
+        crate::shell::notify_update(
+            &argus_core::i18n::format(title, &[("version", &version)]),
+            &label(body),
+        );
     }
 
     pub(in crate::frontend) fn show_update_notice(&mut self, state: &str, version: &str) {

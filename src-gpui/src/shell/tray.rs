@@ -20,6 +20,18 @@ pub(super) struct Update {
     pub light: bool,
     /// The system tooltip shows on hover; off, the hover card does.
     pub tip: bool,
+    /// The latest notification from the icon; the icon shows each one once.
+    pub notification: Option<Notification>,
+}
+
+/// A Windows notification from the tray icon (`NIF_INFO`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(super) struct Notification {
+    /// Counts up from 1: a notification the icon has shown is not shown again
+    /// when the state is written for something else.
+    pub number: u64,
+    pub title: String,
+    pub text: String,
 }
 
 struct State {
@@ -117,6 +129,19 @@ impl Worker {
         });
     }
 
+    /// Shows a Windows notification from the icon, once.
+    pub fn notify(&self, title: &str, text: &str) {
+        self.update(|state| {
+            let number = state.notification.as_ref().map_or(0, |n| n.number) + 1;
+            state.notification = Some(Notification {
+                number,
+                title: title.to_owned(),
+                text: text.to_owned(),
+            });
+            true
+        });
+    }
+
     pub fn badge(&self, badge: bool) {
         self.update(|state| {
             if state.badge == badge {
@@ -207,6 +232,8 @@ mod tests {
         worker.style(TrayIcon::Number, true);
         worker.taskbar(true);
         worker.badge(true);
+        worker.notify("first", "text");
+        worker.notify("second", "text");
         worker.recreate();
         assert!(started.elapsed() < Duration::from_millis(200));
         release.send(()).unwrap();
@@ -221,6 +248,12 @@ mod tests {
         // Readings sent while the shell was busy still reach the columns.
         assert_eq!(last.recent, [95, 96, 97, 98, 99, 100].map(Some));
         assert!(last.look == TrayIcon::Number && last.tip && last.light);
+        // Only the latest notification is left to show.
+        let notification = last.notification.expect("a notification");
+        assert_eq!(
+            (notification.number, notification.title.as_str()),
+            (2, "second")
+        );
         worker.shutdown(Duration::from_secs(1));
         assert!(results.recv_timeout(Duration::from_secs(2)).unwrap().closed);
     }

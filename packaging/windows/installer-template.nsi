@@ -527,8 +527,6 @@ Section Uninstall
   ; We do this when not updating (to preserve the registry value on updates)
   ${If} $UpdateMode <> 1
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
-    ; Argus: the name and icon its Windows notifications show (src-gpui/src/notifications.rs).
-    DeleteRegKey HKCU "Software\Classes\AppUserModelId\${BUNDLEID}"
   ${EndIf}
 
   ; Delete app data if the checkbox is selected

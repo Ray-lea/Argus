@@ -67,7 +67,7 @@
 
 更新器负责下载、取消和安装前复验。客户端用 `resources/app.json` 中的公钥验证安装包与更新说明的签名，并核对签名绑定的版本。安装程序退出运行中的界面副本，更新已有管理员启动记录并刷新特权服务。通过管理员启动或任务管理器替换运行的安装版仍可应用内更新，免安装版提供下载入口。`--argus-updater-check` 在启动界面前返回安装类型，供打包流程检查。
 
-新版本的 Windows 通知经 vendored GPUI 的 `App::show_system_notification`（WinRT toast）发出，由界面决定何时发送（`argus-view-logic` 的 `update_notice`：每个版本一次，窗口处于前台时改为右下角提示）。界面启动时在创建窗口之前以 `App::set_app_identity` 把进程的 AppUserModelID 设为应用标识，与安装程序写入快捷方式的标识一致，通知按此标识归属。未打包的应用须在 `HKCU\Software\Classes\AppUserModelId\<标识>` 登记显示名称与图标，否则通知不显示图标：`notifications.rs` 在每次运行首次发送通知前，于后台线程把应用图标中最大的 PNG 写到本地数据目录的 `notification-icon.png`，并写入 `DisplayName` 与指向它的 `IconUri`。单击通知由 GPUI 的响应回调显示主窗口并打开更新对话框；Argus 未运行时单击已留在通知中心的旧通知不启动 Argus。卸载（不含覆盖升级）删除该注册表项。测试实例不发送通知。
+新版本的 Windows 通知由托盘图标发出（`Shell_NotifyIcon` 的 `NIF_INFO`，`shell::notify_update`），由界面决定何时发送（`argus-view-logic` 的 `update_notice`：每个版本一次，窗口处于前台时改为右下角提示）。托盘线程只保留最近一条通知并编号，随下一次写入图标交给 Shell，Shell 接受后不再重复；通知不带正文图标，标题栏显示程序自身的名称与图标，设置 `NIIF_RESPECT_QUIET_TIME`。单击通知以 `NIN_BALLOONUSERCLICK` 回到托盘回调，先打开更新对话框再显示主窗口，窗口回到前台时便不再提示后台刷新间隔。不用 WinRT toast（vendored GPUI 的 `App::show_system_notification`）：在 Windows 11 build 26300 上实测，只在 `HKCU\Software\Classes\AppUserModelId` 登记的 AppUserModelID 发出的通知，系统记为已送达却既不弹出也不进入通知中心，也收不到 `Activated` 等事件；带同一标识的开始菜单快捷方式只有安装版才有。测试实例不创建托盘图标，也不发送通知。
 
 平台职责与 macOS 边界见[GPUI 开发](../development/gpui.md)。
 

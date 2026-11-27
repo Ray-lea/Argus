@@ -823,6 +823,7 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
         badge: None,
         generation: None,
         live: None,
+        notified: 0,
     };
     let settings = app.state::<SettingsStore>().get();
     let initial = tray::Update {
@@ -1016,6 +1017,32 @@ pub fn apply_tray(settings: &Settings) {
         let _ = app.emit("argus-tray-card", serde_json::json!({ "open": false }));
     }
 }
+/// `text` in a fixed-size, null-terminated UTF-16 field, cut between characters.
+fn fill_wide(field: &mut [u16], text: &str) {
+    let mut at = 0;
+    for c in text.chars() {
+        let mut units = [0u16; 2];
+        let units = c.encode_utf16(&mut units);
+        if at + units.len() >= field.len() {
+            break;
+        }
+        field[at..at + units.len()].copy_from_slice(units);
+        at += units.len();
+    }
+    if let Some(end) = field.get_mut(at) {
+        *end = 0;
+    }
+}
+/// A Windows notification from the tray icon that an update waits; a click
+/// on it shows the window with the update dialog (`TrayAction::Notification`).
+/// Windows shows it under the program's name and icon, with no registration:
+/// it drops notifications of an AppUserModelID that only the registry names,
+/// and only an installation has a Start menu shortcut to name one.
+pub fn notify_update(title: &str, text: &str) {
+    if let Some(worker) = TRAY.lock().unwrap().clone() {
+        worker.notify(title, text);
+    }
+}
 pub fn set_tray_update(_app: &Host, version: Option<&str>) {
     *UPDATE.lock().unwrap() = version.map(str::to_owned);
     if let Some(worker) = TRAY.lock().unwrap().clone() {
@@ -1041,6 +1068,8 @@ struct NativeTray {
     /// The live icon shown, and the pixels it was made from: a sample that
     /// draws the same pixels keeps it.
     live: Option<(isize, Vec<u8>)>,
+    /// The number of the last notification the shell took (`tray::Notification`).
+    notified: u64,
 }
 
 impl NativeTray {
@@ -1099,6 +1128,19 @@ impl NativeTray {
         let title = wide(&update.title);
         let length = title.len().saturating_sub(1).min(data.szTip.len() - 1);
         data.szTip[..length].copy_from_slice(&title[..length]);
+        // A notification the shell has not taken yet goes with this write.
+        let notification = update
+            .notification
+            .as_ref()
+            .filter(|notification| notification.number != self.notified);
+        if let Some(notification) = notification {
+            data.uFlags |= NIF_INFO;
+            // No icon in the body: the notification's header shows the
+            // program's own. Quiet time (a new account's first hour) holds it.
+            data.dwInfoFlags = NIIF_NONE | NIIF_RESPECT_QUIET_TIME;
+            fill_wide(&mut data.szInfoTitle, &notification.title);
+            fill_wide(&mut data.szInfo, &notification.text);
+        }
         let known = self.generation == Some(update.generation);
         let (first, retry) = if known {
             (NIM_MODIFY, NIM_ADD)
@@ -1132,6 +1174,9 @@ impl NativeTray {
                     VERSION_4.store(notify(NIM_SETVERSION, &version), Ordering::Relaxed);
                 }
                 self.generation = Some(update.generation);
+                if let Some(notification) = notification {
+                    self.notified = notification.number;
+                }
             }
             None => {
                 self.generation = None;
@@ -1198,9 +1243,53 @@ mod tray_tests {
     use crate::settings::TrayIcon;
     use std::path::Path;
     use windows::Win32::UI::Shell::{
-        NIF_GUID, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-        NIM_SETVERSION,
+        NIF_GUID, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIIF_RESPECT_QUIET_TIME,
+        NIM_ADD, NIM_DELETE, NIM_MODIFY, NIM_SETVERSION,
     };
+
+    #[test]
+    fn a_notification_goes_with_writes_until_the_shell_takes_it_and_then_never_again() {
+        let mut icon = NativeTray {
+            hwnd: 1,
+            guid: tray_identity::guid(
+                "dev.argus.taskmanager.test.tray",
+                Path::new(r"C:\Argus\argus.exe"),
+            ),
+            badge: None,
+            generation: None,
+            live: None,
+            notified: 0,
+        };
+        let update = tray::Update {
+            title: "Argus".into(),
+            look: TrayIcon::Logo,
+            notification: Some(tray::Notification {
+                number: 1,
+                title: "Argus 1.2.0 已准备就绪".into(),
+                text: "更".repeat(300),
+            }),
+            ..Default::default()
+        };
+        let mut carried = Vec::new();
+        for shell_answers in [false, true, true] {
+            icon.write_with(update.clone(), |message, data| {
+                if message == NIM_ADD || message == NIM_MODIFY {
+                    let info = data.uFlags.contains(NIF_INFO);
+                    carried.push(info);
+                    if info {
+                        let title = data.szInfoTitle.split(|unit| *unit == 0).next().unwrap();
+                        assert_eq!(String::from_utf16_lossy(title), "Argus 1.2.0 已准备就绪");
+                        // Cut to the field, with room for the terminating null.
+                        assert_eq!(data.szInfo.iter().position(|unit| *unit == 0), Some(255));
+                        assert!(data.dwInfoFlags.contains(NIIF_RESPECT_QUIET_TIME));
+                    }
+                }
+                shell_answers
+            });
+        }
+        // Refused (both attempts carried it), taken, then not sent again.
+        assert_eq!(carried, [true, true, true, false]);
+    }
 
     #[test]
     fn tray_requests_keep_identity_through_changes_recreation_retry_and_deletion() {
@@ -1214,6 +1303,7 @@ mod tray_tests {
             badge: None,
             generation: None,
             live: None,
+            notified: 0,
         };
         let mut calls = Vec::new();
         let mut icons = Vec::new();
@@ -1278,6 +1368,7 @@ mod tray_tests {
             badge: None,
             generation: None,
             live: None,
+            notified: 0,
         };
         assert_eq!(restarted.data().guidItem, icon.data().guidItem);
         assert_ne!(restarted.data().hWnd, icon.data().hWnd);
@@ -1305,7 +1396,10 @@ mod toggle_tests {
 #[cfg(test)]
 mod tray_action_tests {
     use super::{NIN_KEYSELECT, TrayAction, tray_action};
-    use windows::Win32::UI::Shell::{NIN_POPUPCLOSE, NIN_POPUPOPEN};
+    use windows::Win32::UI::Shell::{
+        NIN_BALLOONHIDE, NIN_BALLOONSHOW, NIN_BALLOONTIMEOUT, NIN_BALLOONUSERCLICK, NIN_POPUPCLOSE,
+        NIN_POPUPOPEN,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         WM_CONTEXTMENU, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_RBUTTONUP,
     };
@@ -1336,6 +1430,14 @@ mod tray_action_tests {
             tray_action(NIN_POPUPCLOSE, true),
             Some(TrayAction::CardClose)
         );
+        assert_eq!(
+            tray_action(NIN_BALLOONUSERCLICK, true),
+            Some(TrayAction::Notification)
+        );
+        // Shown, closed or timed out by itself: nothing to do.
+        for event in [NIN_BALLOONSHOW, NIN_BALLOONHIDE, NIN_BALLOONTIMEOUT] {
+            assert_eq!(tray_action(event, true), None);
+        }
     }
 }
 
@@ -1416,6 +1518,9 @@ enum TrayAction {
     CardClose,
     /// The pointer moved over the icon: a flyout may follow.
     Warm,
+    /// A click on the icon's notification (`notify_update`), on screen or
+    /// in the notification center.
+    Notification,
 }
 
 /// The action of a tray callback's event. With version 4 a right click
@@ -1430,6 +1535,7 @@ fn tray_action(event: u32, version_4: bool) -> Option<TrayAction> {
         NIN_POPUPOPEN => Some(TrayAction::CardOpen),
         NIN_POPUPCLOSE => Some(TrayAction::CardClose),
         WM_MOUSEMOVE => Some(TrayAction::Warm),
+        NIN_BALLOONUSERCLICK => Some(TrayAction::Notification),
         _ => None,
     }
 }
@@ -1681,6 +1787,13 @@ fn tray_callback(app: &Host, hwnd: HWND, w: WPARAM, l: LPARAM) {
         TrayAction::CardClose => close_card(),
         TrayAction::Warm => warm_flyouts(true),
         TrayAction::Press => mark_right_press(),
+        TrayAction::Notification => {
+            close_card();
+            // The dialog first: the window coming back then finds it open
+            // and says nothing about the background refresh rate.
+            let _ = app.emit("argus-show-update", ());
+            show_main(app);
+        }
     }
 }
 

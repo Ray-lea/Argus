@@ -817,20 +817,6 @@ pub fn run(host: Host, options: Options) -> anyhow::Result<()> {
             // all of its languages read left to right.
             gpui_kit::base::LayoutDirection::Ltr.set_global(cx);
             theme::install_surface(cx);
-            // Before any window: the AppUserModelID the installer's shortcuts
-            // carry, which Windows notifications are shown for
-            // (`notifications`). A click on the update notification opens
-            // the update dialog.
-            cx.set_app_identity(&options.identifier, &host.package_info().name);
-            cx.on_system_notification_response({
-                let host = host.clone();
-                move |response, _| {
-                    if response.tag.as_ref() == crate::notifications::UPDATE {
-                        crate::shell::show_main(&host);
-                        let _ = host.emit("argus-show-update", ());
-                    }
-                }
-            });
             let manifest = argus_app::config::manifest();
             let minimum = size(
                 px(manifest["window"]["minWidth"]
