@@ -83,7 +83,7 @@
 |---|---|
 | `cpu.rs` | 型号、拓扑（每个逻辑处理器属于哪个核心，是性能核、能效核还是低功耗能效核）、缓存、虚拟化 |
 | `clock.rs` | 在标准权限下通过 Windows PCW 读取 CPU 整体和各逻辑处理器的原始频率计数。按实例配对连续样本，处理 32 位基数回绕及实例替换 |
-| `sensors.rs` | 合并 CPU 频率读数，使用 PDH 采集 ACPI 温度、空闲驻留时间和功耗。PCW 与 PDH 查询独立。已启用内核传感器时，可用物理核心时钟补齐对应线程。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值 |
+| `sensors.rs` | 合并 CPU 频率读数，使用 PDH 采集 ACPI 温度、空闲驻留时间和功耗。PCW 与 PDH 查询独立。已启用内核传感器时，可用物理核心时钟补齐对应线程。功耗按域合计多个封装的有效读数，保留有效零值，过滤缺失、负数和非有限值。存在 RAPL 封装或核心计量时只用 RAPL。ARM64 上两者都没有时，按 Microsoft 的 EMI 计量命名规范以 `CPU` 计量（没有时为 `CPU_*` 之和）作为核心功耗；x64 不用这条规则，缺少 Windows RAPL 计量时由内核传感器的 RAPL MSR 补齐，两种来源不混用。每个进程在第二次读到 PDH 数据时记录一行 `sensor sources`，列出全部能量计量与 ACPI 温度区的名称和原始读数 |
 | `battery.rs` | 电池类驱动 IOCTL：电量、充放电功率、电压、设计 / 完全充电容量、循环次数。标准用户可以只读打开电池设备 |
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 |
 | `disk.rs` | 以 `FILE_ANY_ACCESS` 存储 IOCTL 查询型号、容量、介质、卷及温度，通过 `IOCTL_DISK_PERFORMANCE` 计算活动时间、传输速率和响应时间。温度只向由 `stornvme`、`storahci`、`atapi` 管理的 NVMe、SATA 与 ATA 磁盘查询，驱动名由 `disk/controller.rs` 取自 PnP 设备树。温度查询是周期采样中唯一到达磁盘本身的请求：`GetDevicePowerState` 报告磁盘不在工作状态时不发送并清除读数，恢复工作后查询一次；机械硬盘只在 `IOCTL_DISK_PERFORMANCE` 的读写次数较上次查询有变化时发送，空闲时保留上次读数 |

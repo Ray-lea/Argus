@@ -12,7 +12,7 @@ Argus 默认从标准用户可访问的 Windows 接口和显卡驱动读取数�
 | CPU 空闲状态 | Windows `Processor Information`、已映射的 AMD SMU 表 | Windows 的 C1／C2／C3 表示系统空闲类别。支持的 AMD 处理器另列 SMU 的 C0／C1／CC6 |
 | CPU 限制状态 | Intel `IA32_THERM_STATUS` 和封装热状态 MSR | 温度、PROCHOT、临界温度、功耗及支持的电流／跨域限制；当前位与历史锁存位分别呈现，读取不清除记录 |
 | CPU 温度 | 处理器内部传感器；无读数时回退至 ACPI 热区（`Thermal Zone Information`） | 内部温度需启用内核传感器；ACPI 通常反映封装附近温度，部分主板没有该接口或只提供固定值。性能页标明来源 |
-| CPU 功耗 | Windows `Energy Meter`、内核传感器提供的 RAPL／AMD 能量计数器 | 概览优先显示封装功耗，缺测时显示核心功耗。CPU 详情分别绘制封装与核心曲线，核显功耗在对应 GPU 页查看。休眠和异常能量差会重建基线，零瓦读数与缺测分开处理 |
+| CPU 功耗 | Windows `Energy Meter`、内核传感器提供的 RAPL／AMD 能量计数器 | 概览优先显示封装功耗，缺测时显示核心功耗。CPU 详情分别绘制封装与核心曲线，核显功耗在对应 GPU 页查看。休眠和异常能量差会重建基线，零瓦读数与缺测分开处理。ARM64 电脑（如骁龙）没有 RAPL 封装或核心计量时，按 Microsoft 的[计量命名规范](https://learn.microsoft.com/windows-hardware/drivers/powermeter/rail_naming)读取：名为 `CPU` 的计量作为核心功耗，没有时取各 `CPU_*` 计量之和；`GPU`、`NPU` 等其他计量暂不对应到设备 |
 | 每核温度、CPU 电压 | PawnIO 固定 CPU／SMU 模块，经特权服务读取 | Intel DTS 提供核心温度、温度余量和节流状态；AMD 按明确的 SMU 表版本读取每核温度。SVI2／SVI3 供电电压与 VID 请求电压分别标注；SMT 线程共享的核心传感器只统计一次 |
 | 功耗与限制 | Intel RAPL；AMD 能量计数器和 SMU 表 | Intel 封装、核心、核显、内存与平台功耗、PL1／PL2 和时间窗口、TDP；AMD 每核功耗以及表中明确的 PPT／TDC／EDC 当前值与上限 |
 | AMD 扩展数据 | SMU 表，按精确版本匹配 | 核心、SoC、Misc 供电电压／VID／电流／VRM 温度，FCLK／UCLK／MCLK、VDDP／VDDG、I/O 芯粒和 L3 温度。供电轨功耗由同一快照的电压与电流相乘计算 |

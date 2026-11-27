@@ -18,7 +18,12 @@ pub struct ThermalZone {
     pub celsius: f32,
 }
 
-/// RAPL power domains, in watts; None when no valid reading is available.
+/// CPU power domains, in watts; None when no valid reading is available.
+/// RAPL meters (`RAPL_Package0_PKG` and so on) give every domain. An ARM64 PC,
+/// such as a Snapdragon one, has no RAPL and may name its energy meter rails
+/// after Microsoft's EMI rail taxonomy; its `CPU` rails then give the cores
+/// (see `CPU_RAILS`). Other rails (`GPU`, `NPU`, ...) are not attributed to a
+/// device.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CpuPower {
@@ -31,26 +36,128 @@ pub struct CpuPower {
     pub memory: Option<f32>,
 }
 
+/// Where `CpuPower` came from, for the diagnostics log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PowerSource {
+    Rapl,
+    CpuRails,
+    None,
+}
+
+/// Whether `CPU` energy meter rails may stand in for missing RAPL CPU meters.
+/// Not on x64: there the kernel sensors fill a missing Windows RAPL meter from
+/// the RAPL MSRs, and package and core power must come from one measurement.
+const CPU_RAILS: bool = cfg!(not(target_arch = "x86_64"));
+
 impl CpuPower {
-    fn add_meter(&mut self, name: &str, milliwatts: f64) {
-        // PDH already checked counter status. Zero is a valid idle reading,
-        // not an absent domain; invalid readings must not turn into zero.
-        if !milliwatts.is_finite() || milliwatts < 0.0 || name == "_Total" {
-            return;
+    /// One sample of `\Energy Meter(*)\Power`, in milliwatts per instance.
+    fn from_meters(meters: &[(String, f64)], cpu_rails: bool) -> (Self, PowerSource) {
+        let mut power = Self::default();
+        // Microsoft's taxonomy: a rail named exactly `CPU` is the whole
+        // component; without one, the `CPU_*` rails add up.
+        let (mut whole, mut parts) = (None, None);
+        let mut rapl_cpu = false;
+        for (name, milliwatts) in meters {
+            let rail = cpu_rail(name).filter(|_| cpu_rails);
+            let slot = match (rail, name.rsplit('_').next()) {
+                (Some(true), _) => &mut whole,
+                (Some(false), _) => &mut parts,
+                (None, Some(domain @ ("PKG" | "PP0"))) => {
+                    rapl_cpu = true;
+                    if domain == "PKG" {
+                        &mut power.package
+                    } else {
+                        &mut power.cores
+                    }
+                }
+                (None, Some("PP1")) => &mut power.graphics,
+                (None, Some("DRAM")) => &mut power.memory,
+                _ => continue,
+            };
+            add_watts(slot, name, *milliwatts);
         }
-        let slot = match name.rsplit('_').next() {
-            Some("PKG") => &mut self.package,
-            Some("PP0") => &mut self.cores,
-            Some("PP1") => &mut self.graphics,
-            Some("DRAM") => &mut self.memory,
-            _ => return,
+        // A RAPL package or core meter decides, even while its reading is
+        // invalid: CPU power never mixes RAPL with another meter.
+        if rapl_cpu {
+            return (power, PowerSource::Rapl);
+        }
+        power.cores = whole.or(parts);
+        let source = if power.cores.is_some() {
+            PowerSource::CpuRails
+        } else {
+            PowerSource::None
         };
-        // Several packages add up.
-        let watts = f64::from(slot.unwrap_or(0.0)) + milliwatts / 1000.0;
-        if watts <= f64::from(f32::MAX) {
-            *slot = Some(watts as f32);
-        }
+        (power, source)
     }
+}
+
+/// `Some(true)` for a rail named `CPU`, `Some(false)` for `CPU_*`, ignoring case.
+fn cpu_rail(name: &str) -> Option<bool> {
+    if name.eq_ignore_ascii_case("CPU") {
+        return Some(true);
+    }
+    let prefix = name.get(..4)?;
+    (prefix.eq_ignore_ascii_case("CPU_") && name.len() > 4).then_some(false)
+}
+
+fn add_watts(slot: &mut Option<f32>, name: &str, milliwatts: f64) {
+    // PDH already checked counter status. Zero is a valid idle reading,
+    // not an absent domain; invalid readings must not turn into zero.
+    if !milliwatts.is_finite() || milliwatts < 0.0 || name == "_Total" {
+        return;
+    }
+    // Several packages or rails add up.
+    let watts = f64::from(slot.unwrap_or(0.0)) + milliwatts / 1000.0;
+    if watts <= f64::from(f32::MAX) {
+        *slot = Some(watts as f32);
+    }
+}
+
+/// One line per process with every energy meter and thermal zone Windows
+/// reports, the raw readings included, so a report from an unfamiliar PC
+/// shows which rails and zones there are and which ones were skipped.
+fn log_sources(meters: &[(String, f64)], zones: &[(String, f32)], source: PowerSource) {
+    static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let source = match source {
+        PowerSource::Rapl => "RAPL",
+        PowerSource::CpuRails => "CPU rails",
+        PowerSource::None => "none",
+    };
+    log::info!(
+        target: "argus_diagnostics",
+        "sensor sources: cpu power={source}; energy meters: {}; thermal zones: {}",
+        source_list(meters, |mw| format!("{mw:.0} mW")),
+        source_list(zones, |c| format!("{c:.1} C")),
+    );
+}
+
+/// `name=value, ...` without `_Total`, at most 64 entries of bounded names.
+fn source_list<T>(items: &[(String, T)], value: impl Fn(&T) -> String) -> String {
+    const MAX: usize = 64;
+    let items: Vec<_> = items.iter().filter(|(name, _)| name != "_Total").collect();
+    if items.is_empty() {
+        return "none".into();
+    }
+    let mut out = Vec::with_capacity(items.len().min(MAX) + 1);
+    for (raw, v) in items.iter().take(MAX) {
+        // Names come from firmware and drivers: bound and escape them.
+        let mut name = String::new();
+        for c in raw.chars().take(64) {
+            if c.is_control() {
+                name.extend(c.escape_default());
+            } else {
+                name.push(c);
+            }
+        }
+        out.push(format!("{name}={}", value(v)));
+    }
+    if items.len() > MAX {
+        out.push(format!("{} more", items.len() - MAX));
+    }
+    out.join(", ")
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -87,6 +194,8 @@ pub(crate) struct Sensors {
     zones_precise: bool,
     energy: Option<PDH_HCOUNTER>,
     idle: [Option<PDH_HCOUNTER>; 3],
+    /// Samples with PDH data so far, saturating; picks when to log sources.
+    ready_samples: u8,
 }
 
 // PDH handles are process-wide; the sampler uses them from one thread at a time.
@@ -133,6 +242,7 @@ impl Sensors {
             zones_precise,
             energy,
             idle,
+            ready_samples: 0,
         }
     }
 
@@ -194,22 +304,38 @@ impl Sensors {
             }
         }
 
-        if let Some(c) = self.zones {
-            for (name, raw) in pdh::array(c, &mut self.buf) {
+        let zones: Vec<(String, f32)> = self
+            .zones
+            .map(|c| pdh::array(c, &mut self.buf))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(name, raw)| {
                 let kelvin = if self.zones_precise { raw / 10.0 } else { raw };
-                let celsius = (kelvin - 273.15) as f32;
-                // Zero kelvin or 0 °C means "not reported".
-                if celsius > 1.0 && celsius < 150.0 {
-                    let name = name.trim_start_matches(r"\_TZ.").to_string();
-                    out.thermal.push(ThermalZone { name, celsius });
-                }
+                (name, (kelvin - 273.15) as f32)
+            })
+            .collect();
+        for (name, celsius) in &zones {
+            // Zero kelvin or 0 °C means "not reported"; unused zones on some
+            // firmware read a constant -40 °C.
+            if *celsius > 1.0 && *celsius < 150.0 {
+                let name = name.trim_start_matches(r"\_TZ.").to_string();
+                out.thermal.push(ThermalZone {
+                    name,
+                    celsius: *celsius,
+                });
             }
         }
 
-        if let Some(c) = self.energy {
-            for (name, milliwatts) in pdh::array(c, &mut self.buf) {
-                out.power.add_meter(&name, milliwatts);
-            }
+        let meters = self
+            .energy
+            .map(|c| pdh::array(c, &mut self.buf))
+            .unwrap_or_default();
+        let (power, source) = CpuPower::from_meters(&meters, CPU_RAILS);
+        out.power = power;
+        // The second collection: rate counters have had a baseline by then.
+        self.ready_samples = self.ready_samples.saturating_add(1);
+        if self.ready_samples == 2 {
+            log_sources(&meters, &zones, source);
         }
         out
     }
@@ -702,13 +828,15 @@ mod tests {
         }
     }
 
+    /// With `CPU` rails allowed, as on ARM64; RAPL behaves the same either way.
+    fn power(meters: &[(&str, f64)]) -> (CpuPower, PowerSource) {
+        CpuPower::from_meters(&values(meters), true)
+    }
+
     #[test]
     fn idle_power_is_a_reading_and_does_not_toggle_availability() {
-        let values = [0.0, 250.0, 0.0, 125.0, 0.0].map(|milliwatts| {
-            let mut power = CpuPower::default();
-            power.add_meter("0_PP1", milliwatts);
-            power.graphics
-        });
+        let values = [0.0, 250.0, 0.0, 125.0, 0.0]
+            .map(|milliwatts| power(&[("RAPL_Package0_PP1", milliwatts)]).0.graphics);
         assert_eq!(
             values,
             [Some(0.0), Some(0.25), Some(0.0), Some(0.125), Some(0.0)]
@@ -717,14 +845,15 @@ mod tests {
 
     #[test]
     fn power_domains_sum_valid_meters_without_inventing_missing_data() {
-        let mut power = CpuPower::default();
-        assert_eq!(power.graphics, None);
-        power.add_meter("0_PKG", 12_000.0);
-        power.add_meter("1_PKG", 8_000.0);
-        power.add_meter("0_PP0", 0.0);
-        power.add_meter("0_DRAM", 0.0);
-        power.add_meter("_Total", 999_999.0);
-        power.add_meter("unknown", 123.0);
+        let (power, source) = power(&[
+            ("RAPL_Package0_PKG", 12_000.0),
+            ("RAPL_Package1_PKG", 8_000.0),
+            ("RAPL_Package0_PP0", 0.0),
+            ("RAPL_Package0_DRAM", 0.0),
+            ("_Total", 999_999.0),
+            ("unknown", 123.0),
+        ]);
+        assert_eq!(source, PowerSource::Rapl);
         assert_eq!(power.package, Some(20.0));
         assert_eq!(power.cores, Some(0.0));
         assert_eq!(power.memory, Some(0.0));
@@ -734,13 +863,98 @@ mod tests {
     #[test]
     fn invalid_power_values_do_not_poison_a_valid_domain() {
         for value in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MAX] {
-            let mut power = CpuPower::default();
-            power.add_meter("0_PP1", value);
-            assert_eq!(power.graphics, None);
-            power.add_meter("0_PKG", 10_000.0);
-            power.add_meter("1_PKG", value);
-            assert_eq!(power.package, Some(10.0));
+            let (p, _) = power(&[
+                ("RAPL_Package0_PP1", value),
+                ("RAPL_Package0_PKG", 10_000.0),
+                ("RAPL_Package1_PKG", value),
+            ]);
+            assert_eq!(p.graphics, None);
+            assert_eq!(p.package, Some(10.0));
+            let (p, source) = power(&[("CPU_CLUSTER_0", value), ("CPU_CLUSTER_1", value)]);
+            assert_eq!((p.cores, source), (None, PowerSource::None));
         }
+    }
+
+    #[test]
+    fn cpu_rails_follow_microsofts_rail_taxonomy() {
+        // An exact `CPU` rail is the whole component.
+        let (p, source) = power(&[
+            ("CPU_CLUSTER_0", 1_000.0),
+            ("CPU", 3_000.0),
+            ("GPU", 2_000.0),
+        ]);
+        assert_eq!((p.cores, source), (Some(3.0), PowerSource::CpuRails));
+        // Otherwise the `CPU_*` rails add up, in any case.
+        let (p, _) = power(&[
+            ("cpu_cluster_0", 1_500.0),
+            ("CPU_CLUSTER_1", 0.0),
+            ("CPU_CLUSTER_2", f64::NAN),
+            ("npu", 900.0),
+            ("soc", 900.0),
+            ("system", 9_000.0),
+        ]);
+        assert_eq!(p.cores, Some(1.5));
+        assert_eq!((p.package, p.graphics, p.memory), (None, None, None));
+        assert_eq!(power(&[("CPU_CLUSTER_0", 0.0)]).0.cores, Some(0.0));
+        for name in ["CPU_", "CPUS", "GPU_CPU", "MCPU", "_Total"] {
+            assert_eq!(power(&[(name, 1_000.0)]).1, PowerSource::None, "{name}");
+        }
+    }
+
+    #[test]
+    fn rapl_cpu_meters_keep_other_rails_out() {
+        let (p, source) = power(&[("RAPL_Package0_PKG", 10_000.0), ("CPU", 4_000.0)]);
+        assert_eq!((p.package, p.cores), (Some(10.0), None));
+        assert_eq!(source, PowerSource::Rapl);
+        // A RAPL meter decides the source even while its reading is invalid,
+        // so the source cannot flip from one sample to the next.
+        let (p, source) = power(&[("RAPL_Package0_PP0", f64::NAN), ("CPU", 4_000.0)]);
+        assert_eq!((p.cores, source), (None, PowerSource::Rapl));
+        // Graphics or memory meters alone do not measure the CPU.
+        let (p, source) = power(&[("RAPL_Package0_DRAM", 1_000.0), ("CPU_CLUSTER_0", 2_000.0)]);
+        assert_eq!((p.memory, p.cores), (Some(1.0), Some(2.0)));
+        assert_eq!(source, PowerSource::CpuRails);
+    }
+
+    #[test]
+    fn x64_reads_rapl_suffixes_and_ignores_cpu_rails() {
+        let meters = values(&[
+            ("CPU", 4_000.0),
+            ("CPU_CLUSTER_0", 1_000.0),
+            ("RAPL_Package0_DRAM", 1_000.0),
+        ]);
+        let (p, source) = CpuPower::from_meters(&meters, false);
+        assert_eq!(
+            (p.cores, p.memory, source),
+            (None, Some(1.0), PowerSource::None)
+        );
+        // Any `_PKG` suffix is a package meter here, as before CPU rails.
+        let (p, source) = CpuPower::from_meters(&values(&[("CPU_PKG", 7_000.0)]), false);
+        assert_eq!((p.package, source), (Some(7.0), PowerSource::Rapl));
+        assert_eq!(CPU_RAILS, cfg!(target_arch = "aarch64"));
+    }
+
+    #[test]
+    fn logged_sources_are_bounded_and_escaped() {
+        let none: [(String, f64); 1] = [("_Total".into(), 1.0)];
+        assert_eq!(source_list(&none, |v| v.to_string()), "none");
+        let named = [
+            (r"\_SB.TZ0".to_string(), 41.3_f32),
+            ("bad\nname\u{7}".into(), -40.0),
+            ("x".repeat(100), 1.0),
+        ];
+        let line = source_list(&named, |c| format!("{c:.1} C"));
+        assert_eq!(
+            line,
+            format!(
+                r"\_SB.TZ0=41.3 C, bad\nname\u{{7}}=-40.0 C, {}=1.0 C",
+                "x".repeat(64)
+            )
+        );
+        let many: Vec<(String, f64)> = (0..70).map(|i| (format!("CPU_{i}"), 0.0)).collect();
+        let line = source_list(&many, |_| "0".into());
+        assert!(line.starts_with("CPU_0=0, CPU_1=0"));
+        assert!(line.ends_with("CPU_63=0, 6 more"), "{line}");
     }
     #[test]
     fn idle_instances_use_numa_node_indices_and_ignore_rollups() {

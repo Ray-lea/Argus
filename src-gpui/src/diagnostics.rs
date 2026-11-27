@@ -183,7 +183,7 @@ pub fn log_hardware_once(s: &Snapshot) {
         .map_or_else(|| "unavailable".to_owned(), |mhz| format!("{mhz} MHz"));
     let clocks_read = hw.core_mhz.iter().filter(|mhz| **mhz > 0).count();
     log::info!(
-        "cpu: model=\"{}\"; family={}; model_id={}; stepping={}; {} logical; temperature: {temperature}; RAPL power: {power}; clock: {clock}; per-processor clocks: {clocks_read}/{}",
+        "cpu: model=\"{}\"; family={}; model_id={}; stepping={}; {} logical; temperature: {temperature}; CPU power: {power}; clock: {clock}; per-processor clocks: {clocks_read}/{}",
         hardware_label(&hw.cpu.name),
         hw.cpu.family,
         hw.cpu.model,

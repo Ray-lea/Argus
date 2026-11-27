@@ -5,7 +5,27 @@ use std::time::{Duration, Instant};
 
 use argus_core::{Collector, MetaStore};
 
+/// Prints the collectors' diagnostics lines, such as `sensor sources`, which
+/// list every energy meter and thermal zone Windows reports.
+struct Diagnostics;
+
+impl log::Log for Diagnostics {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.target() == "argus_diagnostics" && metadata.level() <= log::Level::Info
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            println!("log: {}", record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
 fn main() {
+    log::set_logger(&Diagnostics).expect("diagnostics logger");
+    log::set_max_level(log::LevelFilter::Info);
     let t = Instant::now();
     let mut c = Collector::new(MetaStore::new());
     println!("init: {:?}", t.elapsed());
