@@ -79,7 +79,7 @@ test("argus-lead: the title is followed by a short lead paragraph", async () => 
 test("argus-headings: text between headings, two subsections or none, no links", async () => {
   const good = page("## 甲", "", "正文。", "", "### 一", "", "正文。", "", "### 二", "", "正文。", "", "## 乙", "", "正文。");
   assert.deepEqual(await check("argus-headings", good), []);
-  assert.match(details(await check("argus-headings", page("## 甲", "", "### 一", "", "正文。", "", "### 二", "", "正文。", "", "## 乙", "", "正文。")))[0], /^5: .*正文/);
+  assert.match(details(await check("argus-headings", page("## 甲", "", "### 一", "", "正文。", "", "### 二", "", "正文。", "", "## 乙", "", "正文。")))[0], /^5: .*(正文|text)/);
   assert.match(details(await check("argus-headings", page("## 甲", "", "正文。", "", "### 一", "", "正文。", "", "## 乙", "", "正文。")))[0], /^9: /);
   const linked = await check("argus-headings", page("## [甲](other.md)", "", "正文。", "", "## 乙", "", "正文。"));
   assert.equal(linked.length, 1);

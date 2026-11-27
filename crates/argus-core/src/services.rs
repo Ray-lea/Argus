@@ -771,6 +771,12 @@ mod tests {
         assert!(remains(&name), "held open, it stays until closed");
         assert!(catalog.delete(&name).is_ok(), "marked already counts");
         drop(held);
+        // The manager removes it once every handle is closed, and another
+        // process (a scanner on a CI runner) may hold one a moment longer.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while remains(&name) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         assert!(!remains(&name));
         assert!(matches!(catalog.delete(&name), Err(ActionError::NotFound)));
     }
