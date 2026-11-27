@@ -5,7 +5,8 @@
 # collector tests, and the interface checks with real windows. Hosted runners
 # are thrown away after each job. Pushes stay unchecked (see check.yml); when
 # main has not changed since the last successful nightly, only the security
-# audits run. What each job covers: docs/development/release.md#nightly.
+# audits and the external link check run. What each job covers:
+# docs/development/release.md#nightly.
 name: Nightly
 
 on:
@@ -81,6 +82,32 @@ jobs:
         run: |
           cargo install cargo-audit --version 0.23.0 --locked
           cargo audit
+
+  # External sites change without any change here: every night, whatever
+  # `changes` says. Links inside the repository are pnpm docs:lint's.
+  links:
+    name: External links
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check external links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # Settings and exclusions: lychee.toml.
+          args: --config lychee.toml 'docs/**/*.md' 'README*.md' PRIVACY.md '.github/**/*.md' 'changelog/*.md'
+          output: target/nightly/links/report.md
+          # Sent with requests to GitHub, which rate-limits anonymous ones.
+          token: ${{ github.token }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-links
+          path: target/nightly/links
+          if-no-files-found: ignore
+          retention-days: 7
 
   package:
     needs: changes
@@ -303,7 +330,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: [changes, check, audit, package, upgrade, privileged, live, arm64, ui]
+    needs: [changes, check, audit, links, package, upgrade, privileged, live, arm64, ui]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

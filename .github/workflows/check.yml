@@ -77,6 +77,9 @@ jobs:
       # The steps of `pnpm check`, split so a failure names the tool. Keep in sync with package.json.
       - name: Biome
         run: pnpm lint
+      # markdownlint, AutoCorrect (autocorrect-node's win32-x64 binding) and the references to docs/.
+      - name: Docs
+        run: pnpm docs:lint
       - name: Translations
         run: pnpm i18n
       - name: Generated native adapters

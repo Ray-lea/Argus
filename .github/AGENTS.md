@@ -2,7 +2,7 @@
 
 沿用仓库根目录的规则。现有的触发方式与发布流程见 `docs/development/release.md`。
 
-- 不要给 CI 加 push 触发的检查。定时运行只有 `workflows/nightly.yml` 一个：每天对 `main` 运行一次，`main` 没有变化时只做安全审计；需要定期运行的新检查加进它，不另建定时工作流。Rust 用 stable，不用 nightly 工具链（工作流名称里的 nightly 指每晚运行）。
+- 不要给 CI 加 push 触发的检查。定时运行只有 `workflows/nightly.yml` 一个：每天对 `main` 运行一次，`main` 没有变化时只做安全审计与外部链接检查；需要定期运行的新检查加进它，不另建定时工作流。Rust 用 stable，不用 nightly 工具链（工作流名称里的 nightly 指每晚运行）。
 - nightly 的运行器用完即弃，以管理员身份运行且关闭了 UAC：安装程序、特权服务、任务管理器替换与改动系统设置的测试放在这里做，无需另行征得同意。会改动机器的脚本以 `scripts/lib/machine-smoke.mjs` 的 `requireDisposable` 把关，只在 GitHub Actions 或设了 `ARGUS_DISPOSABLE_MACHINE=1` 的实验虚拟机里运行。新加的 `#[ignore]` 实机测试登记到 `scripts/lib/live-tests.mjs` 的分组里；只作为子进程被其他测试调用的不登记，脚本测试会拒绝登记了不存在或未忽略的测试。
 - nightly 的任务各自上传报告与日志制品（保留 7 天），失败时先看对应制品里的 `report.json`、`summary.json` 与日志，再改脚本。
 - `workflows/check.yml` 把 `pnpm check` 拆成了单独的步骤，改一边要同步另一边。

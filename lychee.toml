@@ -1,0 +1,30 @@
+# External links of the documents, checked every night by the links job of
+# .github/workflows/nightly.yml (lycheeverse/lychee-action, lychee 0.24).
+# Links inside the repository and their anchors are `pnpm docs:lint`'s.
+
+no_progress = true
+
+# Web addresses only: relative links and local files are left to pnpm docs:lint.
+scheme = ["https", "http"]
+# Addresses inside inline code and code blocks are examples.
+include_verbatim = false
+# .github is named on the command line.
+hidden = true
+
+# A rate-limited site (429) is there all the same.
+accept = ["100..=103", "200..=299", "429"]
+max_retries = 3
+retry_wait_time = 5
+timeout = 30
+host_concurrency = 4
+
+# Loopback (localhost, 127.0.0.1), private and link-local addresses.
+exclude_all_private = true
+exclude = [
+  # Example domains (RFC 2606) and reserved names (RFC 6761).
+  '^https?://([^/?#]*\.)?example\.(com|net|org)([/:?#]|$)',
+  '^https?://[^/?#]*\.(example|test|invalid|localhost)([/:?#]|$)',
+  # Documentation address ranges (RFC 5737, RFC 3849).
+  '^https?://(192\.0\.2|198\.51\.100|203\.0\.113)\.',
+  '^https?://\[2001:db8:',
+]
