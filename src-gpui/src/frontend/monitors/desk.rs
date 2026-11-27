@@ -40,7 +40,7 @@ fn family(metric: Metric) -> u8 {
     match metric {
         Metric::Cpu | Metric::CpuTemperature | Metric::CpuClock | Metric::CpuPower => 0,
         Metric::Memory | Metric::MemoryUsed => 1,
-        Metric::Battery => 5,
+        Metric::Battery | Metric::BatteryPower => 5,
         Metric::Uptime => 6,
         metric => match device_kind(metric) {
             Some("gpu") => 2,
@@ -93,7 +93,8 @@ pub(in crate::frontend) fn pieces(text: &str) -> Vec<(String, bool)> {
             }
             continue;
         }
-        let unit = !(c.is_ascii_digit() || matches!(c, '.' | ',' | ':' | '-' | '−' | '–' | '—'));
+        let unit =
+            !(c.is_ascii_digit() || matches!(c, '.' | ',' | ':' | '+' | '-' | '−' | '–' | '—'));
         match pieces.last_mut() {
             Some((piece, kind)) if *kind == unit => piece.push(c),
             _ => pieces.push((c.to_string(), unit)),
@@ -1015,6 +1016,33 @@ mod tests {
         assert_eq!(split("42% TDP"), [("42", false), ("% TDP", true)]);
         // A space between digits groups thousands.
         assert_eq!(split("1 234 RPM"), [("1 234", false), ("RPM", true)]);
+        assert_eq!(split("+45 W"), [("+45", false), ("W", true)]);
+        assert_eq!(split("-15 W"), [("-15", false), ("W", true)]);
         assert_eq!(split("—"), [("—", false)]);
+    }
+
+    #[test]
+    fn battery_power_groups_with_battery() {
+        use super::groups;
+        use crate::frontend::monitors::Gauge;
+        use crate::settings::{Metric, Reading};
+
+        let gauge = |metric: Metric| Gauge {
+            reading: Reading::from(metric),
+            name: String::new(),
+            short: String::new(),
+            parts: Vec::new(),
+            fraction: None,
+            bar: false,
+            high: false,
+            trend: None,
+            pair: None,
+        };
+        let list = [
+            gauge(Metric::Battery),
+            gauge(Metric::BatteryPower),
+            gauge(Metric::Uptime),
+        ];
+        assert_eq!(groups(&list), [0..2, 2..3]);
     }
 }

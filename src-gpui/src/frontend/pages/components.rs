@@ -381,14 +381,12 @@ impl Desktop {
                 _ => String::new(),
             };
             let mut only = row(group.into(), group_title, detail, None);
-            // The battery is offered where there is one, or once chosen.
-            if group == "other"
-                && values(&hardware["batteries"]).is_empty()
-                && !chosen
-                    .iter()
-                    .any(|reading| reading.metric == Metric::Battery)
-            {
-                only.metrics.retain(|metric| *metric != Metric::Battery);
+            // Battery metrics are offered where there is a battery, or once chosen.
+            if group == "other" && values(&hardware["batteries"]).is_empty() {
+                only.metrics.retain(|metric| {
+                    !matches!(metric, Metric::Battery | Metric::BatteryPower)
+                        || chosen.iter().any(|reading| reading.metric == *metric)
+                });
             }
             return vec![only];
         };

@@ -191,6 +191,8 @@ pub enum Metric {
     Network,
     /// The battery's charge.
     Battery,
+    /// Net battery power across all batteries (negative while discharging, i.e. whole-system DC draw; positive while charging).
+    BatteryPower,
     /// Time since Windows started.
     Uptime,
 }
@@ -198,7 +200,7 @@ pub enum Metric {
 impl Metric {
     /// Every metric, in the order the components page offers them and the
     /// monitors show them: by device.
-    pub const ALL: [Metric; 18] = [
+    pub const ALL: [Metric; 19] = [
         Metric::Cpu,
         Metric::CpuTemperature,
         Metric::CpuClock,
@@ -216,6 +218,7 @@ impl Metric {
         Metric::DiskTemperature,
         Metric::Network,
         Metric::Battery,
+        Metric::BatteryPower,
         Metric::Uptime,
     ];
 }

@@ -144,7 +144,14 @@
     "battery": {
       "name": "電池",
       "short": "電池",
-      "option": "電量"
+      "option": "電量",
+      "tag": "電量"
+    },
+    "batteryPower": {
+      "name": "電池功率",
+      "short": "電池",
+      "option": "電池功率",
+      "tag": "功率"
     },
     "uptime": {
       "name": "運作時間",

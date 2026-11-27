@@ -46,6 +46,7 @@ pub(in crate::frontend) fn metric_key(metric: Metric) -> &'static str {
         Metric::DiskTemperature => "diskTemperature",
         Metric::Network => "network",
         Metric::Battery => "battery",
+        Metric::BatteryPower => "batteryPower",
         Metric::Uptime => "uptime",
     }
 }
@@ -262,7 +263,10 @@ pub(in crate::frontend) const KINDS: [(&str, &[Metric]); 6] = [
         &[Metric::Disk, Metric::DiskActive, Metric::DiskTemperature],
     ),
     ("network", &[Metric::Network]),
-    ("other", &[Metric::Battery, Metric::Uptime]),
+    (
+        "other",
+        &[Metric::Battery, Metric::BatteryPower, Metric::Uptime],
+    ),
 ];
 
 /// The kind a metric is of: its place in `KINDS`.
@@ -745,6 +749,24 @@ pub(in crate::frontend) fn gauges(
                         charge.is_some_and(|v| v.round() <= 20. && !plugged),
                     )
                 }
+                Metric::BatteryPower => {
+                    let power = model::battery_power(values(&hardware["batteries"]));
+                    single(
+                        power.map(|w| {
+                            if w < 0. {
+                                format!("-{} W", charts::watts(w.abs()))
+                            } else if w > 0. {
+                                format!("+{} W", charts::watts(w))
+                            } else {
+                                format!("{} W", charts::watts(0.))
+                            }
+                        }),
+                        format!("-{} W", charts::watts(888.)),
+                        None,
+                        false,
+                        false,
+                    )
+                }
                 Metric::Uptime => single(
                     system["uptimeMs"]
                         .as_f64()
@@ -846,6 +868,8 @@ pub(in crate::frontend) fn gauges(
                         Scale::Percent,
                     )
                 }),
+                Metric::BatteryPower => (!values(&hardware["batteries"]).is_empty())
+                    .then(|| Trend::one(model::BATTERY_POWER_SERIES, Scale::Span)),
                 Metric::Uptime => None,
             };
             let apart = |list: &[&Value], kind: &str, fields: [&str; 2]| {
@@ -1045,7 +1069,7 @@ fn tone(metric: Metric) -> TaskbarTone {
         | Metric::GpuFan => TaskbarTone::Gpu,
         Metric::Disk | Metric::DiskActive | Metric::DiskTemperature => TaskbarTone::Disk,
         Metric::Network => TaskbarTone::Network,
-        Metric::Battery => TaskbarTone::Battery,
+        Metric::Battery | Metric::BatteryPower => TaskbarTone::Battery,
         Metric::Uptime => TaskbarTone::Plain,
     }
 }
@@ -1053,8 +1077,8 @@ fn tone(metric: Metric) -> TaskbarTone {
 /// The taskbar's cells for `gauges`: a single value under its short name,
 /// a pair of rates under their marks, after the short name of the device
 /// they are of; each with its device's colour and, from `timeline`, its
-/// recent values for a curve. A CPU or GPU reading right after another of
-/// the same CPU or GPU also has its parameter's name (temperature, clock
+/// recent values for a curve. A CPU, GPU, or battery reading right after another of
+/// the same device also has its parameter's name (temperature, clock, power
 /// …), which the taskbar shows where the device is plain anyway.
 fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<TaskbarGroup> {
     let mut run = 0;
@@ -1063,8 +1087,10 @@ fn taskbar_groups(gauges: &[Gauge], timeline: Option<&model::Timeline>) -> Vec<T
         .enumerate()
         .map(|(index, gauge)| {
             let tone = tone(gauge.reading.metric);
-            let follows = matches!(tone, TaskbarTone::Cpu | TaskbarTone::Gpu)
-                && index > 0
+            let follows = matches!(
+                tone,
+                TaskbarTone::Cpu | TaskbarTone::Gpu | TaskbarTone::Battery
+            ) && index > 0
                 && gauges[index - 1].reading.device == gauge.reading.device
                 && self::tone(gauges[index - 1].reading.metric) == tone;
             if !follows {
@@ -1124,7 +1150,7 @@ pub(in crate::frontend) fn metric_color(metric: Metric, p: Palette) -> Hsla {
         | Metric::GpuFan => p.gpu,
         Metric::Disk | Metric::DiskActive | Metric::DiskTemperature => p.io,
         Metric::Network => p.network,
-        Metric::Battery => p.battery,
+        Metric::Battery | Metric::BatteryPower => p.battery,
         Metric::Uptime => p.muted,
     }
 }
@@ -2019,7 +2045,7 @@ mod tests {
                     {"read": 1048576.0, "write": 512.0, "active": 63.4, "temperature": 58.0, "temperatureWarning": 55.0}
                 ],
                 "nics": [{"rx": 2048.0, "tx": 0.5}],
-                "batteries": [{"percent": 18.2, "pluggedIn": false}]
+                "batteries": [{"percent": 18.2, "rate": -14500, "pluggedIn": false}]
             }
         })
     }
@@ -2066,6 +2092,7 @@ mod tests {
             Metric::GpuClock,
             Metric::GpuPower,
             Metric::GpuFan,
+            Metric::BatteryPower,
             Metric::Uptime,
         ];
         assert!(
@@ -2076,6 +2103,7 @@ mod tests {
         assert!(texts(by(Metric::CpuClock))[0].ends_with(" GHz"));
         assert!(texts(by(Metric::CpuPower))[0].ends_with(" W"));
         assert!(texts(by(Metric::GpuPower))[0].ends_with(" W"));
+        assert_eq!(texts(by(Metric::BatteryPower)), ["-15 W"]);
         assert_eq!(texts(by(Metric::GpuFan)), ["1500 RPM"]);
         assert_ne!(texts(by(Metric::Uptime))[0], label("format.missing"));
         // Memory in use as an amount, with its share as the bar.
@@ -2176,6 +2204,59 @@ mod tests {
         assert!(cells[0].run == cells[1].run && cells[1].run == cells[2].run);
         assert!(cells[2].run != cells[3].run && cells[3].run != cells[4].run);
         assert!(cells[4].run != cells[5].run);
+    }
+
+    #[test]
+    fn battery_power_sums_batteries_and_follows_sign() {
+        let multi = json!({"hardware": {"batteries": [
+            {"percent": 80.0, "rate": -4200, "pluggedIn": false},
+            {"percent": 60.0, "rate": -3200, "pluggedIn": false}
+        ]}});
+        assert_eq!(
+            texts(&gauges(&multi, &plain(&[Metric::BatteryPower]), false)[0]),
+            [crate::regional::number!("-{:.1} W", 7.4)]
+        );
+        let charging = json!({"hardware": {"batteries": [
+            {"percent": 40.0, "rate": 45000, "pluggedIn": true}
+        ]}});
+        assert_eq!(
+            texts(&gauges(&charging, &plain(&[Metric::BatteryPower]), false)[0]),
+            ["+45 W"]
+        );
+        let idle = json!({"hardware": {"batteries": [
+            {"percent": 100.0, "rate": 0, "pluggedIn": true}
+        ]}});
+        assert_eq!(
+            texts(&gauges(&idle, &plain(&[Metric::BatteryPower]), false)[0]),
+            [crate::regional::number!("{:.1} W", 0.)]
+        );
+        let missing = json!({"hardware": {"batteries": [{"percent": 50.0}]}});
+        assert_eq!(
+            texts(&gauges(&missing, &plain(&[Metric::BatteryPower]), false)[0]),
+            [label("format.missing")]
+        );
+        let mut timeline = super::model::Timeline::new();
+        for (time, rate) in [(1000., -10000), (2000., -20000), (3000., -15000)] {
+            timeline.push(
+                &json!({"timestamp": time, "hardware": {"batteries": [{"percent": 50.0, "rate": rate, "pluggedIn": false}]}}),
+                1000.,
+            );
+        }
+        let shown = gauges(
+            &snapshot(),
+            &plain(&[Metric::Battery, Metric::BatteryPower]),
+            false,
+        );
+        let groups = taskbar_groups(&shown, Some(&timeline));
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].tone, TaskbarTone::Battery);
+        assert_eq!(groups[1].tone, TaskbarTone::Battery);
+        assert_eq!(groups[0].cells[0].run, groups[1].cells[0].run);
+        assert_eq!(
+            groups[1].cells[0].name,
+            label("components.metric.batteryPower.tag")
+        );
+        assert!(!groups[1].history.is_empty());
     }
 
     fn several() -> serde_json::Value {
@@ -2369,7 +2450,10 @@ mod tests {
             key(&kinds),
             ["other", "disk", "cpu", "memory", "gpu", "network"]
         );
-        assert_eq!(kinds[0].metrics, [Metric::Uptime, Metric::Battery]);
+        assert_eq!(
+            kinds[0].metrics,
+            [Metric::Uptime, Metric::Battery, Metric::BatteryPower]
+        );
         assert_eq!(
             kinds[1].metrics,
             [Metric::DiskTemperature, Metric::Disk, Metric::DiskActive]
@@ -2397,11 +2481,11 @@ mod tests {
         let other = with_metrics(&order, &[Metric::Battery]);
         assert_eq!(
             arranged(&other)[0].metrics,
-            [Metric::Uptime, Metric::Battery]
+            [Metric::Uptime, Metric::Battery, Metric::BatteryPower]
         );
         assert_eq!(
             arranged(&with_metrics(&order, &[Metric::Battery, Metric::Uptime]))[0].metrics,
-            [Metric::Battery, Metric::Uptime]
+            [Metric::Battery, Metric::Uptime, Metric::BatteryPower]
         );
     }
 

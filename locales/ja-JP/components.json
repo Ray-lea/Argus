@@ -144,7 +144,14 @@
     "battery": {
       "name": "バッテリー",
       "short": "電池",
-      "option": "充電レベル"
+      "option": "充電レベル",
+      "tag": "残量"
+    },
+    "batteryPower": {
+      "name": "バッテリー電力",
+      "short": "電池",
+      "option": "バッテリー電力",
+      "tag": "電力"
     },
     "uptime": {
       "name": "稼働時間",

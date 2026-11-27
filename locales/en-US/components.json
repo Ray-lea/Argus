@@ -144,7 +144,14 @@
     "battery": {
       "name": "Battery",
       "short": "Batt",
-      "option": "Charge level"
+      "option": "Charge level",
+      "tag": "Charge"
+    },
+    "batteryPower": {
+      "name": "Battery power",
+      "short": "Batt",
+      "option": "Battery power",
+      "tag": "Power"
     },
     "uptime": {
       "name": "Up time",

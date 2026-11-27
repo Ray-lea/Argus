@@ -144,7 +144,14 @@
     "battery": {
       "name": "Batterie",
       "short": "Batt.",
-      "option": "Niveau de charge"
+      "option": "Niveau de charge",
+      "tag": "Charge"
+    },
+    "batteryPower": {
+      "name": "Puissance batterie",
+      "short": "Batt.",
+      "option": "Puissance batterie",
+      "tag": "Puiss."
     },
     "uptime": {
       "name": "Durée de fonctionnement",

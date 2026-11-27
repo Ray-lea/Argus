@@ -1345,6 +1345,23 @@ pub fn cpu_temperature(hw: &Value) -> Option<f64> {
         })
 }
 
+pub const BATTERY_POWER_SERIES: &str = "totals.batteryPower";
+
+/// Net battery power across all batteries in watts: negative while
+/// discharging (whole-system DC draw on battery), positive while charging,
+/// 0 when idle/full. None when no battery reports a finite rate.
+pub fn battery_power(batteries: &[Value]) -> Option<f64> {
+    let mut sum_mw = 0.0;
+    let mut any = false;
+    for battery in batteries {
+        if let Some(rate) = battery["rate"].as_f64().filter(|v| v.is_finite()) {
+            sum_mw += rate;
+            any = true;
+        }
+    }
+    any.then(|| if sum_mw == 0.0 { 0.0 } else { sum_mw / 1000.0 })
+}
+
 pub struct Timeline {
     pub samples: HashMap<String, VecDeque<(f64, Option<f64>)>>,
     /// Sample times of the process and app histories, oldest first.
@@ -1540,6 +1557,10 @@ impl Timeline {
                     .iter()
                     .filter_map(|g| g["util"].as_f64())
                     .reduce(f64::max),
+            ),
+            (
+                BATTERY_POWER_SERIES.into(),
+                battery_power(values(&hardware["batteries"])).map(f64::abs),
             ),
         ]);
         let oldest = now - interval * 64. - 250.;
@@ -3299,6 +3320,54 @@ mod tests {
         assert_eq!(
             timeline.points("hardware.npus.b.util").unwrap(),
             [(1., Some(0.)), (2., None), (3., None), (4., Some(36.))]
+        );
+    }
+
+    #[test]
+    fn battery_power_sums_finite_rates_across_batteries_in_watts() {
+        assert_eq!(battery_power(&[]), None);
+        assert_eq!(battery_power(&[json!({"percent": 80.0})]), None);
+        assert_eq!(
+            battery_power(&[json!({"percent": 80.0, "rate": serde_json::Value::Null})]),
+            None
+        );
+        assert_eq!(battery_power(&[json!({"rate": -14500})]), Some(-14.5));
+        assert_eq!(
+            battery_power(&[json!({"rate": -9200}), json!({"rate": -5300})]),
+            Some(-14.5)
+        );
+        assert_eq!(
+            battery_power(&[
+                json!({"rate": 45000}),
+                json!({"rate": serde_json::Value::Null})
+            ]),
+            Some(45.0)
+        );
+        assert_eq!(battery_power(&[json!({"rate": 0})]), Some(0.0));
+    }
+
+    #[test]
+    fn battery_power_timeline_records_non_negative_watts() {
+        let mut timeline = Timeline::new();
+        for (at, batteries) in [
+            (1, vec![json!({"rate": -12500}), json!({"rate": -2500})]),
+            (2, vec![json!({"rate": 40000})]),
+            (3, vec![json!({"rate": 0})]),
+            (4, vec![json!({"percent": 90.0})]),
+        ] {
+            timeline.push(
+                &json!({"timestamp": at, "hardware": {"batteries": batteries}}),
+                1000.,
+            );
+        }
+        assert_eq!(
+            timeline.points(BATTERY_POWER_SERIES).unwrap(),
+            [
+                (1., Some(15.0)),
+                (2., Some(40.0)),
+                (3., Some(0.0)),
+                (4., None),
+            ]
         );
     }
 }
