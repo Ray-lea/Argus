@@ -37,6 +37,10 @@ use crate::util::{Handle, Result, io, wide, win};
 use crate::{security, util};
 
 /// Embedded PawnIO sensor modules target x86_64 MSR/SMU/LPC interfaces only.
+/// The PawnIO driver itself ships ARM64 builds, but each embedded module's
+/// `main()` returns `STATUS_NOT_SUPPORTED` unless `get_arch()` is x64. The only
+/// official ARM64 module (ARMMSR, as of PawnIO.Modules 0.2.12) allows reading
+/// just `MIDR_EL1`, the CPU identity the registry already provides.
 pub const SUPPORTED: bool = cfg!(target_arch = "x86_64");
 
 pub(crate) const MANAGE_ARG: &str = "--argus-sensor-driver-manage";
