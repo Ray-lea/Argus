@@ -10,6 +10,9 @@
 | --- | --- | --- |
 | `collector.rs` | 把系统与进程采样合成一份快照 | [进程快照](#进程快照) |
 | `process.rs` | 读取全部进程与线程，计算 CPU 与 I/O 速率 | [进程快照](#进程快照) |
+| `process/query.rs` | 在独立线程执行有时限的完整进程查询，两个缓冲区交替使用 | [查询线程与等待](#查询线程与等待) |
+| `process/roster.rs` | 轻量名单：只含 PID、父 PID、实例序号与名称的身份快照 | [轻量名单](#轻量名单) |
+| `process/facts.rs` | 在采样线程之外读取可选列所需的命令行、架构与提升状态 | [查询句柄与按需读取](#查询句柄与按需读取) |
 | `cpu.rs` | 读取空闲计数与周期计数，校验处理器时钟 | [CPU 占用](#cpu-占用) |
 | `system.rs` | 整机与各逻辑处理器的 CPU（均含内核时间）、内存、提交与缓存 | [CPU 占用](#cpu-占用)、[内存](#内存) |
 | `paths.rs` | 取得进程的映像路径并映射为 DOS 路径 | [映像路径](#映像路径) |
@@ -21,8 +24,10 @@
 | `gpu_process.rs` | 每进程的 GPU 引擎占用与显存 | [GPU 占用](#gpu-占用)、[显存](#显存) |
 | `disk_process.rs` | 每进程的磁盘读写字节与请求数 | [磁盘读写](#磁盘读写) |
 | `net_process.rs` | 经 ETW 统计每进程的网络收发字节 | [网络收发](#网络收发) |
+| `net_process/flush.rs` | 快速采样时，由独立线程每 250 ms 刷新 ETW 会话 | [网络收发](#网络收发) |
 | `power.rs` | 估算每个进程的电源使用情况 | [电源使用情况](#电源使用情况) |
 | `leaks.rs` | 识别句柄泄漏、子进程累积与长期空闲的实例 | [泄漏检测](#泄漏检测) |
+| `leaks/series.rs` | 泄漏检测的计数序列：保留最近一小时，按分段最低值判断增长 | [泄漏检测](#泄漏检测) |
 | `actions.rs` | 结束、暂停与恢复进程，设置优先级与效率模式 | [进程操作](#进程操作) |
 | `dump.rs` | 写出与系统任务管理器相同的完整内存转储 | [内存转储](#内存转储) |
 | `debugger.rs` | 启动 `AeDebug\Debugger` 登记的即时调试器 | [即时调试器](#即时调试器) |
@@ -34,12 +39,15 @@
 | `filelock.rs` | 经 Restart Manager 查找打开文件或加载 DLL 的进程 | [文件占用](#文件占用) |
 | `handles.rs` | 按需枚举系统的 File 句柄，查找占用文件或目录的进程 | [文件占用](#文件占用) |
 | `history/` | 历史记录的录制、保存、维护与查询 | [历史记录](#历史记录) |
+| `watch.rs`、`watch/` | 进程观察：记录所选程序各次运行的读数，保存到独立的观察文件 | [进程观察](#进程观察) |
 | `diagnostics.rs` | 诊断日志：原始错误码、错误类别与失败的路径 | [诊断与文案](#诊断与文案) |
+| `diagnostics/startup.rs` | 启动跟踪：记录各初始化阶段与设备查询的首次调用 | [诊断与文案](#诊断与文案) |
 | `i18n.rs` | 原生层的文案 | [诊断与文案](#诊断与文案) |
 | `pdh.rs` | PDH 查询的薄封装，`sensors.rs` 与 `gpu_process.rs` 共用 | 无 |
 | `privilege.rs` | Argus 自身的提权状态、启用 SeDebugPrivilege、提高自身优先级 | 无 |
 | `theme.rs` | 系统个性化颜色（强调色） | 无 |
 | `nt.rs` | `windows` crate 没有（完整）提供的原生结构，布局按 phnt 头文件的 x64 版本 | 无 |
+| `util.rs` | 本 crate 共用的工具：关闭句柄、UTF-16 与时间换算、8 字节对齐的缓冲区、激活 WinRT 类 | 无 |
 | `hardware/` | 性能页的设备数据 | [hardware/](#hardware) |
 
 ## 进程快照
@@ -292,7 +300,7 @@ GUI 与服务保留独立的会话名，各自清理残留的会话。日志记�
 - **子进程累积**：按存活子进程数的增长识别。
 - **长期空闲的实例**：按路径汇总父进程已退出的长期空闲实例。
 
-检测结果每 30 秒按进程数线性更新一次，其间直接复用结果。
+检测按快照时间每 30 秒记录一次：记下各进程的句柄数、存活子进程数与处理器时间，计数保留最近一小时，并重新判定。快照时间倒退时，清空已有记录与结果，重新开始观察。两次记录之间，每次采样只按当前进程列表核对已有结果：进程已退出的项立即移除，句柄数、子进程数与残留实例数随列表更新，低于判定门槛的项一并移除。
 
 ## 进程操作
 
@@ -348,7 +356,12 @@ Windows 服务控制管理器拒绝修改 MSIX 包服务的启动类型时，Arg
 
 `startup.rs` 与 `startup/packaged.rs` 读取三类启动项：注册表 Run 键、启动文件夹（解析 `.lnk`）与当前账户的应用包启动任务。列表显示程序名称和应用包的本地化名称，并保留原始的项目标识。
 
-传统项目使用 `StartupApproved`，应用包结合 AppModel 注册状态、首次激活与用户授权标记，判断是否启用，并记录禁用时间。包清单与名称按包版本、位置和清单修改时间缓存，状态每次重新读取。
+传统项目按 `StartupApproved` 中的值判断是否启用，应用包结合 AppModel 注册状态、首次激活与用户授权标记判断。包清单与名称按包版本、位置和清单修改时间缓存，状态每次重新读取。
+
+启用与禁用只改写这些状态，不改动项目本身。两类项目在禁用时都记录禁用时间：
+
+- **传统项目**：`StartupApproved` 的值写入启用或禁用标记，禁用时一并写入当时的时间（FILETIME）。
+- **应用包启动任务**：写入 `State`；禁用时另写 `LastDisabledTime`（Unix 时间，单位为秒），启用时另写 `UserEnabledStartupOnce`。
 
 删除传统项目时，删去 Run 值或把启动文件夹中的文件移到回收站，并清除其 `StartupApproved` 记录；删除过程不显示任何确认或错误界面。应用包启动任务不删除。
 
@@ -386,6 +399,7 @@ Argus 所在的会话用 `ExitWindowsEx` 结束，并排在最后；其他会话
 | 文件 | 职责 |
 | --- | --- |
 | `mod.rs` | 说明文件格式 |
+| `options.rs` | 记录选项：保留上限、分钟合并的时机、记录组与进程数，以及缺少样本时的每帧字节估算 |
 | `recorder.rs` | 录制 |
 | `catalog.rs` | 读数与通道目录 |
 | `encoding.rs` | 记录与进程行的编码 |
@@ -438,9 +452,25 @@ Argus 所在的会话用 `ExitWindowsEx` 结束，并排在最后；其他会话
 
 最近 500 个事件确定后，按需读取对应时段的进程汇总或明细，按进程名合并实例。
 
+## 进程观察
+
+`watch.rs` 与 `watch/` 实现[观察进程](../guide/history.md#观察进程)：持续记录用户选定的程序及其之后启动的实例，不受历史排行榜的限制。观察在采样线程上随采样记录，记录保存在历史目录中独立的观察文件 `program-watch.v1.bin`。
+
+各文件的职责如下：
+
+| 文件 | 职责 |
+| --- | --- |
+| `watch.rs` | 观察的操作（开始、选择实例、翻页、停止与删除）与返回界面的视图 |
+| `watch/identity.rs` | 由已校验的进程句柄读取本机映像路径，认定观察的程序 |
+| `watch/program.rs` | 观察中的程序：每个运行实例保留一个已校验的句柄，随采样记录读数 |
+| `watch/series.rs` | 按历史页曲线的结构整理一次运行的读数，观察的图表因此与系统历史相同 |
+| `watch/store.rs` | 观察文件：定长记录循环写入，最多保留 7 天、131,072 个记录点 |
+
 ## 诊断与文案
 
 `diagnostics.rs` 记录原始错误码、固定的错误类别及直接参与失败的路径。路径限长并转义，重复失败按原因限频。服务和提权助手通过有界缓冲区向宿主传递诊断。
+
+`diagnostics/startup.rs` 提供启动跟踪：宿主以 `--startup-trace` 启动（见[启动参数](../development/gpui.md#启动参数)）或运行[启动诊断](../development/README.md#启动诊断)工具时，日志目标 `argus_startup` 才启用。每个阶段或设备查询只记录首次调用的开始、结束与耗时，原生调用另记返回码。阶段名与查询编号固定，不记录调用方的数据。
 
 `i18n.rs` 提供原生层的文案：编译时嵌入 `locales/*/native.json`，`tr!` 按当前语言查找。进程级语言默认取父进程通过 `ARGUS_LOCALE` 传入的值，否则为 Windows 显示语言，宿主再按设置覆盖。
 
@@ -450,6 +480,7 @@ Argus 所在的会话用 `ExitWindowsEx` 结束，并排在最后；其他会话
 
 | 模块 | 职责 | 详见 |
 | --- | --- | --- |
+| `mod.rs` | 把各设备的读数合成每次采样的 `Hardware`，并把核显的内核传感器读数与 PP1 功耗并入唯一的 Intel 核显 | [内核传感器](#内核传感器) |
 | `cpu.rs` | 型号、拓扑、缓存与虚拟化 | [CPU 拓扑与虚拟化](#cpu-拓扑与虚拟化) |
 | `clock.rs` | 经 Windows PCW 读取 CPU 的原始频率计数 | [CPU 频率](#cpu-频率) |
 | `sensors.rs` | 合并 CPU 频率，用 PDH 采集 ACPI 温度、空闲驻留时间和功耗 | [CPU 频率](#cpu-频率)、[温度与功耗](#温度与功耗) |
@@ -458,6 +489,7 @@ Argus 所在的会话用 `ExitWindowsEx` 结束，并排在最后；其他会话
 | `memory.rs` | 解析 SMBIOS（类型 17）中的内存条：速度、插槽、外形规格、DDR 代数 | 无 |
 | `disk.rs` | 磁盘的型号、容量、介质、卷、温度与性能计数 | [磁盘的计数与温度](#磁盘的计数与温度) |
 | `disk/controller.rs` | 从 PnP 设备树读取磁盘父设备的驱动服务名 | [存储驱动的限定](#存储驱动的限定) |
+| `disk/discovery.rs` | 经 SetupDi 枚举现有的磁盘接口，按物理磁盘编号给出接口路径与驱动服务名 | [磁盘的计数与温度](#磁盘的计数与温度) |
 | `disk/access.rs` | 为缓存的磁盘句柄注册 PnP 移除通知 | [设备移除](#设备移除) |
 | `disk/volumes.rs` | 物理计数接口不支持时读取卷层计数 | [卷层计数](#卷层计数) |
 | `disk_details.rs`、`disk_details/` | 磁盘详情的单次只读查询 | [磁盘详情接口](#磁盘详情接口) |
@@ -465,9 +497,14 @@ Argus 所在的会话用 `ExitWindowsEx` 结束，并排在最后；其他会话
 | `gpu.rs` | 经 D3DKMT 查询显卡的节点计时、显存和性能数据 | [显卡](#显卡) |
 | `gpu/metadata.rs` | 枚举时读取驱动版本、INF 驱动日期和 DirectX 能力 | [显卡](#显卡) |
 | `gpu/power.rs` | 决定每次采样是否访问显卡驱动 | [显卡的电源状态](#显卡的电源状态) |
-| `vendor_gpu/` | AMD ADL2 与 Intel IGCL 的电源域及设备遥测 | [显卡厂商库](#显卡厂商库) |
+| `vendor_gpu.rs` | 厂商库的工作线程与缓存：AMD ADL2 与 Intel IGCL 的电源域及设备遥测，只查询采样线程指定的适配器 | [显卡厂商库](#显卡厂商库) |
+| `vendor_gpu/adl.rs` | AMD ADL2 的只读接口：新版 Radeon 用 PMLog，旧版驱动用 Overdrive 5/6 | [显卡厂商库](#显卡厂商库) |
+| `vendor_gpu/igcl.rs`、`vendor_gpu/igcl/telemetry.rs` | Intel IGCL 的只读遥测与电源域接口 | [显卡厂商库](#显卡厂商库) |
 | `nvml.rs` | NVIDIA 板卡功耗、功耗上限及可选的 GPU 核心利用率 | [显卡厂商库](#显卡厂商库) |
 | `npu.rs` | 枚举硬件 NPU 适配器，计算最忙节点的利用率 | [NPU](#npu) |
+| `query.rs` | 可选驱动查询的退避：查询失败后 5 秒内不再发送，之后重试 | [显卡](#显卡) |
+| `registry.rs` | 读取 `HKLM` 下的字符串值，用于 CPU 型号、厂商标识与即时调试器的登记 | 无 |
+| `startup_probe.rs` | 开发用的探针：不加载厂商库单独运行 Windows 的显卡查询，或只加载并读取 NVML | [启动诊断](../development/README.md#启动诊断) |
 
 ### CPU 拓扑与虚拟化
 
@@ -577,7 +614,7 @@ Windows 10 22H2 的 `Processor Information` 提供第 33、34 号计数器，其
 
 ### 显卡
 
-`gpu.rs` 通过 D3DKMT 查询节点计时、显存和性能数据。计时基线逐节点维护，查询失败或计数重置后重建；可选的性能查询间隔 5 秒重试。性能数据由显卡驱动回答，每次采样是否查询由 `gpu/power.rs` 决定，见[显卡的电源状态](#显卡的电源状态)。
+`gpu.rs` 通过 D3DKMT 查询节点计时、显存和性能数据。计时基线逐节点维护，查询失败或计数重置后重建。适配器与 3D 节点的性能数据是可选查询，失败后 5 秒内不再发送，之后重试（`hardware/query.rs`），一次失败不会永久停用这些读数。性能数据由显卡驱动回答，每次采样是否查询由 `gpu/power.rs` 决定，见[显卡的电源状态](#显卡的电源状态)。
 
 枚举时记下不列出的适配器（软件渲染、仅显示、仅计算）。重新枚举时，仍存在的适配器保留句柄与计时基线；枚举失败则保持原列表。
 
@@ -623,6 +660,21 @@ NVML 的初始化会唤醒全部 NVIDIA 适配器，因此推迟到首个 NVIDIA
 磁盘详情是按物理磁盘编号的单次只读查询，只由前端明确请求触发，结果与周期采样分离。磁盘温度和活动率另由周期采样维护。
 
 本地读取基本身份、扇区、TRIM、NVMe 控制器身份与健康日志、PCIe 链路和 Windows 故障预测。现有的特权服务补充 ATA／SAT 身份、SMART 属性与 SCSI 健康日志。
+
+### 各文件的职责
+
+`hardware/disk_details.rs` 与 `hardware/disk_details/` 下各文件的职责如下：
+
+| 文件 | 职责 |
+| --- | --- |
+| `disk_details.rs` | 返回结构与查询入口：`query` 只做本地读取，`query_privileged` 另加特权服务的固定查询 |
+| `io.rs` | 以零访问权限句柄执行本地查询：存储属性、NVMe 协议查询与 PCIe 链路 |
+| `nvme.rs` | 解析 NVMe Identify Controller 与健康日志（02h） |
+| `pcie.rs` | 读取匹配的磁盘控制器的 PnP 链路属性（不读取 PCI 寄存器），并给出磁盘控制器的驱动服务名 |
+| `legacy.rs` | 固定的只读健康查询：Windows 故障预测，以及 ATA、SAT 与 SCSI 命令 |
+| `ata.rs` | 解析 ATA IDENTIFY 与 SMART 扇区，厂商的原始字节按原样保留 |
+| `scsi.rs` | 解析有长度限制的 SCSI INQUIRY 与 LOG SENSE 应答 |
+| `ata_health.rs`、`ata_health/hdd.rs` | 按型号解释现有的 SMART 属性，机械硬盘单独处理，见 [ATA 健康数据](#ata-健康数据) |
 
 ### 调用流程
 
@@ -673,7 +725,7 @@ NVMe 使用标准 Identify Controller 和健康日志，覆盖开放该接口的
 
 128 位累计计数序列化为十进制字符串，保留全部精度。NVMe 读写数据单位按每单位 512,000 字节换算，原始计数同时返回；乘法溢出时换算值为 `null`。温度保留开尔文原值并提供摄氏度值，未报告的传感器保留槽位。
 
-寿命估计取 `max(0, 100 - percentageUsed)`。严重警告位独立返回，前端应分别展示。
+寿命估计取 `max(0, 100 - percentageUsed)`，与严重警告无关。严重警告以原始字节返回（`criticalWarning`），保留较新修订定义的位。界面逐位列出已置位的警告，尚未定义的位显示为“其他严重警告”，与寿命估计分开显示。
 
 接口依据见 [Windows NVMe 查询](https://learn.microsoft.com/en-us/windows/win32/fileio/working-with-nvme-devices)、[NVMe 健康日志字段](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_health_info_log)与 [NVMe 控制器身份](https://learn.microsoft.com/en-us/windows/win32/api/nvme/ns-nvme-nvme_identify_controller_data)。
 
@@ -724,14 +776,20 @@ ATA 扇区校验长度、校验和及重复属性编号，阈值按属性编号�
 | Seagate | BarraCuda/120、IronWolf 125/Pro |
 | SK hynix | Gold S31、SC311／SC401 |
 
-SMI 系列同时检查属性布局，以区分同名产品的控制器变体。SK hynix Gold S31、SC311／SC401 的寿命单独解析；主机计数单位尚未统一的系列保留原始计数。
+表中部分系列共用一种映射，或只解析部分读数：
+
+- **Micron 映射**：Crucial MX100／200／300／500、BX300／500、M500／M550，以及表中的 Micron 系列。
+- **SMI 映射**：采用 Silicon Motion（SMI）主控的 ADATA SP550、SU630／635／650／655／800／900，HP S700 与 Crucial BX100／BX200。
+- **SK hynix**：Gold S31、SC311／SC401 只解析寿命。各代产品的主机计数单位不同，主机读写只保留原始属性，不换算为字节。
+
+SMI 映射的型号须同时报告 160、161 与 169 号属性。同名产品可能换用其他主控，只有 SMI 的属性布局能确定 32 MiB 的计数单位与 169 号属性的寿命含义；缺少其中任一属性时，按未识别的型号处理。
 
 #### 计数单位与寿命
 
 已适配型号的主机读写计数单位如下：
 
-- **512 字节**：Samsung 的主机读写与 Micron 的主机写入。
-- **32 MiB**：Intel、Kingston KC600，以及 SMI、Plextor、东芝/铠侠的已适配型号。
+- **512 字节**：Samsung 的主机读写，以及 Micron 映射的主机写入。Micron 映射的型号不提供主机读取总量。
+- **32 MiB**：Intel 与 Solidigm、Kingston KC600，以及 SMI 映射、Plextor、东芝/铠侠的已适配型号。
 - **GiB**：Kingston A400／UV400／UV500、KC310／KC400／HyperX Savage／DC500，以及 WD／SanDisk 与 Seagate 的已适配型号。
 
 寿命分别采用指定属性的归一化值或原始字节：
@@ -740,6 +798,7 @@ SMI 系列同时检查属性布局，以区分同名产品的控制器变体。S
 - Samsung 企业系列优先采用 E9 寿命指标。
 - 东芝/铠侠的 AD 归一化值减去 100 得到剩余寿命。
 - Seagate BarraCuda/120 等采用 E7 原始寿命字段。
+- SK hynix Gold S31 使用归一化寿命，SC311／SC401 使用原始寿命。
 
 零寿命保留为 0%，缺失及无效字段保持 `null`。
 
@@ -773,4 +832,41 @@ HDD 显示运行及扇区计数，存在重映射、待映射或离线不可校�
 
 ## 示例
 
-`examples/` 下的示例直接打印采集结果，`gpu_compute` 另提供有界的 CUDA 测试负载。打印采集结果的示例包括 `dump`、`hardware`、`disk_details`、`m3`、`lockers`、`gpu_processes`、`gpu_diagnostics`、`history` 与 `history_switch`。用法见开发指南的[验证采集数据](../development/README.md#验证采集数据)。
+`crates/argus-core/examples/` 与 `crates/argus-service/examples/` 下的示例程序打印采集结果或测量耗时，用于核对采集行为。运行命令与参数见开发指南的[验证采集数据](../development/README.md#验证采集数据)，`sampling_bridge` 与 `handle_lockers` 的命令见特权服务的[示例程序](privileged-service.md#示例程序)。
+
+`argus-core` 的示例如下：
+
+| 示例 | 作用 |
+| --- | --- |
+| `dump` | 按 CPU 占用列出进程，快速核对采集器 |
+| `cpu_idle` | 逐秒对照 Argus 的 CPU 占用与旧空闲计数、`% Processor Time`、`% Processor Utility`、进程合计和空闲周期 |
+| `cpu_identity` | 以普通权限打印 CPU 型号、基准频率及其来源、物理与逻辑处理器数，并连续四次输出 Windows 报告的空闲状态驻留比例 |
+| `process_columns` | 核对进程的附加计数，测量快照的采样耗时 |
+| `sampling_cadence` | 测量快照间隔与分项耗时，不输出进程与设备的身份 |
+| `process_sources` | 只读对照完整快照、身份枚举与轻量名单加逐进程计数三条进程采集路径 |
+| `process_watch` | 用自身启动的辅助进程实测进程观察：内存增减、采样空缺、实例退出、停止与删除 |
+| `app_windows` | 列出归入**应用**分组的进程（拥有任务栏窗口）与查找耗时 |
+| `sessions` | 列出有用户登录的会话、各会话的进程数与枚举耗时，账户名默认以字母代替 |
+| `gpu_processes` | 打印每进程的 GPU 占用与采集耗时 |
+| `gpu_memory` | 对照指定进程的驻留显存与原生的预算用量 |
+| `gpu_diagnostics` | 连续对照指定进程的 GPU 引擎读数、整体计时与 NVIDIA 核心读数 |
+| `gpu_compute` | 有界的 CUDA 测试负载，用于对照 GPU 读数，需要 NVIDIA Turing 及以上的显卡 |
+| `hardware` | 打印 CPU、传感器、内存、磁盘、网络、GPU、NPU 与电池的读数，以及 `sensor sources` 等诊断行 |
+| `disk_details` | 读取一次指定物理磁盘的详情，默认遮盖序列号 |
+| `m3` | 打印服务、启动项、连接与一次文件占用查询的结果 |
+| `lockers` | 列出占用命令行所给路径的进程 |
+| `history` | 实时记录历史，测量记录开销、每帧大小与查询耗时；可回放为 30 天或测量一整天的分钟合并 |
+| `history_switch` | 在历史目录的副本上，测量历史页切换时间范围时的查询耗时 |
+
+`argus-service` 的示例如下：
+
+| 示例 | 作用 |
+| --- | --- |
+| `sampling_bridge` | 测量采样线程上新增的队列提交与缓存读取开销，不安装服务、不配置规则 |
+| `handle_lockers` | 经句柄查询的隔离流程，打印占用指定绝对路径的进程 |
+| `network_cadence` | 对照已安装服务、本地快照、半秒刷新与 ETW 原始字节的网络速率，流量限于本机回环 |
+| `network_provider` | 对照各个 ETW 网络来源，记录事件元数据、丢失计数与测试进程的回环字节数 |
+| `sensor_cadence` | 读取已运行且已授权的服务的传感器，输出状态、读数与请求耗时 |
+| `sensor_bridge` | 以普通权限测量传感器快照的序列化耗时与关闭内核传感器时的桥接开销，并打印显卡厂商库的读数 |
+| `pawnio_package` | 校验指定 PawnIO 安装包的摘要与 Windows 签名，或以 `--download-check` 校验官方下载的摘要，不运行安装程序 |
+| `admin_startup` | 管理员启动传递过程的冒烟测试程序，仅在一次性虚拟机中运行 |

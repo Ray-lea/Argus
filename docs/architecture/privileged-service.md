@@ -190,7 +190,7 @@ Program Files\Argus Privileged\
 `taskmgr-recovery.json`、`grant.json` 与 `launch.json` 的字段不变，`image` 改写为固定名，旧名照常读取。这些记录不升版本号。
 
 > [!IMPORTANT]
-> 降级到 0.5 前，需先在新版中关闭任务管理器替换与管理员运行。
+> 降级到 0.5 或更早的版本前，先在新版中关闭任务管理器替换与管理员运行。这些版本只接受带 GUID 的副本名，管理员运行的记录也只在 `Argus Runtime` 中读取，无法使用迁移后的记录。
 
 ## IPC 边界
 

@@ -8,7 +8,7 @@
 
 | 工作流 | 触发方式 | 作用 |
 | --- | --- | --- |
-| [`check.yml`](#check) | 拉取请求、手动运行、发布时调用 | 检查提交信息、格式与文案，运行 Clippy 与测试 |
+| [`check.yml`](#check) | 拉取请求、手动运行、nightly 与发布时调用 | 检查提交信息、依赖安全、文档、格式与文案，运行 Clippy 与测试 |
 | [`package.yml`](#package) | 手动运行、nightly 调用 | 构建未签名的测试安装包与免安装程序 |
 | [`nightly.yml`](#nightly) | 每天 18:23 UTC（北京时间 02:23）、手动运行 | 对 `main` 运行开发机上不能运行的检查 |
 | [`release.yml`](#release) | 推送 `v*` 标签 | 核对标签，构建、签名并发布 GitHub Release |
@@ -18,10 +18,11 @@
 
 ### check
 
-[`check.yml`](../../.github/workflows/check.yml) 在拉取请求时运行，发布时由 `release.yml` 调用；也可在 Actions 页面手动运行，或运行 `gh workflow run check.yml`。检查的内容：
+[`check.yml`](../../.github/workflows/check.yml) 在拉取请求时运行，nightly 与发布时分别由 `nightly.yml`、`release.yml` 调用；也可在 Actions 页面手动运行，或运行 `gh workflow run check.yml`。检查的内容：
 
 - 提交信息的格式，仅在拉取请求中检查，包括拉取请求的标题
-- Biome、文案检查、生成代码检查与脚本测试
+- 依赖的安全审计：`pnpm audit --audit-level low` 与 `cargo audit`
+- Biome、文档检查（`pnpm docs:lint`）、文案检查、生成代码检查与脚本测试
 - rustfmt、x64 与 ARM64 的 Clippy，以及 Rust 测试
 - 第三方许可声明是否最新
 
@@ -367,7 +368,7 @@ git push --atomic origin main vX.Y.Z
 
 推送标签后，`release.yml` 先运行 `check.yml`。此时失败，需要修复后覆盖标签重新发布，见[发布工作流失败时](#发布工作流失败时)。
 
-`start.bat check` 不含发行构建和许可声明检查，也不在 CI 的环境里运行：CI 使用英文 Windows、管理员账户和当时最新的 stable Rust，Clippy 与测试带 `--locked`。因此，运行 `pnpm release` 之前，先在 CI 上检查 `main`：
+`start.bat check` 不含依赖安全审计、ARM64 的 Clippy、许可声明检查和发行构建，也不在 CI 的环境里运行：CI 使用英文 Windows、管理员账户和当时最新的 stable Rust，Clippy 与测试带 `--locked`。因此，运行 `pnpm release` 之前，先在 CI 上检查 `main`：
 
 1. 推送 `main`：
 
@@ -534,7 +535,9 @@ GitHub 上最新稳定版的 Release 提供 `releases/latest/download/latest.jso
 
 ### 测试版清单的写入
 
-各标签的检查可并行。构建与发布任务共用 `release-publication` 队列（`queue: max`），避免稳定版发布与测试版清单的写入交错；队列最多保留 100 个等待任务。
+发布工作流的并发组按标签区分，不同标签的检查与构建可并行。只有发布任务 `publish` 声明了 `release-publication` 并发组，各标签依次发布，避免稳定版发布与测试版清单的写入交错。
+
+该组设为 `queue: max`，等待中的发布任务不会被后到的任务取消。按 GitHub 文档 [Control the concurrency of workflows and jobs](https://docs.github.com/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency) 的说明，这种队列最多保留 100 个等待的任务，超出的任务会被取消。
 
 测试版发布前，工作流从 GitHub asset API 读取当前清单并按 SemVer 比较，仅当版本高于最新稳定版和当前测试版时才覆盖。旧标签晚完成或重跑时，已发布的新版本仍然保留。当前清单缺失、无效或读取失败时，中止发布。
 
@@ -643,7 +646,7 @@ gh release delete-asset vX.Y.Z Argus_X.Y.Z_x64-setup.exe
 
 安装程序有**安装或升级**、**进度**、**完成**三页；卸载程序有**确认**、**进度**、**完成**三页，可在**确认**页选择删除应用数据。
 
-页面按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色。中文用微软雅黑，英文用 Segoe UI；窗口大小在各语言下一致，并按显示缩放比例调整。
+页面按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色。字体按语言取各语言 `installer.json` 中的 `ArgusFace`：简体中文为 Microsoft YaHei UI，繁体中文为 Microsoft JhengHei UI，日文为 Yu Gothic UI，其他语言为 Segoe UI。窗口大小在各语言下一致，并按显示缩放比例调整。
 
 文案在各语言的 `locales/<语言>/installer.json` 中维护，打包时由 `scripts/bundle.mjs` 生成 `installer-locales.nsh` 中的 `LangString`。
 

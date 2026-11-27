@@ -8,6 +8,8 @@
 
 测量与界面检查脚本把自身的环境传给探针和测试实例，在运行脚本的终端里设置即可。
 
+程序与脚本自行设置的变量不在本页列出，例如测试为自己的子进程设置的 `ARGUS_HANDLE_FIXTURE`，以及 `src-gpui/build.rs` 在编译时设置的 `ARGUS_VERSION`。
+
 ## 渲染与帧诊断
 
 本节的变量输出渲染器的诊断，或切换渲染路径。用法与各事件的字段见[性能测量](performance.md#帧跟踪与资源计数)。
@@ -43,29 +45,29 @@
 
 ## 窗口探针
 
-本节的变量由 `argus-window-probe run` 读取，作用于它启动的测试进程。
+本节的变量作用于窗口探针及其启动的测试实例，读取方各不相同：探针的 `run` 子命令、截图子命令，或注入测试实例的时钟钩子。
 
-| 变量 | 取值 | 作用 |
-| --- | --- | --- |
-| `ARGUS_PROBE_PERFORMANCE_CORES` | 设置即开启 | 把测试进程的亲和性限制在最高效率等级的核心，见[测量条件](performance.md#测量条件) |
-| `ARGUS_PROBE_HIGH_PRIORITY` | 设置即开启 | 测试进程以高优先级类运行；`pressure-native.mjs` 自动设置 |
-| `ARGUS_PROBE_OBSERVE_PIDS` | 逗号分隔的进程 ID | 额外采样这些进程的资源，记入 `observedProcesses` |
-| `ARGUS_PROBE_STACK_FILE` | 输出文件路径 | 对测试窗口的界面线程做调用栈采样并写入该文件 |
-| `ARGUS_PROBE_CLOCK_DLL` | `clock-hook.dll` 的路径 | 探针收到 `clock` 命令时把它注入测试实例，以加快其时钟 |
-| `ARGUS_TEST_CLOCK_RATE` | 1–3600 的整数 | 时钟加快的倍数，由注入的 DLL 在测试实例中读取 |
-| `ARGUS_TEST_CLOCK_LOG` | 尚不存在的文件路径 | 时钟记录的输出文件，每秒一行 JSON |
-| `ARGUS_PROBE_CAPTURE` | `print` | 截图改用 `PrintWindow`，不经 Windows.Graphics.Capture |
+| 变量 | 取值 | 读取方 | 作用 |
+| --- | --- | --- | --- |
+| `ARGUS_PROBE_PERFORMANCE_CORES` | 设置即开启 | 探针的 `run` | 把测试进程的亲和性限制在最高效率等级的核心，见[测量条件](performance.md#测量条件) |
+| `ARGUS_PROBE_HIGH_PRIORITY` | 设置即开启 | 探针的 `run` | 测试进程以高优先级类运行；`pressure-native.mjs` 自动设置 |
+| `ARGUS_PROBE_OBSERVE_PIDS` | 逗号分隔的进程 ID | 探针的 `run` | 额外采样这些进程的资源，记入 `observedProcesses` |
+| `ARGUS_PROBE_STACK_FILE` | 输出文件路径 | 探针的 `run` | 对测试实例的界面线程与 `VSyncProvider` 线程做调用栈采样，写入该文件 |
+| `ARGUS_PROBE_CLOCK_DLL` | `clock-hook.dll` 的路径 | 探针的 `run` | 探针收到 `clock` 命令时把它注入测试实例，以加快其时钟 |
+| `ARGUS_TEST_CLOCK_RATE` | 1–3600 的整数 | 注入测试实例的 `clock-hook.dll` | 时钟加快的倍数 |
+| `ARGUS_TEST_CLOCK_LOG` | 尚不存在的文件路径 | 注入测试实例的 `clock-hook.dll` | 时钟记录的输出文件，每秒一行 JSON |
+| `ARGUS_PROBE_CAPTURE` | `print` | 探针的 `capture`、`capture-flyout`、`capture-window` | 截图改用 `PrintWindow`，不经 Windows.Graphics.Capture |
 
 各变量的补充说明：
 
 - `ARGUS_PROBE_PERFORMANCE_CORES`：探针设置亲和性后回读，`started` 事件记录掩码。仅限单处理器组。
 - `ARGUS_PROBE_OBSERVE_PIDS`：这些进程不加入作业。探针的 `observe` 命令可在运行中替换这组进程。
-- `ARGUS_PROBE_STACK_FILE`：找到窗口 2 秒后开始采样，最长 40 秒，仅 x86_64。符号在该文件所在目录查找。
-- `ARGUS_PROBE_CLOCK_DLL`：仅限带 `--test` 与独立测试标识的实例；`leak-native.mjs` 自动设置。
-- `ARGUS_TEST_CLOCK_LOG`：文件无法新建时，不安装时钟钩子。
-- `ARGUS_PROBE_CAPTURE`：由探针的 `capture`、`capture-flyout`、`capture-window` 读取，截图使用 `PrintWindow` 的 `PW_RENDERFULLCONTENT`，用于核对两种方法的结果。
+- `ARGUS_PROBE_STACK_FILE`：找到窗口 2 秒后开始采样，约每 10 ms 一次，最长 40 秒，仅 x86_64。符号在该文件所在目录查找。
+- `ARGUS_PROBE_CLOCK_DLL`：仅限带 `--test` 与独立测试标识的实例；`leak-native.mjs` 自动设置。设置后，`perf-native.mjs` 在预热结束时发送 `clock`。
+- `ARGUS_TEST_CLOCK_RATE`、`ARGUS_TEST_CLOCK_LOG`：缺少任一项、倍数超出范围或记录文件无法新建时，时钟钩子不安装，探针报错退出。
+- `ARGUS_PROBE_CAPTURE`：截图使用 `PrintWindow` 的 `PW_RENDERFULLCONTENT`，用于核对两种方法的结果。`capture-preview` 不受该变量影响。
 
-发布构建已去除符号，调用栈采样用开发构建；`perf-native.mjs` 会把程序旁的 `argus.pdb` 复制到输出目录。
+发布构建已去除符号，调用栈采样用 [quick 构建](build.md#quick-构建)，它保留行号信息与符号文件。`perf-native.mjs` 会把程序旁的 `argus.pdb` 复制到输出目录。
 
 未设置 `ARGUS_PROBE_CAPTURE` 时，探针只在窗口捕获拒绝该窗口时改用 `PrintWindow`，例如在托管的 CI 运行器上。两种方法截出的图尺寸相同，四周 1 像素的窗口边框与圆角不同，因此比较只在同一方法之间进行。
 
@@ -91,7 +93,7 @@
 > [!IMPORTANT]
 > 与旧构建对照时，不要设置 `ARGUS_TEST_DATA_ROOT`：引入这个变量之前的构建不认它。
 
-模拟快照下，表格导出结果由 `inspectLayout.tableCsv` 提供，见[检查与诊断](gpui.md#检查与诊断)。
+模拟快照下，表格导出结果由 `inspectLayout.tableCsv` 提供，见[布局检查的字段](gpui.md#布局检查的字段)。
 
 ## 语言
 
@@ -108,16 +110,25 @@
 | `ARGUS_NSIS` | `makensis.exe` 的路径 | 优先使用该 NSIS 编译器 |
 | `ARGUS_SIGNING_PRIVATE_KEY`、`ARGUS_SIGNING_PRIVATE_KEY_PASSWORD` | 更新签名私钥及其密码 | 仅发布工作流设置，见[提交与发布](release.md) |
 | `ARGUS_LAB_CONFIG` | `config.json` 的路径 | 虚拟机实验环境的配置位置，见[虚拟机交互对照](performance.md#虚拟机交互对照) |
+| `ARGUS_DISPOSABLE_MACHINE` | `1` | 允许会改动所在机器的测试脚本在本机运行，仅用于实验虚拟机 |
 | `ARGUS_DOCS_DEV_REF` | Git 引用 | 官网的开发版文档取自该引用，由官网工作流设置 |
+| `ARGUS_NEXT_DIR` | 相对 `website/` 的目录 | 官网 Next.js 的输出目录，默认 `.next` |
 
 未设置 `ARGUS_BUILD_ASSETS` 时，发布构建与快速构建取各自的 Cargo 输出目录，须先以同一配置构建 `argus-service` 的程序；开发构建不嵌入辅助程序。
+
+> [!CAUTION]
+> 不要在开发机上设置 `ARGUS_DISPOSABLE_MACHINE=1`：设置后，升级、特权服务与实机测试的脚本会改动这台机器。
+
+`upgrade-smoke.mjs`、`privileged-smoke.mjs` 与 `live-tests.mjs` 只在 GitHub Actions 中，或 `ARGUS_DISPOSABLE_MACHINE` 为 `1` 时运行，否则直接退出，见[在实验虚拟机中运行](release.md#在实验虚拟机中运行)。
+
+需要同时运行第二个官网开发服务器时，把 `ARGUS_NEXT_DIR` 设为另一个目录（如 `.next-<名称>`），并用 `start-website.bat dev --port <端口>` 换用其他端口。用完后删除该目录，并撤销 Next.js 在 `website/tsconfig.json` 的 `include` 中加入的对应项。`website/scripts/build.mjs` 构建时忽略该变量，始终使用 `.next`。
 
 ## 仅供个别测试使用
 
 以下变量只被标有 `#[ignore]` 或需要特定环境的测试读取，日常的 `cargo test` 不需要它们。
 
 > [!CAUTION]
-> `vm_registration_security` 与 `vm_ambiguous_account_principal` 会注册临时计划任务，只在一次性虚拟机中运行。
+> 读取 `ARGUS_VM_TEST` 的测试只在一次性虚拟机中运行：`vm_registration_security` 与 `vm_ambiguous_account_principal` 会注册临时计划任务，`vm_dump_reach` 为指定的进程创建转储。
 
 | 变量 | 取值 | 包 | 测试 |
 | --- | --- | --- | --- |
@@ -126,7 +137,10 @@
 | `ARGUS_TASKS_HOST` | 已构建的 `argus.exe` | `argus-app` | `live_shell_helper` |
 | `ARGUS_TEST_LAUNCHER` | 已构建的发布版启动器 | `argus-service` | `release_launcher_runs_normally_and_after_debug_detachment` |
 | `ARGUS_PAWNIO_SAMPLES` | 解压后的官方安装包样本目录 | `argus-service` | `official_driver_samples` |
-| `ARGUS_VM_TEST`、`ARGUS_VM_ACCOUNT`、`ARGUS_VM_COM_MODE` | `1`、账户名、`fixed`／`identify`／`anonymous` | `argus-service` | `vm_registration_security` 与 `vm_ambiguous_account_principal` |
+| `ARGUS_VM_TEST` | `1` | `argus-service`、`argus-core` | `vm_registration_security`、`vm_ambiguous_account_principal` 与 `vm_dump_reach` |
+| `ARGUS_VM_ACCOUNT` | 账户名 | `argus-service` | `vm_registration_security` 与 `vm_ambiguous_account_principal` |
+| `ARGUS_VM_COM_MODE` | `fixed`、`identify` 或 `anonymous` | `argus-service` | `vm_registration_security` |
+| `ARGUS_DUMP_EXPECT` | 逗号分隔的 `pid=结果` | `argus-core` | `vm_dump_reach` |
 | `ARGUS_DIAGNOSTIC_TEST_IDENTITY` | 两次运行共用的文件路径 | `argus-service` | 诊断模块的虚拟机测试 |
 | `ARGUS_HISTORY_TEST_REAL_FILES` | `1` | `argus-core` | `damaged_files_through_queries_and_reopen` |
 | `ARGUS_HISTORY_TEST_SECOND_VOLUME` | 另一卷上的目录 | `argus-core` | 历史目录移动测试 |
@@ -137,6 +151,9 @@
 - `ARGUS_SERVICE_SOAK_SECONDS`：慢读取阶段持续的秒数。
 - `ARGUS_TASKBAR_SAMPLES`：测试输出任务栏监控各样式的样张，另存一张放大 4 倍的图。
 - `ARGUS_TASKS_HOST`：测试经桌面外壳启动其辅助进程。
+- `ARGUS_VM_ACCOUNT`：`vm_ambiguous_account_principal` 要求该账户名与计算机名相同。
+- `ARGUS_VM_COM_MODE`：默认为 `fixed`；`identify` 与 `anonymous` 先以对应的模拟级别调用 `CoInitializeSecurity`。
+- `ARGUS_DUMP_EXPECT`：结果为 `snapshot`、`direct` 或操作错误的类别（如 `accessDenied`）。测试自己的子进程总按 `snapshot` 核对。
 - `ARGUS_DIAGNOSTIC_TEST_IDENTITY`：提升的测试写入该文件，标准账户的测试读回。
 - `ARGUS_HISTORY_TEST_REAL_FILES`：全部损坏用例都在真实文件上运行。
 - `ARGUS_HISTORY_TEST_SECOND_VOLUME`：测试把目标放在该目录下，覆盖跨卷移动。

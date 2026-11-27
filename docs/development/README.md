@@ -18,7 +18,7 @@
 rustup override set stable-x86_64-pc-windows-msvc
 ```
 
-构建产物与验证结果位于 `target/`，缓存与链接器的配置见[构建与缓存](build.md)。
+构建产物与验证结果位于 `target/`，见[构建目录与缓存](build.md#构建目录与缓存)。
 
 ## 常用命令
 
@@ -133,8 +133,8 @@ README 预览图在启用透明效果的 Windows 11 上生成。探针让测试�
 
 ## 本节的其他页面
 
-- [GPUI 开发](gpui.md)：原生组件、平台边界、界面验证脚本、测试控制与探针命令
-- [构建与缓存](build.md)：缓存优化、链接器与工具链
+- [GPUI 开发](gpui.md)：代码结构、平台边界、界面验证、测试控制与 vendored GPUI 的升级
+- [构建与缓存](build.md)：工具链与发行配置、构建脚本、程序资源与图标、开发配置与编译耗时、构建目录与缓存、quick 构建、独立工作树、依赖与版本号
 - [性能测量](performance.md)：测量条件、基线与对照方法
 - [环境变量](environment.md)：渲染诊断、窗口探针、测试实例与构建所用的变量
 - [多语言](i18n.md)：文案目录、用法、检查与术语表
@@ -169,7 +169,13 @@ cargo run -p argus-core --example app_windows --release          # 归入“应�
 cargo run -p argus-core --example sessions --release             # 有用户登录的会话、各会话的进程数与枚举耗时
 cargo run -p argus-core --example history --release -- 60        # 记录 60 秒历史：每次采样的开销、每帧大小、查询耗时
 cargo run -p argus-core --example history_switch --release -- <历史目录的副本> # 历史页各时间范围（5 分钟至 7 天）按图表宽度查询的耗时
+cargo run -p argus-core --example cpu_identity --release         # CPU 型号、基准频率及其来源、处理器数与 Windows 报告的空闲状态驻留
+cargo run -p argus-core --example process_watch --release        # 用自身启动的辅助进程实测进程观察的记录
+cargo run -p argus-service --example sensor_bridge --release     # 传感器快照的序列化耗时、关闭内核传感器时的桥接开销与显卡厂商库的读数
+cargo run -p argus-service --example pawnio_package --release -- <安装包> # 校验 PawnIO 安装包的摘要与 Windows 签名，不运行安装程序
 ```
+
+`pawnio_package` 的参数改为 `--download-check` 时，校验官方下载的安装包。各示例的作用另见[采集层的示例](../architecture/core.md#示例)。
 
 以下各节说明部分示例的参数与输出。
 

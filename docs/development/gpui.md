@@ -91,7 +91,7 @@ GPUI 负责点按、双击、滑动、惯性与长按；Windows 上未被文本�
 
 ### 界面冒烟检查
 
-`node scripts/ui-smoke.mjs <标识>` 用固定样本检查各页面、主题、语言和窄窗口，覆盖表头排序与窗口命中区域。它还核对性能页各设备的概览：默认尺寸下完整显示，多核视图在 1240×800 的窗口内核对；最小尺寸下纵向滚动。
+`node scripts/ui-smoke.mjs <标签>` 用固定样本检查各页面、主题、语言和窄窗口，覆盖表头排序与窗口命中区域。它还核对性能页各设备的概览：默认尺寸下完整显示，多核视图在 1240×800 的窗口内核对；最小尺寸下纵向滚动。
 
 `--dev` 使用开发构建，`--live --fluid --move` 检查实际呈现节拍与连续移动、隐藏和恢复。结果在 `target/native-validation`。
 
@@ -113,6 +113,7 @@ cargo build --release -p argus-window-probe --features capture
 | --- | --- |
 | `--release` | 改用发布构建 |
 | `--executable <路径>` | 改用指定的程序，例如对照用的旧构建 |
+| `--probe <路径>` | 改用指定的窗口探针 |
 | `--live` | 改用实时数据，此时按键、单击与拖动不生效 |
 | `--fixture <文件>` | 指定其他模拟快照 |
 | `--theme`、`--language` | 设定外观与语言 |
@@ -219,9 +220,12 @@ cargo build --release -p argus-window-probe --features capture
 
 | 参数 | 作用 |
 | --- | --- |
-| `--release`、`--executable`、`--probe`、`--language`、`--theme` | 传给每次运行 |
+| `--release`、`--executable`、`--probe`、`--language`、`--theme` | 传给每次运行的 `ui-shots.mjs` |
 | `--list` | 只列出步骤文件及其说明，不运行 |
+| `--skip-recordings` | 带 `record` 步骤的文件不运行，记为跳过；nightly 使用 |
 | `--parity-tolerance N` | 对照运行的截图允许每个通道相差不超过 N |
+
+`--skip-recordings` 用于窗口捕获拒绝测试窗口的环境，例如托管的 CI 运行器：静态截图改用 `PrintWindow`，录制无法进行。跳过的文件写入汇总，不影响退出码。
 
 `tools/window-probe/known-failures.json` 以 `{ "名称": "原因" }` 登记已知失败的步骤文件。已登记的文件照常运行并报告，不影响退出码。未登记的文件失败，或已登记的文件通过（名单已过期）时，退出码为 1。
 
@@ -455,7 +459,7 @@ cargo build --release -p argus-window-probe --features capture
 
 各控制的补充说明：
 
-- `inspectLayout`：同时附带 `ui-conditions`、`ui-work`、`ui-chart-work`、`ui-caption`、`ui-frame-duration` 和 `ui-render-counts`。有图表层时，另有 `ui-chart-states`。
+- `inspectLayout`：同时附带 `ui-conditions`、`ui-retained-frames`、`ui-work`、`ui-chart-work`、`ui-caption`、`ui-frame-duration` 和 `ui-render-counts`。有图表层时，另有 `ui-chart-states`。`ui-layout` 的字段见[布局检查的字段](#布局检查的字段)。
 - `inspectColumns`：列的信息包括宽度、可否拖动与移动、所需宽度与边界。
 - `inspectMenu`：输出菜单是否打开、是否持有键盘、当前项、展开的子菜单，以及各项的文字（`items`，分隔线为空字符串）、是否不可用（`disabled`）与是否勾选（`checked`）。
 - `inspectVitals`：读数指名称以 `vital-` 开头的已记录元素。
@@ -464,15 +468,59 @@ cargo build --release -p argus-window-probe --features capture
 - `delayProcessQuery`：毫秒数，最长 30 秒。
 - `settle`：空闲指没有等待回复的命令，各窗口都没有待绘制或待呈现的帧（`Window::has_frame_demand`），连续三次检查如此。`ui-settled` 带 `settled` 与 `ms`；超过 `within` 毫秒（默认 5000）仍不空闲时，以 `settled: false` 回答。定时器不计在内。
 
-`ui-layout` 的顶层字段按界面的部分分组，各组的字段见用到它们的步骤文件的 `about`。
+#### 布局检查的字段
 
-顶层字段为 `page`、`device`、`vitals`、`visibility`、`processTree`、`selectedRow`、`userGroups`、`performance`、`history`、`sections`、`dialog`、`toasts`。此外还有 `tray`、`monitors`、`star`、`animations`、`graphics`、`nativeWindow`、`aboutScroll`、`diagnosticCopy`、`pageBar`，以及下列字段：
+`ui-layout` 除 `event` 与 `label` 外的全部顶层字段见下表，按界面的部分排列。各字段的下级字段见用到它们的步骤文件的 `about`。
 
-- `skippedRequest`：模拟快照下最近一次被跳过的命令及其参数。
-- `lastCopy`：模拟快照下最近一次复制的文字。模拟快照下的复制操作（菜单、快捷键与详细信息面板的复制按钮）不写入系统剪贴板。
-- `tableCsv`：模拟快照下选择导出时的默认文件名（`name`）和完整 CSV 文本（`content`），供核对文件名、表头、筛选与行顺序。
-- `systemBackdrop`、`backgroundAlpha`：用于核对系统背景的实色回退，见[相关测试与工具](#相关测试与工具)。
-- `width`、`height`、`scaleFactor`、`remSize`：视口的属性。
+| 字段 | 内容 |
+| --- | --- |
+| `page` | 当前页面，取值同 `page` 控制 |
+| `selectedRow` | 当前页选中行的标题，未选中时为 `null` |
+| `processTree` | 进程页的视图，以及列表的可见行与子行数、已展开的父行数、是否在搜索、各行标题与排序是否暂停 |
+| `visibility` | 当前页的**隐藏系统进程**是否开启，以及列表中进程的 PID |
+| `userGroups` | 按用户分组的方式、是否已分组、各会话的用户与分组标题 |
+| `vitals` | 进程页概况带是否显示、高度与过渡是否结束 |
+| `dialog` | 最上层对话框的种类、标题、位置与滚动，没有对话框时为 `null` |
+| `toasts` | 正在显示的通知文字 |
+| `star` | Star 提醒卡片是否显示，以及提醒是否开启 |
+| `pageBar` | 页面栏的紧凑等级，以及顶部导航的选项卡是否只显示图标 |
+| `caption` | **置顶显示**是否开启、置顶按钮是否属于客户区，以及标题栏按钮下方能否拖动窗口 |
+| `device` | 性能页选中的设备标识 |
+| `performance` | 性能页列出与隐藏的设备及顺序、CPU 图表的视图与核心网格、内核时间与磁盘详情 |
+| `cpuPlot` | CPU 概览曲线区的 `[左, 上, 宽, 高]`，未绘制时为 `null` |
+| `performanceScrollY` | 性能页详情卡片的纵向滚动范围，为 0 时内容无需滚动 |
+| `performanceCardHeight` | 性能页详情卡片的内容高度，首次布局前为 `null` |
+| `cpuTemperatureHistory` | CPU 温度曲线最近 60 个样本的个数、其中缺测的个数与最新读数 |
+| `history` | 历史页的时间范围、视图区间、选区、曲线、数据点与悬停位置 |
+| `watch` | 进程观察的 PID、状态、运行次数、数据点与缺测数，以及历史页上的曲线 |
+| `watchAction` | 仅模拟快照：最近一次发出的进程观察操作 |
+| `sections` | 设置页与组件页左侧列表中标出的分组，以及两页卡片的左侧位置与宽度 |
+| `settingsScrollY` | 设置页的纵向滚动范围 |
+| `settingsTop` | 设置页视口顶部的分组序号，从 0 起 |
+| `aboutScroll` | 关于页的滚动范围、当前偏移、能否滚动与是否已到底 |
+| `diagnosticCopy` | 仅模拟快照：**复制诊断信息**复制的文字 |
+| `diagnosticCopyReady` | 仅模拟快照：是否已复制诊断信息 |
+| `tray` | 托盘的悬停卡片、快捷面板或任务栏监控面板是否显示，以及采样器是否视主窗口为显示状态 |
+| `monitors` | 桌面监控与任务栏监控的窗口状态、设置、所在显示器与面板内容 |
+| `nativeWindow` | 主窗口是否可见、最大化、置顶，客户区的物理尺寸及其是否与视口一致 |
+| `width`、`height` | 视口的宽度与高度 |
+| `scaleFactor` | 缩放系数，即系统缩放与界面缩放之积 |
+| `remSize` | rem 的大小 |
+| `animations` | **界面动画**与**窗口动画**是否开启，以及曲线模式 |
+| `graphics` | 设置请求的渲染方式，以及窗口的适配器是否带软件标记 |
+| `systemBackdrop` | 系统背景材质是否可用，用于核对实色回退，见[相关测试与工具](#相关测试与工具) |
+| `backgroundAlpha` | 窗口背景色的不透明度，实色回退时为 1 |
+| `sequence` | 最近接收的快照的序号 |
+| `timestamp` | 当前快照的采样时间，单位为 Unix 毫秒 |
+| `processIcons` | 为当前快照保留的进程图标数 |
+| `allocationHeadroomBytes` | 可选渲染分配的内存余量（字节），取可用内存与作业内存上限余量中的较小值 |
+| `skippedRequest` | 仅模拟快照：最近一次被跳过的命令及其参数 |
+| `lastCopy` | 仅模拟快照：最近一次复制的文字 |
+| `tableCsv` | 仅模拟快照：选择导出时的默认文件名 `name` 与完整 CSV 文本 `content` |
+
+标注“仅模拟快照”的字段在实时数据下为 `null`，其中 `diagnosticCopyReady` 为 `false`。`width`、`height`、`remSize`、`cpuPlot`、`performanceScrollY`、`performanceCardHeight` 与 `settingsScrollY` 以逻辑像素为单位，乘以 `scaleFactor` 为物理像素。`nativeWindow` 的客户区尺寸为物理像素。
+
+模拟快照下的复制操作（菜单、快捷键与详细信息面板的复制按钮）不写入系统剪贴板，文字记在 `lastCopy`。`tableCsv` 供核对文件名、表头、筛选与行顺序。
 
 ### 探针命令
 
@@ -621,10 +669,12 @@ git fetch origin vendor-upstream:vendor-upstream   # 在其他克隆中取得分
 
 #### 验证升级
 
-1. 用升级前后的构建各运行一次 `node scripts/ui-smoke.mjs`，旧构建以 `--executable` 指定。
+1. 用升级前后的构建各运行一次 `node scripts/ui-smoke.mjs`，旧构建以 `--executable` 指定。脚本在每次布局检查时核对标题栏的拖动区域与最小化、最大化、关闭按钮，由此复验缓存重放后的标题栏按钮。
 2. 同样用两个构建各运行一次 `node scripts/ui-shots.mjs <标签> tools/window-probe/steps/localization.json`。
 3. 运行 `node scripts/compare-shots.mjs` 逐像素对照截图，页面只应在预期之处不同。
 4. 运行 `node scripts/perf-ab.mjs`，对照新旧发布构建。
-5. 按本页复验窗口拖动与缩放、缓存重放后的标题栏按钮、文字断行和 Windows 渲染。
-6. 运行 `cargo tree -p argus -i windows -e features`，核对没有多编译一份 `windows`。
-7. 运行 `node scripts/notices.mjs`。
+5. 用新构建运行 `node scripts/ui-smoke.mjs <标签> --live --fluid --move --exercise-updates`，复验窗口的移动与缩放。
+6. 运行 `cargo test -p argus --lib theme::tests::cjk`，复验中日文界面文案的断行。
+7. 运行 Windows 平台层自带的测试 `cargo test -p gpui-pre-windows --lib`，复验 Windows 渲染。各绘制路径的截图对照见[界面对照场景](performance.md#界面对照场景)。
+8. 运行 `cargo tree -p argus -i windows -e features`，核对没有多编译一份 `windows`。
+9. 运行 `node scripts/notices.mjs`。
