@@ -893,6 +893,24 @@ pub fn apply_taskbar_monitor(app: &Host, monitor: &TaskbarMonitor) {
         ),
     }
 }
+/// Puts a test instance's stand-in taskbars, and the taskbar monitor with
+/// them, on an edge of the primary display: "bottom", "top", "left" or
+/// "right"; false for another.
+pub fn set_test_taskbar_edge(edge: &str) -> bool {
+    use tray_anchor::Edge;
+    let edge = match edge {
+        "bottom" => Edge::Bottom,
+        "top" => Edge::Top,
+        "left" => Edge::Left,
+        "right" => Edge::Right,
+        _ => return false,
+    };
+    taskbar::set_test_edge(edge);
+    if let Some(monitor) = TASKBAR.lock().unwrap().as_ref() {
+        monitor.look();
+    }
+    true
+}
 /// New readings for the taskbar monitor, one group per metric it shows.
 pub fn set_taskbar_readings(groups: Vec<TaskbarGroup>) {
     if let Some(monitor) = TASKBAR.lock().unwrap().as_ref() {

@@ -208,7 +208,7 @@
     "desc": "Affiche les mesures choisies dans la barre des tâches. Un clic affiche ou masque la fenêtre ; un clic droit ouvre un panneau pour changer le style et les mesures affichées.",
     "place": {
       "title": "Position",
-      "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés. Sinon, le moniteur s’affiche près de la zone de notification.",
+      "desc": "« Côté gauche » ne s’applique qu’à la barre des tâches de Windows 11 avec les boutons centrés ; sur une barre des tâches verticale, il correspond au haut. Sinon, le moniteur s’affiche près de la zone de notification.",
       "tray": "Près de la zone de notification",
       "start": "Côté gauche"
     },

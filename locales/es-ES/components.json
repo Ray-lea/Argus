@@ -208,7 +208,7 @@
     "desc": "Muestra las lecturas elegidas en la barra de tareas. Un clic muestra u oculta la ventana; un clic derecho abre un panel para cambiar el estilo y las lecturas mostradas.",
     "place": {
       "title": "Posición",
-      "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados. En otros casos, el monitor aparece junto a la bandeja.",
+      "desc": "«Lado izquierdo» solo se aplica a la barra de tareas de Windows 11 con los botones centrados; en una barra de tareas vertical, corresponde a la parte superior. En otros casos, el monitor aparece junto a la bandeja.",
       "tray": "Junto a la bandeja",
       "start": "Lado izquierdo"
     },

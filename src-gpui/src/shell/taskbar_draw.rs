@@ -1,5 +1,6 @@
 //! The taskbar monitor drawn into premultiplied BGRA for a layered window.
-//! What it shows and where, in each of the four styles, is laid out in
+//! What it shows and where, in each of the four styles, along a horizontal
+//! taskbar or down a vertical one, is laid out in
 //! `argus_view_logic::taskbar_layout` (no GPUI), re-exported here.
 //!
 //! The text is set as the interface sets its own (`gpui-pre-windows`
@@ -376,12 +377,18 @@ impl Painter {
             pixel[3] = 1. / 255.;
         }
         if hover {
+            // Inset across the taskbar, as its buttons' fill.
             let inset = (2. * scale).round();
+            let (w, h) = (width as f32, height as f32);
             let (color, alpha) = colors.hover;
             fill(
                 &mut pixels,
                 width,
-                [0., inset, width as f32, height as f32 - inset],
+                if layout.vertical {
+                    [inset, 0., w - inset, h]
+                } else {
+                    [0., inset, w, h - inset]
+                },
                 4. * scale,
                 color,
                 alpha,

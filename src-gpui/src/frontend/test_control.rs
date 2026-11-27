@@ -126,6 +126,16 @@ impl Desktop {
             crate::shell::displays::set_test(displays);
             self.sync_monitors(cx);
         }
+        // The edge of the primary display the stand-in taskbars are on
+        // ("bottom", "top", "left", "right"): a vertical one on the left or
+        // right.
+        if let Some(edge) = control.get("taskbarEdge") {
+            assert!(
+                edge.as_str()
+                    .is_some_and(crate::shell::set_test_taskbar_edge),
+                "no taskbar edge {edge}"
+            );
+        }
         if let Some(change) = control.get("taskbarMonitor") {
             self.request(
                 "set_taskbar_monitor",

@@ -32,7 +32,7 @@ export const STEP_RULES = [
   [/^src-gpui\/src\/frontend\/menus\.rs$/, ["header-menu", "performance-menus", "history-menus", "process-tree"]],
   [/^src-gpui\/src\/frontend\/(lists|collation|type_search)\.rs$|^crates\/argus-view-logic\/src\/collation\.rs$/, ["process-tree", "process-groups", "process-order-held", "process-visibility"]],
   [/^src-gpui\/src\/frontend\/(users|visibility)\.rs$|^crates\/argus-view-logic\/src\/visibility\.rs$/, ["process-users", "process-visibility"]],
-  [/^src-gpui\/src\/frontend\/(monitors|tray\/monitor)|^src-gpui\/src\/shell\/(desk|taskbar|taskbar_draw|displays)\.rs$|^crates\/argus-view-logic\/src\/taskbar_layout\.rs$/,["monitors", "monitor-display", "monitor-order", "monitor-metrics", "desk-looks", "desk-start", "desk-live"]],
+  [/^src-gpui\/src\/frontend\/(monitors|tray\/monitor)|^src-gpui\/src\/shell\/(desk|taskbar|taskbar_draw|displays)\.rs$|^crates\/argus-view-logic\/src\/taskbar_layout(\.rs$|\/)/,["monitors", "monitor-display", "monitor-order", "monitor-metrics", "monitor-vertical","desk-looks", "desk-start", "desk-live"]],
   [/^src-gpui\/src\/frontend\/tray|^src-gpui\/src\/shell\/tray/, ["tray-flyouts", "tray-reopen", "tray-page", "tray-icon"]],
   [/^src-gpui\/src\/frontend\/caption\.rs$/, ["caption-buttons"]],
   [/^src-gpui\/src\/frontend\/dialogs\/file_lock\.rs$/, ["file-lock-layout"]],

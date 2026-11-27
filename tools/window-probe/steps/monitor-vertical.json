@@ -1,0 +1,29 @@
+{
+  "about": "经测试控制 `taskbarEdge` 把替身任务栏放到主显示器的左侧与右侧（垂直任务栏：托盘在底部，隐藏的 `Start` 窗口在中部，如同居中的按钮从那里开始），开启任务栏监控，捕获默认读数在托盘上方（空间只够一项读数）、在顶部（“任务栏左侧”）以标签、大数字、曲线与胶囊样式的竖向排版，全部读数在顶部只显示放得下的前几项，浅色主题下右侧任务栏的画面，以及在左侧任务栏上打开、位于任务栏右侧的面板；最后放回底部并关闭任务栏监控。`inspectLayout.monitors.taskbar` 为任务栏监控在屏幕上的矩形：竖向时从替身任务栏的边缘开始，宽为任务栏的宽度。",
+  "window": [1100, 900],
+  "steps": [
+    {"control":{"taskbarEdge":"left"}},
+    {"control":{"taskbarMonitor":{"enabled":true}},"wait":1500},
+    {"inspect":"layout","label":"left","expect":{"monitors.taskbar.0":0}},
+    {"captureWindow":{"name":"left-tray-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"place":"start"}},"wait":1200,"captureWindow":{"name":"left-labels-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"figures"}},"wait":1200,"captureWindow":{"name":"left-figures-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"curves"}},"wait":2500,"captureWindow":{"name":"left-curves-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"capsules"}},"wait":1200,"captureWindow":{"name":"left-capsules-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"labels"}},"wait":900},
+    {"control":{"taskbarMonitor":{"metrics":["cpu","cpuTemperature","cpuClock","cpuPower","memory","memoryUsed","gpu","gpuFan","diskActive","network","battery"]}},"wait":1500},
+    {"captureWindow":{"name":"left-all-dark","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarPanel":"open"},"wait":1200,"captureFlyout":"left-panel-dark"},
+    {"inspect":"layout","label":"panel","expect":{"tray.monitor":true}},
+    {"control":{"taskbarPanel":"close"},"wait":700},
+    {"control":{"theme":"light"},"wait":1200},
+    {"control":{"taskbarEdge":"right"},"wait":1500},
+    {"captureWindow":{"name":"right-all-light","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"figures"}},"wait":1200,"captureWindow":{"name":"right-figures-light","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"style":"capsules"}},"wait":1200,"captureWindow":{"name":"right-capsules-light","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarEdge":"bottom"},"wait":1500},
+    {"captureWindow":{"name":"bottom-light","class":"ArgusTestTaskbar"}},
+    {"control":{"taskbarMonitor":{"enabled":false}},"wait":900},
+    {"inspect":"layout","label":"off","expect":{"monitors.taskbar":null}}
+  ]
+}

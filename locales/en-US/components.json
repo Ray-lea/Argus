@@ -208,7 +208,7 @@
     "desc": "Shows the chosen readings on the taskbar. A click shows or hides the window; a right-click opens a panel to change the style and the readings shown.",
     "place": {
       "title": "Position",
-      "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons. Otherwise the monitor appears next to the tray.",
+      "desc": "“Left side” applies only to the Windows 11 taskbar with centered buttons, and means the top of a vertical taskbar. Otherwise the monitor appears next to the tray.",
       "tray": "Next to tray",
       "start": "Left side"
     },

@@ -2,9 +2,12 @@
 //! (`Shell_TrayWnd` on the primary display, `Shell_SecondaryTrayWnd` on
 //! the others) that shows short readings beside the notification area (or
 //! where a taskbar without one keeps its clock), or at the start of the
-//! taskbar (Windows 11 with its buttons centred). While the display chosen
-//! is away or shows no taskbar, it sits on the primary display's and looks
-//! for the one chosen every two seconds.
+//! taskbar (Windows 11 with its buttons centred). On a vertical taskbar (on
+//! the left or right of its display) the readings stack down its width
+//! (`taskbar_layout::lay_out_column`), above the notification area or at the
+//! taskbar's top. While the display chosen is away or shows no taskbar, it
+//! sits on the primary display's and looks for the one chosen every two
+//! seconds.
 //!
 //! A child window of another thread's window shares that thread's input
 //! queue, and the taskbar's thread belongs to the shell. The monitor's window
@@ -19,15 +22,17 @@
 //! Windows 11 draws the taskbar's buttons in content of its own; the monitor
 //! lies over its free space beside the tray, or at its start, past the
 //! widgets button. Windows 10 gives the space before the tray to the task
-//! buttons (`MSTaskSwWClass`): the monitor narrows them by its own width and
-//! gives the width back when it goes. The shell may widen them again (when a
-//! window opens, say); the next check narrows them once more.
+//! buttons (`MSTaskSwWClass`): the monitor shortens them by its own length
+//! and gives it back when it goes. The shell may lengthen them again (when a
+//! window opens, say); the next check shortens them once more.
 //!
 //! A test instance never touches the shell: its monitor attaches to a
 //! stand-in taskbar of its own, shown at the bottom of the z-order without
 //! activation (`--test`); for displays a test names (`displays::set_test`),
-//! one stand-in each, stacked up from the bottom of the primary display.
-use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out};
+//! one stand-in each, stacked in from the edge of the primary display that
+//! the test puts them on (`set_test_edge`, the bottom unless it says).
+use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out, lay_out_column};
+use super::tray_anchor::Edge;
 use crate::settings::{TaskbarPlace, TaskbarStyle};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
@@ -87,6 +92,14 @@ static LIVE: AtomicBool = AtomicBool::new(false);
 /// While it shows: the display chosen for it (empty for the primary one)
 /// and whether the primary display's taskbar stands in for that display's.
 static ON: Mutex<Option<(String, bool)>> = Mutex::new(None);
+/// The edge of the primary display a test's stand-in taskbars are on.
+static TEST_EDGE: Mutex<Edge> = Mutex::new(Edge::Bottom);
+
+/// Puts a test's stand-in taskbars on another edge of the primary display;
+/// they are made again there at the monitor's next look.
+pub(crate) fn set_test_edge(edge: Edge) {
+    *TEST_EDGE.lock().unwrap() = edge;
+}
 
 pub(crate) fn shown_rect() -> Option<[i32; 4]> {
     *SHOWN.lock().unwrap()
@@ -182,6 +195,12 @@ impl Monitor {
         });
     }
 
+    /// Has the monitor look at its taskbar now rather than at its next
+    /// check.
+    pub fn look(&self) {
+        self.shared.post(CHANGED);
+    }
+
     /// New readings, as the monitor's metrics show them.
     pub fn readings(&self, groups: Vec<Group>) {
         let mut state = self.shared.state.lock().unwrap();
@@ -225,11 +244,13 @@ struct Found {
     primary: bool,
 }
 
-/// The Windows 10 task buttons narrowed for the monitor: their window, its
-/// right edge before and the one it was left with (screen pixels).
+/// The Windows 10 task buttons shortened for the monitor: their window, the
+/// axis along the taskbar (0 across the screen, 1 down it), and their end
+/// along it before and the one they were left with (screen pixels).
 struct Squeeze {
     tasks: HWND,
-    right: i32,
+    axis: usize,
+    end: i32,
     left_at: i32,
 }
 
@@ -239,8 +260,10 @@ struct Worker {
     test: bool,
     host: Option<Host>,
     /// The test stand-ins, by the key of the display each is for, the
-    /// primary display's first; made again when the displays change.
+    /// primary display's first; made again when the displays or their edge
+    /// change.
     stand_ins: Vec<(String, HWND)>,
+    stand_in_edge: Edge,
     window: Option<HWND>,
     painter: Option<Painter>,
     layout: Layout,
@@ -287,10 +310,12 @@ fn register(class: PCWSTR, procedure: WNDPROC, background: Option<HBRUSH>) {
 
 const CONTROL_CLASS: PCWSTR = w!("ArgusTaskbarMonitorControl");
 const WINDOW_CLASS: PCWSTR = w!("ArgusTaskbarMonitor");
-/// The test stand-in's classes: its tray goes by the shell's class name,
-/// local to this process, so that finding it takes the same path.
+/// The test stand-in's classes: its tray and start button go by the shell's
+/// class names, local to this process, so that finding them takes the same
+/// path.
 const STAND_IN_CLASS: PCWSTR = w!("ArgusTestTaskbar");
 const TRAY_CLASS: PCWSTR = w!("TrayNotifyWnd");
+const START_CLASS: PCWSTR = w!("Start");
 
 fn run(shared: Arc<Shared>, main: HWND, test: bool) {
     register(CONTROL_CLASS, Some(control_procedure), None);
@@ -333,6 +358,7 @@ fn run(shared: Arc<Shared>, main: HWND, test: bool) {
             test,
             host: None,
             stand_ins: Vec::new(),
+            stand_in_edge: Edge::Bottom,
             window: None,
             painter: None,
             layout: Layout::default(),
@@ -504,11 +530,14 @@ fn alive(window: HWND) -> bool {
 }
 
 impl Worker {
-    /// The test stand-ins: taskbar-sized strips at the bottom of the
-    /// primary display, one for each display a test names (else one for the
-    /// primary display), the primary display's lowest and with a tray at its
-    /// right end; beneath every other window and never active.
+    /// The test stand-ins: taskbar-sized strips along the edge of the
+    /// primary display a test chose (`set_test_edge`), one for each display
+    /// a test names (else one for the primary display), the primary
+    /// display's outermost and with a tray at its end (its right end, or its
+    /// bottom on the left or right); beneath every other window and never
+    /// active.
     fn stand_ins(&mut self) -> &[(String, HWND)] {
+        let edge = *TEST_EDGE.lock().unwrap();
         let displays = if super::displays::testing() {
             super::displays::displays()
         } else {
@@ -523,6 +552,7 @@ impl Worker {
             .map(|display| display.key.clone())
             .collect::<Vec<_>>();
         let current = self.stand_ins.len() == keys.len().max(1)
+            && self.stand_in_edge == edge
             && self.stand_ins.iter().all(|(_, window)| alive(*window))
             && self
                 .stand_ins
@@ -535,6 +565,7 @@ impl Worker {
         self.drop_stand_ins();
         register(STAND_IN_CLASS, Some(stand_in_procedure), None);
         register(TRAY_CLASS, Some(stand_in_procedure), None);
+        register(START_CLASS, Some(stand_in_procedure), None);
         let monitor = unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) };
         let mut info = MONITORINFO {
             cbSize: size_of::<MONITORINFO>() as u32,
@@ -544,13 +575,36 @@ impl Worker {
         let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() }.max(96) as f32 / 96.;
         let px = |logical: f32| (logical * scale).round() as i32;
         let whole = info.rcMonitor;
-        let (width, height) = ((whole.right - whole.left).min(px(1280.)), px(48.));
+        let vertical = matches!(edge, Edge::Left | Edge::Right);
+        let (width, height) = if vertical {
+            (px(48.), (whole.bottom - whole.top).min(px(900.)))
+        } else {
+            ((whole.right - whole.left).min(px(1280.)), px(48.))
+        };
+        // The tray: at the right end of a horizontal stand-in, at the bottom
+        // of a vertical one. A vertical one also has the shell's hidden
+        // `Start` window, where centred buttons would start: room for a
+        // few readings above them, for one above the tray.
+        let tray = if vertical {
+            [0, height - px(300.), width, px(300.)]
+        } else {
+            [width - px(280.), 0, px(280.), height]
+        };
+        let start = [0, height / 2 - px(90.), width, px(33.)];
+        self.stand_in_edge = edge;
         let keys = if keys.is_empty() {
             vec![String::new()]
         } else {
             keys
         };
         for (index, key) in keys.into_iter().enumerate() {
+            let step = index as i32;
+            let (x, y) = match edge {
+                Edge::Bottom => (whole.left, whole.bottom - height * (step + 1)),
+                Edge::Top => (whole.left, whole.top + height * step),
+                Edge::Left => (whole.left + width * step, whole.top),
+                Edge::Right => (whole.right - width * (step + 1), whole.top),
+            };
             // "Argus taskbar stand-in" for the primary display, then
             // "… stand-in 2", "… stand-in 3", for captures to tell apart.
             let title = if index == 0 {
@@ -565,8 +619,8 @@ impl Worker {
                     STAND_IN_CLASS,
                     &title,
                     WS_POPUP | WS_CLIPCHILDREN,
-                    whole.left,
-                    whole.bottom - height * (index as i32 + 1),
+                    x,
+                    y,
                     width,
                     height,
                     None,
@@ -583,10 +637,26 @@ impl Worker {
                         TRAY_CLASS,
                         PCWSTR::null(),
                         WS_CHILD | WS_VISIBLE,
-                        width - px(280.),
-                        0,
-                        px(280.),
-                        height,
+                        tray[0],
+                        tray[1],
+                        tray[2],
+                        tray[3],
+                        Some(window),
+                        None,
+                        Some(instance()),
+                        None,
+                    );
+                }
+                if vertical {
+                    let _ = CreateWindowExW(
+                        WS_EX_NOPARENTNOTIFY,
+                        START_CLASS,
+                        PCWSTR::null(),
+                        WS_CHILD,
+                        start[0],
+                        start[1],
+                        start[2],
+                        start[3],
                         Some(window),
                         None,
                         Some(instance()),
@@ -782,16 +852,18 @@ impl Worker {
             return;
         };
         let (width, height) = (bar[2] - bar[0], bar[3] - bar[1]);
-        // A vertical taskbar has no room for columns of readings.
-        if state.groups.is_empty() || height > width || height <= 0 {
+        if state.groups.is_empty() || width <= 0 || height <= 0 {
             self.detach();
             return;
         }
+        // Down a vertical taskbar, the readings stack across its width.
+        let vertical = height > width;
         let Some(window) = self.attach(host) else {
             return;
         };
         let scale = unsafe { GetDpiForWindow(host) }.max(96) as f32 / 96.;
-        let font = super::taskbar_draw::font_size(super::taskbar_draw::size_scale(height, scale));
+        let across = if vertical { width } else { height };
+        let font = super::taskbar_draw::font_size(super::taskbar_draw::size_scale(across, scale));
         if self
             .painter
             .as_ref()
@@ -803,26 +875,51 @@ impl Worker {
         let Some(painter) = &self.painter else {
             return;
         };
-        let layout = lay_out(
-            &state.groups,
-            height,
-            scale,
-            state.style,
-            painter,
-            Some((&mut self.reserve, Instant::now())),
-        );
-        if layout.width <= 0 {
-            self.detach();
-            return;
-        }
         let stand_in = self.host.as_ref().is_some_and(|host| host.stand_in);
         let primary = self.host.as_ref().is_none_or(|host| host.primary);
         let geometry = Geometry::read(host, bar, scale, stand_in, primary);
-        let x = match self.squeeze_for(&geometry, layout.width) {
-            Some(x) => x,
-            None => place(&geometry, layout.width, state.place),
+        let now = Instant::now();
+        let (layout, room) = if vertical {
+            // The first room down the taskbar that holds a reading, with
+            // the readings that fit it.
+            let found = rooms(&geometry, state.place).into_iter().find_map(|room| {
+                let layout = lay_out_column(
+                    &state.groups,
+                    width,
+                    scale,
+                    state.style,
+                    painter,
+                    Some((&mut self.reserve, now)),
+                    room.end - room.start,
+                );
+                (layout.width > 0).then_some((layout, Some(room)))
+            });
+            let Some(found) = found else {
+                self.detach();
+                return;
+            };
+            found
+        } else {
+            let reserve = Some((&mut self.reserve, now));
+            let layout = lay_out(&state.groups, height, scale, state.style, painter, reserve);
+            (layout, None)
         };
-        let placed = (x, 0, layout.width, height);
+        if layout.width <= 0 || layout.height <= 0 {
+            self.detach();
+            return;
+        }
+        let length = if vertical {
+            layout.height
+        } else {
+            layout.width
+        };
+        let (x, y) = match (self.squeeze_for(&geometry, length), room) {
+            (Some(at), Some(_)) => (0, at),
+            (Some(at), None) => (at, 0),
+            (None, Some(room)) => (0, room.at(length)),
+            (None, None) => (place(&geometry, length, state.place), 0),
+        };
+        let placed = (x, y, layout.width, layout.height);
         let on_top = unsafe { GetWindow(host, GW_CHILD) }.ok() == Some(window);
         if self.placed != Some(placed) || !on_top {
             unsafe {
@@ -830,9 +927,9 @@ impl Worker {
                     window,
                     Some(HWND_TOP),
                     x,
-                    0,
+                    y,
                     layout.width,
-                    height,
+                    layout.height,
                     SWP_NOACTIVATE | SWP_SHOWWINDOW,
                 );
             }
@@ -909,14 +1006,25 @@ impl Worker {
         }
     }
 
-    /// On Windows 10, narrows the task buttons to make room beside the
-    /// tray, wherever the monitor was asked to go: the monitor's place in
-    /// the taskbar, or none where the shell leaves free space (Windows 11)
-    /// or the buttons cannot be found.
-    fn squeeze_for(&mut self, geometry: &Geometry, width: i32) -> Option<i32> {
+    /// On Windows 10, shortens the task buttons to make room beside the
+    /// tray (before it along a horizontal taskbar, above it down a vertical
+    /// one) for a monitor `length` long, wherever the monitor was asked to
+    /// go: the monitor's place along the taskbar, or none where the shell
+    /// leaves free space (Windows 11) or the buttons cannot be found.
+    fn squeeze_for(&mut self, geometry: &Geometry, length: i32) -> Option<i32> {
         if geometry.windows11 || geometry.stand_in {
             self.release_squeeze();
             return None;
+        }
+        let axis = usize::from(geometry.vertical());
+        // The taskbar went to another edge: the shell laid its buttons out
+        // anew, and the length they had no longer applies.
+        if self
+            .squeeze
+            .as_ref()
+            .is_some_and(|squeeze| squeeze.axis != axis)
+        {
+            self.squeeze = None;
         }
         let host = self.host.as_ref()?;
         // The primary display's buttons sit in a rebar, the other
@@ -933,64 +1041,65 @@ impl Worker {
         let gap = (4. * geometry.scale).round() as i32;
         // The shell keeps the strip clear of the tray; the monitor keeps
         // the same space from it as on Windows 11.
-        let limit = geometry
-            .tray
-            .map_or(strip[2], |tray| strip[2].min(tray[0] - gap));
+        let limit = geometry.tray.map_or(strip[axis + 2], |tray| {
+            strip[axis + 2].min(tray[axis] - gap)
+        });
         let kept = self
             .squeeze
             .as_ref()
             .filter(|squeeze| squeeze.tasks == tasks)
-            .map(|squeeze| (squeeze.right, squeeze.left_at));
-        let right = unsqueezed(kept, buttons[2], limit);
-        let edge = right - width - gap;
-        if edge <= buttons[0] {
+            .map(|squeeze| (squeeze.end, squeeze.left_at));
+        let end = unsqueezed(kept, buttons[axis + 2], limit);
+        let edge = end - length - gap;
+        if edge <= buttons[axis] {
             self.release_squeeze();
             return None;
         }
-        if buttons[2] != edge {
-            unsafe {
-                let _ = SetWindowPos(
-                    tasks,
-                    None,
-                    buttons[0] - strip[0],
-                    buttons[1] - strip[1],
-                    edge - buttons[0],
-                    buttons[3] - buttons[1],
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
+        if buttons[axis + 2] != edge {
+            resize_along(tasks, strip, buttons, axis, edge);
         }
-        // Where the buttons took it, should they keep a width of their own.
-        let left_at = rect_of(tasks).map_or(edge, |buttons| buttons[2]);
+        // Where the buttons took it, should they keep a length of their own.
+        let left_at = rect_of(tasks).map_or(edge, |buttons| buttons[axis + 2]);
         self.squeeze = Some(Squeeze {
             tasks,
-            right,
+            axis,
+            end,
             left_at,
         });
-        Some(edge + gap - geometry.bar[0])
+        Some(edge + gap - geometry.bar[axis])
     }
 
     fn release_squeeze(&mut self) {
         let Some(squeeze) = self.squeeze.take() else {
             return;
         };
+        let axis = squeeze.axis;
         let rebar = unsafe { GetParent(squeeze.tasks) }.ok();
         if let (Some(rebar), Some(buttons)) = (rebar, rect_of(squeeze.tasks))
             && let Some(strip) = rect_of(rebar)
-            && squeeze.right > buttons[2]
+            && squeeze.end > buttons[axis + 2]
         {
-            unsafe {
-                let _ = SetWindowPos(
-                    squeeze.tasks,
-                    None,
-                    buttons[0] - strip[0],
-                    buttons[1] - strip[1],
-                    squeeze.right - buttons[0],
-                    buttons[3] - buttons[1],
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
+            resize_along(squeeze.tasks, strip, buttons, axis, squeeze.end);
         }
+    }
+}
+
+/// Has the task buttons (`buttons`, in the strip at `strip`, screen pixels)
+/// end at `end` along `axis` (0 across the screen, 1 down it), where they
+/// are.
+fn resize_along(tasks: HWND, strip: [i32; 4], buttons: [i32; 4], axis: usize, end: i32) {
+    let mut size = [buttons[2] - buttons[0], buttons[3] - buttons[1]];
+    size[axis] = end - buttons[axis];
+    unsafe {
+        let _ = SetWindowPos(
+            tasks,
+            None,
+            buttons[0] - strip[0],
+            buttons[1] - strip[1],
+            size[0],
+            size[1],
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
 }
 
@@ -1066,16 +1175,26 @@ pub(crate) struct Geometry {
     /// taskbar, turned on and not disabled by group policy): at the start
     /// of a centred taskbar, beside the tray otherwise.
     pub widgets: bool,
+    /// The start button down a vertical taskbar, screen pixels: the shell's
+    /// `Start` window, which keeps the button's place though hidden.
+    pub start: Option<[i32; 4]>,
     pub scale: f32,
     pub stand_in: bool,
 }
 
 impl Geometry {
     fn read(host: HWND, bar: [i32; 4], scale: f32, stand_in: bool, primary: bool) -> Self {
-        let tray = unsafe { FindWindowExW(Some(host), None, w!("TrayNotifyWnd"), PCWSTR::null()) }
-            .ok()
-            .and_then(rect_of)
-            .filter(|tray| tray[0] > bar[0] && tray[0] < bar[2]);
+        // The tray, and the start button, start within the taskbar along
+        // it: right of its left end, or below its top on a vertical one.
+        let vertical = bar[3] - bar[1] > bar[2] - bar[0];
+        let axis = usize::from(vertical);
+        let child = |class: PCWSTR| {
+            unsafe { FindWindowExW(Some(host), None, class, PCWSTR::null()) }
+                .ok()
+                .and_then(rect_of)
+                .filter(|rect| rect[axis] >= bar[axis] && rect[axis] < bar[axis + 2])
+        };
+        let tray = child(w!("TrayNotifyWnd")).filter(|tray| tray[axis] > bar[axis]);
         // The stand-in is a Windows 11 taskbar with centred buttons and no
         // widgets, whatever the system.
         let shell = !stand_in && windows11();
@@ -1085,13 +1204,20 @@ impl Geometry {
             windows11: shell || stand_in,
             centred: stand_in || (shell && explorer_flag(w!("TaskbarAl")).unwrap_or(true)),
             widgets: shell && primary && widgets_shown(),
+            start: vertical.then(|| child(w!("Start"))).flatten(),
             scale,
             stand_in,
         }
     }
+
+    /// The taskbar is taller than wide: on the left or right of its display.
+    pub fn vertical(&self) -> bool {
+        self.bar[3] - self.bar[1] > self.bar[2] - self.bar[0]
+    }
 }
 
-/// The monitor's left edge in the taskbar's client pixels, `width` wide.
+/// The monitor's left edge in the taskbar's client pixels, `width` wide,
+/// along a horizontal taskbar.
 pub(crate) fn place(geometry: &Geometry, width: i32, place: TaskbarPlace) -> i32 {
     let px = |logical: f32| (logical * geometry.scale).round() as i32;
     let [left, _, right, _] = geometry.bar;
@@ -1113,11 +1239,78 @@ pub(crate) fn place(geometry: &Geometry, width: i32, place: TaskbarPlace) -> i32
     (end - width).max(0)
 }
 
-/// Where the Windows 10 task buttons end when not narrowed for the monitor,
-/// screen pixels, as they end `now`: the edge remembered from before while
-/// they still end where the monitor left them (`kept`: that edge, and where
-/// they were left), else where they end now, the shell having laid them
-/// out again as the tray grew or shrank. Never past `limit`.
+/// Room down a vertical taskbar: from `start` to `end` along it, in its
+/// client pixels; the monitor lies at its end (above the tray) when `low`,
+/// else at its start.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Room {
+    pub start: i32,
+    pub end: i32,
+    pub low: bool,
+}
+
+impl Room {
+    /// Where a monitor `length` long starts in it.
+    fn at(&self, length: i32) -> i32 {
+        if self.low {
+            self.end - length
+        } else {
+            self.start
+        }
+    }
+}
+
+/// The rooms down a vertical taskbar the monitor may take, in the order
+/// tried, each holding the readings that fit it: with Windows 11's buttons
+/// centred, the free space before them (the taskbar's top, `Start`) or
+/// after them (above the tray), the one asked for first and the other
+/// should it hold no reading; else above the tray, past the start button.
+/// Centred buttons lie about the taskbar's middle as far as the tray lets
+/// them, as long a space after them as before them, none once the tray
+/// pushes them. Without the start button known, a room reaches the tray.
+pub(crate) fn rooms(geometry: &Geometry, place: TaskbarPlace) -> Vec<Room> {
+    let px = |logical: f32| (logical * geometry.scale).round() as i32;
+    let [_, top, _, bottom] = geometry.bar;
+    let gap = px(4.);
+    // Where the tray starts; another display's taskbar keeps its clock
+    // there, two lines and the desktop button.
+    let tray = geometry
+        .tray
+        .map_or(bottom - top - px(72.), |tray| tray[1] - top);
+    // The widgets button, a button high: at the top of a centred taskbar,
+    // by the tray otherwise.
+    let widgets = if geometry.widgets { px(48.) } else { 0 };
+    let start = geometry.start.map(|start| (start[1] - top, start[3] - top));
+    if !(geometry.windows11 && geometry.centred) {
+        return vec![Room {
+            start: start.map_or(0, |(_, end)| end) + gap,
+            end: tray - gap - widgets,
+            low: true,
+        }];
+    }
+    let upper = Room {
+        start: gap + widgets,
+        end: start.map_or(tray, |(start, _)| start) - gap,
+        low: false,
+    };
+    let lower = Room {
+        start: start.map_or(0, |(start, _)| bottom - top - start) + gap,
+        end: tray - gap,
+        low: true,
+    };
+    if place == TaskbarPlace::Start {
+        vec![upper, lower]
+    } else {
+        vec![lower, upper]
+    }
+}
+
+/// Where the Windows 10 task buttons end along the taskbar when not
+/// shortened for the monitor, screen pixels, as they end `now`: the end
+/// remembered from before while they still end where the monitor left them
+/// (`kept`: that end, and where they were left), else where they end now,
+/// the shell having laid them out again as the tray grew or shrank. Never
+/// past `limit`.
 fn unsqueezed(kept: Option<(i32, i32)>, now: i32, limit: i32) -> i32 {
     match kept {
         Some((right, left_at)) if now == left_at => right,
@@ -1247,7 +1440,7 @@ fn widgets_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Geometry, place, unsqueezed, widgets_allowed};
+    use super::{Geometry, Room, place, rooms, unsqueezed, widgets_allowed};
     use crate::settings::TaskbarPlace;
 
     #[test]
@@ -1291,6 +1484,7 @@ mod tests {
             windows11: true,
             centred: true,
             widgets: false,
+            start: None,
             scale: 1.,
             stand_in: false,
         }
@@ -1299,6 +1493,7 @@ mod tests {
     #[test]
     fn the_monitor_sits_beside_the_tray_or_at_the_start() {
         let g = geometry();
+        assert!(!g.vertical());
         assert_eq!(place(&g, 200, TaskbarPlace::Tray), 2047 - 4 - 200);
         assert_eq!(place(&g, 200, TaskbarPlace::Start), 4);
         // The widgets button takes the start of a centred taskbar…
@@ -1335,6 +1530,87 @@ mod tests {
         assert_eq!(
             place(&Geometry { tray: None, ..g }, 5000, TaskbarPlace::Tray),
             0
+        );
+    }
+
+    #[test]
+    fn down_a_vertical_taskbar_it_takes_the_free_space_by_the_buttons() {
+        // Windows 11's taskbar on the left of a 2560 × 1440 display, as the
+        // shell lays it out with many buttons: the tray from 924, the
+        // start button at 161, the buttons pushed up against the tray.
+        let g = Geometry {
+            bar: [0, 0, 48, 1440],
+            tray: Some([0, 924, 48, 1440]),
+            start: Some([0, 161, 48, 194]),
+            ..geometry()
+        };
+        assert!(g.vertical());
+        let top = Room {
+            start: 4,
+            end: 157,
+            low: false,
+        };
+        // No room above the tray: as much after the buttons as before them
+        // would reach past it.
+        let pushed = Room {
+            start: 1440 - 161 + 4,
+            end: 920,
+            low: true,
+        };
+        assert_eq!(rooms(&g, TaskbarPlace::Start), [top, pushed]);
+        assert_eq!(rooms(&g, TaskbarPlace::Tray), [pushed, top]);
+        // Fewer buttons, the start button at 600: room above the tray,
+        // where the monitor lies at its end.
+        let few = Geometry {
+            start: Some([0, 600, 48, 633]),
+            ..g
+        };
+        let above = rooms(&few, TaskbarPlace::Tray)[0];
+        assert_eq!((above.start, above.end), (844, 920));
+        assert_eq!(above.at(60), 860);
+        assert_eq!(top.at(60), 4);
+        // On the right, the same in the taskbar's own pixels; the widgets
+        // button, a button high, takes the top.
+        let right = Geometry {
+            bar: [2512, 0, 2560, 1440],
+            tray: Some([2512, 924, 2560, 1440]),
+            start: Some([2512, 161, 2560, 194]),
+            widgets: true,
+            ..g
+        };
+        assert_eq!(
+            rooms(&right, TaskbarPlace::Start)[0],
+            Room { start: 52, ..top }
+        );
+        // Buttons from the top: above the tray, past the start button,
+        // the widgets button by the tray.
+        let from_top = Geometry {
+            centred: false,
+            start: Some([2512, 8, 2560, 41]),
+            ..right
+        };
+        let only = Room {
+            start: 45,
+            end: 920 - 48,
+            low: true,
+        };
+        assert_eq!(rooms(&from_top, TaskbarPlace::Start), [only]);
+        // Another display's taskbar, without a tray, leaves the clock its
+        // room; without the start button known, a room reaches the tray.
+        let secondary = Geometry {
+            tray: None,
+            start: None,
+            widgets: false,
+            scale: 1.5,
+            ..right
+        };
+        assert_eq!(
+            rooms(&secondary, TaskbarPlace::Tray)[0],
+            Room {
+                start: 6,
+                end: 1440 - 108 - 6,
+                low: true
+            }
         );
     }
 }

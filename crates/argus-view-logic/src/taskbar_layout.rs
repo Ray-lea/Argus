@@ -19,11 +19,17 @@
 //! Curves, capsules and figures need two rows of text; a lower taskbar
 //! shows labels.
 //!
+//! A vertical taskbar stacks the readings down its width instead, in each
+//! of the four styles (`lay_out_column`, in `column`).
+//!
 //! The layout measures text through `Fonts`; the interface sets and draws it
 //! with DirectWrite (`shell/taskbar_draw.rs` in `src-gpui`, its `Painter`).
 use argus_app::settings::TaskbarStyle as Style;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
+
+mod column;
+pub use column::lay_out_column;
 
 /// One reading on the taskbar.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -200,6 +206,9 @@ pub struct Layout {
     pub pills: Vec<Pill>,
     /// The labels' text size, pixels.
     pub font: i32,
+    /// Laid out down a vertical taskbar (`lay_out_column`), its width the
+    /// taskbar's, rather than along a horizontal one.
+    pub vertical: bool,
 }
 
 /// The labels' text size, pixels, at `scale` as `size_scale` gives it:
