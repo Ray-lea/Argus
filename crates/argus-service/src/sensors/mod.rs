@@ -9,10 +9,24 @@ use argus_core::hardware::{CpuSensors, SensorState};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
+/// The longest the host goes between sensor requests: its slowest sampling
+/// cadence, 30 s in the tray or minimized (`BACKGROUND_INTERVALS` in
+/// argus-app, whose tests hold it to this limit).
+pub const MAX_SENSOR_POLL: Duration = Duration::from_secs(30);
+
+/// How long a counter baseline (energy, APERF/MPERF, GT activity) stays
+/// usable: a missed request at the slowest host cadence, plus the jitter of
+/// the request itself. Longer gaps rebuild the baseline, as after sleep.
+pub(crate) const COUNTER_GAP: Duration = Duration::from_secs(MAX_SENSOR_POLL.as_secs() * 2 + 5);
+
+/// The lease keeps the readers, and so their counter baselines, for as long
+/// as a baseline is usable. A shorter lease closed them between two requests
+/// at a 30 s background cadence: every frame was a first sample, without
+/// package or core power, and so was the first frame back in the window.
 const POLICY: crate::snapshot::Policy = crate::snapshot::Policy {
     period: Duration::from_millis(500),
     max_age: Duration::from_secs(3),
-    idle: Duration::from_secs(15),
+    idle: COUNTER_GAP,
 };
 
 pub(crate) struct SensorMonitor {
@@ -212,7 +226,8 @@ pub struct SensorClient {
     tx: mpsc::Sender<Option<Duration>>,
     cache: Cache,
     last_cache: CachedFrame,
-    last: Option<Instant>,
+    /// When the poll cadence was last sent, and which.
+    last: Option<(Instant, Duration)>,
 }
 
 impl SensorClient {
@@ -318,11 +333,17 @@ impl SensorClient {
         self.last_cache = None;
     }
 
+    /// `cadence` is how often the host samples now, which the poll follows;
+    /// `stale_after` is how old the last frame may be by now, the slower
+    /// background cadence on the first sample back in the window. Polling at
+    /// the background cadence until the next sample left that one without a
+    /// frame young enough to show.
     pub fn enrich(
         &mut self,
         snapshot: &mut argus_core::Snapshot,
         enabled: bool,
-        interval: Duration,
+        cadence: Duration,
+        stale_after: Duration,
     ) {
         if !enabled {
             self.disable();
@@ -330,15 +351,14 @@ impl SensorClient {
             self.last_cache = None;
             return;
         }
+        let cadence = cadence.max(Duration::from_millis(500));
+        // A changed cadence goes out at once: the window coming back polls now.
         if self
             .last
-            .is_none_or(|at| at.elapsed() >= Duration::from_millis(500))
-            && self
-                .tx
-                .send(Some(interval.max(Duration::from_millis(500))))
-                .is_ok()
+            .is_none_or(|(at, sent)| sent != cadence || at.elapsed() >= Duration::from_millis(500))
+            && self.tx.send(Some(cadence)).is_ok()
         {
-            self.last = Some(Instant::now());
+            self.last = Some((Instant::now(), cadence));
         }
         if let Ok(cache) = self.cache.try_lock() {
             self.last_cache = cache.clone();
@@ -346,7 +366,7 @@ impl SensorClient {
         snapshot.hardware.cpu_sensors = Some(
             self.last_cache
                 .as_ref()
-                .filter(|(at, _)| at.elapsed() < interval.max(Duration::from_secs(1)) * 3)
+                .filter(|(at, _)| at.elapsed() < stale_after.max(Duration::from_secs(1)) * 3)
                 .map(|(_, frame)| (**frame).clone())
                 .unwrap_or_default(),
         );
@@ -419,6 +439,65 @@ impl SensorClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SECOND: Duration = Duration::from_secs(1);
+
+    fn empty_snapshot() -> argus_core::Snapshot {
+        argus_core::Snapshot {
+            seq: 0,
+            timestamp: 0,
+            system: Default::default(),
+            hardware: Default::default(),
+            processes: vec![],
+            sessions: Vec::new(),
+            leaks: Vec::new(),
+            process_network: false,
+        }
+    }
+
+    #[test]
+    fn the_window_coming_back_shows_the_background_frame_and_polls_at_once() {
+        let (read, reads) = mpsc::channel();
+        let (release, gate) = mpsc::channel::<()>();
+        let mut polls = 0;
+        let mut client = SensorClient::with_reader(move || {
+            polls += 1;
+            let _ = read.send(());
+            // The poll for the window coming back leaves the cache alone
+            // until the test has read it.
+            if polls == 2 {
+                let _ = gate.recv_timeout(Duration::from_secs(2));
+            }
+            CpuSensors {
+                state: SensorState::Ready,
+                package_watts: Some(13.0),
+                ..Default::default()
+            }
+        });
+        client.enrich(
+            &mut empty_snapshot(),
+            true,
+            MAX_SENSOR_POLL,
+            MAX_SENSOR_POLL,
+        );
+        reads.recv_timeout(Duration::from_secs(2)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while client.cache.lock().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        // The last background poll was 10 s before the window came back.
+        client.cache.lock().unwrap().as_mut().unwrap().0 = Instant::now() - 10 * SECOND;
+        // The first sample back runs at the shown cadence, and its frames
+        // may be as old as the background cadence allows.
+        let mut snapshot = empty_snapshot();
+        client.enrich(&mut snapshot, true, 2 * SECOND, MAX_SENSOR_POLL);
+        assert_eq!(snapshot.hardware.power.package, Some(13.0));
+        // The poll follows the shown cadence now, not 30 s later, so the
+        // next sample has a fresh frame.
+        reads.recv_timeout(Duration::from_secs(1)).unwrap();
+        release.send(()).unwrap();
+    }
 
     #[test]
     fn slow_per_core_reads_do_not_delay_fresh_package_data() {
@@ -511,7 +590,7 @@ mod tests {
     #[test]
     fn a_concurrent_cache_write_keeps_the_recent_sensor_frame_without_blocking() {
         let mut client = SensorClient::with_reader(CpuSensors::default);
-        client.last = Some(Instant::now());
+        client.last = Some((Instant::now(), SECOND));
         *client.cache.lock().unwrap() = Some((
             Instant::now(),
             Arc::new(CpuSensors {
@@ -530,11 +609,11 @@ mod tests {
             leaks: Vec::new(),
             process_network: false,
         };
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         let shared = client.cache.clone();
         let guard = shared.lock().unwrap();
         let start = Instant::now();
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         assert!(start.elapsed() < Duration::from_millis(100));
         assert_eq!(
             snapshot
@@ -546,7 +625,7 @@ mod tests {
             Some(68.)
         );
         client.last_cache.as_mut().unwrap().0 = Instant::now() - Duration::from_secs(4);
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         assert!(
             snapshot
                 .hardware
@@ -561,7 +640,7 @@ mod tests {
             Instant::now(),
             Arc::new(CpuSensors::unavailable(SensorState::NoData)),
         ));
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         assert_eq!(
             snapshot.hardware.cpu_sensors.as_ref().unwrap().state,
             SensorState::NoData
@@ -641,7 +720,7 @@ mod tests {
         frame.metric(CpuMetricKind::CoresWatts, Some(0.0), CpuSensorSource::Msr);
         frame.metric(CpuMetricKind::MemoryWatts, Some(2.5), CpuSensorSource::Msr);
         *client.cache.lock().unwrap() = Some((Instant::now(), Arc::new(frame)));
-        client.last = Some(Instant::now());
+        client.last = Some((Instant::now(), SECOND));
         let mut snapshot = argus_core::Snapshot {
             seq: 0,
             timestamp: 0,
@@ -665,7 +744,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         assert_eq!(snapshot.hardware.core_mhz, [4200, 2500]);
         assert_eq!(snapshot.hardware.cpu_mhz, Some(3350));
         assert_eq!(snapshot.hardware.power.package, Some(99.0));
@@ -719,10 +798,10 @@ mod tests {
             leaks: Vec::new(),
             process_network: false,
         };
-        client.enrich(&mut snapshot, false, Duration::from_secs(1));
+        client.enrich(&mut snapshot, false, SECOND, SECOND);
         assert!(snapshot.hardware.cpu_sensors.is_none());
         assert!(entered.try_recv().is_err());
-        client.enrich(&mut snapshot, true, Duration::from_secs(1));
+        client.enrich(&mut snapshot, true, SECOND, SECOND);
         entered.recv_timeout(Duration::from_secs(5)).unwrap();
         *client.cache.lock().unwrap() = Some((
             Instant::now() - Duration::from_secs(20),
@@ -734,7 +813,7 @@ mod tests {
         ));
         let start = Instant::now();
         for _ in 0..100 {
-            client.enrich(&mut snapshot, true, Duration::from_secs(1));
+            client.enrich(&mut snapshot, true, SECOND, SECOND);
         }
         assert!(start.elapsed() < Duration::from_millis(100));
         assert!(

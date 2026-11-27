@@ -50,7 +50,7 @@ impl ClockCounter {
             return (None, None);
         };
         let seconds = now.duration_since(at).as_secs_f64();
-        if !(0.05..=30.0).contains(&seconds) || aperf < a || mperf < m {
+        if !super::counter_gap(seconds) || aperf < a || mperf < m {
             return (None, None);
         }
         let effective = valid((aperf - a) as f64 / seconds / 1e6, 0.0, 12000.0);
@@ -235,10 +235,40 @@ mod tests {
                 Some(500_000_000),
                 Some(400_000_000),
                 Some(4000.0),
-                at + Duration::from_secs(34)
+                at + Duration::from_secs(3) + crate::sensors::COUNTER_GAP + Duration::from_secs(1)
             ),
             (None, None)
         );
+    }
+
+    #[test]
+    fn readings_keep_their_baseline_at_the_slowest_host_cadence() {
+        // In the tray or minimized the host may ask every 30 s, each request a
+        // little after the last; a 30 s window turned all of them into gaps.
+        let at = Instant::now();
+        let gap = crate::sensors::MAX_SENSOR_POLL + Duration::from_secs(2);
+        let mut energy = EnergyCounter::default();
+        let mut clock = ClockCounter::default();
+        assert_eq!(energy.sample(Some(0), 0.125, at), None);
+        assert_eq!(
+            clock.sample(Some(0), Some(0), Some(4000.0), at),
+            (None, None)
+        );
+        for poll in 1..=3u64 {
+            let now = at + gap * poll as u32;
+            // 13 W in 1/8 J counts; 3.36 GHz effective, 10% C0 at a 4 GHz TSC.
+            assert_eq!(energy.sample(Some(3328 * poll), 0.125, now), Some(13.0));
+            let (effective, active) = clock.sample(
+                Some(107_520_000_000 * poll),
+                Some(12_800_000_000 * poll),
+                Some(4000.0),
+                now,
+            );
+            assert_eq!(effective, Some(3360.0));
+            assert_eq!(active.map(f32::round), Some(10.0));
+        }
+        let late = at + gap * 3 + crate::sensors::COUNTER_GAP + Duration::from_secs(1);
+        assert_eq!(energy.sample(Some(20_000), 0.125, late), None);
     }
 
     #[test]

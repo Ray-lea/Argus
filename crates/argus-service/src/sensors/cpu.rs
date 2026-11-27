@@ -598,8 +598,15 @@ fn energy_unit(id: Identity, unit: u32) -> f64 {
         1.0 / (1u64 << exponent) as f64
     }
 }
+/// Whether a counter delta over `seconds` makes a reading. Too short a gap is
+/// noise; one past `COUNTER_GAP` (sleep, a lapsed lease) rebuilds the baseline.
+/// A 32-bit energy counter in 2^-16 J units wraps after 65 536 J, more than a
+/// package draws over this gap below 1 kW.
+fn counter_gap(seconds: f64) -> bool {
+    (0.05..=super::COUNTER_GAP.as_secs_f64()).contains(&seconds)
+}
 fn energy_delta(before: u32, after: u32, seconds: f64, unit: f64) -> Option<f32> {
-    if !(0.05..=30.0).contains(&seconds) {
+    if !counter_gap(seconds) {
         return None;
     }
     valid(
@@ -687,7 +694,9 @@ mod tests {
         assert_eq!(energy_delta(u32::MAX - 99, 100, 1.0, 0.125), Some(25.0));
         assert_eq!(energy_delta(1, 1, 1.0, 1.0), Some(0.0));
         assert_eq!(energy_delta(1000, 0, 1.0, 0.125), None);
-        assert_eq!(energy_delta(0, 1, 31.0, 1.0), None);
+        let gap = crate::sensors::COUNTER_GAP.as_secs_f64();
+        assert_eq!(energy_delta(0, 31, 31.0, 1.0), Some(1.0));
+        assert_eq!(energy_delta(0, 1, gap + 1.0, 1.0), None);
         let core = Identity {
             intel: true,
             family: 6,

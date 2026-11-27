@@ -29,7 +29,7 @@ pub use disk::DiskClient;
 pub use install::{Damage, ServiceStatus, manage, status};
 pub use network::NetworkFrame;
 pub use protocol::{Operation, Reply};
-pub use sensors::SensorClient;
+pub use sensors::{MAX_SENSOR_POLL, SensorClient};
 
 pub const SERVICE_NAME: &str = if cfg!(debug_assertions) {
     "ArgusPrivilegedDev"

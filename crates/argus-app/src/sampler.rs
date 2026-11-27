@@ -522,7 +522,7 @@ impl Sampler {
 
                     let stale_after = schedule.taken(now, forced, period);
                     let mut snapshot = collector.sample();
-                    sensors.enrich(&mut snapshot, kernel_sensors, stale_after);
+                    sensors.enrich(&mut snapshot, kernel_sensors, period, stale_after);
                     network.enrich(&mut snapshot, stale_after);
                     disk.enrich(&mut snapshot, stale_after);
                     if let Some(failure) = disk.new_failure() {
@@ -682,6 +682,20 @@ mod tests {
         assert_eq!(cadence(WindowState::Shown, true, s(10), s(5), s(5)), s(10));
         // Out of sight, the background cadences apply even while paused.
         assert_eq!(pick(WindowState::Minimized, true), s(10));
+    }
+
+    #[test]
+    fn every_cadence_keeps_the_sensor_service_lease() {
+        // The service keeps counter baselines (CPU power, effective clocks)
+        // across requests up to this far apart; a longer cadence would lose
+        // them in the tray or minimized and on the first frames back.
+        let longest = crate::settings::BACKGROUND_INTERVALS
+            .iter()
+            .map(|ms| Duration::from_millis(*ms))
+            .chain([PAUSED_INTERVAL, BACKGROUND_INTERVAL, DEFAULT_INTERVAL])
+            .max()
+            .unwrap();
+        assert!(longest <= argus_service::MAX_SENSOR_POLL);
     }
 
     #[test]

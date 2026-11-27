@@ -43,7 +43,8 @@ fn main() {
             if let Some(collector) = &mut collector {
                 snapshot = collector.sample();
             }
-            client.enrich(&mut snapshot, true, Duration::from_secs(1));
+            let second = Duration::from_secs(1);
+            client.enrich(&mut snapshot, true, second, second);
             snapshot.hardware.cpu_sensors.unwrap_or_default()
         };
         let millis = start.elapsed().as_secs_f64() * 1000.;

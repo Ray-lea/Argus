@@ -45,7 +45,7 @@ impl ActivityCounter {
         };
         let (before, at) = self.0.replace((value, now))?;
         let seconds = now.checked_duration_since(at)?.as_secs_f64();
-        if !(0.05..=30.0).contains(&seconds) {
+        if !super::counter_gap(seconds) {
             return None;
         }
         // Gen9 slice/media activity counts at 24 MHz, independently of GT PLL.
@@ -332,9 +332,10 @@ mod tests {
             Some(0.1)
         );
         assert_eq!(counter.sample(Some(0), now + Duration::from_secs(6)), None);
-        assert_eq!(counter.sample(Some(1), now + Duration::from_secs(40)), None);
+        // Past the counter gap (crate::sensors::COUNTER_GAP) the baseline is rebuilt.
+        assert_eq!(counter.sample(Some(1), now + Duration::from_secs(80)), None);
         assert_eq!(
-            counter.sample(Some(u64::MAX), now + Duration::from_secs(41)),
+            counter.sample(Some(u64::MAX), now + Duration::from_secs(81)),
             None
         );
     }

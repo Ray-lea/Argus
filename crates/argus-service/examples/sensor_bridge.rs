@@ -60,7 +60,8 @@ fn main() {
         let mut snapshot = collector.sample();
         let elapsed = start.elapsed().as_secs_f64() * 1000.0;
         let start = Instant::now();
-        sensors.enrich(&mut snapshot, false, Duration::from_secs(1));
+        let second = Duration::from_secs(1);
+        sensors.enrich(&mut snapshot, false, second, second);
         if i >= 2 {
             collect.push(elapsed);
             bridge.push(start.elapsed().as_secs_f64() * 1_000_000.0);
