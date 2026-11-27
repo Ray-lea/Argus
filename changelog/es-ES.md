@@ -4,7 +4,7 @@
 
 Cambios visibles para el usuario en cada versión de Argus. La numeración sigue el [versionado semántico](https://semver.org/lang/es/). Este archivo es una traducción del [registro de cambios en chino simplificado](zh-CN.md), con correspondencia entrada por entrada.
 
-## [0.7.0](https://github.com/Ray-lea/Argus/compare/v0.6.0...v0.7.0) - 2026-11-27
+## [0.7.0] - 2026-11-27
 
 Argus v0.7.0 ofrece por primera vez versiones instalable y portátil para Windows ARM64, y la aplicación, el servicio privilegiado y la sustitución del Administrador de tareas funcionan de forma nativa en ARM64. Procesos añade 27 columnas opcionales y dos acciones, «Crear archivo de volcado de memoria» y «Depurar». Se añade el ajuste de unidades de bytes, el monitor en la barra de tareas admite barras de tareas verticales y Argus puede enviar una notificación de Windows cuando hay una nueva versión. Esta versión también reduce el redibujado con la interfaz en reposo y corrige problemas como los sensores de Ryzen 9000, el monitor en la barra de tareas que tapaba el botón Inicio y el servicio privilegiado que no se podía reinstalar tras eliminarse su registro.
 

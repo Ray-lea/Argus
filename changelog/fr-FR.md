@@ -4,7 +4,7 @@
 
 Modifications visibles par les utilisateurs dans chaque version d’Argus. Les numéros de version suivent la [gestion sémantique de version](https://semver.org/lang/fr/). Ce fichier est traduit du [journal des modifications en chinois simplifié](zh-CN.md), auquel il correspond entrée par entrée.
 
-## [0.7.0](https://github.com/Ray-lea/Argus/compare/v0.6.0...v0.7.0) - 2026-11-27
+## [0.7.0] - 2026-11-27
 
 Argus v0.7.0 propose pour la première fois une version installable et une version portable pour Windows ARM64 ; l’application, le service privilégié et le remplacement du Gestionnaire des tâches fonctionnent nativement sur ARM64. La page Processus ajoute 27 colonnes facultatives et deux actions, « Créer un fichier de vidage mémoire » et « Déboguer ». Un réglage des unités d’octets fait son apparition, le moniteur de barre des tâches prend en charge les barres des tâches verticales et Argus peut envoyer une notification Windows lorsqu’une nouvelle version est disponible. Cette version réduit aussi les redessins lorsque l’interface est au repos et corrige notamment les capteurs des Ryzen 9000, le moniteur de barre des tâches qui masquait le bouton Démarrer et le service privilégié impossible à réinstaller après la suppression de son inscription.
 

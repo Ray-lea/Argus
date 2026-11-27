@@ -4,7 +4,7 @@
 
 User-visible changes in each Argus release. Versions follow [Semantic Versioning](https://semver.org/). This file is translated from the [Simplified Chinese changelog](zh-CN.md), entry for entry.
 
-## [0.7.0](https://github.com/Ray-lea/Argus/compare/v0.6.0...v0.7.0) - 2026-11-27
+## [0.7.0] - 2026-11-27
 
 Argus v0.7.0 introduces Windows ARM64 installer and portable builds, with the app, the privileged service and Task Manager replacement running natively on ARM64. Processes adds 27 optional columns and two actions, “Create memory dump file” and “Debug”. A new byte units setting arrives, the taskbar monitor supports vertical taskbars, and Argus can send a Windows notification when a new version is available. This release also reduces redrawing while the interface is idle and fixes issues including Ryzen 9000 sensors, the taskbar monitor covering the Start button and a privileged service that could not be reinstalled after its registration was deleted.
 
