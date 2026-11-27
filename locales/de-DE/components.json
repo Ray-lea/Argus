@@ -144,7 +144,14 @@
     "battery": {
       "name": "Akku",
       "short": "Akku",
-      "option": "Ladezustand"
+      "option": "Ladezustand",
+      "tag": "Ladung"
+    },
+    "batteryPower": {
+      "name": "Akkuleistung",
+      "short": "Akku",
+      "option": "Akkuleistung",
+      "tag": "Leist."
     },
     "uptime": {
       "name": "Betriebszeit",
