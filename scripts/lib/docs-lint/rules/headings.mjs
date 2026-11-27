@@ -8,6 +8,10 @@ import { applies, blockKind, blocks, headingContent, headingLevel, ofType, setti
 
 // 1. 安装, 1、安装, 一、安装, 第一章 (a version such as 0.6 版 is not a number in front).
 const NUMBERED = /^(?:\d+[.、)）](?!\d)|[一二三四五六七八九十]+[、.．]|第[一二三四五六七八九十百\d]+[章节部分篇])/u;
+// Steps (docs-style.md#分步): "1. 标题", "2. 标题" in order at one level, which
+// the website shows as a step list. Any other heading at that level or above
+// ends the steps.
+const STEP = /^(\d+)\. \S/u;
 
 export default {
   names: ["argus-headings"],
@@ -36,13 +40,25 @@ export default {
       }
       if (children.length === 1) onError({ lineNumber: children[0].startLine, detail: t("同一级的标题至少两个：只有一个下级标题时不分级", "a heading with subsections has at least two: do not divide for one"), context: textOf(headingContent(children[0]) ?? children[0]) });
     }
+    // The number of the last step at each level.
+    const steps = new Map();
     for (const heading of headings) {
       const content = headingContent(heading);
       if (!content) continue;
       const text = textOf(content).trim();
+      const level = headingLevel(heading);
+      for (const deeper of [...steps.keys()]) if (deeper > level) steps.delete(deeper);
       if (ofType(content.children, "link", "autolink", "literalAutolink").length) onError({ lineNumber: heading.startLine, detail: t("标题中不放链接：链接写在正文中", "no links in headings: put them in the text"), context: text });
-      if (headingLevel(heading) > levels) onError({ lineNumber: heading.startLine, detail: t(`标题最多到 ${levels} 级`, `headings go down to level ${levels} at most`), context: text });
-      if (NUMBERED.test(text)) onError({ lineNumber: heading.startLine, detail: t("标题不编号", "no numbers in front of headings"), context: text });
+      if (level > levels) onError({ lineNumber: heading.startLine, detail: t(`标题最多到 ${levels} 级`, `headings go down to level ${levels} at most`), context: text });
+      const step = STEP.exec(text);
+      if (step) {
+        const number = Number(step[1]);
+        if (number !== (steps.get(level) ?? 0) + 1) onError({ lineNumber: heading.startLine, detail: t("步骤标题在同一级从 1 开始连续编号", "step headings are numbered 1, 2, 3 at one level"), context: text });
+        steps.set(level, number);
+      } else {
+        steps.delete(level);
+        if (NUMBERED.test(text)) onError({ lineNumber: heading.startLine, detail: t("标题不编号；分步的标题写作“1. 标题”", "no numbers in front of headings; steps are written “1. Title”"), context: text });
+      }
       const parts = content.children.filter((child) => !(child.type === "data" && !child.text.trim()));
       if (parts.length === 1 && (parts[0].type === "strong" || parts[0].type === "codeText")) onError({ lineNumber: heading.startLine, detail: t("不用加粗或代码格式包住整个标题", "no bold or code around a whole heading"), context: text });
     }

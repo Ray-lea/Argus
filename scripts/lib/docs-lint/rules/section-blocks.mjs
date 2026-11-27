@@ -13,10 +13,19 @@ export default {
     if (!applies(params)) return;
     const maximum = settings(params).maximum ?? 8;
     const sections = [{ heading: null, blocks: [] }];
+    // A disclosure (<details> … </details>) counts as one block with what it holds.
+    let disclosure = false;
     for (const token of blocks(params)) {
       const kind = blockKind(token);
+      // The block's own source: the text of raw HTML is not among its data tokens.
+      const html = kind === "html" ? token.text.trim() : "";
+      if (disclosure) {
+        if (html.endsWith("</details>")) disclosure = false;
+        continue;
+      }
       if (kind === "heading") sections.push({ heading: token, blocks: [] });
       else if (kind !== "break") sections.at(-1).blocks.push(token);
+      if (html.startsWith("<details") && !html.endsWith("</details>")) disclosure = true;
     }
     for (const { heading, blocks: under } of sections) {
       if (under.length <= maximum) continue;

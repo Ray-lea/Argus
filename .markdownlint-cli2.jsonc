@@ -28,9 +28,10 @@
     // Two trailing spaces are an invisible line break: the documents have none.
     "MD009": { "br_spaces": 0 },
 
-    // HTML: links and anchors, keys, sub- and superscript. No <br>: lines do
-    // not break inside paragraphs or table cells.
-    "MD033": { "allowed_elements": ["a", "kbd", "sub", "sup"] },
+    // HTML: links and anchors, keys, sub- and superscript, and disclosures
+    // (details and summary: an accordion on the website). No <br>: lines do not
+    // break inside paragraphs or table cells.
+    "MD033": { "allowed_elements": ["a", "kbd", "sub", "sup", "details", "summary"] },
 
     // Code: fenced with backticks, always with a language.
     "MD040": true,

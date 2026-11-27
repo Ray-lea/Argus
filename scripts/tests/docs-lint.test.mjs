@@ -87,11 +87,15 @@ test("argus-headings: text between headings, two subsections or none, no links",
   const outline = (heading) => page("## 甲", "", "正文。", "", "### 一", "", "正文。", "", "### 二", "", "正文。", "", heading, "", "正文。");
   assert.deepEqual(await check("argus-headings", outline("## 0.6 版的变化")), [], "a version is not a number in front");
   for (const [heading, pattern] of [
-    ["## 1. 安装", /编号|numbers/],
+    ["## 1、安装", /编号|numbers/],
+    ["## 2. 安装", /连续编号|numbered 1, 2, 3/],
     ["## **加粗**", /加粗|bold/],
     ["## `code`", /代码|code/],
   ])
     assert.match(details(await check("argus-headings", outline(heading))).join("\n"), pattern, heading);
+  // Steps: "1. ", "2. " in order at one level (a step list on the website).
+  const steps = page("## 1. 下载", "", "正文。", "", "## 2. 安装", "", "正文。", "", "## 常见问题", "", "正文。");
+  assert.deepEqual(await check("argus-headings", steps), [], "numbered steps in order");
   const deep = page("## 甲", "", "正文。", "", "### 一", "", "正文。", "", "#### 1", "", "正文。", "", "##### 五级", "", "正文。", "", "##### 五级二", "", "正文。", "", "#### 2", "", "正文。", "", "### 二", "", "正文。", "", "## 乙", "", "正文。");
   assert.deepEqual(details(await check("argus-headings", deep)).map((detail) => detail.split(":")[0]), ["17", "21"], "levels 5 and below");
 });
@@ -128,6 +132,10 @@ test("argus-section-blocks: at most 8 blocks under a heading", async () => {
   const blocks = (count) => Array.from({ length: count }, (_, i) => [`段落 ${i}。`, ""]).flat();
   assert.deepEqual(await check("argus-section-blocks", page("## 节", "", ...blocks(8))), []);
   assert.match(details(await check("argus-section-blocks", page("## 节", "", ...blocks(9))))[0], /^5: .*9/);
+  // A disclosure counts once with the paragraphs it holds.
+  const disclosure = (i) => ["<details>", `<summary>问题 ${i}？</summary>`, "", `回答 ${i}。`, "", `补充 ${i}。`, "", "</details>", ""];
+  const faq = page("## 常见问题", "", ...[1, 2, 3, 4, 5, 6, 7, 8].flatMap(disclosure));
+  assert.deepEqual(await check("argus-section-blocks", faq), []);
 });
 
 test("argus-alerts: GitHub alerts only, with a body, not nested, not adjacent", async () => {
