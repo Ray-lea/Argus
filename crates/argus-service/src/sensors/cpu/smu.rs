@@ -38,6 +38,12 @@ fn layouts() -> &'static [Layout] {
     })
 }
 
+fn supported_layout(version: u32, id: Identity, cores: &[CoreSampler]) -> Option<&'static Layout> {
+    layouts()
+        .iter()
+        .find(|layout| layout.version == version && known_smu::eligible(version, id, cores))
+}
+
 #[derive(Default)]
 pub(super) struct Smu {
     module: Option<Module>,
@@ -95,16 +101,14 @@ impl Smu {
             self.resolved = Some(Instant::now());
         }
         frame.smu_table_version = self.version;
-        let Some(layout) = layouts().iter().find(|l| Some(l.version) == self.version) else {
+        let Some(layout) = self
+            .version
+            .and_then(|version| supported_layout(version, id, cores))
+        else {
             self.cached = None;
             frame.smu_state = Some(SmuState::UnsupportedTable);
             return;
         };
-        if !known_smu::eligible(layout.version, id, cores) {
-            self.cached = None;
-            frame.smu_state = Some(SmuState::UnsupportedTable);
-            return;
-        }
         // The signed module maps at most one page. Large Threadripper tables
         // still have their scalar rail/clock fields within this first page.
         let cells = layout.bytes.min(4096).div_ceil(8);
@@ -322,6 +326,144 @@ fn decode(layout: &Layout, table: &[f32], frame: &mut CpuSensors, cores: &[CoreS
 #[cfg(test)]
 mod tests {
     use super::*;
+    use argus_core::hardware::CpuCoreSensors;
+
+    const GRANITE_RIDGE: Identity = Identity {
+        intel: false,
+        family: 0x1a,
+        model: 0x44,
+        thermal: 0,
+    };
+
+    #[test]
+    #[ignore = "Requires a 12-core Granite Ridge with SMU table 0x620205 and access to an already running PawnIO driver"]
+    fn installed_granite_12_core_smu_probe() {
+        let mut reader = super::super::CpuReader::open().expect(
+            "Could not open CPU sensors. Check that PawnIO is already running and that the terminal can open its device.",
+        );
+        assert_eq!(
+            reader.telemetry.cores.len(),
+            12,
+            "Expected 12 physical cores"
+        );
+        let mut last = CpuSensors::default();
+        for attempt in 1..=5 {
+            last = reader.sample();
+            let ppt = last.value(Kind::PptWatts);
+            let ppt_limit = last.value(Kind::PptLimitWatts);
+            let tdc = last.value(Kind::TdcAmps);
+            let tdc_limit = last.value(Kind::TdcLimitAmps);
+            println!(
+                "sample={attempt} sensor={:?} smu={:?} table={:#010x?} PPT_W={ppt:?}/{ppt_limit:?} TDC_A={tdc:?}/{tdc_limit:?}",
+                last.state, last.smu_state, last.smu_table_version,
+            );
+            if last.smu_table_version == Some(0x620205)
+                && last.smu_state == Some(SmuState::Ready)
+                && [
+                    Kind::PptWatts,
+                    Kind::PptLimitWatts,
+                    Kind::TdcAmps,
+                    Kind::TdcLimitAmps,
+                ]
+                .iter()
+                .all(|kind| {
+                    last.metrics
+                        .iter()
+                        .any(|m| m.kind == *kind && m.source == Source::Smu)
+                })
+            {
+                assert_eq!(last.value(Kind::CoreSmuVoltage), None);
+                assert!(last.cores.iter().all(|core| {
+                    core.celsius.is_none()
+                        && core.voltage.is_none()
+                        && core.smu_c0_percent.is_none()
+                        && core.c1_percent.is_none()
+                        && core.c6_percent.is_none()
+                }));
+                return;
+            }
+            if attempt < 5 {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+        panic!(
+            "Did not read PPT/TDC and their limits from SMU table 0x620205: state={:?}, table={:#010x?}",
+            last.smu_state, last.smu_table_version,
+        );
+    }
+
+    #[test]
+    fn granite_12_core_table_keeps_package_metrics_without_guessing_core_lanes() {
+        // Dense or sparse CoreIds alone cannot prove the fused-off lane map.
+        for slots in [(0..12).collect::<Vec<_>>(), (0..6).chain(8..14).collect()] {
+            let cores: Vec<_> = slots
+                .into_iter()
+                .enumerate()
+                .map(|(i, slot)| CoreSampler::fixture(i as u32, slot, (i * 2) as u8))
+                .collect();
+            let layout = supported_layout(0x620205, GRANITE_RIDGE, &cores).unwrap();
+            let mut table = vec![f32::NAN; layout.bytes.div_ceil(4)];
+            table[2] = 160.;
+            table[3] = 80.;
+            table[8] = 120.;
+            table[9] = 30.;
+            for slot in 0..16 {
+                table[317 + slot] = 1.1;
+                table[333 + slot] = 50. + slot as f32;
+                table[381 + slot] = 20.;
+                table[397 + slot] = 10.;
+                table[413 + slot] = 70.;
+            }
+            let mut frame = CpuSensors {
+                cores: cores
+                    .iter()
+                    .map(|core| CpuCoreSensors {
+                        core: core.core,
+                        clock_mhz: Some(4500.),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            };
+            decode(layout, &table, &mut frame, &cores);
+            assert_eq!(frame.value(Kind::PptWatts), Some(80.));
+            assert_eq!(frame.value(Kind::PptPercent), Some(50.));
+            assert_eq!(frame.value(Kind::TdcAmps), Some(30.));
+            assert_eq!(frame.value(Kind::TdcPercent), Some(25.));
+            assert_eq!(frame.value(Kind::CoreSmuVoltage), None);
+            assert!(frame.core_temperatures.is_empty());
+            assert!(frame.cores.iter().all(|core| {
+                core.celsius.is_none()
+                    && core.voltage.is_none()
+                    && core.smu_c0_percent.is_none()
+                    && core.c1_percent.is_none()
+                    && core.c6_percent.is_none()
+                    && core.clock_mhz == Some(4500.)
+            }));
+        }
+    }
+
+    #[test]
+    fn granite_table_still_requires_matching_cpu_and_exact_version() {
+        for id in [
+            Identity {
+                intel: true,
+                ..GRANITE_RIDGE
+            },
+            Identity {
+                family: 0x19,
+                ..GRANITE_RIDGE
+            },
+            Identity {
+                model: 0x50,
+                ..GRANITE_RIDGE
+            },
+        ] {
+            assert!(supported_layout(0x620205, id, &[]).is_none());
+        }
+        assert!(supported_layout(0x620206, GRANITE_RIDGE, &[]).is_none());
+        assert!(supported_layout(0x620105, GRANITE_RIDGE, &[]).is_none());
+    }
 
     #[test]
     fn brief_bus_contention_keeps_readings_but_expired_cache_is_not_reused() {
@@ -346,7 +488,6 @@ mod tests {
 
     #[test]
     fn disabled_core_gaps_do_not_shift_smu_temperature_or_vid_to_another_core() {
-        use argus_core::hardware::CpuCoreSensors;
         let layout = layouts().iter().find(|l| l.version == 0x621202).unwrap();
         let mut table = vec![f32::NAN; layout.bytes.div_ceil(4)];
         table[333] = 54.0;

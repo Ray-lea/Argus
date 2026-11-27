@@ -4,18 +4,20 @@ use super::{Identity, telemetry::CoreSampler, valid};
 use argus_core::hardware::{CpuMetricKind as Kind, CpuSensorSource as Source, CpuSensors};
 
 pub(super) fn eligible(version: u32, id: Identity, cores: &[CoreSampler]) -> bool {
-    let profile = match version {
-        0x620205 => Some((0x1a, 0x40..=0x4f, 16, 16)),
-        0x620105 => Some((0x1a, 0x40..=0x4f, 8, 8)),
-        _ => None,
-    };
-    profile.is_none_or(|(family, models, count, slots)| {
-        !id.intel
-            && id.family == family
-            && models.contains(&id.model)
-            && cores.len() == count
-            && cores.iter().all(|c| c.smu_slot.is_some_and(|s| s < slots))
-    })
+    let granite_ridge = !id.intel && id.family == 0x1a && (0x40..=0x4f).contains(&id.model);
+    match version {
+        0x620205 => granite_ridge,
+        0x620105 => granite_ridge && has_full_core_slots(cores, 8),
+        _ => true,
+    }
+}
+
+fn has_full_core_slots(cores: &[CoreSampler], count: usize) -> bool {
+    // Telemetry already clears duplicate slots when building the core list.
+    cores.len() == count
+        && cores
+            .iter()
+            .all(|core| core.smu_slot.is_some_and(|slot| slot < count))
 }
 
 pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: &[CoreSampler]) {
@@ -80,6 +82,11 @@ pub(super) fn decode(version: u32, data: &[f32], frame: &mut CpuSensors, cores: 
         frame.core_vid = field(19, 0.1, 2.);
     } else if version == 0x620105 {
         frame.core_vid = field(269, 0.1, 2.);
+    }
+    // The package fields do not depend on core topology. On a partially
+    // enabled Granite Ridge, CoreId alone does not identify the SMU lane.
+    if version == 0x620205 && !has_full_core_slots(cores, 16) {
+        return;
     }
     for reading in &mut frame.cores {
         let Some(slot) = cores
@@ -221,6 +228,18 @@ mod tests {
         assert!(idle.cores[0].c6_percent.unwrap() > 60.);
     }
     #[test]
+    fn full_granite_core_map_requires_present_in_range_slots() {
+        let mut cores: Vec<_> = (0..16)
+            .map(|i| CoreSampler::fixture(i, i as usize, i as u8 * 2))
+            .collect();
+        assert!(has_full_core_slots(&cores, 16));
+        for invalid in [Some(16), None] {
+            cores[15].smu_slot = invalid;
+            assert!(!has_full_core_slots(&cores, 16));
+        }
+    }
+
+    #[test]
     fn granite_620205_uses_its_own_header_and_never_treats_fit_as_a_clock() {
         let cores: Vec<_> = (0..16)
             .map(|i| CoreSampler::fixture(i, i as usize, i as u8 * 2))
@@ -266,14 +285,5 @@ mod tests {
         assert_eq!(frame.cores[8].c6_percent, Some(70.));
         assert_eq!(frame.cores[8].clock_mhz, None);
         assert_eq!(frame.cores[8].vid, None);
-        let id = Identity {
-            intel: false,
-            family: 0x1a,
-            model: 0x44,
-            thermal: 0,
-        };
-        assert!(eligible(0x620205, id, &cores));
-        assert!(!eligible(0x620205, id, &cores[..8]));
-        assert!(!eligible(0x620205, Identity { family: 0x19, ..id }, &cores));
     }
 }
