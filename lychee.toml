@@ -27,4 +27,11 @@ exclude = [
   # Documentation address ranges (RFC 5737, RFC 3849).
   '^https?://(192\.0\.2|198\.51\.100|203\.0\.113)\.',
   '^https?://\[2001:db8:',
+  # Intel's CDN answers requests from cloud addresses, such as GitHub's
+  # runners, with 403; the documents open from other networks.
+  '^https://www\.intel\.com/',
+  # Its redirect to signpath.io sends a header with a space before the
+  # colon ("Strict-Transport-Security : ..."), which lychee's HTTP client
+  # rejects. The README keeps SignPath's required wording and link.
+  '^https://about\.signpath\.io/',
 ]
