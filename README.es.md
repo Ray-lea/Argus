@@ -93,7 +93,7 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 La [página oficial de descargas](https://argustask.com/es/download/) ofrece la última versión estable y sus sumas SHA-256. Todas las versiones están disponibles en [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | Archivo | Descripción |
-|---|---|
+| --- | --- |
 | `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Instalador, recomendado.** Instala para todos los usuarios en `Program Files`. La instalación y las actualizaciones requieren autorización de administrador. Admite actualizaciones integradas. |
 | `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Versión portátil.** Ejecutable independiente que comparte la configuración y el historial con la versión instalada. No admite actualizaciones automáticas. |
 | `SHA256SUMS.txt` | Sumas SHA-256 de los archivos de la versión. |
@@ -133,7 +133,7 @@ La [guía de desarrollo](docs/development/README.md), en chino, explica las comp
 ## 🔑 Atajos de teclado
 
 | Acción | Teclas |
-|---|---|
+| --- | --- |
 | Cambiar de página | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Buscar procesos | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Pausar temporalmente las actualizaciones | Mantener <kbd>Ctrl</kbd>; soltar para reanudar, en Procesos y Rendimiento |
@@ -150,7 +150,8 @@ La lista completa está en **Configuración → Atajos de teclado → Ver atajos
 Las guías detalladas están en chino. La [documentación en línea](https://argustask.com/docs/) ofrece ediciones estable y de desarrollo.
 
 | Documento | Contenido |
-|---|---|
+| --- | --- |
+| [Primeros pasos](docs/start/quick-start.md) | Inicio rápido, presentación de Argus, instalación y actualizaciones, comparación con el Administrador de tareas de Windows |
 | [Guía de uso](docs/guide/README.md) | Interfaz y operaciones, bandeja y atajos, configuración, fuentes y límites de los datos de hardware |
 | [Guía de desarrollo](docs/development/README.md) | Entorno y comandos, compilación y cachés, referencias y medición del rendimiento |
 | [Arquitectura](docs/architecture/README.md) | Capas del sistema, flujo de datos, tecnologías y responsabilidades de los módulos |
@@ -204,7 +205,7 @@ Las actualizaciones integradas utilizan una clave de publicación Minisign indep
 Argus se basa en los siguientes proyectos de código abierto:
 
 | Proyecto | Uso |
-|---|---|
+| --- | --- |
 | [GPUI Kit](https://gpui-kit.com/) | Componentes nativos de escritorio, ventanas, tablas y gráficos |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Enlaces de Rust para las API nativas de Windows |
 | [Biome](https://biomejs.dev/), [NSIS](https://nsis.sourceforge.io/) | Comprobaciones de desarrollo y empaquetado para Windows |

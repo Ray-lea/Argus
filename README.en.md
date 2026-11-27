@@ -85,7 +85,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 Get the latest stable build and SHA-256 checksums from the [official download page](https://argustask.com/en/download/). All versions are available on [GitHub Releases](https://github.com/Ray-lea/Argus/releases).
 
 | File | Description |
-|---|---|
+| --- | --- |
 | `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Installer (recommended).** Installs for all users into `Program Files`; installing and updating require administrator permission. Supports in-app updates. |
 | `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Portable version.** Runs directly as a standalone executable and shares settings and history with the installed version; does not support automatic updates. |
 | `SHA256SUMS.txt` | SHA-256 checksums of the release files above. |
@@ -119,7 +119,7 @@ For code checks, packaging the installer, and cleaning caches, see the [developm
 ## 🔑 Keyboard shortcuts
 
 | Action | Keys |
-|---|---|
+| --- | --- |
 | Switch pages | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Search processes | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Temporarily pause updates | Hold <kbd>Ctrl</kbd>; release to resume (Processes and Performance) |
@@ -134,7 +134,8 @@ The full shortcut list is available in Settings → Keyboard shortcuts → View 
 The documentation is in Chinese; [online documentation](https://argustask.com/docs/) (both stable and development editions) is also available.
 
 | Document | Overview |
-|---|---|
+| --- | --- |
+| [Getting started](docs/start/quick-start.md) | Quick start, an introduction to Argus, installation and updates, comparison with Windows Task Manager |
 | [User guide](docs/guide/README.md) | Interface and operations, background tray and shortcuts, settings, hardware data sources and limitations |
 | [Development guide](docs/development/README.md) | Environment and commands, builds and caches, performance baselines and measurement |
 | [Architecture](docs/architecture/README.md) | System layers and data flow, tech stack, module responsibilities |
@@ -178,7 +179,7 @@ In-app updates use a separate Minisign release key to verify installers and vers
 Argus is built upon the following open-source projects, with sincere thanks:
 
 | Project | Used for |
-|---|---|
+| --- | --- |
 | [GPUI Kit](https://gpui-kit.com/) | Native desktop components, windows, tables, and charts |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Rust bindings for Windows native APIs |
 | [Biome](https://biomejs.dev/), [NSIS](https://nsis.sourceforge.io/) | Development checks and Windows packaging |

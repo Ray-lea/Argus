@@ -93,7 +93,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 最新の安定版と SHA-256 チェックサムは、[公式ダウンロード ページ](https://argustask.com/ja/download/)から取得できます。すべてのバージョンは [GitHub Releases](https://github.com/Ray-lea/Argus/releases) にあります。
 
 | ファイル | 内容 |
-|---|---|
+| --- | --- |
 | `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **インストーラー版（推奨）。** 全ユーザー向けに `Program Files` へインストールします。インストールと更新には管理者の承認が必要です。アプリ内更新に対応します。 |
 | `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **ポータブル版。** 単一の実行ファイルから起動し、設定と履歴をインストーラー版と共有します。自動更新には対応していません。 |
 | `SHA256SUMS.txt` | 配布ファイルの SHA-256 チェックサム。 |
@@ -133,7 +133,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 ## 🔑 キーボード ショートカット
 
 | 操作 | キー |
-|---|---|
+| --- | --- |
 | ページの切り替え | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | プロセスの検索 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 更新の一時停止 | <kbd>Ctrl</kbd> を押している間は停止し、離すと再開（プロセス・パフォーマンス ページ） |
@@ -150,7 +150,8 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 詳細ドキュメントは中国語です。[オンライン ドキュメント](https://argustask.com/docs/)では、安定版と開発版の説明を閲覧できます。
 
 | ドキュメント | 内容 |
-|---|---|
+| --- | --- |
+| [はじめに](docs/start/quick-start.md) | クイック スタート、Argus の概要、インストールと更新、Windows タスク マネージャーとの比較 |
 | [利用ガイド](docs/guide/README.md) | 画面と操作、通知領域とショートカット、設定、ハードウェア データの取得元と制限 |
 | [開発ガイド](docs/development/README.md) | 環境とコマンド、ビルドとキャッシュ、性能の基準と測定方法 |
 | [アーキテクチャ](docs/architecture/README.md) | システム構成、データ フロー、技術構成、各モジュールの役割 |
@@ -204,7 +205,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 Argus は次のオープンソース プロジェクトを利用しています。
 
 | プロジェクト | 用途 |
-|---|---|
+| --- | --- |
 | [GPUI Kit](https://gpui-kit.com/) | ネイティブなデスクトップ部品、ウィンドウ、表、グラフ |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows ネイティブ API の Rust バインディング |
 | [Biome](https://biomejs.dev/)、[NSIS](https://nsis.sourceforge.io/) | 開発時のチェックと Windows 向けパッケージ作成 |

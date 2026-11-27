@@ -85,7 +85,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 在[官网下载页](https://argustask.com/download/)获取最新稳定版和 SHA-256 校验值。全部版本见 [GitHub Releases](https://github.com/Ray-lea/Argus/releases)。
 
 | 文件 | 说明 |
-|---|---|
+| --- | --- |
 | `Argus_<版本>_x64-setup.exe` / `Argus_<版本>_arm64-setup.exe` | **安装版（推荐）**。为所有用户安装至 `Program Files`，安装与更新需管理员授权，支持应用内更新。 |
 | `Argus_<版本>_x64.exe` / `Argus_<版本>_arm64.exe` | **免安装版**。单文件直接运行，与安装版共用设置与历史数据，不支持自动更新。 |
 | `SHA256SUMS.txt` | 上述发布文件的 SHA-256 校验值。 |
@@ -119,7 +119,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 ## 🔑 快捷键
 
 | 操作 | 按键 |
-|---|---|
+| --- | --- |
 | 切换页面 | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | 搜索进程 | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | 临时暂停刷新 | 按住 <kbd>Ctrl</kbd>，松开后恢复（进程页、性能页） |
@@ -134,7 +134,8 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 除仓库内文档外，亦可浏览[在线文档](https://argustask.com/docs/)（含稳定版与开发版）。
 
 | 文档 | 内容概览 |
-|---|---|
+| --- | --- |
+| [入门](docs/start/quick-start.md) | 快速入门、Argus 简介、安装与更新、与系统任务管理器的对比 |
 | [使用指南](docs/guide/README.md) | 界面与操作、后台常驻与快捷键、设置说明、硬件数据的来源与限制 |
 | [开发指南](docs/development/README.md) | 开发环境与命令、构建与缓存机制、性能基线与测量方法 |
 | [架构](docs/architecture/README.md) | 系统分层与数据流、技术栈选型、各模块职责 |
@@ -180,7 +181,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/), certifi
 Argus 构建于以下开源项目之上，谨致谢忱：
 
 | 项目 | 用途 |
-|---|---|
+| --- | --- |
 | [GPUI Kit](https://gpui-kit.com/) | 原生桌面组件、窗口、表格与曲线 |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Windows 原生接口的 Rust 绑定 |
 | [Biome](https://biomejs.dev/)、[NSIS](https://nsis.sourceforge.io/) | 开发检查与 Windows 打包 |

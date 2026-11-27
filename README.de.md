@@ -93,7 +93,7 @@ Wenn Argus im Alltag hilfreich ist, unterstützt ein Stern auf GitHub das Projek
 Die aktuelle stabile Version und SHA-256-Prüfsummen stehen auf der [offiziellen Downloadseite](https://argustask.com/de/download/) bereit. Alle Versionen sind unter [GitHub Releases](https://github.com/Ray-lea/Argus/releases) verfügbar.
 
 | Datei | Beschreibung |
-|---|---|
+| --- | --- |
 | `Argus_<version>_x64-setup.exe` / `Argus_<version>_arm64-setup.exe` | **Installationsprogramm, empfohlen.** Installiert für alle Benutzer unter `Program Files`. Installation und Updates erfordern Administratorrechte. Unterstützt Updates innerhalb der Anwendung. |
 | `Argus_<version>_x64.exe` / `Argus_<version>_arm64.exe` | **Portable Version.** Direkt ausführbare Einzeldatei, die Einstellungen und Verlauf mit der installierten Version teilt. Automatische Updates werden nicht unterstützt. |
 | `SHA256SUMS.txt` | SHA-256-Prüfsummen der veröffentlichten Dateien. |
@@ -133,7 +133,7 @@ Codeprüfungen, das Erstellen des Installationsprogramms und die Cache-Bereinigu
 ## 🔑 Tastenkombinationen
 
 | Aktion | Tasten |
-|---|---|
+| --- | --- |
 | Seite wechseln | <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> |
 | Prozesse suchen | <kbd>Ctrl</kbd>+<kbd>F</kbd> |
 | Aktualisierung vorübergehend anhalten | <kbd>Ctrl</kbd> gedrückt halten; zum Fortsetzen loslassen, auf den Seiten Prozesse und Leistung |
@@ -150,7 +150,8 @@ Die vollständige Liste steht unter **Einstellungen → Tastenkombinationen → 
 Die ausführliche Dokumentation ist auf Chinesisch verfasst. Die [Online-Dokumentation](https://argustask.com/docs/) bietet eine stabile und eine Entwicklungsausgabe.
 
 | Dokument | Inhalt |
-|---|---|
+| --- | --- |
+| [Erste Schritte](docs/start/quick-start.md) | Schnellstart, Einführung in Argus, Installation und Updates, Vergleich mit dem Windows-Task-Manager |
 | [Benutzeranleitung](docs/guide/README.md) | Oberfläche und Bedienung, Infobereich und Tastenkombinationen, Einstellungen, Hardwaredaten und deren Grenzen |
 | [Entwicklungsanleitung](docs/development/README.md) | Umgebung und Befehle, Builds und Caches, Leistungsreferenzen und Messverfahren |
 | [Architektur](docs/architecture/README.md) | Systemschichten, Datenfluss, Technologien und Modulaufgaben |
@@ -204,7 +205,7 @@ Updates innerhalb der Anwendung verwenden einen separaten Minisign-Veröffentlic
 Argus baut auf den folgenden Open-Source-Projekten auf:
 
 | Projekt | Verwendung |
-|---|---|
+| --- | --- |
 | [GPUI Kit](https://gpui-kit.com/) | Native Desktopkomponenten, Fenster, Tabellen und Diagramme |
 | [windows-rs](https://github.com/microsoft/windows-rs) | Rust-Anbindungen an native Windows-APIs |
 | [Biome](https://biomejs.dev/), [NSIS](https://nsis.sourceforge.io/) | Entwicklungsprüfungen und Windows-Paketierung |
