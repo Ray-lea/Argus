@@ -19,7 +19,10 @@ export function Footer({ lang = "zh" }: { lang?: Language }) {
       links: [
         [stable.base, localize(lang, en ? "Stable" : "稳定版") + " " + site.release.tag],
         [development.base, localize(lang, en ? "Development" : "开发版")],
-        [stable.nav[0]?.items[0]?.path ?? stable.base, localize(lang, en ? "User guide" : "使用指南")],
+        [
+          (stable.nav.find((group) => group.label === "使用指南") ?? stable.nav[0])?.items[0]?.path ?? stable.base,
+          localize(lang, en ? "User guide" : "使用指南"),
+        ],
       ],
     },
     {

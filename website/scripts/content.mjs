@@ -53,19 +53,30 @@ export const contentFile = (file, id) => "docs/" + folders[id] + "/" + pageName(
 // Sidebar icons (lucide names, resolved in src/lib/source.ts); a new document simply has none.
 const pageIcons = {
   "docs/README.md": "BookOpen",
+  "docs/start/README.md": "CircleHelp",
+  "docs/start/quick-start.md": "Rocket",
+  "docs/start/install.md": "Download",
+  "docs/start/comparison.md": "Scale",
   "docs/guide/README.md": "MousePointerClick",
+  "docs/guide/processes.md": "ListTree",
+  "docs/guide/performance.md": "ChartLine",
+  "docs/guide/services.md": "ServerCog",
+  "docs/guide/connections.md": "Network",
+  "docs/guide/history.md": "History",
   "docs/guide/resident-mode.md": "Keyboard",
   "docs/guide/settings.md": "Settings",
+  "docs/guide/metrics.md": "Calculator",
   "docs/guide/hardware-data.md": "Cpu",
   "docs/development/README.md": "Terminal",
   "docs/development/build.md": "Hammer",
   "docs/development/performance.md": "Gauge",
   "docs/development/gpui.md": "AppWindow",
-  "docs/development/release.md": "Rocket",
+  "docs/development/release.md": "Tag",
   "docs/development/website.md": "Globe",
   "docs/development/signing.md": "BadgeCheck",
   "docs/development/i18n.md": "Languages",
   "docs/development/security.md": "ShieldCheck",
+  "docs/development/docs-style.md": "PenLine",
   "docs/architecture/README.md": "LayoutDashboard",
   "docs/architecture/tech-stack.md": "Layers",
   "docs/architecture/core.md": "Activity",
@@ -183,26 +194,51 @@ export function navigation(index, routes) {
   return groups.filter((g) => g.items.length);
 }
 
-// The edition folder's meta.json: a root folder, so the selector at the top of
-// the sidebar lists both editions and moves to the same page in the other one.
-export function editionMeta(edition) {
-  return JSON.stringify(
-    {
-      title: edition.label,
-      description: edition.note,
-      icon: icons[edition.id],
-      root: true,
-      pages: [
-        "index",
-        ...edition.nav.flatMap((group) => [
-          "---" + group.label + "---",
-          ...group.items.map((item) => pageName(item.file)),
-        ]),
-      ],
-    },
+// Sidebar folders for the chapters of the index, named and drawn like the
+// chapter cards on the documentation home; the first chapters start open.
+const chapterIcons = { 入门: "Compass", 使用指南: "BookOpen", 开发指南: "Code", 架构: "Layers", 设计: "Palette" };
+const openChapters = new Set(["入门", "使用指南"]);
+
+// The folder of docs/ that holds all of a chapter's pages, or undefined.
+const chapterFolder = (group) => {
+  const folders = new Set(group.items.map((item) => /^docs\/([^/]+)\//.exec(item.file)?.[1]));
+  return folders.size === 1 ? [...folders][0] : undefined;
+};
+
+// The edition's meta.json files by path. The edition folder is a root folder,
+// so the selector at the top of the sidebar lists both editions and moves to
+// the same page in the other one. A chapter whose pages share one folder of
+// docs/ becomes that folder, collapsible, its pages in the index's order with
+// the folder's README listed first like any other page (listing "index" keeps
+// it out of the folder's own link). Other chapters stay separators.
+export function editionMetas(edition) {
+  const metas = {};
+  const rootPages = ["index"];
+  const taken = new Set();
+  for (const group of edition.nav) {
+    const folder = chapterFolder(group);
+    if (folder && !taken.has(folder)) {
+      taken.add(folder);
+      rootPages.push(folder);
+      metas[folder + "/meta.json"] = JSON.stringify(
+        {
+          title: group.label,
+          ...(chapterIcons[group.label] && { icon: chapterIcons[group.label] }),
+          ...(openChapters.has(group.label) && { defaultOpen: true }),
+          pages: group.items.map((item) => pageName(item.file).slice(folder.length + 1)),
+        },
+        null,
+        2,
+      );
+    } else
+      rootPages.push("---" + group.label + "---", ...group.items.map((item) => pageName(item.file)));
+  }
+  metas["meta.json"] = JSON.stringify(
+    { title: edition.label, description: edition.note, icon: icons[edition.id], root: true, pages: rootPages },
     null,
     2,
   );
+  return metas;
 }
 
 async function prepareEdition({ id, label, requested, worktree }, written) {
@@ -240,9 +276,11 @@ async function prepareEdition({ id, label, requested, worktree }, written) {
     written.add(join(contentDir, page.file));
   }
   const edition = { id, label, note: notes[id], ref, base, folder: folders[id], routes, nav };
-  const meta = "docs/" + folders[id] + "/meta.json";
-  await putIfChanged(contentDir, meta, editionMeta(edition));
-  written.add(join(contentDir, meta));
+  for (const [path, json] of Object.entries(editionMetas(edition))) {
+    const meta = "docs/" + folders[id] + "/" + path;
+    await putIfChanged(contentDir, meta, json);
+    written.add(join(contentDir, meta));
+  }
   return edition;
 }
 

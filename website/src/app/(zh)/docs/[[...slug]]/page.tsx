@@ -8,10 +8,11 @@ import {
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/spacious/page";
 import defaultMdxComponents from "fumadocs-ui/mdx";
-import { BookOpen, Code, Layers, Map, Palette, TriangleAlert } from "lucide-react";
+import { BookOpen, Code, Compass, Layers, Map, Palette, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentProps, FC } from "react";
+import { DocsBlockquote } from "@/components/docs-blockquote";
 import {
   articleSchema,
   breadcrumbSchema,
@@ -36,7 +37,8 @@ const date = (value: string) => {
 
 // The chapters of docs/README.md on the documentation home.
 const chapters: Record<string, { icon: FC; text: string }> = {
-  使用指南: { icon: BookOpen, text: "界面与操作、常驻与快捷键、设置项，以及硬件数据的来源与限制。" },
+  入门: { icon: Compass, text: "Argus 是什么、快速入门、安装与更新，以及与系统任务管理器的对比。" },
+  使用指南: { icon: BookOpen, text: "各页面的用法、常驻与快捷键、设置项，以及读数的口径与来源。" },
   开发指南: { icon: Code, text: "开发环境与命令、构建缓存、性能测量、提交发布与代码签名。" },
   架构: { icon: Layers, text: "采集层、宿主、特权服务与前端等模块的职责和边界。" },
   设计: { icon: Palette, text: "设计原则，以及曲线、窗口和全局快捷键的取舍。" },
@@ -79,7 +81,7 @@ export default async function Page({ params }: Props) {
               a: (props: ComponentProps<"a">) => (
                 <Link {...props} href={resolveHref(edition, page.data.source, props.href)} />
               ),
-              blockquote: Callout as unknown as FC<ComponentProps<"blockquote">>,
+              blockquote: DocsBlockquote,
             }}
           />
         )}
