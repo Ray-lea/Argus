@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { installerStrings } from "./lib/installer-locales.mjs";
 import { cleanupTestProfile } from "./lib/owned-test.mjs";
+import { verifyComctl32Imports } from "./lib/pe-imports.mjs";
 import { parseArchFlag, resolveWindowsTarget, verifyPeArchitecture } from "./lib/windows-target.mjs";
 const root = resolve(import.meta.dirname, "..");
 export function validateBuildInfo(info, version) {
@@ -113,7 +114,9 @@ export function bundle(argv = process.argv.slice(2)) {
   if (version !== metadata.version) throw Error("Application version metadata differs");
   const profileDir = target.cross ? join(root, "target", target.rustTarget, "release") : join(root, "target/release");
   const binary = join(profileDir, "argus.exe");
-  verifyPeArchitecture(readFileSync(binary), target.arch);
+  const image = readFileSync(binary);
+  verifyPeArchitecture(image, target.arch);
+  verifyComctl32Imports(image, readFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "comctl32.dll")));
   const build = target.cross ? readCrossVersionInfo(binary, version) : readBuildInfo(binary, version);
   const output = join(profileDir, `bundle/nsis/${metadata.productName}_${build.build}_${target.arch}-setup.exe`);
   const directory = join(profileDir, `nsis/${target.arch}`);

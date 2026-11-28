@@ -10,7 +10,7 @@ Windows 构建使用 `stable-x86_64-pc-windows-msvc` 或 `stable-aarch64-pc-wind
 
 ## 构建脚本
 
-`scripts/build.mjs` 先构建任务管理器启动器与恢复程序，再将它们嵌入 `argus.exe`。`scripts/bundle.mjs` 调用 NSIS 生成安装包，并校验主程序 PE 架构。
+`scripts/build.mjs` 先构建任务管理器启动器与恢复程序，再将它们嵌入 `argus.exe`。`scripts/bundle.mjs` 调用 NSIS 生成安装包，并校验主程序 PE 架构，以及主程序从 `comctl32.dll` 导入的函数在系统自带的 5.82 版中均存在（原因见[程序资源与图标](#程序资源与图标)）。
 
 两个脚本的参数：
 
