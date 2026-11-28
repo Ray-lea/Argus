@@ -4,7 +4,7 @@
 
 Argus 各版本的用户可见变更。版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)；本文件由 `pnpm release` 根据 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 提交信息生成，发布说明取自对应条目，其他语言的版本由本文件逐条翻译而来。
 
-## [0.7.0] - 2026-11-27
+## [0.7.0](https://github.com/Ray-lea/Argus/compare/v0.6.0...v0.7.0) - 2026-11-27
 
 v0.7.0 开始提供 Windows ARM64 安装版与免安装版，主程序、特权服务与任务管理器替换均在 ARM64 上原生运行。进程页新增 27 个可选列与“创建内存转储文件”“调试”两项操作；新增字节单位设置，任务栏监控支持垂直任务栏，有新版本时可发送 Windows 通知。本版还减少了界面静止时的重绘，并修复 Ryzen 9000 传感器、任务栏监控遮挡开始按钮、特权服务注册被删除后无法重新安装等问题。
 

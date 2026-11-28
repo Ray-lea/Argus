@@ -4,7 +4,7 @@
 
 Für Benutzer sichtbare Änderungen der einzelnen Argus-Versionen. Die Versionsnummern folgen der [semantischen Versionierung](https://semver.org/lang/de/). Diese Datei ist eine Übersetzung des [vereinfachten chinesischen Änderungsprotokolls](zh-CN.md) und entspricht ihm Eintrag für Eintrag.
 
-## [0.7.0] - 2026-11-27
+## [0.7.0](https://github.com/Ray-lea/Argus/compare/v0.6.0...v0.7.0) - 2026-11-27
 
 Argus v0.7.0 bietet erstmals eine Installations- und eine portable Version für Windows ARM64; die App, der privilegierte Dienst und der Task-Manager-Ersatz laufen auf ARM64 nativ. Prozesse erhält 27 optionale Spalten und die beiden Aktionen „Speicherabbilddatei erstellen“ und „Debuggen“. Neu sind die Einstellung für Byte-Einheiten, die Unterstützung vertikaler Taskleisten in der Taskleistenanzeige und eine Windows-Benachrichtigung bei neuen Versionen. Außerdem zeichnet die Oberfläche im Ruhezustand weniger neu, und behoben sind unter anderem Probleme mit Ryzen-9000-Sensoren, eine Taskleistenanzeige, die die Start-Schaltfläche verdeckte, und ein privilegierter Dienst, der sich nach dem Löschen seiner Registrierung nicht neu installieren ließ.
 
