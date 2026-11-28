@@ -290,7 +290,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 1. 审查代码：逐项查看本周期的改动，找出回归、半途的改动、遗留的调试代码与未同步的文档，修复后按类型分别提交。改动面大时另请一次独立审查。
 2. 更新文档：`docs/guide/` 与 `docs/architecture/` 按本周期的行为变化更新，包括快捷键、设置项、默认值与模块职责；`docs/known-issues.md` 与 `docs/roadmap.md` 去掉已解决的条目。
-3. 核对 README：八种语言的特性列表、快捷键表与系统要求保持一致。界面有明显变化时，重新生成预览图与特性演示，并逐张核对各语言：
+3. 核对 README：九种语言的特性列表、快捷键表与系统要求保持一致。界面有明显变化时，重新生成预览图与特性演示，并逐张核对各语言：
 
    ```powershell
    node scripts/readme-previews.mjs
