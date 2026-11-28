@@ -336,6 +336,7 @@ pub fn run() -> anyhow::Result<()> {
                         memory = format!("{mem:.0}")
                     )),
                     f64::from(snapshot.system.cpu),
+                    mem.round().clamp(0., 100.) as u8,
                 );
             }
             *host.state::<Latest>().0.write().unwrap() = Some(Arc::new(snapshot));

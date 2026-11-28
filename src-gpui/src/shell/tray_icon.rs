@@ -1,15 +1,23 @@
 //! The live tray icon, drawn at the size the shell asks for: the app's window
 //! mark with its columns lit by the recent CPU loads, a hundred dots lit by
-//! the current load, or the load as a figure.
+//! the current load, the load as a figure, or RunCat365's cat running at a
+//! pace the load sets.
 //!
 //! The marks are laid out on whole pixels for 16, 20, 24 and 32 px (the
 //! taskbar at 100–200 % scaling); other sizes take the layout that fills them
 //! best, scaled by a whole factor and centred, so every dot stays sharp. A
 //! figure comes from the system's text renderer (the `text` callback), which
-//! returns its coverage.
+//! returns its coverage. The cat is an image: its 32 px silhouettes are
+//! averaged over each target pixel, and its colour says how much memory is
+//! in use.
+
+use std::sync::OnceLock;
 
 /// How many recent loads a live icon keeps: the widest layout's columns.
 pub(crate) const RECENT: usize = 6;
+
+/// How many frames RunCat365's cat has.
+pub(crate) const FRAMES: usize = 5;
 
 /// What the icon shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +29,8 @@ pub(crate) enum Look {
     Share,
     /// The load as a figure over a thin bar.
     Number,
+    /// RunCat365's cat at frame `frame`, coloured by memory use.
+    Runner,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +40,10 @@ pub(crate) struct Spec {
     pub load: Option<u8>,
     /// The recent loads, oldest first, ending with `load`.
     pub recent: [Option<u8>; RECENT],
+    /// Memory in use in percent; the runner's colour.
+    pub memory: Option<u8>,
+    /// The runner's frame, wrapped into `FRAMES`.
+    pub frame: u8,
     /// The taskbar is light: dark glyphs on it.
     pub light: bool,
     /// A new version is ready.
@@ -57,11 +71,12 @@ struct Colors {
     load: Rgb,
     high: Rgb,
     accent: Rgb,
+    critical: Rgb,
 }
 
 /// The interface's colours for each taskbar: the glyph matches the system's
 /// own icons, the figure's bar the CPU series, the marks' data and the badge
-/// the accent.
+/// the accent, the runner's colour the memory in use.
 fn colors(light: bool) -> Colors {
     if light {
         Colors {
@@ -69,6 +84,7 @@ fn colors(light: bool) -> Colors {
             load: hex(0x0a8bbd),
             high: hex(0xc27a00),
             accent: hex(0x0067c0),
+            critical: hex(0xc42b1c),
         }
     } else {
         Colors {
@@ -76,6 +92,7 @@ fn colors(light: bool) -> Colors {
             load: hex(0x46cff4),
             high: hex(0xf4b446),
             accent: hex(0x4cc2ff),
+            critical: hex(0xff6b6b),
         }
     }
 }
@@ -86,6 +103,25 @@ fn tint(load: u8, colors: &Colors) -> Rgb {
         colors.high
     } else {
         colors.accent
+    }
+}
+
+/// Which colour band `memory` falls into: 0 below 70 %, 1 from 70 %, 2 from 90 %.
+pub(crate) fn memory_tier(memory: Option<u8>) -> u8 {
+    match memory.unwrap_or(0) {
+        90.. => 2,
+        70.. => 1,
+        _ => 0,
+    }
+}
+
+/// The runner's colour for a memory reading: the taskbar's ink below 70 %,
+/// amber from 70 %, red from 90 %.
+fn memory_tint(memory: Option<u8>, colors: &Colors) -> Rgb {
+    match memory_tier(memory) {
+        2 => colors.critical,
+        1 => colors.high,
+        _ => colors.ink,
     }
 }
 
@@ -469,6 +505,84 @@ fn bar(canvas: &mut Canvas, rect: Rect, load: Option<u8>, colors: &Colors) {
     });
 }
 
+/// The runner's frames: RunCat365's five 32 px silhouettes, decoded once and
+/// keeping only their coverage (the icon colours them).
+struct Runner {
+    coverage: [[u8; RUNNER_SIDE * RUNNER_SIDE]; FRAMES],
+}
+
+const RUNNER_SIDE: usize = 32;
+
+fn frames() -> Option<&'static Runner> {
+    static RUNNER: OnceLock<Option<Runner>> = OnceLock::new();
+    RUNNER
+        .get_or_init(|| {
+            const SOURCES: [&[u8]; FRAMES] = [
+                include_bytes!("../../../resources/tray/runner/cat_0.png"),
+                include_bytes!("../../../resources/tray/runner/cat_1.png"),
+                include_bytes!("../../../resources/tray/runner/cat_2.png"),
+                include_bytes!("../../../resources/tray/runner/cat_3.png"),
+                include_bytes!("../../../resources/tray/runner/cat_4.png"),
+            ];
+            let mut coverage = [[0u8; RUNNER_SIDE * RUNNER_SIDE]; FRAMES];
+            for (cells, source) in coverage.iter_mut().zip(SOURCES) {
+                let image = image::load_from_memory_with_format(source, image::ImageFormat::Png)
+                    .ok()?
+                    .to_rgba8();
+                if (image.width() as usize, image.height() as usize) != (RUNNER_SIDE, RUNNER_SIDE) {
+                    return None;
+                }
+                for (cell, pixel) in cells.iter_mut().zip(image.pixels()) {
+                    *cell = pixel.0[3];
+                }
+            }
+            Some(Runner { coverage })
+        })
+        .as_ref()
+}
+
+/// How much of the pixel at (x, y) the frame covers: the source cells under
+/// it, weighted by their overlap with the pixel.
+fn runner_coverage(frame: &[u8], size: u32, x: f32, y: f32) -> f32 {
+    let side = RUNNER_SIDE as f32;
+    let unit = side / size as f32;
+    let left = ((x - 0.5) * unit).clamp(0., side);
+    let top = ((y - 0.5) * unit).clamp(0., side);
+    let right = (((x - 0.5) * unit) + unit).clamp(0., side);
+    let bottom = (((y - 0.5) * unit) + unit).clamp(0., side);
+    let (mut sum, mut area) = (0., 0.);
+    for row in top.floor() as usize..bottom.ceil() as usize {
+        let vertical = (bottom.min(row as f32 + 1.) - top.max(row as f32)).max(0.);
+        for column in left.floor() as usize..right.ceil() as usize {
+            let horizontal = (right.min(column as f32 + 1.) - left.max(column as f32)).max(0.);
+            let weight = horizontal * vertical;
+            sum += f32::from(frame[row * RUNNER_SIDE + column]) / 255. * weight;
+            area += weight;
+        }
+    }
+    if area > 0. { sum / area } else { 0. }
+}
+
+/// The runner: the cat in the memory colour, at frame `spec.frame`; the
+/// badge sits where the figure's does.
+fn runner(canvas: &mut Canvas, spec: &Spec, colors: &Colors) {
+    let Some(runner) = frames() else {
+        // Without the frames the mark stands in, as it does without text.
+        return window(canvas, spec, colors);
+    };
+    let frame = &runner.coverage[usize::from(spec.frame) % FRAMES];
+    let size = canvas.size;
+    canvas.fill(memory_tint(spec.memory, colors), 1., |x, y, _| {
+        runner_coverage(frame, size, x, y)
+    });
+    if spec.badge {
+        let scale = size as f32 / 16.;
+        let (cx, cy) = (13.2 * scale, 3. * scale);
+        canvas.erase(|x, y| disc(x, y, cx, cy, 3.7 * scale));
+        canvas.fill(colors.accent, 1., |x, y, _| disc(x, y, cx, cy, 2.5 * scale));
+    }
+}
+
 /// Sets a figure in `font` pixels inside a rectangle and returns its
 /// coverage, one byte per pixel of the icon, or none when it cannot.
 pub(crate) type Text<'a> = dyn Fn(&str, Rect, f32) -> Option<Vec<u8>> + 'a;
@@ -480,6 +594,7 @@ pub(crate) fn render(spec: Spec, size: u32, text: &Text) -> Vec<u8> {
     let mut canvas = Canvas::new(size);
     match (spec.look, spec.load) {
         (Look::Share, _) => hundred(&mut canvas, &spec, &colors),
+        (Look::Runner, _) => runner(&mut canvas, &spec, &colors),
         // Before the first sample the figure has nothing to show: the mark does.
         (Look::Load, _) | (Look::Number, None) => window(&mut canvas, &spec, &colors),
         (Look::Number, Some(load)) => {
@@ -512,7 +627,7 @@ pub(crate) fn render(spec: Spec, size: u32, text: &Text) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HIGH, Look, RECENT, Rect, Spec, WINDOWS, bar_rect, hex, render};
+    use super::{FRAMES, HIGH, Look, RECENT, Rect, Spec, WINDOWS, bar_rect, hex, render};
 
     fn none(_: &str, _: Rect, _: f32) -> Option<Vec<u8>> {
         None
@@ -533,6 +648,8 @@ mod tests {
             look,
             load,
             recent: [load; RECENT],
+            memory: None,
+            frame: 0,
             light,
             badge: false,
         }
@@ -692,5 +809,104 @@ mod tests {
         let mark = render(spec(Look::Number, None, false), size, &text);
         assert_eq!(*asked.borrow(), asked_before);
         assert_eq!(mark, render(spec(Look::Load, None, false), size, &none));
+    }
+
+    /// The colour most of the icon's opaque pixels have.
+    fn dominant(rgba: &[u8]) -> ([u8; 3], usize) {
+        let mut counted = std::collections::HashMap::new();
+        for pixel in rgba.chunks(4).filter(|pixel| pixel[3] == 255) {
+            *counted.entry([pixel[0], pixel[1], pixel[2]]).or_insert(0) += 1;
+        }
+        counted
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .unwrap_or(([0; 3], 0))
+    }
+
+    #[test]
+    fn the_runner_moves_and_covers_the_icon_at_every_size() {
+        for size in [16, 20, 24, 28, 32, 40, 48] {
+            let mut seen = std::collections::HashSet::new();
+            for frame in 0..FRAMES as u8 {
+                let rgba = render(
+                    Spec {
+                        frame,
+                        ..spec(Look::Runner, Some(30), false)
+                    },
+                    size,
+                    &none,
+                );
+                assert_eq!(rgba.len(), (size * size * 4) as usize);
+                let ink = rgba.chunks(4).map(|p| f32::from(p[3]) / 255.).sum::<f32>();
+                assert!(ink > (size * size) as f32 * 0.12, "size {size}: {ink}");
+                seen.insert(rgba);
+            }
+            // Every frame draws differently.
+            assert_eq!(seen.len(), FRAMES, "size {size}");
+        }
+        // A frame past the last wraps onto an earlier one.
+        let wrapped = render(
+            Spec {
+                frame: FRAMES as u8 + 2,
+                ..spec(Look::Runner, Some(30), false)
+            },
+            32,
+            &none,
+        );
+        let third = render(
+            Spec {
+                frame: 2,
+                ..spec(Look::Runner, Some(30), false)
+            },
+            32,
+            &none,
+        );
+        assert_eq!(wrapped, third);
+    }
+
+    #[test]
+    fn the_runner_turns_amber_and_red_with_memory_use() {
+        let size = 32;
+        let at = |memory: u8, light: bool| {
+            dominant(&render(
+                Spec {
+                    memory: Some(memory),
+                    ..spec(Look::Runner, Some(30), light)
+                },
+                size,
+                &none,
+            ))
+            .0
+        };
+        for light in [false, true] {
+            let ink = if light { rgb(0x1a1a1a) } else { rgb(0xffffff) };
+            let amber = if light { rgb(0xc27a00) } else { rgb(0xf4b446) };
+            let red = if light { rgb(0xc42b1c) } else { rgb(0xff6b6b) };
+            assert_eq!(at(69, light), ink, "light={light}");
+            assert_eq!(at(70, light), amber, "light={light}");
+            assert_eq!(at(89, light), amber, "light={light}");
+            assert_eq!(at(90, light), red, "light={light}");
+        }
+        // Before the first sample the icon is still the cat, in the ink.
+        let before = dominant(&render(spec(Look::Runner, None, false), size, &none)).0;
+        assert_eq!(before, rgb(0xffffff));
+    }
+
+    #[test]
+    fn the_runner_keeps_the_update_badge() {
+        let size = 32;
+        let plain = render(spec(Look::Runner, Some(30), true), size, &none);
+        let badged = render(
+            Spec {
+                badge: true,
+                ..spec(Look::Runner, Some(30), true)
+            },
+            size,
+            &none,
+        );
+        assert_ne!(plain, badged);
+        // The badge sits in the accent where the figure's does.
+        assert_eq!(pixel(&badged, size, 26, 6), [0x00, 0x67, 0xc0, 255]);
+        assert_ne!(pixel(&plain, size, 26, 6), [0x00, 0x67, 0xc0, 255]);
     }
 }

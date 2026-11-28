@@ -8,11 +8,12 @@
   "tray": {
     "icon": {
       "title": "Symbol im Infobereich",
-      "desc": "Verlauf zeigt die letzten CPU-Messwerte als Spalten, Anteil zeigt die aktuelle Auslastung als Punkteraster und Zahl als Prozentwert. Ab 80 % werden sie bernsteinfarben.",
+      "desc": "Verlauf zeigt die letzten CPU-Messwerte als Spalten, Anteil zeigt die aktuelle Auslastung als Punkteraster und Zahl als Prozentwert; alle drei werden ab 80 % bernsteinfarben. Läufer bewegt die Katze im Tempo der CPU-Auslastung und färbt sie nach der Speicherauslastung: ab 70 % bernsteinfarben, ab 90 % rot.",
       "logo": "App-Symbol",
       "load": "Verlauf",
       "share": "Anteil",
-      "number": "Zahl"
+      "number": "Zahl",
+      "runner": "Läufer"
     },
     "card": {
       "title": "Hoverkarte",

@@ -23,7 +23,7 @@ anyhow = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 tiny-skia = "0.12.0"
-image = { version = "0.25.10", default-features = false }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 windows.workspace = true
 # `#[implement]` (the taskbar monitor's DirectWrite text renderer) names it.
 windows-core = "0.62"

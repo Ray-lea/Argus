@@ -92,6 +92,7 @@ test("the lock file checks the whole workspace and the notices", () => {
   const result = plan(["Cargo.lock"]);
   assert.deepEqual(names(result), ["rustfmt", "clippy", "rust tests", "third-party notices"]);
   assert(find(result, "clippy").args.includes("--workspace"));
+  assert(names(plan(["resources/tray/runner/manifest.json"])).includes("third-party notices"));
 });
 
 test("changed documents get the docs lint for those files; AGENTS.md, the changelog and workflows only a look", () => {

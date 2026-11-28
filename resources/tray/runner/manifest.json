@@ -1,0 +1,14 @@
+{
+  "name": "RunCat365 runner frames",
+  "version": "a6aa5b1",
+  "license": "Apache-2.0",
+  "url": "https://github.com/runcat-dev/RunCat365",
+  "copyright": "Copyright © 2022 Takuto Nakamura",
+  "sha256": {
+    "cat_0.png": "e3b67e7f7c6cebe1febee3173bf5fd5d22fe33d3b72a1c2e1d0ed0f7b5105a50",
+    "cat_1.png": "90ce1a6b0452a299f82736e420de3dd8cfe401bb219acb25967dbc69920ce91d",
+    "cat_2.png": "e48efb2f5dee0ae5ab540d702d17de92f974984e2e809890a0c36b7002933319",
+    "cat_3.png": "c0471372ba66f2bfe22d13e9dc3122575397693366c61afa2ed61793133d5fd9",
+    "cat_4.png": "eb03557b3bf42e33c07675938462d4edc496969a80bd7c107826425a3fd9c2ee"
+  }
+}

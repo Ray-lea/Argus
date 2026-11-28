@@ -8,11 +8,12 @@
   "tray": {
     "icon": {
       "title": "Icône de la zone de notification",
-      "desc": "Tendance affiche les dernières mesures du CPU en colonnes, Part allume une grille de points selon l’utilisation actuelle et Chiffre affiche le pourcentage. À partir de 80 %, ils passent à l’ambre.",
+      "desc": "Tendance affiche les dernières mesures du CPU en colonnes, Part allume une grille de points selon l’utilisation actuelle et Chiffre affiche le pourcentage ; les trois passent à l’ambre à partir de 80 %. Coureur fait courir le chat au rythme de l’utilisation du CPU et le colore selon la mémoire utilisée : ambre à partir de 70 %, rouge à partir de 90 %.",
       "logo": "Icône de l’application",
       "load": "Tendance",
       "share": "Part",
-      "number": "Chiffre"
+      "number": "Chiffre",
+      "runner": "Coureur"
     },
     "card": {
       "title": "Carte au survol",
