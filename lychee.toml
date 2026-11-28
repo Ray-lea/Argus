@@ -34,6 +34,9 @@ exclude = [
   # colon ("Strict-Transport-Security : ..."), which lychee's HTTP client
   # rejects. The README keeps SignPath's required wording and link.
   '^https://about\.signpath\.io/',
+  # Behind a Cloudflare challenge ("cf-mitigated: challenge") that answers
+  # clients other than browsers with 403, from any network.
+  '^https://linux\.do/',
 ]
 
 # GitHub answers a burst of page requests from one address with 503 (its
