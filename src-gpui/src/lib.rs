@@ -23,6 +23,7 @@ mod regional;
 mod sampler;
 mod settings;
 mod shell;
+mod subclass;
 mod tasks;
 mod update_transport;
 mod updater;

@@ -26,6 +26,10 @@ Windows 构建使用 `stable-x86_64-pc-windows-msvc` 或 `stable-aarch64-pc-wind
 
 GPUI 提供应用的 Windows manifest，声明普通权限、PerMonitorV2 DPI 感知和 Common Controls。应用构建脚本嵌入图标与版本资源。
 
+主程序不依赖 manifest 中的 Common Controls 6 才能启动。安装程序从临时目录运行主程序的副本 `argus-version.exe` 来比较版本，在部分电脑上这个进程加载的是 `System32` 中的 `comctl32.dll` 5.82。导入一个 5.82 版缺少的函数，程序就会提示找不到入口而无法启动。
+
+`GetWindowSubclass` 因此与 Windows SDK 的导入库一样按序号 411 导入，见 `src-gpui/src/subclass.rs`。仅 6.0 版才有的 `TaskDialogIndirect` 在弹出对话框时才查找，见 vendored GPUI 的 `src/task_dialog.rs`。
+
 ### 图标的来源
 
 各尺寸图标通过 `node scripts/icons.mjs` 生成，来源如下：

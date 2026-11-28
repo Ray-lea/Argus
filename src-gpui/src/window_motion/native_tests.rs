@@ -5,7 +5,7 @@ use windows::{
     Win32::{
         Foundation::*,
         System::{LibraryLoader::GetModuleHandleW, StationsAndDesktops::*},
-        UI::{Shell::GetWindowSubclass, WindowsAndMessaging::*},
+        UI::WindowsAndMessaging::*,
     },
     core::{PCWSTR, w},
 };
@@ -112,8 +112,7 @@ fn disabling_window_motion_releases_native_commands_and_cleans_an_active_fade() 
             SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
         )
         .unwrap();
-        let mut raw = 0;
-        assert!(GetWindowSubclass(hwnd, Some(procedure), SUBCLASS, Some(&mut raw)).as_bool());
+        let raw = crate::subclass::data(hwnd, Some(procedure), SUBCLASS).unwrap();
         let state = &*(raw as *const Motion);
         for command in [SC_MINIMIZE, SC_RESTORE] {
             SendMessageW(

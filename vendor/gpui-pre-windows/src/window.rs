@@ -33,6 +33,9 @@ use crate::frame_clock::{FrameDemand, FrameWake};
 use crate::*;
 use gpui::*;
 
+#[path = "task_dialog.rs"]
+mod task_dialog;
+
 pub(crate) struct WindowsWindow(pub Rc<WindowsWindowInner>);
 
 impl std::ops::Deref for WindowsWindow {
@@ -874,8 +877,8 @@ impl PlatformWindow for WindowsWindow {
 
                     config.pfCallback = Some(crate::dialog::task_dialog_callback);
                     config.lpCallbackData = button_id_map.contains(&IDCANCEL.0) as isize;
-                    let mut res = std::mem::zeroed();
-                    TaskDialogIndirect(&config, Some(&mut res), None, None)
+                    let mut res = 0;
+                    task_dialog::task_dialog_indirect(&config, &mut res)
                         .context("unable to create task dialog")?;
                     Ok(button_id_map.iter().position(|&button_id| button_id == res))
                 }

@@ -15,7 +15,7 @@ use windows::{
         },
         UI::{
             Input::KeyboardAndMouse::SetFocus,
-            Shell::{DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass},
+            Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
             WindowsAndMessaging::*,
         },
     },
@@ -29,10 +29,7 @@ struct State {
 }
 
 fn state(hwnd: HWND) -> Option<*const State> {
-    let mut value = 0;
-    unsafe { GetWindowSubclass(hwnd, Some(procedure), SUBCLASS, Some(&mut value)) }
-        .as_bool()
-        .then_some(value as *const State)
+    crate::subclass::data(hwnd, Some(procedure), SUBCLASS).map(|value| value as *const State)
 }
 
 pub(crate) fn install(hwnd: HWND) {

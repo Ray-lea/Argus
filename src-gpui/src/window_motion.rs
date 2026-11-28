@@ -15,9 +15,7 @@ mod native_tests;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute};
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Shell::{
-    DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass,
-};
+use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, LWA_ALPHA,
     PostMessageW, SC_MINIMIZE, SC_RESTORE, STYLESTRUCT, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
@@ -387,10 +385,8 @@ fn dispatch(hwnd: HWND, op: Op) {
 }
 
 fn perform(hwnd: HWND, op: Op) {
-    let mut data = 0;
-    let found =
-        unsafe { GetWindowSubclass(hwnd, Some(procedure), SUBCLASS, Some(&mut data)) }.as_bool();
-    let motion = found.then(|| unsafe { &*(data as *const Motion) });
+    let motion = crate::subclass::data(hwnd, Some(procedure), SUBCLASS)
+        .map(|data| unsafe { &*(data as *const Motion) });
     match (motion, op) {
         (Some(motion), Op::Enable(enabled)) => {
             motion.set_enabled(hwnd, enabled);
