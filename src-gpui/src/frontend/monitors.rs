@@ -1751,6 +1751,10 @@ impl Desktop {
         }
         let key = super::charts::hash_of((
             shown.iter().map(Reading::text).collect::<Vec<_>>(),
+            String::from(monitor.size),
+            monitor.rows,
+            monitor.colored,
+            monitor.opacity,
             light,
             scale.to_bits(),
         ));
@@ -1765,12 +1769,16 @@ impl Desktop {
                     &gauges(&self.snapshot, &shown, self.bits()),
                     Some(&self.timeline),
                 );
+                let base = crate::shell::TaskbarLook::from(&monitor);
                 let previews = TASKBAR_STYLES
                     .iter()
                     .map(|style| {
-                        let style = TaskbarStyle::from(style.to_string());
+                        let look = crate::shell::TaskbarLook {
+                            style: TaskbarStyle::from(style.to_string()),
+                            ..base
+                        };
                         let (width, height, pixels) =
-                            crate::shell::taskbar_preview(&groups, style, light, scale)?;
+                            crate::shell::taskbar_preview(&groups, look, light, scale)?;
                         let buffer = image::RgbaImage::from_raw(width, height, pixels)?;
                         Some(Arc::new(RenderImage::new(vec![image::Frame::new(buffer)])))
                     })
@@ -1966,10 +1974,15 @@ impl Desktop {
                 })).collect::<Vec<_>>(),
             })
         });
+        let taskbar: TaskbarMonitor = self.monitor_settings("taskbarMonitor");
         json!({
             "desktop": desk,
             "taskbar": crate::shell::taskbar_monitor_rect(),
             "taskbarStyle": self.data["settings"]["taskbarMonitor"]["style"],
+            "taskbarSize": String::from(taskbar.size),
+            "taskbarRows": taskbar.rows,
+            "taskbarColored": taskbar.colored,
+            "taskbarOpacity": taskbar.opacity,
             // The kinds of reading as arranged, for each monitor.
             "kinds": {
                 "desktop": arranged(&super::pages::components::saved_order(&self.data["settings"]["desktopMonitor"]["order"])).iter().map(|kind| kind.key).collect::<Vec<_>>(),

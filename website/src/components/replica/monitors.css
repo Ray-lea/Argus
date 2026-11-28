@@ -519,6 +519,9 @@
 .w-face[data-kind="taskbar"] .w-value[data-high] :is(.w-fig, .w-unit) {
   color: var(--w-high);
 }
+.w-face[data-kind="taskbar"] .w-tb-row[style*="--tb-val"] .w-value:not([data-high]) :is(.w-fig, .w-unit) {
+  color: var(--tb-val);
+}
 .w-face[data-kind="taskbar"] .w-value > span {
   gap: 0;
 }
@@ -542,15 +545,15 @@
   display: flex;
   justify-content: space-between;
   gap: 7px;
-  height: 20px;
-  font-size: 15px;
-  line-height: 20px;
+  height: min(22px, round(20px * var(--tb-scale, 1), 1px));
+  font-size: round(15px * var(--tb-scale, 1), 1px);
+  line-height: min(22px, round(20px * var(--tb-scale, 1), 1px));
 }
 .w-tb-tile {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 40px;
+  height: min(44px, round(40px * var(--tb-scale, 1), 1px));
   padding: 0 9px;
   overflow: hidden;
   border-radius: 6px;
@@ -595,11 +598,11 @@
 .w-tb-pill {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: round(30px * var(--tb-scale, 1), 1px);
   padding: 0 9px;
-  border-radius: 15px;
+  border-radius: 17px;
   background: var(--tb-pill);
-  font-size: 13px;
+  font-size: round(13px * var(--tb-scale, 1), 1px);
 }
 .w-tb-pill + .w-tb-pill {
   margin-left: 5px;

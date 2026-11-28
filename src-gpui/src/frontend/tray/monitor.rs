@@ -15,7 +15,7 @@ use crate::frontend::shift;
 const KIND_COLUMN: f32 = 60.;
 /// A style card's preview, logical pixels: half the panel's content less
 /// the gap, the card's padding and its border.
-const PREVIEW: [f32; 2] = [163., 38.];
+const PREVIEW: [f32; 2] = [163., 44.];
 /// The space a kind's row reaches past the options on either side and
 /// keeps above and below them, for its tint while dragged; and the space
 /// between rows, which with it makes 10.

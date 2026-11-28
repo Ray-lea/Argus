@@ -477,11 +477,15 @@ function taskGroups(list: Gauge[]): TaskGroup[] {
     };
   });
 }
-// Columns of two rows: a group's cells stay together, single cells share a column.
-function stacks(groups: TaskGroup[]) {
+// Columns of `rows` cells: a group's cells stay together, single cells share a column.
+function stacks(groups: TaskGroup[], rows = 2) {
   const columns: [Cell, TaskGroup][][] = [];
   let open: number | null = null;
   for (const g of groups) {
+    if (rows < 2) {
+      for (const c of g.cells) columns.push([[c, g]]);
+      continue;
+    }
     if (g.cells.length === 1) {
       if (open !== null) {
         columns[open].push([g.cells[0], g]);
@@ -490,7 +494,7 @@ function stacks(groups: TaskGroup[]) {
         open = columns.length;
         columns.push([[g.cells[0], g]]);
       }
-    } else for (let i = 0; i < g.cells.length; i += 2) columns.push(g.cells.slice(i, i + 2).map((c) => [c, g] as [Cell, TaskGroup]));
+    } else for (let i = 0; i < g.cells.length; i += rows) columns.push(g.cells.slice(i, i + rows).map((c) => [c, g] as [Cell, TaskGroup]));
   }
   return columns;
 }
@@ -498,7 +502,20 @@ const tag = (c: Cell) => c.name || c.label;
 function Room({ value, widest, size, unit, high }: { value: string; widest: string; size: number; unit?: number; high?: boolean }) {
   return <Value text={value} size={[size, unit ?? size]} high={high} widest={widest} whole={unit === undefined} />;
 }
-function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
+function TaskFace({
+  style,
+  groups,
+  rows = 2,
+  colored = false,
+  factor = 1,
+}: {
+  style: string;
+  groups: TaskGroup[];
+  rows?: number;
+  colored?: boolean;
+  factor?: number;
+}) {
+  const s = (px: number) => Math.round(px * factor);
   if (style === "曲线")
     return (
       <>
@@ -507,13 +524,13 @@ function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
             {g.cells.length === 1 ? (
               <span className="w-tb-row">
                 <span className="w-tb-name">{tag(g.cells[0])}</span>
-                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={14} unit={12} high={g.cells[0].high} />
+                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={s(14)} unit={s(12)} high={g.cells[0].high} />
               </span>
             ) : (
               g.cells.map((c) => (
                 <span className="w-tb-row" key={c.label}>
                   <em>{c.label}</em>
-                  <Room value={c.value} widest={c.widest} size={12} />
+                  <Room value={c.value} widest={c.widest} size={s(12)} />
                 </span>
               ))
             )}
@@ -531,13 +548,13 @@ function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
               <>
                 <i />
                 <span className="w-tb-name">{tag(g.cells[0])}</span>
-                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={14} unit={12} high={g.cells[0].high} />
+                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={s(14)} unit={s(12)} high={g.cells[0].high} />
               </>
             ) : (
               g.cells.map((c) => (
                 <span className="w-tb-rate" key={c.label}>
                   <em>{c.label}</em>
-                  <Room value={c.value} widest={c.widest} size={14} unit={12} />
+                  <Room value={c.value} widest={c.widest} size={s(14)} unit={s(12)} />
                 </span>
               ))
             )}
@@ -553,13 +570,13 @@ function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
             {g.cells.length === 1 ? (
               <>
                 <em>{tag(g.cells[0])}</em>
-                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={20} unit={12} high={g.cells[0].high} />
+                <Room value={g.cells[0].value} widest={g.cells[0].widest} size={s(20)} unit={s(12)} high={g.cells[0].high} />
               </>
             ) : (
               g.cells.map((c) => (
                 <span className="w-tb-row" key={c.label}>
                   <em>{c.label}</em>
-                  <Room value={c.value} widest={c.widest} size={14} unit={12} />
+                  <Room value={c.value} widest={c.widest} size={s(14)} unit={s(12)} />
                 </span>
               ))
             )}
@@ -567,22 +584,24 @@ function TaskFace({ style, groups }: { style: string; groups: TaskGroup[] }) {
         ))}
       </>
     );
+  const cols = stacks(groups, rows);
   return (
     <>
-      {stacks(groups).map((column, n) => (
+      {cols.map((column, n) => (
         <span className="w-tb-column" key={n}>
           {column.map(([c, g], row) => {
-            const before = row > 0 ? column[row - 1][0] : null;
+            const before = row > 0 ? column[row - 1][0] : rows === 1 && n > 0 ? (cols[n - 1].at(-1)?.[0] ?? null) : null;
             const shown = before && before.run === c.run ? tag(c) : c.label;
+            const valueColor = !c.high && colored && !g.plain ? g.tone : undefined;
             return (
-              <span className="w-tb-row" key={c.label + row}>
+              <span className="w-tb-row" key={c.label + row} style={valueColor ? ({ "--tb-val": valueColor } as CSSProperties) : undefined}>
                 {/* In its device's colour, as a figure's name; a reading of no device keeps the quieter ink. */}
                 {shown && (
                   <span className="w-tb-name" style={g.plain ? undefined : { color: g.tone }}>
                     {shown}
                   </span>
                 )}
-                <Room value={c.value} widest={c.widest} size={15} high={c.high} />
+                <Room value={c.value} widest={c.widest} size={s(15)} high={c.high} />
               </span>
             );
           })}
@@ -631,10 +650,30 @@ export function MonitorFace({
   const list = ids.map((id) => gauge(id, tick));
   const groups = groupsOf(list);
   const grouping = { 卡片: "cards", 色条: "stripes", 分隔线: "rules" }[widgets.desktop.grouping] ?? "cards";
+  const taskbarFactor = { 小: 0.85, 中: 1, 大: 1.1 }[widgets.taskbar.size] ?? 1;
+  const faceStyle =
+    kind === "taskbar"
+      ? ({
+          "--tb-scale": taskbarFactor,
+          opacity: widgets.taskbar.opacity / 100,
+        } as CSSProperties)
+      : undefined;
   return (
-    <div className="w-face" data-kind={kind} data-style={styleKeys[style]} data-grouping={kind === "desktop" ? grouping : undefined}>
+    <div
+      className="w-face"
+      data-kind={kind}
+      data-style={styleKeys[style]}
+      data-grouping={kind === "desktop" ? grouping : undefined}
+      style={faceStyle}
+    >
       {kind === "taskbar" ? (
-        <TaskFace style={style} groups={taskGroups(list)} />
+        <TaskFace
+          style={style}
+          groups={taskGroups(list)}
+          rows={widgets.taskbar.rows === "一行" ? 1 : 2}
+          colored={widgets.taskbar.color === "彩色"}
+          factor={taskbarFactor}
+        />
       ) : style === "横条" ? (
         <Strip groups={groups} />
       ) : style === "仪表" ? (

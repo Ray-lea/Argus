@@ -14,7 +14,7 @@ use crate::frontend::shift;
 use crate::frontend::widgets::Tone;
 use crate::settings::{
     DeskLayout, DeskStyle, DesktopMonitor, MONITOR_OPACITIES, Metric, Reading, TaskbarMonitor,
-    TrayIcon,
+    TaskbarStyle, TrayIcon,
 };
 
 /// A component of the page: its key (`components.*` texts), its icon and
@@ -83,8 +83,9 @@ struct OptionRow {
 /// planned ones.
 pub(in crate::frontend) const SECTIONS: [&str; 4] = ["tray", "desktop", "taskbar", "planned"];
 
-/// The height of a style's preview: the taskbar's, as the previews are cut.
-const STYLE_PREVIEW: f32 = 40.;
+/// The height of a style's preview: the taskbar's middle band, up to
+/// Large's 44 px.
+const STYLE_PREVIEW: f32 = 44.;
 /// The least width of a style card in a row of four; with less room the
 /// cards go two by two.
 const STYLE_CARD: f32 = 150.;
@@ -1121,13 +1122,7 @@ impl Desktop {
                 .position(|value| *value == monitor.opacity),
             false,
             move |this, index, window, cx| {
-                this.request(
-                    command,
-                    json!({ "opacity": MONITOR_OPACITIES[index] }),
-                    Some("settings"),
-                    window,
-                    cx,
-                );
+                this.desk_look(json!({ "opacity": MONITOR_OPACITIES[index] }), window, cx);
             },
             cx,
         );
@@ -1363,8 +1358,76 @@ impl Desktop {
                 .collect(),
             cx,
         );
+        let labels = monitor.style == TaskbarStyle::Labels;
         let style = text(&settings["taskbarMonitor"], "style").to_owned();
         let style = self.style_card(&style, window, cx);
+        let rows = self.segments(
+            "setting-taskbarRows",
+            [(2, "two"), (1, "one")]
+                .iter()
+                .map(|(value, name)| {
+                    (
+                        label(&format!("components.taskbar.rows.{name}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ "rows": value })),
+                        monitor.rows.clamp(1, 2) == *value,
+                    )
+                })
+                .collect(),
+            cx,
+        );
+        let colored = self.segments(
+            "setting-taskbarColor",
+            [(false, "ink"), (true, "tone")]
+                .iter()
+                .map(|(value, name)| {
+                    (
+                        label(&format!("components.taskbar.color.{name}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ "colored": value })),
+                        monitor.colored == *value,
+                    )
+                })
+                .collect(),
+            cx,
+        );
+        let size = self.segments(
+            "setting-taskbarSize",
+            ["small", "medium", "large"]
+                .iter()
+                .map(|value| {
+                    (
+                        label(&format!("components.taskbar.size.{value}")),
+                        None,
+                        Action::Invoke(command.into(), json!({ "size": value })),
+                        String::from(monitor.size) == *value,
+                    )
+                })
+                .collect(),
+            cx,
+        );
+        let opacity = self.select(
+            "components-taskbar-opacity",
+            label("components.taskbar.opacity.title"),
+            MONITOR_OPACITIES
+                .iter()
+                .map(|value| format!("{value}%"))
+                .collect(),
+            MONITOR_OPACITIES
+                .iter()
+                .position(|value| *value == monitor.opacity),
+            false,
+            move |this, index, window, cx| {
+                this.change_monitor(
+                    "taskbarMonitor",
+                    command,
+                    json!({ "opacity": MONITOR_OPACITIES[index] }),
+                    window,
+                    cx,
+                );
+            },
+            cx,
+        );
         let choices = display_choices(&monitor.display, true);
         let chosen = choices.iter().position(|(key, _)| *key == monitor.display);
         let keys = choices
@@ -1384,7 +1447,7 @@ impl Desktop {
             },
             cx,
         );
-        vec![
+        let mut cards = vec![
             self.setting_text(
                 "taskbarMonitor",
                 "GaugeIcon",
@@ -1402,6 +1465,40 @@ impl Desktop {
                 cx,
             ),
             style,
+        ];
+        // One row or two on a horizontal taskbar, and device-coloured values,
+        // belong to the labels style alone.
+        if labels {
+            cards.push(self.setting_text(
+                "taskbarRows",
+                "ColumnsIcon",
+                "components.taskbar.rows.title",
+                "components.taskbar.rows.desc",
+                vec![rows],
+            ));
+            cards.push(self.setting_text(
+                "taskbarColor",
+                "ThemeIcon",
+                "components.taskbar.color.title",
+                "components.taskbar.color.desc",
+                vec![colored],
+            ));
+        }
+        cards.extend([
+            self.setting_text(
+                "taskbarSize",
+                "FontSizeIcon",
+                "components.taskbar.size.title",
+                "components.taskbar.size.desc",
+                vec![size],
+            ),
+            self.setting_text(
+                "taskbarOpacity",
+                "EyeIcon",
+                "components.taskbar.opacity.title",
+                "components.taskbar.opacity.desc",
+                vec![opacity],
+            ),
             self.setting_text(
                 "taskbarPlace",
                 "FitWidthIcon",
@@ -1416,7 +1513,8 @@ impl Desktop {
                 "components.taskbar.display.desc",
                 vec![display],
             ),
-        ]
+        ]);
+        cards
     }
 
     /// The taskbar monitor's styles as its panel offers them: a card each

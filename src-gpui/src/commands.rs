@@ -22,8 +22,8 @@ use crate::hotkey::HotkeyError;
 use crate::sampler::Control;
 use crate::settings::{
     BACKGROUND_INTERVALS, DeskGrouping, DeskLayout, DeskStyle, Language, MONITOR_OPACITIES, Metric,
-    Reading, SettingsStore, SettingsView, TaskbarPlace, TaskbarStyle, Theme, TrayIcon, TrayMenu,
-    UpdateChannel, UpdateRoute,
+    Reading, SettingsStore, SettingsView, TaskbarPlace, TaskbarSize, TaskbarStyle, Theme, TrayIcon,
+    TrayMenu, UpdateChannel, UpdateRoute,
 };
 use crate::updater::{self, UpdateStatus};
 use crate::{AppState, HistoryDir, shell};
@@ -742,6 +742,7 @@ pub fn set_desktop_monitor(
 
 /// The taskbar monitor's settings; each one given changes, and the monitor
 /// follows at once.
+#[allow(clippy::too_many_arguments)]
 pub fn set_taskbar_monitor(
     app: crate::native_runtime::Host,
     enabled: Option<bool>,
@@ -749,8 +750,15 @@ pub fn set_taskbar_monitor(
     order: Option<Vec<Metric>>,
     place: Option<TaskbarPlace>,
     style: Option<TaskbarStyle>,
+    size: Option<TaskbarSize>,
+    rows: Option<u8>,
+    colored: Option<bool>,
+    opacity: Option<u8>,
     display: Option<String>,
 ) -> Result<SettingsView, String> {
+    if opacity.is_some_and(|value| !MONITOR_OPACITIES.contains(&value)) {
+        return Err(tr!("app.invalidRequest"));
+    }
     let saved = app
         .state::<SettingsStore>()
         .update(|s| {
@@ -769,6 +777,18 @@ pub fn set_taskbar_monitor(
             }
             if let Some(style) = style {
                 monitor.style = style;
+            }
+            if let Some(size) = size {
+                monitor.size = size;
+            }
+            if let Some(rows) = rows {
+                monitor.rows = rows.clamp(1, 2);
+            }
+            if let Some(colored) = colored {
+                monitor.colored = colored;
+            }
+            if let Some(opacity) = opacity {
+                monitor.opacity = opacity;
             }
             if let Some(display) = display {
                 monitor.display = display;

@@ -1054,7 +1054,15 @@ impl Desktop {
                 }
                 self.prefs.set("cpuPage", &self.cpu_page);
             }
-            Action::Invoke(command, args) => self.request(&command, args, None, window, cx),
+            Action::Invoke(command, args) => match command.as_str() {
+                "set_desktop_monitor" => {
+                    self.change_monitor("desktopMonitor", "set_desktop_monitor", args, window, cx)
+                }
+                "set_taskbar_monitor" => {
+                    self.change_monitor("taskbarMonitor", "set_taskbar_monitor", args, window, cx)
+                }
+                _ => self.request(&command, args, None, window, cx),
+            },
             Action::Dialog(kind, args) => self.open_dialog(&kind, args, window, cx),
             Action::Popup(items) => {
                 self.open_popup(items, window, cx);

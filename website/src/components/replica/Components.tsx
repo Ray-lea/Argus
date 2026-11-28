@@ -22,6 +22,9 @@ const rowIcons: Record<string, UiIcon> = {
   置顶显示: "pin",
   锁定位置: "lock",
   不透明度: "eye",
+  行数: "columns",
+  数值颜色: "theme",
+  字号: "fontSize",
   位置: "fitWidth",
   显示器: "monitorCheck",
   样式: "pulse",
@@ -40,6 +43,9 @@ const descriptions: Record<string, string> = {
   显示方式: "面板按设备分组竖排；横条横向排列，宽度不足时在组之间换行。",
   分组: "列表与曲线样式中区分各设备读数的方式。",
   鼠标穿透: "单击和拖动作用于下方的窗口。开启后仅可在此页关闭。",
+  行数: "水平任务栏上标签样式排成两行或一行；任务栏较矮时固定为一行。",
+  数值颜色: "标签样式的数值默认与任务栏文字同色，也可按设备着色；数值偏高时仍变为琥珀色。",
+  字号: "任务栏上文字、卡片与胶囊的大小，作用于全部四种样式。",
   位置: "“任务栏左侧”仅适用于按钮居中的 Windows 11 任务栏，其他情况显示在托盘旁。",
   显示器: "所选显示器未连接或未显示任务栏时，显示在主显示器上。",
   后台常驻时的刷新间隔:
@@ -54,19 +60,21 @@ function Row({
   children,
   wide = false,
   icon,
+  i18n,
 }: {
   title: string;
   desc?: string;
   children?: ReactNode;
   wide?: boolean;
   icon?: UiIcon;
+  i18n?: string;
 }) {
   const description = desc ?? descriptions[title];
   return (
     <div className={"a-setting w-setting" + (wide ? " is-wide" : "")}>
       <Icon name={icon ?? rowIcons[title] ?? "apps"} size={20} />
       <div className="a-setting-text">
-        <div>{title}</div>
+        <div data-i18n={i18n}>{title}</div>
         {description && <span>{description}</span>}
       </div>
       <div className="a-setting-controls">{children}</div>
@@ -231,6 +239,43 @@ export default function Components() {
                   </>
                 ) : (
                   <>
+                    {w.taskbar.style === "标签" && (
+                      <>
+                        <Row title="行数">
+                          <Segments
+                            label="行数"
+                            value={w.taskbar.rows}
+                            onChange={(rows) => setMonitor("taskbar", { rows })}
+                            items={opts(["两行", "一行"])}
+                          />
+                        </Row>
+                        <Row title="数值颜色">
+                          <Segments
+                            label="数值颜色"
+                            value={w.taskbar.color}
+                            onChange={(color) => setMonitor("taskbar", { color })}
+                            items={opts(["单色", "彩色"])}
+                          />
+                        </Row>
+                      </>
+                    )}
+                    <Row title="字号" i18n="taskbar">
+                      <Segments
+                        label="字号"
+                        i18n="taskbar"
+                        value={w.taskbar.size}
+                        onChange={(size) => setMonitor("taskbar", { size })}
+                        items={opts(["小", "中", "大"])}
+                      />
+                    </Row>
+                    <Row title="不透明度" desc="任务栏监控文字与卡片的不透明度；窗口不绘制底板，任务栏底色始终透出。">
+                      <Select
+                        label="不透明度"
+                        value={w.taskbar.opacity}
+                        onChange={(opacity) => setMonitor("taskbar", { opacity })}
+                        options={[100, 90, 80, 70, 60].map((value) => ({ value, label: value + "%" }))}
+                      />
+                    </Row>
                     <Row title="位置">
                       <Segments
                         label="位置"

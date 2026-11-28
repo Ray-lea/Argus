@@ -101,7 +101,14 @@ export const initialWidgets = {
     through: false,
     opacity: 100,
   },
-  taskbar: { ...monitor(["cpu", "memoryPercent", "net"]), place: "托盘旁" },
+  taskbar: {
+    ...monitor(["cpu", "memoryPercent", "net"]),
+    place: "托盘旁",
+    size: "中",
+    rows: "两行",
+    color: "单色",
+    opacity: 100,
+  },
 };
 export type WidgetPrefs = typeof initialWidgets;
 export function setWidgets(patch: Partial<WidgetPrefs>) {

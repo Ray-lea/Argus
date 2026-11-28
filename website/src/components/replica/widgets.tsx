@@ -124,6 +124,7 @@ export function Segments<T extends string>({
   label,
   className,
   iconsOnly,
+  i18n,
 }: {
   items: SegItem<T>[];
   value: T;
@@ -131,6 +132,7 @@ export function Segments<T extends string>({
   label: string;
   className?: string;
   iconsOnly?: boolean;
+  i18n?: string;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ x: number; w: number; moving: boolean } | null>(null);
@@ -167,6 +169,7 @@ export function Segments<T extends string>({
       className={"a-seg" + (iconsOnly ? " is-icons" : "") + (className ? " " + className : "")}
       role="radiogroup"
       aria-label={label}
+      data-i18n={i18n}
       data-ready={pill ? "" : undefined}
     >
       {pill && (
@@ -185,12 +188,13 @@ export function Segments<T extends string>({
           aria-label={iconsOnly ? item.label : undefined}
           tabIndex={item.value === value ? 0 : -1}
           title={item.title ?? (iconsOnly ? item.label : undefined)}
+          data-i18n={i18n}
           data-tour={item.tour}
           onClick={() => onChange(item.value)}
           onKeyDown={(event) => keys(event, index)}
         >
           {item.icon && <Icon name={item.icon} />}
-          {item.label && <span>{item.label}</span>}
+          {item.label && <span data-i18n={i18n}>{item.label}</span>}
         </button>
       ))}
     </div>

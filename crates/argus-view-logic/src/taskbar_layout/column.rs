@@ -20,12 +20,12 @@
 //! of that room, centred in the column: changing values seldom move it. A
 //! taskbar narrower than 32 px (at 100 %) shows nothing.
 use super::{
-    Cell, Fonts, Group, Layout, Paint, Pill, Reserve, Run, Shade, Style, Tile, Tone, figure,
-    figure_width, font_size, held, size_scale, split, value_paint,
+    Cell, Fonts, Group, Layout, Look, Paint, Pill, Reserve, Run, Shade, Style, Tile, Tone, figure,
+    figure_width, font_size, held, label_value_paint, size_scale, split, value_paint,
 };
 use std::time::Instant;
 
-/// Lays out `groups` in `style` down a vertical taskbar `width` pixels wide
+/// Lays out `groups` in `look` down a vertical taskbar `width` pixels wide
 /// at `scale`, its sizes following the width as a horizontal taskbar's
 /// follow its height (`size_scale`); labels, capsules and figures keep
 /// their recent room in `reserve` when given one, at the time given with
@@ -36,16 +36,17 @@ pub fn lay_out_column(
     groups: &[Group],
     width: i32,
     scale: f32,
-    style: Style,
+    look: Look,
     fonts: &impl Fonts,
-    reserve: Option<(&mut Reserve, Instant)>,
+    mut reserve: Option<(&mut Reserve, Instant)>,
     room: i32,
 ) -> Layout {
     let narrow = width < (32. * scale).round() as i32;
-    let scale = size_scale(width, scale);
+    let scale = size_scale(width, scale) * look.size.factor();
     let mut layout = Layout {
         width,
         font: font_size(scale),
+        opacity: look.opacity.clamp(60, 100),
         vertical: true,
         ..Layout::default()
     };
@@ -53,6 +54,10 @@ pub fn lay_out_column(
         layout.width = 0;
         return layout;
     }
+    if let Some((reserve, _)) = reserve.as_mut() {
+        reserve.at_font(layout.font);
+    }
+    let style = look.style;
     let (key, reserve) = match style {
         Style::Labels => ("column-labels", reserve),
         Style::Figures => ("column-figures", reserve),
@@ -65,6 +70,7 @@ pub fn lay_out_column(
         fonts,
         reserve,
         scale,
+        colored: look.colored && style == Style::Labels,
         key,
         left: 0,
         right: width,
@@ -142,6 +148,7 @@ struct Column<'a, F: Fonts> {
     fonts: &'a F,
     reserve: Option<(&'a mut Reserve, Instant)>,
     scale: f32,
+    colored: bool,
     /// The style, where a value keeps its room (`Cell::kept`).
     key: &'static str,
     left: i32,
@@ -248,13 +255,19 @@ impl<F: Fonts> Column<'_, F> {
     /// wide for it beside the figure and the name leaves room), then its
     /// value's, then its unit's when it has a line of its own. The dot's
     /// centre and radius, when its name has one.
-    fn reading(&mut self, cell: &Cell, name: Name, sizes: Sizes) -> Option<([f32; 2], f32)> {
+    fn reading(
+        &mut self,
+        cell: &Cell,
+        name: Name,
+        paint: Paint,
+        sizes: Sizes,
+    ) -> Option<([f32; 2], f32)> {
         let fit = self.fit(cell, &name, sizes);
         let unit = (fit.unit == Unit::Up).then(|| units(cell));
-        let dot = self.name_line(&name, cell, unit, sizes);
-        self.value_line(cell, &fit, sizes);
+        let dot = self.name_line(&name, unit, paint, sizes);
+        self.value_line(cell, &fit, paint, sizes);
         if fit.unit == Unit::Below {
-            self.unit_line(cell, sizes);
+            self.unit_line(cell, paint, sizes);
         }
         dot
     }
@@ -309,8 +322,8 @@ impl<F: Fonts> Column<'_, F> {
     fn name_line(
         &mut self,
         name: &Name,
-        cell: &Cell,
         unit: Option<(&str, &str)>,
+        unit_paint: Paint,
         sizes: Sizes,
     ) -> Option<([f32; 2], f32)> {
         let height = line(sizes.name);
@@ -353,7 +366,7 @@ impl<F: Fonts> Column<'_, F> {
                 baseline,
                 size: unit_size,
                 value: true,
-                paint: value_paint(cell),
+                paint: unit_paint,
                 shade: Shade::Unit,
             });
         }
@@ -363,7 +376,7 @@ impl<F: Fonts> Column<'_, F> {
 
     /// A value's line: its figure, with its unit unless that has a line of
     /// its own, at the right of the room the value keeps, which is centred.
-    fn value_line(&mut self, cell: &Cell, fit: &Fit, sizes: Sizes) {
+    fn value_line(&mut self, cell: &Cell, fit: &Fit, paint: Paint, sizes: Sizes) {
         let height = line(sizes.value);
         let fonts = self.fonts;
         let alone = fit.unit != Unit::Beside;
@@ -386,7 +399,7 @@ impl<F: Fonts> Column<'_, F> {
                 baseline,
                 size: fit.size,
                 value: true,
-                paint: value_paint(cell),
+                paint,
                 shade: Shade::Full,
             });
         } else {
@@ -398,7 +411,7 @@ impl<F: Fonts> Column<'_, F> {
                 baseline,
                 fit.size,
                 sizes.unit,
-                value_paint(cell),
+                paint,
             );
         }
         self.y += height;
@@ -407,7 +420,7 @@ impl<F: Fonts> Column<'_, F> {
     /// A unit's line of its own, under its figure: centred, smaller and
     /// quieter, as beside it. An unknown value shows none, but keeps the
     /// line.
-    fn unit_line(&mut self, cell: &Cell, sizes: Sizes) {
+    fn unit_line(&mut self, cell: &Cell, paint: Paint, sizes: Sizes) {
         let height = line(sizes.unit);
         let unit = units(cell).0;
         if !unit.is_empty() {
@@ -418,7 +431,7 @@ impl<F: Fonts> Column<'_, F> {
                 baseline: self.baseline(height, sizes.unit),
                 size: sizes.unit,
                 value: true,
-                paint: value_paint(cell),
+                paint,
                 shade: Shade::Unit,
             });
         }
@@ -428,6 +441,7 @@ impl<F: Fonts> Column<'_, F> {
     /// A pair of rates, each under its arrow in its device's colour, a
     /// little apart.
     fn rates(&mut self, group: &Group, sizes: Sizes) {
+        let colored = self.colored;
         for (row, cell) in group.cells.iter().enumerate() {
             if row > 0 {
                 self.y += self.px(3.);
@@ -439,7 +453,12 @@ impl<F: Fonts> Column<'_, F> {
                 shade: Shade::Full,
                 dot: None,
             };
-            self.reading(cell, name, sizes);
+            self.reading(
+                cell,
+                name,
+                label_value_paint(cell, group.tone, colored),
+                sizes,
+            );
         }
     }
 
@@ -475,7 +494,12 @@ impl<F: Fonts> Column<'_, F> {
                         shade,
                         dot: None,
                     };
-                    self.reading(cell, name, sizes);
+                    self.reading(
+                        cell,
+                        name,
+                        label_value_paint(cell, group.tone, self.colored),
+                        sizes,
+                    );
                 }
                 _ => self.rates(group, sizes),
             }
@@ -510,7 +534,7 @@ impl<F: Fonts> Column<'_, F> {
                         shade: Shade::Full,
                         dot: None,
                     };
-                    self.reading(cell, name, large);
+                    self.reading(cell, name, value_paint(cell), large);
                 }
                 _ => self.rates(group, body),
             }
@@ -549,7 +573,7 @@ impl<F: Fonts> Column<'_, F> {
                         shade: Shade::Name,
                         dot: None,
                     };
-                    self.reading(cell, name, sizes);
+                    self.reading(cell, name, value_paint(cell), sizes);
                 }
                 _ => self.rates(group, sizes),
             }
@@ -603,7 +627,7 @@ impl<F: Fonts> Column<'_, F> {
                         shade: Shade::Name,
                         dot: Some(paint),
                     };
-                    self.reading(cell, name, sizes)
+                    self.reading(cell, name, value_paint(cell), sizes)
                 }
                 _ => {
                     self.rates(group, sizes);
@@ -625,9 +649,18 @@ impl<F: Fonts> Column<'_, F> {
 #[cfg(test)]
 mod tests {
     use super::lay_out_column as lay_out_in;
-    use crate::taskbar_layout::{Cell, Fonts, Group, Layout, Paint, Reserve, Run, Shade, Tone};
-    use argus_app::settings::TaskbarStyle as Style;
+    use crate::taskbar_layout::{
+        Cell, Fonts, Group, Layout, Look, Paint, Reserve, Run, Shade, Tone,
+    };
+    use argus_app::settings::{TaskbarSize, TaskbarStyle as Style};
     use std::time::{Duration, Instant};
+
+    fn look(style: Style) -> Look {
+        Look {
+            style,
+            ..Look::default()
+        }
+    }
 
     /// Laid out with all the room it takes.
     fn lay_out_column(
@@ -638,7 +671,7 @@ mod tests {
         fonts: &Scaled,
         reserve: Option<(&mut Reserve, Instant)>,
     ) -> Layout {
-        lay_out_in(groups, width, scale, style, fonts, reserve, i32::MAX)
+        lay_out_in(groups, width, scale, look(style), fonts, reserve, i32::MAX)
     }
 
     #[test]
@@ -648,7 +681,15 @@ mod tests {
             let whole = lay_out_column(&groups, 48, 1., style, &Scaled, None);
             // Room for all but the last reading by a pixel: the rates go,
             // their tile or capsule with them.
-            let short = lay_out_in(&groups, 48, 1., style, &Scaled, None, whole.height - 1);
+            let short = lay_out_in(
+                &groups,
+                48,
+                1.,
+                look(style),
+                &Scaled,
+                None,
+                whole.height - 1,
+            );
             assert!(short.width > 0 && short.height < whole.height, "{style:?}");
             assert!(short.runs.iter().all(|run| run.text != "↓"), "{style:?}");
             assert_eq!(short.runs, whole.runs[..short.runs.len()], "{style:?}");
@@ -658,16 +699,16 @@ mod tests {
             );
             // Exactly its height holds it all; too little for one, none.
             assert_eq!(
-                lay_out_in(&groups, 48, 1., style, &Scaled, None, whole.height),
+                lay_out_in(&groups, 48, 1., look(style), &Scaled, None, whole.height),
                 whole
             );
             assert_eq!(
-                lay_out_in(&groups, 48, 1., style, &Scaled, None, 20).width,
+                lay_out_in(&groups, 48, 1., look(style), &Scaled, None, 20).width,
                 0
             );
         }
         // Labels: CPU ends at 6 + 31, and with its padding takes 43.
-        let one = lay_out_in(&groups, 48, 1., Style::Labels, &Scaled, None, 43);
+        let one = lay_out_in(&groups, 48, 1., look(Style::Labels), &Scaled, None, 43);
         assert_eq!((one.height, one.runs.len()), (43, 3));
     }
 
@@ -955,5 +996,38 @@ mod tests {
             lay_out_column(&[], 48, 1., Style::Labels, &Scaled, None).width,
             0
         );
+    }
+
+    #[test]
+    fn vertical_column_follows_size_opacity_and_label_colour() {
+        let groups = readings("41%", "12.4 MB/s");
+        let medium = lay_out_in(
+            &groups,
+            48,
+            1.,
+            look(Style::Labels),
+            &Scaled,
+            None,
+            i32::MAX,
+        );
+        let large = lay_out_in(
+            &groups,
+            48,
+            1.,
+            Look {
+                size: TaskbarSize::Large,
+                colored: true,
+                opacity: 70,
+                ..look(Style::Labels)
+            },
+            &Scaled,
+            None,
+            i32::MAX,
+        );
+        assert!(large.font > medium.font);
+        assert_eq!(large.opacity, 70);
+        assert_eq!(run(&medium, "41").paint, Paint::Ink);
+        assert_eq!(run(&large, "41").paint, Paint::Tone(Tone::Cpu));
+        assert_eq!(run(&large, "12.4").paint, Paint::Tone(Tone::Network));
     }
 }
