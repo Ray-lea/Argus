@@ -180,6 +180,7 @@
     "prepareFailed": "Impossible de préparer les fichiers de remplacement : {error}",
     "selfTestFailed": "L’autotest de démarrage a échoué : {error}",
     "uiStartFailed": "Impossible de lancer l’autotest de l’interface sous le compte ayant demandé l’opération : {error}",
+    "programBusy": "{error}. Le fichier du programme est resté en cours d’utilisation, peut-être parce que le logiciel de sécurité analyse encore le programme qui vient d’être écrit. Réessayez plus tard ou consultez les rapports de blocage du logiciel de sécurité",
     "uiNotReady": "La fenêtre Argus de l’utilisateur standard a échoué lors de sa vérification de préparation ; le remplacement n’a pas été activé. La raison est dans taskmgr.log dans le dossier journal",
     "uiExited": "Le processus enfant de l’interface s’est terminé avant la confirmation de disponibilité, avec le code de sortie {code}",
     "probeNameTaken": "Le nom de l’autotest de démarrage est déjà utilisé",

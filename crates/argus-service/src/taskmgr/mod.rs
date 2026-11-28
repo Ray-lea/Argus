@@ -963,8 +963,8 @@ fn enable(
     // Errors name the step: the window shows them, and the log the step. The
     // self-test needs only the launcher; the interface copy waits for it.
     (|| {
-        registry::atomic_file(&machine.dir, LAUNCHER, assets.0)?;
-        registry::atomic_file(&machine.dir, RECOVER, assets.1)
+        refresh(&machine.dir, LAUNCHER, assets.0)?;
+        refresh(&machine.dir, RECOVER, assets.1)
     })()
     .map_err(prepare)?;
     probe::run(&mut probe::System::new(&machine.dir))?;
@@ -975,6 +975,19 @@ fn enable(
         let _ = fs::remove_file(machine.dir.join(INTERFACE));
     }
     result
+}
+
+/// Writes `name` unless it already holds `bytes` and is safe to keep, as
+/// `stage` checks a file before replacing it. Security software may hold a
+/// program it has just seen written while it checks it, which then cannot be
+/// started (`launch::BUSY_WAIT`) nor replaced: an enable tried again after
+/// such a failure keeps the launcher already checked.
+fn refresh(dir: &Path, name: &str, bytes: &[u8]) -> Result<()> {
+    let path = dir.join(name);
+    if fs::read(&path).is_ok_and(|old| old == bytes) && security::protect_directory(&path).is_ok() {
+        return Ok(());
+    }
+    registry::atomic_file(dir, name, bytes)
 }
 
 fn prepare(error: String) -> Box<Failure> {
@@ -1013,7 +1026,10 @@ fn finish_enable(
         owner,
     )
     .map_err(|error| interface(tr!("taskManager.uiStartFailed", error = error)))?;
-    if launch::exit_code(&probe, Duration::from_secs(15)).map_err(interface)? != 0 {
+    // The launcher's own wait (`ready::activate`) and its start of the newly
+    // written interface copy, which may wait for the file (`launch::BUSY_WAIT`).
+    let budget = Duration::from_secs(15) + launch::BUSY_WAIT;
+    if launch::exit_code(&probe, budget).map_err(interface)? != 0 {
         return Err(interface(tr!("taskManager.uiNotReady")));
     }
     let value = replacement(&machine.dir);

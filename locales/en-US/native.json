@@ -179,6 +179,7 @@
     "prepareFailed": "Couldn't prepare the replacement's files: {error}",
     "selfTestFailed": "The startup self-test failed: {error}",
     "uiStartFailed": "Couldn't start the window check as the account that asked for it: {error}",
+    "programBusy": "{error}. The program file stayed in use, possibly because security software is still checking the newly written program. Try again later, or check the security software blocking reports",
     "uiNotReady": "The standard-user Argus window failed its readiness check; the replacement wasn't enabled. The reason is in taskmgr.log in the log folder",
     "uiExited": "The interface child process exited before completing the readiness handshake, with exit code {code}",
     "probeNameTaken": "The startup self-test name is already in use",

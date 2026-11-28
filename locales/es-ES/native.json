@@ -180,6 +180,7 @@
     "prepareFailed": "No se pudieron preparar los archivos de reemplazo: {error}",
     "selfTestFailed": "La autoprueba de inicio falló: {error}",
     "uiStartFailed": "No se pudo iniciar la autocomprobación de la interfaz con la cuenta que solicitó la operación: {error}",
+    "programBusy": "{error}. El archivo del programa siguió en uso, posiblemente porque el software de seguridad aún está analizando el programa recién escrito. Vuelva a intentarlo más tarde o revise los informes de bloqueo del software de seguridad",
     "uiNotReady": "La interfaz de Argus con permisos estándar no superó la comprobación de disponibilidad; no se ha activado la sustitución. El motivo se ha registrado en taskmgr.log, en la carpeta de registros",
     "uiExited": "El proceso secundario de la interfaz finalizó antes de completar la confirmación de disponibilidad, con el código de salida {code}",
     "probeNameTaken": "El nombre de la autoprueba de inicio ya está en uso",

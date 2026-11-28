@@ -7,7 +7,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
 use windows::Win32::Foundation::{
-    E_ACCESSDENIED, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, WAIT_EVENT, WAIT_OBJECT_0,
+    E_ACCESSDENIED, ERROR_ALREADY_EXISTS, ERROR_SHARING_VIOLATION, GetLastError, HANDLE,
+    WAIT_EVENT, WAIT_OBJECT_0,
 };
 use windows::Win32::Security::{
     GetTokenInformation, TOKEN_ACCESS_MASK, TOKEN_DUPLICATE, TOKEN_ELEVATION_TYPE, TOKEN_QUERY,
@@ -264,6 +265,14 @@ fn create(
     start(exe, args, bypass, parent, own_environment, |_| Ok(())).map(|(process, ())| process)
 }
 
+/// How long a start waits for a program file that another process holds open
+/// with write access (ERROR_SHARING_VIOLATION). Security software may keep a
+/// program it has just seen written open while it checks it, and an enable
+/// writes the launcher, the self-test's copy and the interface copy moments
+/// before starting them.
+pub const BUSY_WAIT: Duration = Duration::from_secs(10);
+const BUSY_RETRY: Duration = Duration::from_millis(250);
+
 /// `create`, running `before` with the new process's ID once it exists: with
 /// `bypass`, before it runs. A failure there ends the new process.
 fn start<T>(
@@ -302,21 +311,33 @@ fn start<T>(
         flags |= CREATE_UNICODE_ENVIRONMENT;
     }
     let mut info = PROCESS_INFORMATION::default();
-    unsafe {
-        CreateProcessW(
-            PCWSTR(file.as_ptr()),
-            Some(PWSTR(command.as_mut_ptr())),
-            None,
-            None,
-            false,
-            flags,
-            environment.as_ref().map(|e| e.0.cast_const()),
-            PCWSTR(directory.as_ptr()),
-            &startup.StartupInfo,
-            &mut info,
-        )
+    let deadline = Instant::now() + BUSY_WAIT;
+    loop {
+        let created = unsafe {
+            CreateProcessW(
+                PCWSTR(file.as_ptr()),
+                Some(PWSTR(command.as_mut_ptr())),
+                None,
+                None,
+                false,
+                flags,
+                environment.as_ref().map(|e| e.0.cast_const()),
+                PCWSTR(directory.as_ptr()),
+                &startup.StartupInfo,
+                &mut info,
+            )
+        };
+        match created {
+            Ok(()) => break,
+            Err(error) if error.code() == ERROR_SHARING_VIOLATION.to_hresult() => {
+                if Instant::now() >= deadline {
+                    return Err(tr!("taskManager.programBusy", error = error));
+                }
+                std::thread::sleep(BUSY_RETRY);
+            }
+            Err(error) => return Err(error.to_string()),
+        }
     }
-    .map_err(|e| e.to_string())?;
     let process = Handle(info.hProcess);
     let thread = Handle(info.hThread);
     let end = || unsafe {
@@ -533,6 +554,34 @@ mod tests {
         )
         .unwrap();
         assert_eq!(exit_code(&process, Duration::from_secs(5)).unwrap(), 0);
+    }
+
+    /// Windows refuses to start a program another process holds open for
+    /// writing (ERROR_SHARING_VIOLATION), as security software may hold one it
+    /// has just seen written; the start waits until the file is let go.
+    #[test]
+    fn a_start_waits_for_a_program_held_open_for_writing() {
+        let dir =
+            std::env::temp_dir().join(format!("argus-busy-{}", crate::taskmgr::id().unwrap()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("busy.exe");
+        std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+        let held = std::fs::OpenOptions::new().write(true).open(&exe).unwrap();
+        let hold = Duration::from_millis(800);
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(hold);
+            drop(held);
+        });
+        let started = Instant::now();
+        let process = spawn(&exe, &fixture("native_child"), false);
+        let waited = started.elapsed();
+        release.join().unwrap();
+        let process = process.unwrap();
+        assert!(waited >= hold, "started after {waited:?}");
+        assert!(waited < BUSY_WAIT);
+        assert_eq!(exit_code(&process, Duration::from_secs(5)).unwrap(), 0);
+        drop(process);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

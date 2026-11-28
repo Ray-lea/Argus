@@ -176,6 +176,7 @@
     "prepareFailed": "无法准备替换所需的文件：{error}",
     "selfTestFailed": "启动自检失败：{error}",
     "uiStartFailed": "无法以发起操作的账户启动界面自检：{error}",
+    "programBusy": "{error}。程序文件持续被占用，可能是安全软件正在检查新写入的程序。可稍后重试，或查看安全软件的拦截记录",
     "uiNotReady": "标准权限界面的就绪检查失败，未启用替换；原因记录在日志文件夹的 taskmgr.log 中",
     "uiExited": "界面子进程在完成就绪握手前退出，退出码为 {code}",
     "probeNameTaken": "启动自检名称冲突",

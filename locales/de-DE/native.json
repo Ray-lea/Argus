@@ -179,6 +179,7 @@
     "prepareFailed": "Die Ersatzdateien konnten nicht vorbereitet werden: {error}",
     "selfTestFailed": "Der Start-Selbsttest ist fehlgeschlagen: {error}",
     "uiStartFailed": "Der Selbsttest der Oberfläche konnte nicht unter dem Konto gestartet werden, das den Vorgang angefordert hat: {error}",
+    "programBusy": "{error}. Die Programmdatei blieb in Verwendung; möglicherweise prüft Ihre Sicherheitssoftware das neu geschriebene Programm noch. Versuchen Sie es später erneut oder prüfen Sie die Blockierungsberichte Ihrer Sicherheitssoftware",
     "uiNotReady": "Das Standardbenutzerfenster Argus hat die Bereitschaftsprüfung nicht bestanden. Der Ersatz wurde nicht aktiviert. Der Grund liegt in taskmgr.log im Protokollordner",
     "uiExited": "Der untergeordnete Prozess der Oberfläche wurde vor Abschluss der Bereitschaftsbestätigung mit dem Exit-Code {code} beendet",
     "probeNameTaken": "Der Name des Startselbsttests wird bereits verwendet",

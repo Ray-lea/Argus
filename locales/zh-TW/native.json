@@ -176,6 +176,7 @@
     "prepareFailed": "無法準備取代所需的檔案：{error}",
     "selfTestFailed": "啟動自我檢測失敗：{error}",
     "uiStartFailed": "無法以發起操作的帳戶啟動介面自我檢測：{error}",
+    "programBusy": "{error}。程式檔案持續被占用，可能是安全軟體正在檢查新寫入的程式。可稍後重試，或查看安全軟體的攔截記錄",
     "uiNotReady": "標準權限介面的就緒檢查失敗，未啟用取代；原因記錄在記錄檔資料夾的 taskmgr.log 中",
     "uiExited": "介面子處理程序在完成就緒交握前結束，結束碼為 {code}",
     "probeNameTaken": "啟動自我檢測名稱衝突",
