@@ -35,3 +35,10 @@ exclude = [
   # rejects. The README keeps SignPath's required wording and link.
   '^https://about\.signpath\.io/',
 ]
+
+# GitHub answers a burst of page requests from one address with 503 (its
+# secondary rate limit), retries included; the token only helps its API.
+# Some 150 of its pages are checked, two at a time.
+[hosts."github.com"]
+concurrency = 2
+request_interval = "500ms"
