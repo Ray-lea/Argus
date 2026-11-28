@@ -8,11 +8,12 @@
   "tray": {
     "icon": {
       "title": "Tray icon",
-      "desc": "Trend shows the latest CPU samples as columns, Share lights a grid of dots for the current usage, and Number shows the percentage. All turn amber from 80%.",
+      "desc": "Trend shows the latest CPU samples as columns, Share lights a grid of dots for the current usage, and Number shows the percentage; all three turn amber from 80%. Runner moves the cat at a pace set by CPU usage and colors it by memory use: amber from 70%, red from 90%.",
       "logo": "App icon",
       "load": "Trend",
       "share": "Share",
-      "number": "Number"
+      "number": "Number",
+      "runner": "Runner"
     },
     "card": {
       "title": "Hover card",

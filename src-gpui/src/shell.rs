@@ -825,6 +825,7 @@ pub fn build_tray(app: &Host) -> anyhow::Result<()> {
         badge: None,
         generation: None,
         live: None,
+        runner: None,
         notified: 0,
     };
     let settings = app.state::<SettingsStore>().get();
@@ -1021,10 +1022,10 @@ pub fn sampling_state(hwnd: HWND) -> WindowState {
         window_state(hwnd)
     }
 }
-/// A new sample for the tray: its tooltip and the CPU load a live icon shows.
-pub fn set_tray_reading(_app: &Host, text: &str, cpu: f64) {
+/// A new sample for the tray: its tooltip, CPU load and memory use.
+pub fn set_tray_reading(_app: &Host, text: &str, cpu: f64, memory: u8) {
     if let Some(worker) = TRAY.lock().unwrap().clone() {
-        worker.reading(text, cpu.round().clamp(0., 100.) as u8);
+        worker.reading(text, cpu.round().clamp(0., 100.) as u8, memory);
     }
 }
 /// The tray icon's look, its hover card and what a right click opens.
@@ -1075,10 +1076,20 @@ pub fn set_tray_update(_app: &Host, version: Option<&str>) {
 enum Live {
     /// The app's icon (with its badge).
     Logo,
-    /// The live icon already shown.
+    /// An icon already held by `NativeTray`.
     Same(HICON),
     /// A newly drawn live icon and its pixels.
     New(HICON, Vec<u8>),
+    /// A newly drawn runner frame (`key`, `slot`, `icon`).
+    Runner((u32, bool, u8, bool), usize, HICON),
+}
+
+/// The runner's five frames as `HICON`s for one `(size, light, tier, badge)`
+/// state, so cycling frames at up to 40 Hz reuses handles without resampling
+/// or GDI allocation on every tick.
+struct RunnerIcons {
+    key: (u32, bool, u8, bool),
+    frames: [Option<isize>; tray_icon::FRAMES],
 }
 
 struct NativeTray {
@@ -1089,6 +1100,8 @@ struct NativeTray {
     /// The live icon shown, and the pixels it was made from: a sample that
     /// draws the same pixels keeps it.
     live: Option<(isize, Vec<u8>)>,
+    /// Cached `HICON` handles for the five runner frames.
+    runner: Option<RunnerIcons>,
     /// The number of the last notification the shell took (`tray::Notification`).
     notified: u64,
 }
@@ -1119,18 +1132,23 @@ impl NativeTray {
             let _ = notify(NIM_DELETE, &data);
             return;
         }
-        let Ok(base) = (unsafe { base_tray_icon() }) else {
-            return;
-        };
         // A new live icon replaces the one shown only after the shell took it.
-        let mut replaced = None;
+        let mut replaced_live = None;
+        let mut replaced_runner = None;
         data.hIcon = match self.live_icon(&update) {
             Live::New(icon, pixels) => {
-                replaced = Some((icon, pixels));
+                replaced_live = Some((icon, pixels));
+                icon
+            }
+            Live::Runner(key, slot, icon) => {
+                replaced_runner = Some((key, slot, icon));
                 icon
             }
             Live::Same(icon) => icon,
             Live::Logo => {
+                let Ok(base) = (unsafe { base_tray_icon() }) else {
+                    return;
+                };
                 if update.badge && self.badge.is_none() {
                     self.badge = unsafe { create_badged_icon(base) }.map(|icon| icon.0 as isize);
                 }
@@ -1175,15 +1193,47 @@ impl NativeTray {
         } else {
             None
         };
-        match replaced {
+        match replaced_live {
             Some((icon, pixels)) if added.is_some() => {
-                self.set_live(Some((icon.0 as isize, pixels)))
+                self.clear_runner();
+                self.set_live(Some((icon.0 as isize, pixels)));
             }
             Some((icon, _)) => unsafe {
                 let _ = DestroyIcon(icon);
             },
-            // Back to the app's icon: the live one is no longer shown.
-            None if added.is_some() && update.look == TrayIcon::Logo => self.set_live(None),
+            // Switched away from a single-image live icon: release it.
+            None if added.is_some()
+                && !matches!(
+                    update.look,
+                    TrayIcon::Load | TrayIcon::Share | TrayIcon::Number
+                ) =>
+            {
+                self.set_live(None);
+            }
+            None => {}
+        }
+        match replaced_runner {
+            Some((key, slot, icon)) if added.is_some() => {
+                self.set_live(None);
+                if self.runner.as_ref().is_none_or(|cached| cached.key != key) {
+                    self.clear_runner();
+                    self.runner = Some(RunnerIcons {
+                        key,
+                        frames: [None; tray_icon::FRAMES],
+                    });
+                }
+                if let Some(previous) =
+                    self.runner.as_mut().unwrap().frames[slot].replace(icon.0 as isize)
+                {
+                    unsafe {
+                        let _ = DestroyIcon(HICON(previous as _));
+                    }
+                }
+            }
+            Some((_, _, icon)) => unsafe {
+                let _ = DestroyIcon(icon);
+            },
+            None if added.is_some() && update.look != TrayIcon::Runner => self.clear_runner(),
             None => {}
         }
         match added {
@@ -1214,12 +1264,44 @@ impl NativeTray {
             TrayIcon::Load => tray_icon::Look::Load,
             TrayIcon::Share => tray_icon::Look::Share,
             TrayIcon::Number => tray_icon::Look::Number,
+            TrayIcon::Runner => tray_icon::Look::Runner,
         };
         let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
+        if look == tray_icon::Look::Runner {
+            let key = (
+                size,
+                update.light,
+                tray_icon::memory_tier(update.memory),
+                update.badge,
+            );
+            let slot = usize::from(update.frame) % tray_icon::FRAMES;
+            if let Some(cached) = &self.runner
+                && cached.key == key
+                && let Some(icon) = cached.frames[slot]
+            {
+                return Live::Same(HICON(icon as _));
+            }
+            let spec = tray_icon::Spec {
+                look,
+                load: update.load,
+                recent: update.recent,
+                memory: update.memory,
+                frame: slot as u8,
+                light: update.light,
+                badge: update.badge,
+            };
+            let pixels = tray_icon::render(spec, size, &|_, _, _| None);
+            return match icon_from_rgba(&pixels, size) {
+                Some(icon) => Live::Runner(key, slot, icon),
+                None => Live::Logo,
+            };
+        }
         let spec = tray_icon::Spec {
             look,
             load: update.load,
             recent: update.recent,
+            memory: update.memory,
+            frame: update.frame,
             light: update.light,
             badge: update.badge,
         };
@@ -1245,11 +1327,22 @@ impl NativeTray {
             }
         }
     }
+
+    fn clear_runner(&mut self) {
+        if let Some(cached) = self.runner.take() {
+            for icon in cached.frames.into_iter().flatten() {
+                unsafe {
+                    let _ = DestroyIcon(HICON(icon as _));
+                }
+            }
+        }
+    }
 }
 
 impl Drop for NativeTray {
     fn drop(&mut self) {
         self.set_live(None);
+        self.clear_runner();
         if let Some(icon) = self.badge.take() {
             unsafe {
                 let _ = DestroyIcon(HICON(icon as _));
@@ -1279,6 +1372,7 @@ mod tray_tests {
             badge: None,
             generation: None,
             live: None,
+            runner: None,
             notified: 0,
         };
         let update = tray::Update {
@@ -1324,6 +1418,7 @@ mod tray_tests {
             badge: None,
             generation: None,
             live: None,
+            runner: None,
             notified: 0,
         };
         let mut calls = Vec::new();
@@ -1389,10 +1484,63 @@ mod tray_tests {
             badge: None,
             generation: None,
             live: None,
+            runner: None,
             notified: 0,
         };
         assert_eq!(restarted.data().guidItem, icon.data().guidItem);
         assert_ne!(restarted.data().hWnd, icon.data().hWnd);
+    }
+
+    #[test]
+    fn the_runner_reuses_each_frame_handle_and_replaces_them_when_tier_or_look_changes() {
+        let guid = tray_identity::guid(
+            "dev.argus.taskmanager.test.runner",
+            Path::new(r"C:\Argus\argus.exe"),
+        );
+        let mut tray = NativeTray {
+            hwnd: 1,
+            guid,
+            badge: None,
+            generation: None,
+            live: None,
+            runner: None,
+            notified: 0,
+        };
+        let mut write = |look: TrayIcon, frame: u8, memory: u8| {
+            let mut shown = 0isize;
+            tray.write_with(
+                tray::Update {
+                    title: "Argus".into(),
+                    look,
+                    frame,
+                    load: Some(50),
+                    memory: Some(memory),
+                    ..Default::default()
+                },
+                |message, data| {
+                    if message == NIM_ADD || message == NIM_MODIFY {
+                        shown = data.hIcon.0 as isize;
+                    }
+                    true
+                },
+            );
+            shown
+        };
+        let first_cycle: Vec<_> = (0..5).map(|f| write(TrayIcon::Runner, f, 45)).collect();
+        // Subsequent cycles and readings in the same memory tier reuse the five handles.
+        for f in 0..10 {
+            assert_eq!(
+                write(TrayIcon::Runner, f, 69),
+                first_cycle[(f % 5) as usize]
+            );
+        }
+        // Crossing into the amber memory tier draws a fresh set and retires the previous one.
+        let amber_zero = write(TrayIcon::Runner, 0, 70);
+        assert!(!first_cycle.contains(&amber_zero));
+        assert_eq!(write(TrayIcon::Runner, 0, 89), amber_zero);
+        // Switching back to another look releases the runner cache.
+        let _ = write(TrayIcon::Logo, 0, 70);
+        assert!(tray.runner.is_none());
     }
 }
 

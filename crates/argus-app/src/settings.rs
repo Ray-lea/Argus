@@ -92,8 +92,9 @@ impl From<Theme> for String {
 }
 
 /// What the tray icon shows: the app's icon, or the CPU load live as the
-/// recent samples (`Load`), as the share of a hundred dots, or as a figure.
-/// Stored as its name; one this version does not know reads as the default.
+/// recent samples (`Load`), as the share of a hundred dots, as a figure, or
+/// as a runner whose pace follows the load. Stored as its name; one this
+/// version does not know reads as the default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(from = "String", into = "String")]
 pub enum TrayIcon {
@@ -102,6 +103,7 @@ pub enum TrayIcon {
     Load,
     Share,
     Number,
+    Runner,
 }
 
 impl From<String> for TrayIcon {
@@ -111,6 +113,7 @@ impl From<String> for TrayIcon {
             "load" => TrayIcon::Load,
             "share" => TrayIcon::Share,
             "number" => TrayIcon::Number,
+            "runner" => TrayIcon::Runner,
             _ => Self::default(),
         }
     }
@@ -123,6 +126,7 @@ impl From<TrayIcon> for String {
             TrayIcon::Load => "load",
             TrayIcon::Share => "share",
             TrayIcon::Number => "number",
+            TrayIcon::Runner => "runner",
         }
         .into()
     }
@@ -1158,6 +1162,7 @@ mod tests {
             TrayIcon::Load,
             TrayIcon::Share,
             TrayIcon::Number,
+            TrayIcon::Runner,
         ] {
             for menu in [TrayMenu::Panel, TrayMenu::Menu] {
                 let saved = Settings {

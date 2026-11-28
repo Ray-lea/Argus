@@ -1312,12 +1312,14 @@ label[data-on] > .w-chip-box {
   --tg-accent: #0067c0;
   --tg-load: #0a8bbd;
   --tg-high: #c27a00;
+  --tg-critical: #c42b1c;
   overflow: visible;
 }
 :root[data-theme="dark"] .w-tray-glyph {
   --tg-accent: #4cc2ff;
   --tg-load: #46cff4;
   --tg-high: #f4b446;
+  --tg-critical: #ff6b6b;
 }
 
 /* The panel's kinds of several devices: a tab per device, a dot on those with readings chosen. */

@@ -154,8 +154,8 @@ export function plan(files, { dependents = {}, ui = true, stepNames = null } = {
   }
   const windowsVendor = why((f) => /^vendor\/gpui-pre-windows\/.*\.rs$/.test(f));
   add("gpui-pre-windows tests", "cargo", ["test", "--locked", "-p", "gpui-pre-windows", "--lib", ...RUST_TARGET], windowsVendor);
-  // The notices list the crates linked into argus.exe and the vendored code.
-  add("third-party notices", "node", ["scripts/notices.mjs", "--check"], why((f) => /(^|\/)Cargo\.toml$|^Cargo\.lock$|^vendor\/[^/]+\/LICENSE/.test(f)));
+  // The notices list the crates linked into argus.exe, the vendored code and bundled assets.
+  add("third-party notices", "node", ["scripts/notices.mjs", "--check"], why((f) => /(^|\/)Cargo\.toml$|^Cargo\.lock$|^vendor\/[^/]+\/LICENSE|^resources\/tray\/runner\//.test(f)));
 
   // Interface: a development build, the probe if its source changed, then
   // the step files the changes call for.

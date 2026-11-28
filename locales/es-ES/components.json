@@ -8,11 +8,12 @@
   "tray": {
     "icon": {
       "title": "Icono de la bandeja",
-      "desc": "Tendencia muestra las últimas muestras de CPU en columnas, Proporción ilumina una cuadrícula de puntos según el uso actual y Cifra muestra el porcentaje. A partir del 80 % se vuelven ámbar.",
+      "desc": "Tendencia muestra las últimas muestras de CPU en columnas, Proporción ilumina una cuadrícula de puntos según el uso actual y Cifra muestra el porcentaje; las tres se vuelven ámbar a partir del 80 %. Corredor mueve el gato al ritmo del uso de CPU y lo colorea según el uso de memoria: ámbar a partir del 70 % y rojo a partir del 90 %.",
       "logo": "Icono de la aplicación",
       "load": "Tendencia",
       "share": "Proporción",
-      "number": "Cifra"
+      "number": "Cifra",
+      "runner": "Corredor"
     },
     "card": {
       "title": "Tarjeta al pasar el puntero",

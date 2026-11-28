@@ -1,12 +1,14 @@
 {
-  "about": "检查组件页托盘图标下拉框：缺省显示应用图标，键盘选择走势与数字时发出对应的设置命令（`inspectLayout.skippedRequest`），并捕获深浅主题及 125% 界面缩放下的展开画面。使用模拟快照，不创建真实托盘图标。",
+  "about": "检查组件页托盘图标下拉框：缺省显示应用图标，键盘选择走势、数字与奔跑时发出对应的设置命令（`inspectLayout.skippedRequest`），并捕获深浅主题及 125% 界面缩放下的展开画面。使用模拟快照，不创建真实托盘图标。",
   "window": [1100, 760],
   "steps": [
     {"control":{"page":"components"},"capture":"tray-icon-dark"},
     {"control":{"clickSelect":"setting-trayIcon"},"capture":"tray-icon-options-dark"},
     {"control":{"keys":["down","enter"]},"inspect":"layout","label":"tray-icon-load","expect":{"skippedRequest.command":"set_tray","skippedRequest.args.icon":"load"}},
     {"control":{"clickSelect":"setting-trayIcon"}},
-    {"control":{"keys":["end","enter"]},"inspect":"layout","label":"tray-icon-number","expect":{"skippedRequest.command":"set_tray","skippedRequest.args.icon":"number"}},
+    {"control":{"keys":["end","up","enter"]},"inspect":"layout","label":"tray-icon-number","expect":{"skippedRequest.command":"set_tray","skippedRequest.args.icon":"number"}},
+    {"control":{"clickSelect":"setting-trayIcon"}},
+    {"control":{"keys":["end","enter"]},"inspect":"layout","label":"tray-icon-runner","expect":{"skippedRequest.command":"set_tray","skippedRequest.args.icon":"runner"}},
     {"control":{"theme":"light"},"wait":700,"capture":"tray-icon-light"},
     {"control":{"clickSelect":"setting-trayIcon"},"capture":"tray-icon-options-light"},
     {"control":{"keys":["escape"]}},

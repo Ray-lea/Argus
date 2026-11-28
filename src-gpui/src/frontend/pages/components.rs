@@ -258,7 +258,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let looks = ["logo", "load", "share", "number"];
+        let looks = ["logo", "load", "share", "number", "runner"];
         let look: String = TrayIcon::from(text(settings, "trayIcon").to_owned()).into();
         let icon = self.select(
             "setting-trayIcon",

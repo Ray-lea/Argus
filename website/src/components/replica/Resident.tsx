@@ -8,12 +8,41 @@ import { store, useShared, setWidgets, setMonitor, type Request } from "./store"
 import { MiniCurve, MonitorFace, Styles, Readings } from "./MonitorReadings";
 import { Button } from "./widgets";
 
+// RunCat365's five 32 px silhouettes (`resources/tray/runner/cat_0..4.png`, Apache-2.0).
+const RUNNER_FRAMES = [
+  "M25 7h1v1H25ZM21 8h5v1H21ZM21 9h6v1H21ZM20 10h7v1H20ZM20 11h8v1H20ZM19 12h4v1H19ZM24 12h2v1H24ZM27 12h2v1H27ZM14 13h15v1H14ZM12 14h16v1H12ZM7 15h20v1H7ZM5 16h20v1H5ZM0 17h7v1H0ZM0 18h5v1H0ZM11 17h14v2H11ZM11 19h13v1H11ZM20 20h4v1H20ZM20 21h3v1H20ZM11 20h7v3H11ZM20 22h2v1H20ZM16 23h2v1H16ZM12 23h3v2H12ZM13 25h2v1H13Z",
+  "M24 6h1v1H24ZM27 6h2v1H27ZM24 7h5v1H24ZM23 8h6v1H23ZM22 9h8v2H22ZM21 11h5v1H21ZM27 11h4v1H27ZM16 12h15v1H16ZM6 13h5v1H6ZM13 13h17v1H13ZM2 14h27v1H2ZM0 15h28v1H0ZM11 16h18v1H11ZM9 17h21v1H9ZM8 18h14v1H8ZM24 18h6v1H24ZM7 19h11v1H7ZM26 19h3v1H26ZM6 20h9v1H6ZM5 21h3v1H5ZM9 21h4v1H9ZM9 22h3v2H9Z",
+  "M26 8h1v1H26ZM29 8h1v1H29ZM6 9h1v1H6ZM25 9h5v1H25ZM3 10h8v1H3ZM24 10h6v1H24ZM3 11h3v1H3ZM8 11h5v1H8ZM11 12h9v1H11ZM23 11h8v2H23ZM12 13h15v1H12ZM28 13h2v1H28ZM12 14h20v1H12ZM11 15h20v1H11ZM9 16h20v1H9ZM7 17h23v1H7ZM6 18h25v1H6ZM6 19h10v1H6ZM24 19h7v1H24ZM10 20h4v1H10ZM25 20h5v1H25ZM10 21h3v1H10ZM27 21h3v1H27Z",
+  "M5 8h4v1H5ZM4 9h7v1H4ZM9 10h3v1H9ZM11 11h2v1H11ZM26 11h2v1H26ZM12 12h3v1H12ZM16 12h1v1H16ZM24 12h7v1H24ZM12 13h7v1H12ZM24 13h6v1H24ZM12 14h8v1H12ZM23 14h8v1H23ZM11 15h16v1H11ZM28 15h3v1H28ZM11 16h18v1H11ZM30 16h1v1H30ZM10 17h21v2H10ZM11 19h18v1H11ZM11 20h4v1H11ZM18 20h9v1H18ZM12 21h3v1H12ZM22 21h7v1H22ZM22 22h8v1H22ZM12 22h2v2H12ZM23 23h3v1H23ZM23 24h4v1H23ZM24 25h3v1H24Z",
+  "M23 9h1v1H23ZM22 10h6v1H22ZM21 11h6v1H21ZM12 12h6v1H12ZM20 12h8v1H20ZM10 13h18v1H10ZM1 14h1v1H1ZM8 14h16v1H8ZM25 14h2v1H25ZM1 15h28v1H1ZM2 16h7v1H2ZM11 16h17v1H11ZM11 17h16v1H11ZM12 18h12v1H12ZM12 19h11v1H12ZM13 20h10v2H13ZM15 22h8v1H15ZM16 23h2v1H16ZM20 23h3v2H20Z",
+];
+
+function RunnerGlyph({ load, mem }: { load: number; mem: number }) {
+  const { paused } = useShared();
+  const [frame, setFrame] = useState(0);
+  const interval = Math.round(500 / Math.max(1, Math.min(100, load) / 5));
+  useEffect(() => {
+    if (paused) return;
+    const id = setInterval(() => setFrame((f) => (f + 1) % RUNNER_FRAMES.length), interval);
+    return () => clearInterval(id);
+  }, [interval, paused]);
+  const fill = mem >= 90 ? "var(--tg-critical)" : mem >= 70 ? "var(--tg-high)" : "currentColor";
+  return (
+    <svg className="w-tray-glyph" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+      <path d={RUNNER_FRAMES[frame]} fill={fill} />
+    </svg>
+  );
+}
+
 // The tray icon's looks at 20 px (shell/tray_icon.rs): the window mark with the
-// recent loads cut out of it, the hundred dots with an A, or the figure over a bar.
+// recent loads cut out of it, the hundred dots with an A, the figure over a bar,
+// or the running cat paced by CPU load and coloured by memory use.
 export function TrayGlyph({ tick, style }: { tick: number; style: string }) {
-  const load = Math.min(100, Math.round(sampleAt(tick).cpu));
+  const sample = sampleAt(tick);
+  const load = Math.min(100, Math.round(sample.cpu));
   const high = load >= 80;
   if (style === "应用图标") return <img src="/assets/argus.svg" width="20" height="20" alt="" />;
+  if (style === "奔跑") return <RunnerGlyph load={load} mem={Math.round(sample.mem)} />;
   if (style === "数字")
     return (
       <svg className="w-tray-glyph" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
