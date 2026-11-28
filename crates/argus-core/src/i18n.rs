@@ -28,6 +28,8 @@ pub enum Locale {
     DeDe,
     #[serde(rename = "ja-JP")]
     JaJp,
+    #[serde(rename = "ko-KR")]
+    KoKr,
     #[serde(rename = "fr-FR")]
     FrFr,
     #[serde(rename = "ru-RU")]
@@ -38,13 +40,14 @@ impl Locale {
     /// The catalog every other one is translated from, and the fallback for a
     /// missing key.
     pub const SOURCE: Locale = Locale::ZhCn;
-    pub const ALL: [Locale; 8] = [
+    pub const ALL: [Locale; 9] = [
         Self::ZhCn,
         Self::ZhTw,
         Self::EnUs,
         Self::EsEs,
         Self::DeDe,
         Self::JaJp,
+        Self::KoKr,
         Self::FrFr,
         Self::RuRu,
     ];
@@ -57,6 +60,7 @@ impl Locale {
             Locale::EsEs => "es-ES",
             Locale::DeDe => "de-DE",
             Locale::JaJp => "ja-JP",
+            Locale::KoKr => "ko-KR",
             Locale::FrFr => "fr-FR",
             Locale::RuRu => "ru-RU",
         }
@@ -105,6 +109,7 @@ impl Locale {
             0x0a => Some(Self::EsEs),
             0x07 => Some(Self::DeDe),
             0x11 => Some(Self::JaJp),
+            0x12 => Some(Self::KoKr),
             0x0c => Some(Self::FrFr),
             0x19 => Some(Self::RuRu),
             _ => None,
@@ -158,6 +163,7 @@ impl Locale {
                 Locale::EsEs => include_str!("../../../locales/es-ES/native.json"),
                 Locale::DeDe => include_str!("../../../locales/de-DE/native.json"),
                 Locale::JaJp => include_str!("../../../locales/ja-JP/native.json"),
+                Locale::KoKr => include_str!("../../../locales/ko-KR/native.json"),
                 Locale::FrFr => include_str!("../../../locales/fr-FR/native.json"),
                 Locale::RuRu => include_str!("../../../locales/ru-RU/native.json"),
             };
@@ -311,7 +317,7 @@ fn plural(locale: Locale, count: &str) -> &'static str {
         .split_once('.')
         .is_some_and(|(_, digits)| !digits.is_empty());
     match locale {
-        Locale::ZhCn | Locale::ZhTw | Locale::JaJp => "other",
+        Locale::ZhCn | Locale::ZhTw | Locale::JaJp | Locale::KoKr => "other",
         Locale::RuRu if !fraction && n.fract() == 0. => match (integer % 10, integer % 100) {
             (1, last) if last != 11 => "one",
             (2..=4, last) if !(12..=14).contains(&last) => "few",
@@ -421,6 +427,8 @@ mod tests {
             ("de_AT", Locale::DeDe),
             ("fr-CA", Locale::FrFr),
             ("ja", Locale::JaJp),
+            ("ko", Locale::KoKr),
+            ("KO_kr", Locale::KoKr),
             ("ru-KZ", Locale::RuRu),
             ("zh-Hant-TW", Locale::ZhTw),
             ("zh_HK", Locale::ZhTw),
@@ -446,6 +454,7 @@ mod tests {
             (0x0807, Locale::DeDe),
             (0x0c0c, Locale::FrFr),
             (0x0411, Locale::JaJp),
+            (0x0412, Locale::KoKr),
             (0x0419, Locale::RuRu),
             (0x0404, Locale::ZhTw),
             (0x0c04, Locale::ZhTw),
@@ -481,7 +490,7 @@ mod tests {
         ] {
             assert_eq!(plural(Locale::RuRu, count), form, "{count}");
         }
-        for locale in [Locale::ZhCn, Locale::ZhTw, Locale::JaJp] {
+        for locale in [Locale::ZhCn, Locale::ZhTw, Locale::JaJp, Locale::KoKr] {
             for count in ["0", "1", "2", "1.5"] {
                 assert_eq!(plural(locale, count), "other");
             }

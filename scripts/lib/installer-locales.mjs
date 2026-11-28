@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 export const installerLanguages = {
   "en-US": "ENGLISH", "zh-CN": "SIMPCHINESE", "zh-TW": "TRADCHINESE", "es-ES": "SPANISH",
-  "de-DE": "GERMAN", "ja-JP": "JAPANESE", "fr-FR": "FRENCH", "ru-RU": "RUSSIAN",
+  "de-DE": "GERMAN", "ja-JP": "JAPANESE", "ko-KR": "KOREAN", "fr-FR": "FRENCH", "ru-RU": "RUSSIAN",
 };
 const variables = { version: "${DISPLAYVERSION}", oldVersion: "$ArgusOldVersion", installDir: "$INSTDIR", product: "${PRODUCTNAME}", code: "$0", programFiles: "$PROGRAMFILES64" };
 export function nsisText(text) {

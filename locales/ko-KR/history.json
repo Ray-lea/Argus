@@ -1,0 +1,378 @@
+{
+  "metric": {
+    "peak": "최대 {value}"
+  },
+  "copied": {
+    "name": "이름",
+    "namePid": "이름 및 PID"
+  },
+  "noRecordAt": "이 시점의 기록 없음",
+  "earliest": "가장 오래된 기록",
+  "note": "보통 5초마다 기록합니다. 백그라운드에서 측정 간격이 더 길면 그 간격에 맞춰 기록합니다. 최근 10분 동안은 모든 측정값을 보관합니다.",
+  "off": "기록 기능이 꺼져 있습니다. <link>설정 열기</link>",
+  "watch": {
+    "title": "프로세스 관찰",
+    "empty": "프로세스의 오른쪽 클릭 메뉴나 세부 정보에서 ‘프로세스 관찰’을 선택하세요. 상위 목록에 없어도 해당 프로그램의 메모리, CPU, GPU, 디스크, 네트워크 사용량을 계속 기록할 수 있습니다.",
+    "openProcesses": "프로세스 목록으로 이동",
+    "start": "프로세스 관찰",
+    "stop": "관찰 중지",
+    "delete": "관찰 기록 삭제",
+    "note": "같은 경로의 프로그램도 실행할 때마다 따로 기록합니다. 데이터는 최대 7일 동안 보관하며, 저장 용량 한도에 도달하면 오래된 기록부터 삭제합니다. 관찰을 중지해도 데이터는 남습니다. 삭제하면 관찰이 끝나고 기록이 지워집니다. Argus를 다시 시작한 후에는 관찰을 다시 시작하세요.",
+    "metric": {
+      "memory": "개인 작업 집합",
+      "commit": "커밋 크기"
+    },
+    "state": {
+      "recording": "관찰 중",
+      "gap": "유효한 측정값 없음",
+      "exited": "프로세스 종료됨",
+      "stopped": "관찰 중지됨",
+      "interrupted": "관찰이 중단되었으며 자동으로 재개되지 않음",
+      "limit": "기록 한도 도달"
+    },
+    "error": {
+      "unavailable": "측정 기능이 제때 응답하지 않아 작업 결과를 확인할 수 없습니다. 다시 시도하기 전에 관찰 상태를 확인하세요.",
+      "identity": "선택한 프로세스 인스턴스를 확인할 수 없습니다. 새로 고침한 후 다시 시도하세요.",
+      "access": "현재 권한으로는 이 프로세스 인스턴스의 정보를 읽을 수 없습니다.",
+      "existing": "이미 관찰 기록이 있습니다. 새로 관찰하려면 기존 관찰을 중지하고 기록을 삭제하세요.",
+      "missing": "관찰 기록이 없습니다.",
+      "storage": "관찰 기록을 읽거나 쓸 수 없어 관찰을 중지했습니다.",
+      "invalid": "관찰 기록이 손상되었거나 지원하지 않는 형식입니다. 이 기록은 삭제할 수 있습니다."
+    },
+    "runSummary": "전체 {total}회 중 {shown}회 표시 · 선택한 실행의 기록 {points}개",
+    "damaged": "일부 기록이 손상되어 해당 구간은 비워 둡니다.",
+    "earlierRuns": "이전 실행",
+    "latestRuns": "최근 실행",
+    "waiting": "다음 실행 대기 중",
+    "liveCount": "{count}개 실행 중",
+    "unconfirmed": "이름이 같은 프로세스 인스턴스 {count}개를 확인하지 못했습니다. 1분마다 다시 시도합니다.",
+    "column": {
+      "pid": "PID",
+      "started": "시작 시각",
+      "last": "마지막 기록",
+      "duration": "실행 시간",
+      "points": "기록 수",
+      "state": "상태"
+    }
+  },
+  "instanceUnavailable": "기록된 {name} 프로세스(PID {pid})가 이미 종료되었거나 같은 인스턴스인지 확인할 수 없습니다.",
+  "range": {
+    "5m": "5분",
+    "1h": "1시간",
+    "3h": "3시간",
+    "6h": "6시간",
+    "1d": "1일",
+    "3d": "3일",
+    "7d": "7일",
+    "30d": "30일",
+    "all": "전체",
+    "custom": "사용자 지정",
+    "customMenu": "사용자 지정…"
+  },
+  "now": "현재",
+  "live": {
+    "on": "실시간",
+    "onTitle": "최신 측정값 자동 갱신 일시 중지",
+    "off": "최신 기록으로 이동",
+    "offTitle": "최신 측정값 자동 갱신 재개(차트를 오른쪽 클릭하거나 End 키 누르기)"
+  },
+  "toast": {
+    "latest": "최신 기록으로 이동했습니다.",
+    "paused": "자동 갱신을 일시 중지했습니다."
+  },
+  "menu": {
+    "band": "최솟값~최댓값 범위 표시",
+    "settings": "기록 설정…",
+    "needsService": "특권 서비스 필요",
+    "notRecorded": "기록 없음",
+    "curve": "차트에 그래프 표시",
+    "curveOff": "차트에서 그래프 숨기기",
+    "copy": "이름 및 PID 복사",
+    "none": "겹쳐 표시 안 함",
+    "showTitle": "현재 트랙에 표시",
+    "addTitle": "트랙 추가",
+    "overlayTitle": "다른 지표 겹쳐 표시(오른쪽 세로축)",
+    "byService": "특권 서비스에서 제공"
+  },
+  "group": {
+    "cpu": "프로세서",
+    "memory": "메모리",
+    "disk": "저장 장치",
+    "network": "네트워크",
+    "gpu": "그래픽",
+    "battery": "배터리",
+    "system": "시스템"
+  },
+  "reading": {
+    "long": {
+      "cpu": "CPU 사용률",
+      "memUsed": "메모리 사용량",
+      "disk": "디스크 읽기 및 쓰기",
+      "network": "네트워크 송수신",
+      "gpu": "GPU 사용률",
+      "battery": "배터리 잔량",
+      "cpuKernel": "CPU 커널 시간",
+      "cpuClock": "CPU 클럭",
+      "cpuPower": "CPU 패키지 전력",
+      "cpuTemp": "CPU 온도",
+      "cpuVoltage": "CPU 코어 전압",
+      "commitUsed": "커밋된 메모리",
+      "memCached": "캐시된 메모리",
+      "memCompressed": "압축된 메모리",
+      "pagedPool": "페이지 풀",
+      "nonpagedPool": "비페이지 풀",
+      "batteryRate": "배터리 충전·방전 전력",
+      "batteryVoltage": "배터리 전압",
+      "batteryTemp": "배터리 온도",
+      "processes": "프로세스 수",
+      "threads": "스레드 수",
+      "handles": "핸들 수"
+    },
+    "short": {
+      "cpuKernel": "커널 시간",
+      "cpuClock": "CPU 클럭",
+      "cpuPower": "CPU 전력",
+      "cpuTemp": "CPU 온도",
+      "cpuVoltage": "CPU 전압",
+      "commitUsed": "커밋됨",
+      "memCached": "캐시됨",
+      "memCompressed": "압축됨",
+      "pagedPool": "페이지 풀",
+      "nonpagedPool": "비페이지 풀",
+      "batteryRate": "배터리 전력",
+      "batteryVoltage": "배터리 전압",
+      "batteryTemp": "배터리 온도"
+    }
+  },
+  "device": {
+    "fan": "팬 {name}",
+    "diskOf": "{name} 읽기 및 쓰기",
+    "nicOf": "{name} 송수신",
+    "diskActive": "{name} 활성 시간",
+    "diskResponse": "{name} 평균 응답 시간",
+    "deviceTemp": "{name} 온도",
+    "gpuUtil": "{name} 사용률",
+    "gpuDedicated": "{name} 전용 GPU 메모리",
+    "gpuShared": "{name} 공유 GPU 메모리",
+    "gpuPower": "{name} 소비 전력",
+    "gpuClock": "{name} 클럭",
+    "gpuFan": "{name} 팬"
+  },
+  "part": {
+    "read": "읽기",
+    "write": "쓰기",
+    "receive": "수신",
+    "send": "송신"
+  },
+  "gap": {
+    "sleep": "절전 모드",
+    "shutdown": "시스템 종료 또는 다시 시작",
+    "notRunning": "Argus가 실행되지 않음",
+    "off": "기록 꺼짐",
+    "unknown": "기록 없음",
+    "tip": "기록 없음: {reason}",
+    "missing": "유효한 측정값 없음"
+  },
+  "duration": {
+    "seconds": "{count}초",
+    "minutes": "{count}분",
+    "hoursMinutes": "{hours}시간 {minutes}분",
+    "daysHours": "{days}일 {hours}시간"
+  },
+  "drop": {
+    "overlay": "이 트랙에 겹쳐 표시(오른쪽 세로축)",
+    "lane": "새 트랙",
+    "move": "여기로 이동"
+  },
+  "lane": {
+    "add": "트랙",
+    "addTitle": "트랙 추가",
+    "grip": "끌어서 순서 변경",
+    "remove": "이 트랙 제거"
+  },
+  "overlay": {
+    "add": "겹쳐 표시",
+    "addTitle": "오른쪽 세로축에 다른 지표 겹쳐 표시",
+    "shared": "왼쪽 축 공유",
+    "right": "오른쪽 축",
+    "remove": "겹쳐 표시 해제",
+    "change": "겹쳐 표시할 지표 변경"
+  },
+  "unrecorded": {
+    "title": "{name} 지표의 기록 없음",
+    "hint": "필요한 장치나 성능 카운터를 사용할 수 없는 상태일 수 있습니다.",
+    "serviceTitle": "{name} 지표를 기록하려면 특권 서비스가 필요합니다.",
+    "serviceHint": "서비스를 켠 뒤 첫 측정부터 기록합니다. 이전 구간은 빈 상태로 남습니다.",
+    "install": "특권 서비스 설치…"
+  },
+  "tip": {
+    "second": "1초 단위 측정값",
+    "every": "{seconds}초 간격 측정값",
+    "frame": "5초 단위 기록",
+    "average": "평균",
+    "hint": "클릭: 고정 · 오른쪽 클릭: 최신 기록으로 이동 · Esc: 커서 지우기",
+    "otherPrograms": "그 외 프로그램 {count}개"
+  },
+  "tab": {
+    "add": "새 트랙에 표시",
+    "title": "클릭하면 현재 트랙에 표시합니다. 차트로 끌어 겹쳐 표시하거나 트랙을 추가할 수 있습니다.",
+    "more": "지표 더 보기"
+  },
+  "table": {
+    "latest": "{time} 시점의 프로세스(최신)",
+    "moment": "{time} 시점의 프로세스",
+    "range": "{range} 구간의 프로세스",
+    "pid": "PID {pid}",
+    "loading": "불러오는 중…",
+    "modeMoment": "시점",
+    "modeRange": "구간",
+    "columns": "열",
+    "chooser": {
+      "moment": "‘시점’에 표시할 열",
+      "range": "‘구간’에 표시할 열"
+    },
+    "trend": "추세 그래프",
+    "resetColumns": "기본 열 복원",
+    "rest": "그 외 프로세스 {count}개",
+    "search": "프로세스 검색",
+    "emptyRange": "이 구간에는 프로세스 기록이 없습니다.",
+    "netService": "일반 권한으로 프로세스별 네트워크 사용량을 기록하려면 특권 서비스가 필요합니다.",
+    "live": "최신 프로세스 목록"
+  },
+  "column": {
+    "moment": {
+      "cpu": "CPU",
+      "mem": "메모리",
+      "disk": "디스크",
+      "diskRead": "디스크 읽기",
+      "diskWrite": "디스크 쓰기",
+      "io": "I/O",
+      "net": "네트워크",
+      "gpu": "GPU",
+      "gpuMem": "전용 GPU 메모리",
+      "power": "전력 사용량",
+      "threads": "스레드",
+      "handles": "핸들"
+    },
+    "range": {
+      "cpu": "평균 CPU 사용률",
+      "cpuMax": "최대 CPU 사용률",
+      "mem": "최대 메모리 사용량",
+      "disk": "디스크 읽기·쓰기 용량",
+      "diskRead": "디스크 읽기 용량",
+      "diskWrite": "디스크 쓰기 용량",
+      "io": "I/O 전송량",
+      "net": "네트워크 송수신량",
+      "gpu": "평균 GPU 사용률",
+      "gpuMem": "최대 전용 GPU 메모리 사용량",
+      "power": "전력 사용량",
+      "seen": "기록 시간",
+      "threads": "스레드",
+      "handles": "핸들"
+    },
+    "trend": "추세 · {name}",
+    "trendTitle": "맨 위 트랙에 표시된 지표가 선택 구간에서 어떻게 변했는지 보여 줍니다."
+  },
+  "trend": {
+    "cpu": "CPU",
+    "mem": "메모리",
+    "disk": "디스크",
+    "net": "네트워크",
+    "gpu": "GPU"
+  },
+  "clearCursor": "커서 지우기(Esc)",
+  "selection": {
+    "zoom": "선택 구간 확대"
+  },
+  "copy": {
+    "text": "{name} (PID {pids})"
+  },
+  "error": {
+    "directory": "파일을 쓸 수 있는 폴더의 전체 경로를 지정하세요. 새 폴더와 현재 폴더가 서로의 하위 폴더일 수는 없습니다.",
+    "move": "기록을 옮기지 못했습니다. 대상 폴더에 이름이 같은 파일이 있는지 확인하고, 두 폴더의 접근 권한을 확인하세요.",
+    "save": "기록 설정을 저장하지 못했습니다.",
+    "open": "파일 탐색기에서 기록 폴더를 열지 못했습니다.",
+    "clear": "기록을 지우지 못했습니다. 폴더 권한을 확인하고 파일이 사용 중인지 확인하세요."
+  },
+  "picker": {
+    "title": "시간 범위 지정",
+    "last5m": "최근 5분",
+    "last15m": "최근 15분",
+    "last1h": "최근 1시간",
+    "last6h": "최근 6시간",
+    "last24h": "최근 24시간",
+    "today": "오늘",
+    "yesterday": "어제",
+    "last7d": "최근 7일",
+    "last30d": "최근 30일",
+    "all": "전체 기록",
+    "month": "{year}년 {month}월",
+    "weekdays": "월 화 수 목 금 토 일",
+    "start": "시작",
+    "end": "종료",
+    "apply": "적용",
+    "follow": "종료 시각이 현재일 때 최신 기록 자동 갱신",
+    "overview": "30일 요약 및 이벤트 표시",
+    "dayTip": "{date} · {count}시간 기록 · 평균 CPU 사용률 {cpu}",
+    "error": {
+      "format": "{example} 형식으로 시간을 입력하세요.",
+      "order": "종료 시각은 시작 시각보다 늦어야 합니다.",
+      "none": "선택한 구간에 기록이 없습니다(가장 오래된 기록: {first}).",
+      "empty": "아직 기록이 없습니다."
+    },
+    "heatTitle": "30일 요약",
+    "heatHint": "한 칸당 1시간",
+    "noRecord": "기록 없음",
+    "heat": {
+      "cpu": "CPU 사용률",
+      "gpu": "GPU 사용률",
+      "mem": "메모리 사용률",
+      "temp": "CPU 온도",
+      "net": "네트워크 수신"
+    },
+    "eventsTitle": "이벤트",
+    "eventsCount": "{range} · {count}건",
+    "noEvents": "선택한 날짜에 이벤트가 없습니다.",
+    "eventsLoading": "이벤트를 찾는 중…",
+    "filter": {
+      "all": "전체",
+      "cpu": "CPU",
+      "temp": "온도",
+      "mem": "메모리",
+      "gpu": "GPU",
+      "net": "네트워크",
+      "disk": "디스크",
+      "gap": "기록 없음"
+    },
+    "event": {
+      "cpu": "CPU 부하 높음",
+      "temp": "CPU 과열",
+      "mem": "메모리 부족",
+      "gpu": "GPU 고부하 지속",
+      "net": "다운로드 트래픽 급증",
+      "disk": "디스크 사용률 높음"
+    },
+    "eventPeak": "{time} · 최대 {peak}"
+  },
+  "chooser": {
+    "search": "지표 검색",
+    "all": "전체",
+    "empty": "일치하는 지표가 없습니다."
+  },
+  "devicePart": {
+    "diskOf": "읽기 및 쓰기",
+    "diskActive": "활성 시간",
+    "diskResponse": "평균 응답 시간",
+    "deviceTemp": "온도",
+    "nicOf": "송수신",
+    "gpuUtil": "사용률",
+    "gpuDedicated": "전용 GPU 메모리",
+    "gpuShared": "공유 GPU 메모리",
+    "gpuPower": "소비 전력",
+    "gpuClock": "클럭",
+    "gpuFan": "팬"
+  },
+  "page": {
+    "system": "시스템 기록"
+  }
+}

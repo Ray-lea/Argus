@@ -362,6 +362,7 @@ fn fallbacks(kind: &str, cx: &App) -> FontFallbacks {
         let family = installed_font(kind, cx);
         let cjk = match locale {
             argus_core::i18n::Locale::JaJp => "japanese",
+            argus_core::i18n::Locale::KoKr => "korean",
             argus_core::i18n::Locale::ZhTw => "traditionalChinese",
             _ => "fallback",
         };

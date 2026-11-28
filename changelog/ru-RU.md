@@ -1,6 +1,6 @@
 # История изменений
 
-[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [Français](fr-FR.md) · **Русский**
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [한국어](ko-KR.md) · [Français](fr-FR.md) · **Русский**
 
 Изменения в каждой версии Argus, заметные пользователям. Номера версий следуют [семантическому версионированию](https://semver.org/lang/ru/). Этот файл переведён из [истории изменений на упрощённом китайском](zh-CN.md) и соответствует ей пункт за пунктом.
 

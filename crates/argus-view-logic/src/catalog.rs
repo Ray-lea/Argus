@@ -37,6 +37,7 @@ pub fn register() {
     register!(EsEs, "es-ES");
     register!(DeDe, "de-DE");
     register!(JaJp, "ja-JP");
+    register!(KoKr, "ko-KR");
     register!(FrFr, "fr-FR");
     register!(RuRu, "ru-RU");
 }

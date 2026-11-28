@@ -1,6 +1,6 @@
 # 更新履歴
 
-[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · **日本語** · [Français](fr-FR.md) · [Русский](ru-RU.md)
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · **日本語** · [한국어](ko-KR.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
 
 Argus の各バージョンにおける、利用者向けの変更内容です。バージョン番号は[セマンティック バージョニング](https://semver.org/lang/ja/)に従います。このファイルは[簡体字中国語の更新履歴](zh-CN.md)を翻訳したもので、各項目が原文に対応しています。
 

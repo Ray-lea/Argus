@@ -6,6 +6,7 @@
     { "locale": "es-ES", "name": "Español", "title": "Registro de cambios" },
     { "locale": "de-DE", "name": "Deutsch", "title": "Änderungsprotokoll" },
     { "locale": "ja-JP", "name": "日本語", "title": "更新履歴" },
+    { "locale": "ko-KR", "name": "한국어", "title": "업데이트 기록" },
     { "locale": "fr-FR", "name": "Français", "title": "Journal des modifications" },
     { "locale": "ru-RU", "name": "Русский", "title": "История изменений" }
   ],
@@ -17,6 +18,7 @@
       "es-ES": ["Cambios incompatibles"],
       "de-DE": ["Inkompatible Änderungen"],
       "ja-JP": ["互換性のない変更"],
+      "ko-KR": ["호환성이 깨지는 변경"],
       "fr-FR": ["Changements incompatibles"],
       "ru-RU": ["Несовместимые изменения"]
     },
@@ -27,6 +29,7 @@
       "es-ES": ["Nuevas funciones"],
       "de-DE": ["Neue Funktionen"],
       "ja-JP": ["新機能"],
+      "ko-KR": ["새 기능"],
       "fr-FR": ["Nouvelles fonctionnalités"],
       "ru-RU": ["Новые возможности"]
     },
@@ -37,6 +40,7 @@
       "es-ES": ["Correcciones"],
       "de-DE": ["Fehlerbehebungen"],
       "ja-JP": ["修正"],
+      "ko-KR": ["수정"],
       "fr-FR": ["Corrections"],
       "ru-RU": ["Исправления"]
     },
@@ -47,6 +51,7 @@
       "es-ES": ["Rendimiento"],
       "de-DE": ["Leistung"],
       "ja-JP": ["パフォーマンス"],
+      "ko-KR": ["성능"],
       "fr-FR": ["Performances"],
       "ru-RU": ["Производительность"]
     },
@@ -57,6 +62,7 @@
       "es-ES": ["Notas de actualización"],
       "de-DE": ["Hinweise zur Aktualisierung"],
       "ja-JP": ["アップデート時の注意"],
+      "ko-KR": ["업데이트 안내"],
       "fr-FR": ["Remarques sur la mise à jour"],
       "ru-RU": ["Примечания к обновлению"]
     },
@@ -67,6 +73,7 @@
       "es-ES": ["Limitaciones conocidas", "Problemas conocidos"],
       "de-DE": ["Bekannte Einschränkungen", "Bekannte Probleme"],
       "ja-JP": ["既知の制限", "既知の問題"],
+      "ko-KR": ["알려진 제한 사항", "알려진 문제"],
       "fr-FR": ["Limitations connues", "Problèmes connus"],
       "ru-RU": ["Известные ограничения", "Известные проблемы"]
     },
@@ -77,6 +84,7 @@
       "es-ES": ["Reversiones"],
       "de-DE": ["Zurückgenommene Änderungen"],
       "ja-JP": ["取り消し"],
+      "ko-KR": ["되돌린 변경"],
       "fr-FR": ["Annulations"],
       "ru-RU": ["Отмены"]
     },
@@ -87,6 +95,7 @@
       "es-ES": ["Otros cambios", "Cambios incluidos"],
       "de-DE": ["Sonstiges", "Enthaltene Änderungen"],
       "ja-JP": ["その他", "含まれる変更"],
+      "ko-KR": ["기타", "포함된 변경 사항"],
       "fr-FR": ["Autres changements", "Changements inclus"],
       "ru-RU": ["Прочее", "Включённые изменения"]
     }

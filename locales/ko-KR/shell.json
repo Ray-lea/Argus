@@ -1,0 +1,121 @@
+{
+  "loadingProcesses": "프로세스 정보를 읽는 중…",
+  "nav": {
+    "expand": "탐색 모음 펼치기",
+    "collapse": "탐색 모음 접기",
+    "resize": "탐색 모음 너비 조절"
+  },
+  "page": {
+    "processes": "프로세스",
+    "performance": "성능",
+    "services": "서비스",
+    "startup": "시작 프로그램",
+    "network": "연결",
+    "history": "기록",
+    "components": "구성 요소",
+    "settings": "설정",
+    "about": "앱 정보"
+  },
+  "pageTitle": "{page} (Ctrl+{key})",
+  "elevation": {
+    "admin": "관리자",
+    "adminHint": "Argus가 관리자 권한으로 실행 중이므로 대부분의 프로세스를 확인하거나 끝낼 수 있습니다.",
+    "service": "특권 서비스",
+    "serviceHint": "Argus는 표준 사용자 권한으로 실행되며, 관리자 권한이 필요한 작업은 특권 서비스에서 대신 처리합니다.",
+    "standard": "표준 사용자",
+    "standardHint": "일부 시스템 프로세스의 정보를 확인하거나 작업을 끝내려면 관리자 권한이 필요합니다."
+  },
+  "interval": {
+    "label": "새로 고침 간격",
+    "option": "{seconds}초마다"
+  },
+  "background": {
+    "confirm": {
+      "minimized": {
+        "title": "창을 최소화했을 때 더 자주 새로 고칠까요?",
+        "body": "창이 최소화된 동안 Argus는 모든 프로세스와 하드웨어의 데이터를 {seconds}초마다 수집합니다. 간격이 5초보다 짧으면 CPU 사용량과 전력 소비가 눈에 띄게 늘어나며, 배터리로 작동할 때는 영향이 더 큽니다. 기본값인 5초로도 기록과 규칙은 정상적으로 작동합니다."
+      },
+      "tray": {
+        "title": "시스템 트레이에 있을 때 더 자주 새로 고칠까요?",
+        "body": "Argus가 시스템 트레이에 숨겨져 있는 동안 모든 프로세스와 하드웨어의 데이터를 {seconds}초마다 수집합니다. 간격이 5초보다 짧으면 CPU 사용량과 전력 소비가 눈에 띄게 늘어나며, 배터리로 작동할 때는 영향이 더 큽니다. 기본값인 5초로도 기록과 규칙은 정상적으로 작동합니다."
+      },
+      "accept": "그래도 {seconds}초로 변경"
+    },
+    "notice": {
+      "minimized": "창이 최소화된 동안 리소스 사용량을 줄이기 위해 새로 고침 간격을 {from}초에서 {to}초로 늘렸습니다.",
+      "tray": "Argus가 시스템 트레이에 있는 동안 리소스 사용량을 줄이기 위해 새로 고침 간격을 {from}초에서 {to}초로 늘렸습니다.",
+      "adjust": "간격 조절",
+      "quiet": "다시 알리지 않기"
+    }
+  },
+  "pause": "새로 고침 일시 중지",
+  "resume": "새로 고침 재개",
+  "window": {
+    "onTop": "항상 위에 표시",
+    "onTopOff": "항상 위에 표시 해제"
+  },
+  "more": {
+    "label": "추가 작업",
+    "runTask": "새 작업 실행…",
+    "fileLock": "파일을 사용 중인 프로세스 찾기…",
+    "fileLockDetail": "파일을 끌어다 놓아도 됩니다",
+    "exportCsv": "현재 페이지를 CSV로 내보내기…",
+    "csvFile": "CSV 파일",
+    "csvSaved": "CSV 파일을 내보냈습니다.",
+    "csvFailed": "CSV 파일을 저장할 수 없습니다. 대상 폴더에 쓰기 권한이 있는지, 파일이 사용 중인지 확인하세요.",
+    "csvRows": "{count}행"
+  },
+  "details": {
+    "label": "세부 정보 창",
+    "mode": {
+      "open": "항상 표시",
+      "auto": "프로세스를 선택하면 표시",
+      "closed": "숨기기"
+    },
+    "current": "세부 정보 창: {mode}",
+    "next": "클릭하면 ‘{mode}’ 모드로 바뀝니다. 마우스 오른쪽 버튼을 클릭하면 모드를 선택할 수 있습니다."
+  },
+  "search": {
+    "processes": "이름, PID, 경로 또는 서비스 검색",
+    "clear": "검색어 지우기"
+  },
+  "viewMode": {
+    "apps": {
+      "label": "앱별"
+    },
+    "tree": {
+      "label": "프로세스 트리"
+    },
+    "list": {
+      "label": "목록"
+    }
+  },
+  "status": {
+    "threads": "스레드",
+    "handles": "핸들",
+    "cached": "캐시됨",
+    "pagedPool": "페이지 풀",
+    "uptime": "작동 시간",
+    "orderHeld": "정렬 일시 중지",
+    "orderHeldHint": "마우스 포인터가 프로세스 목록 위에 있는 동안 수치는 계속 갱신되며 행의 위치만 고정됩니다. 포인터를 목록 밖으로 옮기면 현재 정렬 기준에 따라 다시 정렬됩니다.",
+    "paused": "새로 고침 일시 중지됨",
+    "holdHint": "프로세스 또는 성능 페이지에서 Ctrl 키를 누르고 있는 동안 새로 고침이 일시 중지됩니다.",
+    "interval": "{seconds}초마다 새로 고침",
+    "version": "v{version}",
+    "versionHint": "Argus {version} · {build}\n클릭하면 이 버전의 변경 사항을 볼 수 있습니다. 마우스 오른쪽 버튼을 클릭하면 버전 번호가 복사됩니다."
+  },
+  "star": {
+    "title": "GitHub에서 Argus에 별을 눌러 주세요",
+    "body": "Argus는 무료 오픈 소스 앱입니다. GitHub에서 별을 눌러 주시면 더 많은 사람에게 Argus를 알리고 개발을 이어 가는 데 도움이 됩니다.",
+    "open": "GitHub로 이동",
+    "quiet": "다시 알리지 않기",
+    "off": "GitHub 별 알림을 껐습니다. 설정에서 다시 켤 수 있습니다.",
+    "settings": "설정 열기"
+  },
+  "portable": {
+    "title": "포터블 버전 사용 중",
+    "body": "포터블 버전은 앱 내 업데이트를 지원하지 않으며, 시작 메뉴 바로 가기와 제거 항목도 제공하지 않습니다. Argus를 업데이트해도 특권 서비스와 작업 관리자 대체 기능은 함께 업데이트되지 않습니다. 평소에는 설치 버전을 권장합니다. 설치 버전으로 바꿔도 기존 설정과 기록은 유지됩니다.",
+    "website": "공식 웹 사이트에서 다운로드",
+    "github": "GitHub에서 다운로드"
+  }
+}

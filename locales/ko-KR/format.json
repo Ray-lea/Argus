@@ -1,0 +1,12 @@
+{
+  "missing": "—",
+  "uptime": {
+    "days": "{days}일 {hours}시간",
+    "hours": "{hours}시간 {minutes}분",
+    "minutes": "{minutes}분 {seconds}초"
+  },
+  "uptimeExact": "{days}<u>일</u> {clock}",
+  "sinceBoot": "시스템 시작 시",
+  "monthDay": "{month}월 {day}일",
+  "monthNames": "1 2 3 4 5 6 7 8 9 10 11 12"
+}

@@ -271,7 +271,7 @@ pnpm commitlint --message "feat(ui): 新功能"  # 检查一条信息
 
 ### 各语言的更新日志
 
-`changelog/zh-CN.md` 是简体中文的更新日志。`changelog/` 下其他语言的更新日志按 `locales/` 的语言标签命名：`zh-TW.md`、`en-US.md`、`es-ES.md`、`de-DE.md`、`ja-JP.md`、`fr-FR.md`、`ru-RU.md`。各语言的文件与中文版逐条对应，发布时由中文条目翻译而来。
+`changelog/zh-CN.md` 是简体中文的更新日志。`changelog/` 下其他语言的更新日志按 `locales/` 的语言标签命名：`zh-TW.md`、`en-US.md`、`es-ES.md`、`de-DE.md`、`ja-JP.md`、`ko-KR.md`、`fr-FR.md`、`ru-RU.md`。各语言的文件与中文版逐条对应，发布时由中文条目翻译而来。
 
 各语言的名称与小节标题在 `resources/changelog.json` 中维护。发布脚本、应用和官网按这份表区分新功能、修复等小节。
 
@@ -646,7 +646,7 @@ gh release delete-asset vX.Y.Z Argus_X.Y.Z_x64-setup.exe
 
 安装程序有**安装或升级**、**进度**、**完成**三页；卸载程序有**确认**、**进度**、**完成**三页，可在**确认**页选择删除应用数据。
 
-页面按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色。字体按语言取各语言 `installer.json` 中的 `ArgusFace`：简体中文为 Microsoft YaHei UI，繁体中文为 Microsoft JhengHei UI，日文为 Yu Gothic UI，其他语言为 Segoe UI。窗口大小在各语言下一致，并按显示缩放比例调整。
+页面按 Windows 的应用颜色模式使用 Argus 的浅色或深色配色。字体取各语言 `installer.json` 的 `ArgusFace`：简繁中文为 Microsoft YaHei UI 与 Microsoft JhengHei UI，日文为 Yu Gothic UI，韩文为 Malgun Gothic，其余为 Segoe UI。窗口大小在各语言下一致，并按显示缩放比例调整。
 
 文案在各语言的 `locales/<语言>/installer.json` 中维护，打包时由 `scripts/bundle.mjs` 生成 `installer-locales.nsh` 中的 `LangString`。
 

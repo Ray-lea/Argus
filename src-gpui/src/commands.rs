@@ -1311,13 +1311,14 @@ pub fn open_repository() -> Result<(), String> {
 }
 
 /// The website's page at `path` in the language `locale`: Simplified Chinese
-/// at the root, every other language under its own folder.
+/// at the root and translations in their own folders. A locale without a
+/// website translation opens the English version.
 fn website_page(homepage: &str, locale: argus_core::i18n::Locale, path: &str) -> String {
     use argus_core::i18n::Locale;
     let folder = match locale {
         Locale::ZhCn => "",
         Locale::ZhTw => "/zh-TW",
-        Locale::EnUs => "/en",
+        Locale::EnUs | Locale::KoKr => "/en",
         Locale::EsEs => "/es",
         Locale::DeDe => "/de",
         Locale::JaJp => "/ja",
@@ -1970,13 +1971,16 @@ mod tests {
             website_page("https://argustask.com/", Locale::ZhTw, "/download/"),
             "https://argustask.com/zh-TW/download/"
         );
-        // Every other language has a folder of its own, named apart.
+        // Other website languages have their own folder; Korean uses English.
         let pages = Locale::ALL
             .iter()
             .map(|locale| website_page("https://argustask.com", *locale, "/download/"))
             .collect::<std::collections::HashSet<_>>();
-        assert_eq!(pages.len(), Locale::ALL.len());
-        assert!(pages.contains("https://argustask.com/en/download/"));
+        assert_eq!(pages.len(), Locale::ALL.len() - 1);
+        assert_eq!(
+            website_page("https://argustask.com", Locale::KoKr, "/download/"),
+            "https://argustask.com/en/download/"
+        );
     }
 
     #[test]
