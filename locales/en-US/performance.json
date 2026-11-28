@@ -521,7 +521,15 @@
     "linkSpeed": "Link speed",
     "ipv4": "IPv4 address",
     "ipv6": "IPv6 address",
-    "mac": "Physical address"
+    "mac": "Physical address",
+    "copyIpv4": "Copy IPv4 address",
+    "copyIpv6": "Copy IPv6 address",
+    "copyMac": "Copy physical address",
+    "copied": {
+      "ipv4": "IPv4 address",
+      "ipv6": "IPv6 address",
+      "mac": "physical address"
+    }
   },
   "gpu": {
     "utilizationHint": "Overall usage is based on the busiest engine, supplemented by process and driver readings. Sources may cover different activity and intervals.",

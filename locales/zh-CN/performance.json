@@ -509,7 +509,15 @@
     "linkSpeed": "链路速度",
     "ipv4": "IPv4 地址",
     "ipv6": "IPv6 地址",
-    "mac": "物理地址"
+    "mac": "物理地址",
+    "copyIpv4": "复制 IPv4 地址",
+    "copyIpv6": "复制 IPv6 地址",
+    "copyMac": "复制物理地址",
+    "copied": {
+      "ipv4": " IPv4 地址",
+      "ipv6": " IPv6 地址",
+      "mac": "物理地址"
+    }
   },
   "gpu": {
     "utilizationHint": "整体占用取最忙引擎，并参考进程和驱动读数。各来源的统计范围和时段可能不同。",

@@ -524,7 +524,15 @@
     "linkSpeed": "Verbindungsgeschwindigkeit",
     "ipv4": "IPv4-Adresse",
     "ipv6": "IPv6-Adresse",
-    "mac": "Physikalische Adresse"
+    "mac": "Physikalische Adresse",
+    "copyIpv4": "IPv4-Adresse kopieren",
+    "copyIpv6": "IPv6-Adresse kopieren",
+    "copyMac": "Physikalische Adresse kopieren",
+    "copied": {
+      "ipv4": "IPv4-Adresse",
+      "ipv6": "IPv6-Adresse",
+      "mac": "Physikalische Adresse"
+    }
   },
   "gpu": {
     "utilizationHint": "Die Gesamtauslastung basiert auf der am stärksten ausgelasteten Engine, ergänzt um Prozess- und Treiberwerte. Die Quellen können unterschiedliche Aktivitäten und Zeiträume erfassen.",

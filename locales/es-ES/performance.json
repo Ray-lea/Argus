@@ -529,7 +529,15 @@
     "linkSpeed": "Velocidad de enlace",
     "ipv4": "Dirección IPv4",
     "ipv6": "Dirección IPv6",
-    "mac": "Dirección física"
+    "mac": "Dirección física",
+    "copyIpv4": "Copiar dirección IPv4",
+    "copyIpv6": "Copiar dirección IPv6",
+    "copyMac": "Copiar dirección física",
+    "copied": {
+      "ipv4": "dirección IPv4",
+      "ipv6": "dirección IPv6",
+      "mac": "dirección física"
+    }
   },
   "gpu": {
     "utilizationHint": "El uso total se basa en el motor más ocupado y se complementa con lecturas de los procesos y del controlador. Las fuentes pueden cubrir distintas actividades e intervalos.",

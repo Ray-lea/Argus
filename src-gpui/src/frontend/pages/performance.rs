@@ -9,6 +9,12 @@ mod kernel_fade;
 pub(in crate::frontend) mod rail;
 mod telemetry;
 
+#[derive(Clone, Copy)]
+struct AddressCopy {
+    action: &'static str,
+    what: &'static str,
+}
+
 /// Device list geometry (the interface's `.dev` rows).
 const ROW_HEIGHT: f32 = 58.;
 const ROW_PADDING_LEFT: f32 = 12.;
@@ -3658,11 +3664,54 @@ impl Desktop {
             self.perf_stats(stats, rows, false, window),
         ]
     }
+    /// One network address with a button beside it to copy it.
+    fn copyable_address(
+        &self,
+        id: String,
+        address: String,
+        copy: AddressCopy,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let p = self.palette;
+        let id = SharedString::from(id);
+        let tip = label(copy.action);
+        let name = tip.clone();
+        let copied = address.clone();
+        div()
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .child(div().min_w_0().child(address))
+            .child(
+                Button::new(id.clone())
+                    .relative()
+                    .size(px(20.))
+                    .my(px(-2.))
+                    .flex_shrink_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.))
+                    .text_color(p.muted)
+                    .hover(move |s| s.bg(p.hover).text_color(p.ink))
+                    .active(move |s| s.bg(p.press).text_color(p.muted))
+                    .accessibility_label(name)
+                    .tooltip(move |window, cx| widgets::tooltip(tip.clone(), window, cx))
+                    .child(self.moving_icon(&id, "CopyIcon", None, Some(px(13.))))
+                    .child(self.icon_probe(&id))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.act(Action::Copy(copied.clone(), copy.what), window, cx)
+                    })),
+            )
+            .into_any_element()
+    }
     /// Addresses past the first three fold behind a toggle.
     fn addresses(
         &self,
         id: String,
         list: Vec<String>,
+        copy: AddressCopy,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -3677,20 +3726,26 @@ impl Desktop {
         div()
             .flex()
             .flex_col()
+            .gap(px(2.))
             .children(
                 list.into_iter()
                     .take(if all { total } else { SHOWN })
-                    .map(|address| div().child(address)),
+                    .enumerate()
+                    .map(|(index, address)| {
+                        self.copyable_address(format!("{id}-copy-{index}"), address, copy, cx)
+                    }),
             )
             .when(total > SHOWN, |d| {
                 let owner = cx.entity().downgrade();
+                let toggle = SharedString::from(format!("{id}-toggle"));
                 d.child(
                     div()
-                        .id(SharedString::from(format!("{id}-toggle")))
+                        .id(toggle.clone())
+                        .relative()
+                        .self_start()
                         .flex()
                         .items_center()
                         .gap_1()
-                        .mt(px(2.))
                         .text_size(theme::font(12.))
                         .text_color(p.accent)
                         .cursor_pointer()
@@ -3703,6 +3758,19 @@ impl Desktop {
                             icon(if all { "ChevronUp" } else { "ChevronDown" }, p.accent)
                                 .size(px(12.)),
                         )
+                        .when(self.options.test, |d| {
+                            let anchors = self.ui.anchors.clone();
+                            d.child(
+                                canvas(
+                                    move |bounds, _, _| {
+                                        anchors.borrow_mut().insert(toggle.clone(), bounds);
+                                    },
+                                    |_, _, _, _| {},
+                                )
+                                .absolute()
+                                .inset_0(),
+                            )
+                        })
                         .on_click(move |_, _, cx| {
                             state.update(cx, |all, _| *all = !*all);
                             let _ = owner.update(cx, |_, cx| cx.notify());
@@ -3745,18 +3813,39 @@ impl Desktop {
                 .collect::<Vec<_>>()
         };
         let speed = number(info, "linkSpeed");
+        let nic_id = text(info, "id");
         let ipv4 = self.addresses(
-            format!("nic-{}-ipv4", text(info, "id")),
+            format!("nic-{nic_id}-ipv4"),
             addresses(&info["ipv4"]),
+            AddressCopy {
+                action: "performance.network.copyIpv4",
+                what: "performance.network.copied.ipv4",
+            },
             window,
             cx,
         );
         let ipv6 = self.addresses(
-            format!("nic-{}-ipv6", text(info, "id")),
+            format!("nic-{nic_id}-ipv6"),
             addresses(&info["ipv6"]),
+            AddressCopy {
+                action: "performance.network.copyIpv6",
+                what: "performance.network.copied.ipv6",
+            },
             window,
             cx,
         );
+        let mac = match info["mac"].as_str().filter(|mac| !mac.is_empty()) {
+            Some(mac) => self.copyable_address(
+                format!("nic-{nic_id}-mac-copy"),
+                mac.to_owned(),
+                AddressCopy {
+                    action: "performance.network.copyMac",
+                    what: "performance.network.copied.mac",
+                },
+                cx,
+            ),
+            None => plain(missing()),
+        };
         let rows = vec![
             (
                 label("performance.network.connectionType"),
@@ -3782,15 +3871,7 @@ impl Desktop {
             ),
             (label("performance.network.ipv4"), ipv4),
             (label("performance.network.ipv6"), ipv6),
-            (
-                label("performance.network.mac"),
-                plain(
-                    info["mac"]
-                        .as_str()
-                        .map(String::from)
-                        .unwrap_or_else(missing),
-                ),
-            ),
+            (label("performance.network.mac"), mac),
         ];
         vec![
             self.perf_head(device.title.clone(), Some(device.model.clone()), None, cx),

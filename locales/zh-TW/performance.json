@@ -509,7 +509,15 @@
     "linkSpeed": "連結速度",
     "ipv4": "IPv4 位址",
     "ipv6": "IPv6 位址",
-    "mac": "實體位址"
+    "mac": "實體位址",
+    "copyIpv4": "複製 IPv4 位址",
+    "copyIpv6": "複製 IPv6 位址",
+    "copyMac": "複製實體位址",
+    "copied": {
+      "ipv4": " IPv4 位址",
+      "ipv6": " IPv6 位址",
+      "mac": "實體位址"
+    }
   },
   "gpu": {
     "utilizationHint": "整體使用率取最忙碌的引擎，並參考處理程序與驅動程式的讀數。各來源的範圍和時段可能不同。",

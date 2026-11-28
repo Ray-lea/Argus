@@ -529,7 +529,15 @@
     "linkSpeed": "Vitesse de liaison",
     "ipv4": "Adresse IPv4",
     "ipv6": "Adresse IPv6",
-    "mac": "Adresse physique"
+    "mac": "Adresse physique",
+    "copyIpv4": "Copier l’adresse IPv4",
+    "copyIpv6": "Copier l’adresse IPv6",
+    "copyMac": "Copier l’adresse physique",
+    "copied": {
+      "ipv4": "adresse IPv4",
+      "ipv6": "adresse IPv6",
+      "mac": "adresse physique"
+    }
   },
   "gpu": {
     "utilizationHint": "L’utilisation globale se base sur le moteur le plus sollicité, complété par les mesures des processus et du pilote. Les sources peuvent couvrir des activités et des périodes différentes.",
