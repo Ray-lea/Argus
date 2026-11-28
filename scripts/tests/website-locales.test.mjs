@@ -22,6 +22,7 @@ test("the demo's system choice follows the first supported browser language", ()
   assert.equal(preferredLanguage(["zh-HK"]), "zh-TW");
   assert.equal(preferredLanguage(["zh-CN-x-hant"]), "zh");
   assert.equal(preferredLanguage(["ja-JP"]), "ja");
+  assert.equal(preferredLanguage(["ko-KR"]), "ko");
   assert.equal(preferredLanguage(["pt-BR"]), "en");
 });
 test("a page offers the visitor's language until one is chosen or the offer is closed", () => {

@@ -6,7 +6,7 @@
 
 **Быстрый, современный и информативный диспетчер задач для Windows**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · **Русский**
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · **Русский**
 
 [![Сайт и демо](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%D0%A1%D0%B0%D0%B9%D1%82+%D0%B8+%D0%B4%D0%B5%D0%BC%D0%BE&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ru/)
 
@@ -76,7 +76,7 @@ Argus обращается к нативным API Windows напрямую из
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Замена Диспетчера задач</b><br>Можно <a href="docs/architecture/task-manager.md">заменить Диспетчер задач Windows</a> —описание на китайском— и открывать Argus по <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; запуск новых задач и перезапуск Проводника</td>
-<td width="50%" valign="top"><b>Внешний вид и языки</b><br>Фон Mica, цвет акцента и светлая или тёмная тема по Windows; 8 языков интерфейса</td>
+<td width="50%" valign="top"><b>Внешний вид и языки</b><br>Фон Mica, цвет акцента и светлая или тёмная тема по Windows; 9 языков интерфейса</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Обновления в приложении</b><br>Стабильный и бета-каналы, загрузка в фоне, список изменений в приложении</td>

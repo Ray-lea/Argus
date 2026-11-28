@@ -6,7 +6,7 @@
 
 **Un administrador de tareas para Windows rápido, moderno y con información detallada**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · **Español** · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · **Español** · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Sitio web y demo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Sitio+web+y+demo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/es/)
 
@@ -76,7 +76,7 @@ Si Argus resulta útil en el trabajo diario, una estrella en GitHub es una forma
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Sustitución del Administrador de tareas</b><br>Puede <a href="docs/architecture/task-manager.md">sustituir el Administrador de tareas de Windows</a> —documentación en chino— y abrirse con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; ejecuta tareas nuevas y reinicia el Explorador de Windows</td>
-<td width="50%" valign="top"><b>Aspecto e idiomas</b><br>Fondo Mica, color de énfasis y tema claro u oscuro según Windows; 8 idiomas de interfaz</td>
+<td width="50%" valign="top"><b>Aspecto e idiomas</b><br>Fondo Mica, color de énfasis y tema claro u oscuro según Windows; 9 idiomas de interfaz</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Actualizaciones integradas</b><br>Canales Estable y Beta, descarga en segundo plano y notas de la versión en la aplicación</td>

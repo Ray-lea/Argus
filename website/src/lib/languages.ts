@@ -6,6 +6,7 @@ export const languages = [
   { id: "es", tag: "es-ES", name: "Español", readme: "README.es.md", requirements: "Requisitos del sistema" },
   { id: "de", tag: "de-DE", name: "Deutsch", readme: "README.de.md", requirements: "Systemanforderungen" },
   { id: "ja", tag: "ja-JP", name: "日本語", readme: "README.ja.md", requirements: "動作環境" },
+  { id: "ko", tag: "ko-KR", name: "한국어", readme: "README.ko.md", requirements: "시스템 요구 사항" },
   { id: "fr", tag: "fr-FR", name: "Français", readme: "README.fr.md", requirements: "Configuration requise" },
   { id: "ru", tag: "ru-RU", name: "Русский", readme: "README.ru.md", requirements: "Системные требования" },
 ] as const;
@@ -48,6 +49,7 @@ export const offers: Record<Language, { text: string; action: string; close: str
   es: { text: "Esta página también está disponible en *español*.", action: "Ver en español", close: "Cerrar" },
   de: { text: "Diese Seite gibt es auch auf *Deutsch*.", action: "Auf Deutsch anzeigen", close: "Schließen" },
   ja: { text: "このページは*日本語*でもご覧いただけます。", action: "日本語で表示", close: "閉じる" },
+  ko: { text: "이 페이지는 *한국어*로도 제공됩니다.", action: "한국어로 보기", close: "닫기" },
   fr: { text: "Cette page est également disponible en *français*.", action: "Afficher en français", close: "Fermer" },
   ru: { text: "Эта страница доступна и на *русском* языке.", action: "Открыть на русском", close: "Закрыть" },
 };

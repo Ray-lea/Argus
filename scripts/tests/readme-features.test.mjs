@@ -29,7 +29,7 @@ test("every demo draws in every README language from the locale strings, within 
 });
 
 test("each README shows the demos of its own language, and the files exist", () => {
-  const files = { "zh-CN": "README.md", "zh-TW": "README.zh-TW.md", en: "README.en.md", es: "README.es.md", de: "README.de.md", ja: "README.ja.md", fr: "README.fr.md", ru: "README.ru.md" };
+  const files = { "zh-CN": "README.md", "zh-TW": "README.zh-TW.md", en: "README.en.md", es: "README.es.md", de: "README.de.md", ja: "README.ja.md", ko: "README.ko.md", fr: "README.fr.md", ru: "README.ru.md" };
   for (const { lang } of languages) {
     const text = readFileSync(files[lang], "utf8");
     for (const id of demos)

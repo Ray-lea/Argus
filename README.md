@@ -6,7 +6,7 @@
 
 **快速、现代、信息丰富的 Windows 任务管理器**
 
-**简体中文** · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+**简体中文** · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官网与在线体验](https://img.shields.io/badge/%F0%9F%8C%90_%E5%AE%98%E7%BD%91%E4%B8%8E%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/)
 
@@ -70,7 +70,7 @@ Argus 采用 Rust 直接调用 Windows 原生接口，基于 GPUI Kit 原生组�
 </tr>
 <tr>
 <td width="50%" valign="top"><b>替换任务管理器</b><br>可<a href="docs/architecture/task-manager.md">替换系统任务管理器</a>并响应 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>；可运行新任务、重新启动资源管理器</td>
-<td width="50%" valign="top"><b>外观与语言</b><br>Mica 材质，跟随系统强调色与深浅主题；支持 8 种界面语言</td>
+<td width="50%" valign="top"><b>外观与语言</b><br>Mica 材质，跟随系统强调色与深浅主题；支持 9 种界面语言</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>应用内更新</b><br>稳定版与测试版通道，后台下载，可查看更新说明</td>

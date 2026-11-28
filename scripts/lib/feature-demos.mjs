@@ -19,6 +19,7 @@ export const H = 260;
 const SC = "'PingFang SC','Microsoft YaHei UI','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC'";
 const TC = "'PingFang TC','Microsoft JhengHei UI','Microsoft JhengHei','Noto Sans CJK TC','Noto Sans TC'";
 const JA = "'Hiragino Sans','Yu Gothic UI','Meiryo UI','Meiryo','Noto Sans CJK JP','Noto Sans JP'";
+const KO = "'Apple SD Gothic Neo','Malgun Gothic','Noto Sans CJK KR','Noto Sans KR'";
 
 // One entry per README. `comma`: decimal comma, as Windows formats figures in
 // that region. `explorer` is how Task Manager names explorer.exe there;
@@ -30,6 +31,7 @@ export const languages = [
   { lang: "es", locale: "es-ES", cjk: SC, comma: true, explorer: "Explorador de Windows", report: "Informe trimestral" },
   { lang: "de", locale: "de-DE", cjk: SC, comma: true, explorer: "Windows-Explorer", report: "Quartalsbericht" },
   { lang: "ja", locale: "ja-JP", cjk: JA, comma: false, explorer: "エクスプローラー", report: "四半期レポート" },
+  { lang: "ko", locale: "ko-KR", cjk: KO, comma: false, explorer: "Windows 탐색기", report: "분기 보고서" },
   { lang: "fr", locale: "fr-FR", cjk: SC, comma: true, explorer: "Explorateur Windows", report: "Rapport trimestriel" },
   { lang: "ru", locale: "ru-RU", cjk: SC, comma: true, explorer: "Проводник", report: "Квартальный отчёт" },
 ];

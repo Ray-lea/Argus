@@ -6,7 +6,7 @@
 
 **Un gestionnaire de tâches rapide, moderne et riche en informations pour Windows**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · **Français** · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · **Français** · [Русский](README.ru.md)
 
 [![Site web et démo](https://img.shields.io/static/v1?label=%F0%9F%8C%90+Site+web+et+d%C3%A9mo&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/fr/)
 
@@ -76,7 +76,7 @@ Si Argus facilite le travail au quotidien, une étoile sur GitHub est une façon
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Remplacement du Gestionnaire des tâches</b><br>Peut <a href="docs/architecture/task-manager.md">remplacer le Gestionnaire des tâches Windows</a> —documentation en chinois— et s’ouvrir avec <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> ; lance de nouvelles tâches et redémarre l’Explorateur Windows</td>
-<td width="50%" valign="top"><b>Aspect et langues</b><br>Arrière-plan Mica, couleur d’accentuation et thème clair ou sombre selon Windows ; 8 langues d’interface</td>
+<td width="50%" valign="top"><b>Aspect et langues</b><br>Arrière-plan Mica, couleur d’accentuation et thème clair ou sombre selon Windows ; 9 langues d’interface</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Mises à jour intégrées</b><br>Canaux Stable et Bêta, téléchargement en arrière-plan et notes de version dans l’application</td>

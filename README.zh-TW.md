@@ -6,7 +6,7 @@
 
 **快速、現代、資訊豐富的 Windows 工作管理員**
 
-[简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · **繁體中文** · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![官網與線上體驗](https://img.shields.io/badge/Argus-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/zh-TW/)
 
@@ -72,7 +72,7 @@ Argus 以 Rust 直接呼叫 Windows 原生介面，使用 GPUI Kit 原生元件�
 </tr>
 <tr>
 <td width="50%" valign="top"><b>取代工作管理員</b><br>可<a href="docs/architecture/task-manager.md">取代 Windows 工作管理員</a>並回應 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>（連結文件為簡體中文）；可執行新工作、重新啟動檔案總管</td>
-<td width="50%" valign="top"><b>外觀與語言</b><br>Mica 材質，跟隨系統強調色與淺色、深色佈景主題；支援 8 種介面語言</td>
+<td width="50%" valign="top"><b>外觀與語言</b><br>Mica 材質，跟隨系統強調色與淺色、深色佈景主題；支援 9 種介面語言</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>應用程式內更新</b><br>穩定版與測試版通道，背景下載，可檢視更新內容</td>

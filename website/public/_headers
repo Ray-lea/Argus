@@ -26,6 +26,9 @@
 /ja/*
   Cache-Control: public, max-age=300, no-transform
   Vary: Accept
+/ko/*
+  Cache-Control: public, max-age=300, no-transform
+  Vary: Accept
 /fr/*
   Cache-Control: public, max-age=300, no-transform
   Vary: Accept

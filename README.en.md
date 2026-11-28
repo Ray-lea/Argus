@@ -6,7 +6,7 @@
 
 **A fast, modern, information-rich Windows task manager**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · **English** · [Español](README.es.md) · [Deutsch](README.de.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![Website & Live Demo](https://img.shields.io/badge/%F0%9F%8C%90_Website_%26_Live_Demo-argustask.com-2563eb?style=for-the-badge)](https://argustask.com/en/)
 
@@ -70,7 +70,7 @@ If Argus is useful in your daily workflow, please consider giving it a star on G
 </tr>
 <tr>
 <td width="50%" valign="top"><b>Task Manager replacement</b><br>Can <a href="docs/architecture/task-manager.md">replace Windows Task Manager</a> (in Chinese) and open on <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd>; runs new tasks and restarts Windows Explorer</td>
-<td width="50%" valign="top"><b>Look and languages</b><br>Mica backdrop, following the system accent color and light or dark theme; 8 interface languages</td>
+<td width="50%" valign="top"><b>Look and languages</b><br>Mica backdrop, following the system accent color and light or dark theme; 9 interface languages</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>In-app updates</b><br>Stable and Beta channels, background downloads, and release notes in the app</td>

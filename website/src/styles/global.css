@@ -19,6 +19,10 @@ html:lang(ja) {
   --font: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
   --display: "Segoe UI Variable Display", "Segoe UI", "Yu Gothic UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
 }
+html:lang(ko) {
+  --font: "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
 .release-language { color: var(--ink-3); font-size: 0.875rem; line-height: 1.6; }
 body {
   margin: 0;
@@ -680,6 +684,9 @@ button {
 }
 .language-offer:lang(ja) {
   font-family: "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Meiryo", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+.language-offer:lang(ko) {
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
 }
 .language-offer-mark {
   display: grid;

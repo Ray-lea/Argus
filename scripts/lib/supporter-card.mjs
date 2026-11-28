@@ -21,6 +21,7 @@ export const H = 240;
 const SC = "'PingFang SC','Microsoft YaHei UI','Microsoft YaHei','Noto Sans CJK SC','Noto Sans SC'";
 const TC = "'PingFang TC','Microsoft JhengHei UI','Microsoft JhengHei','Noto Sans CJK TC','Noto Sans TC'";
 const JA = "'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans CJK JP','Noto Sans JP'";
+const KO = "'Apple SD Gothic Neo','Malgun Gothic','Noto Sans CJK KR','Noto Sans KR'";
 
 // One entry per README, in the order of the language links at their top.
 export const readmes = [
@@ -30,6 +31,7 @@ export const readmes = [
   { lang: "es", file: "README.es.md", tier: "Apoyo al proyecto & agradecimiento especial", thanks: "Gracias por apoyar el desarrollo continuo de Argus", cjk: SC },
   { lang: "de", file: "README.de.md", tier: "Projektunterstützung & besonderer Dank", thanks: "Danke für die Unterstützung der Weiterentwicklung von Argus", cjk: SC },
   { lang: "ja", file: "README.ja.md", tier: "プロジェクト支援 & スペシャルサンクス", thanks: "Argus の継続的な開発へのご支援に感謝します", cjk: JA },
+  { lang: "ko", file: "README.ko.md", tier: "프로젝트 후원 & 특별 감사", thanks: "Argus의 지속적인 개발을 후원해 주셔서 감사합니다", cjk: KO },
   { lang: "fr", file: "README.fr.md", tier: "Soutien au projet & remerciements particuliers", thanks: "Merci de soutenir le développement continu d’Argus", cjk: SC },
   { lang: "ru", file: "README.ru.md", tier: "Поддержка проекта & особая благодарность", thanks: "Спасибо за поддержку развития Argus", cjk: SC },
 ];

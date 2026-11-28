@@ -3,13 +3,14 @@ import tw from "../locales/zh-TW.json";
 import es from "../locales/es.json";
 import de from "../locales/de.json";
 import ja from "../locales/ja.json";
+import ko from "../locales/ko.json";
 import fr from "../locales/fr.json";
 import ru from "../locales/ru.json";
 import { languages, type Language } from "./languages";
 import { translateValue, type Messages } from "./translate";
 import { chineseDocsLabels } from "./document-labels";
 
-const catalogs: Partial<Record<Language, Messages>> = { "zh-TW": tw, es, de, ja, fr, ru };
+const catalogs: Partial<Record<Language, Messages>> = { "zh-TW": tw, es, de, ja, ko, fr, ru };
 const empty: Messages = {};
 export const messagesFor = (lang: Language): Messages => catalogs[lang] ?? empty;
 // Marketing and policy text render on the server; client islands receive only

@@ -6,7 +6,7 @@
 
 **高速でモダンな、情報豊富な Windows タスク マネージャー**
 
-[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [Français](README.fr.md) · [Русский](README.ru.md)
+[简体中文](README.md) · [繁體中文](README.zh-TW.md) · [English](README.en.md) · [Español](README.es.md) · [Deutsch](README.de.md) · **日本語** · [한국어](README.ko.md) · [Français](README.fr.md) · [Русский](README.ru.md)
 
 [![公式サイトとデモ](https://img.shields.io/static/v1?label=%F0%9F%8C%90+%E5%85%AC%E5%BC%8F%E3%82%B5%E3%82%A4%E3%83%88%E3%81%A8%E3%83%87%E3%83%A2&message=argustask.com&color=2563eb&style=for-the-badge)](https://argustask.com/ja/)
 
@@ -76,7 +76,7 @@ Argus が日常の作業に役立った際は、GitHub で Star を付けてい�
 </tr>
 <tr>
 <td width="50%" valign="top"><b>タスク マネージャーの置き換え</b><br><a href="docs/architecture/task-manager.md">Windows タスク マネージャーを置き換え</a>（説明は中国語）、<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> で開けます。新しいタスクの実行とエクスプローラーの再起動にも対応</td>
-<td width="50%" valign="top"><b>外観と言語</b><br>Mica 背景。アクセント カラーとライト・ダーク テーマは Windows に連動。8 言語に対応</td>
+<td width="50%" valign="top"><b>外観と言語</b><br>Mica 背景。アクセント カラーとライト・ダーク テーマは Windows に連動。9 言語に対応</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><b>アプリ内更新</b><br>安定版とベータ版のチャネル、バックグラウンドでのダウンロード、アプリ内での更新内容の確認</td>
