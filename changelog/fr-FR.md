@@ -1,6 +1,6 @@
 # Journal des modifications
 
-[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · **Français** · [Русский](ru-RU.md)
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [한국어](ko-KR.md) · **Français** · [Русский](ru-RU.md)
 
 Modifications visibles par les utilisateurs dans chaque version d’Argus. Les numéros de version suivent la [gestion sémantique de version](https://semver.org/lang/fr/). Ce fichier est traduit du [journal des modifications en chinois simplifié](zh-CN.md), auquel il correspond entrée par entrée.
 

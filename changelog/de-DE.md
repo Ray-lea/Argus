@@ -1,6 +1,6 @@
 # Änderungsprotokoll
 
-[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · **Deutsch** · [日本語](ja-JP.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · [Español](es-ES.md) · **Deutsch** · [日本語](ja-JP.md) · [한국어](ko-KR.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
 
 Für Benutzer sichtbare Änderungen der einzelnen Argus-Versionen. Die Versionsnummern folgen der [semantischen Versionierung](https://semver.org/lang/de/). Diese Datei ist eine Übersetzung des [vereinfachten chinesischen Änderungsprotokolls](zh-CN.md) und entspricht ihm Eintrag für Eintrag.
 

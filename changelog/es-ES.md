@@ -1,6 +1,6 @@
 # Registro de cambios
 
-[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · **Español** · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
+[简体中文](zh-CN.md) · [繁體中文](zh-TW.md) · [English](en-US.md) · **Español** · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [한국어](ko-KR.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
 
 Cambios visibles para el usuario en cada versión de Argus. La numeración sigue el [versionado semántico](https://semver.org/lang/es/). Este archivo es una traducción del [registro de cambios en chino simplificado](zh-CN.md), con correspondencia entrada por entrada.
 

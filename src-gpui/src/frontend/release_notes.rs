@@ -18,6 +18,7 @@ pub(super) fn source(locale: Locale) -> &'static str {
         Locale::EsEs => include_str!("../../../changelog/es-ES.md"),
         Locale::DeDe => include_str!("../../../changelog/de-DE.md"),
         Locale::JaJp => include_str!("../../../changelog/ja-JP.md"),
+        Locale::KoKr => include_str!("../../../changelog/ko-KR.md"),
         Locale::FrFr => include_str!("../../../changelog/fr-FR.md"),
         Locale::RuRu => include_str!("../../../changelog/ru-RU.md"),
     }

@@ -2529,7 +2529,7 @@ mod tests {
     fn missing_and_blank_release_translations_follow_the_same_fallback() {
         let release = json!({"notes":"source", "translations":{"en-US":"english","fr-FR":" \n","ja-JP":"japanese"}});
         assert_eq!(notes_in("ja-JP", &release), "japanese");
-        for locale in ["fr-FR", "de-DE", "ru-RU", "es-ES"] {
+        for locale in ["fr-FR", "de-DE", "ru-RU", "es-ES", "ko-KR"] {
             assert_eq!(notes_in(locale, &release), "english");
         }
         assert_eq!(notes_in("zh-CN", &release), "source");

@@ -12,7 +12,7 @@
 //     "tasks.explorer.note": {
 //       "after": "confirm",
 //       "zh-CN": "…", "zh-TW": "…", "en-US": "…", "es-ES": "…",
-//       "de-DE": "…", "ja-JP": "…", "fr-FR": "…", "ru-RU": "…"
+//       "de-DE": "…", "ja-JP": "…", "ko-KR": "…", "fr-FR": "…", "ru-RU": "…"
 //     }
 //   }
 //

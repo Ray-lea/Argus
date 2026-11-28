@@ -1,0 +1,61 @@
+{
+  "updated": "Argus가 {version} 버전으로 업데이트되었습니다.",
+  "whatsNew": "업데이트 내역 보기",
+  "readyToast": "Argus {version} 버전을 설치할 수 있습니다",
+  "availableToast": "새 버전 {version} 출시",
+  "view": "보기",
+  "openDialog": "업데이트 내역 보기",
+  "button": {
+    "title": "Argus {version} 버전을 설치할 수 있습니다. 클릭하면 업데이트 내역을 확인하고 설치할 수 있습니다.",
+    "availableTitle": "새 버전 {version} 출시. 클릭하면 업데이트 내역을 확인할 수 있습니다.",
+    "downloadingTitle": "Argus {version} 버전을 다운로드하고 있습니다. 완료되면 설치할 수 있습니다. 클릭하면 업데이트 내역을 확인할 수 있습니다."
+  },
+  "badge": {
+    "ready": "{version} 설치",
+    "available": "새 버전 {version}"
+  },
+  "menu": {
+    "view": "업데이트 내역 보기",
+    "dismiss": "이 버전은 다시 알리지 않기"
+  },
+  "dialog": {
+    "ready": "Argus {version} 설치 준비 완료",
+    "available": "새 버전 {version} 출시",
+    "downloading": "Argus {version} 다운로드 중",
+    "installing": "설치 프로그램 시작 중",
+    "installed": "Argus {version} 업데이트 내역",
+    "current": "현재 버전",
+    "previous": "업데이트 전",
+    "next": "새 버전",
+    "stable": "안정 버전",
+    "beta": "베타 버전",
+    "released": "출시일: {date}",
+    "verified": "서명 확인 완료",
+    "source": "다운로드 출처: {source}",
+    "progress": "다운로드: {received} / {total}",
+    "changes": "변경 사항 {count}건",
+    "expandAll": "모두 펼치기",
+    "collapseAll": "모두 접기",
+    "earlier": "이전 버전의 업데이트 내역은 GitHub에서 확인할 수 있습니다.",
+    "empty": "표시할 업데이트 내역이 없습니다. GitHub의 릴리스 페이지를 확인하세요.",
+    "language": "일부 업데이트 내역은 중국어로만 제공됩니다.",
+    "hint": "설치하려면 관리자 권한이 필요합니다. Argus가 잠시 종료되며, 설치가 끝나면 자동으로 현재 페이지를 다시 엽니다.",
+    "portable": "포터블 버전은 자동으로 업데이트되지 않습니다. 릴리스 페이지에서 새 버전을 다운로드하세요.",
+    "github": "GitHub에서 보기",
+    "install": "다시 시작하고 업데이트",
+    "starting": "시작 중…",
+    "download": "다운로드",
+    "later": "나중에",
+    "close": "닫기"
+  },
+  "service": {
+    "title": "특권 서비스를 업데이트할까요?",
+    "body": "특권 서비스 버전({serviceVersion})이 Argus {version} 버전과 일치하지 않아 일부 기능이 작동하지 않을 수 있습니다. 업데이트하려면 관리자 권한이 필요합니다.",
+    "bodyOlder": "특권 서비스가 이전 버전이어서 Argus {version} 버전과 호환되지 않습니다. 업데이트하기 전에는 관리자나 다른 계정의 프로세스 종료, 시스템 서비스 관리, 네트워크 연결 끊기 등 관리자 권한이 필요한 작업을 수행할 수 없습니다. 또한 프로세스별 네트워크 트래픽 등 특권 서비스가 제공하는 데이터가 표시되지 않습니다. 업데이트하려면 관리자 권한이 필요합니다.",
+    "confirm": "서비스 업데이트"
+  },
+  "notification": {
+    "ready": "업데이트를 다운로드하고 서명을 확인했습니다. 클릭하면 업데이트 내역을 보고 설치할 수 있습니다.",
+    "available": "포터블 버전은 릴리스 페이지에서 새 버전을 다운로드해야 합니다. 클릭하면 업데이트 내역을 볼 수 있습니다."
+  }
+}

@@ -23,6 +23,7 @@ textRules:
   "+右": 0
   "+单击": 0
   "+拖动": 0
+  "자동(지연된": 0
 spellcheck:
   # Proper names in their official case, matched as whole words; code, paths
   # and addresses are not read.

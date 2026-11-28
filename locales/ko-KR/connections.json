@@ -1,0 +1,58 @@
+{
+  "filter": {
+    "all": {
+      "label": "모두"
+    },
+    "listen": {
+      "label": "수신 대기"
+    },
+    "established": {
+      "label": "연결됨"
+    }
+  },
+  "protocolFilter": {
+    "tcp": "TCP",
+    "tcp6": "TCPv6",
+    "udp": "UDP",
+    "udp6": "UDPv6"
+  },
+  "state": {
+    "listen": "수신 대기",
+    "established": "연결됨",
+    "synSent": "연결 중",
+    "synReceived": "연결 수락 중",
+    "finWait1": "연결 종료 중",
+    "finWait2": "연결 종료 중",
+    "closeWait": "종료 대기",
+    "closing": "연결 종료 중",
+    "lastAck": "연결 종료 중",
+    "timeWait": "종료 후 대기",
+    "closed": "연결 종료됨"
+  },
+  "menu": {
+    "end": "{name} 작업 끝내기",
+    "close": "이 연결 끊기",
+    "copyLocal": "로컬 주소 복사",
+    "copyRemote": "원격 주소 복사"
+  },
+  "copied": {
+    "local": "로컬 주소",
+    "remote": "원격 주소"
+  },
+  "search": "포트, 주소 또는 프로세스 검색(예: 8080)",
+  "column": {
+    "process": "프로세스",
+    "protocol": "프로토콜",
+    "localAddress": "로컬 주소",
+    "localPort": "로컬 포트",
+    "remoteAddress": "원격 주소",
+    "remotePort": "원격 포트"
+  },
+  "exited": "종료됨",
+  "unowned": "연결을 소유한 프로세스 없음",
+  "loading": "연결 정보를 읽는 중…",
+  "noMatch": "조건에 맞는 연결이 없습니다.",
+  "noMatchPort": "포트 {port}에서 연결을 찾을 수 없습니다. 이 포트를 사용하는 프로그램이 없습니다.",
+  "clearFilter": "필터 지우기",
+  "note": "연결을 두 번 클릭하면 해당 프로세스로 이동합니다."
+}

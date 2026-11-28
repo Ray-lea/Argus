@@ -1,6 +1,6 @@
 # 更新記錄
 
-[简体中文](zh-CN.md) · **繁體中文** · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
+[简体中文](zh-CN.md) · **繁體中文** · [English](en-US.md) · [Español](es-ES.md) · [Deutsch](de-DE.md) · [日本語](ja-JP.md) · [한국어](ko-KR.md) · [Français](fr-FR.md) · [Русский](ru-RU.md)
 
 Argus 各版本的使用者可見變更。版本編號遵循[語意化版本](https://semver.org/lang/zh-TW/)。本檔案譯自[簡體中文更新記錄](zh-CN.md)，與原文逐項對應。
 
