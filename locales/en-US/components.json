@@ -231,6 +231,29 @@
     "panel": {
       "settings": "Component settings…",
       "hide": "Turn off taskbar monitor"
+    },
+    "rows": {
+      "title": "Rows",
+      "desc": "Arranges labels in two rows or one on a horizontal taskbar; a low taskbar always uses one.",
+      "two": "Two rows",
+      "one": "One row"
+    },
+    "color": {
+      "title": "Value color",
+      "desc": "Values in Labels match the taskbar text by default, or use each device's color; high values still turn amber.",
+      "ink": "Plain",
+      "tone": "Colored"
+    },
+    "size": {
+      "title": "Text size",
+      "desc": "Size of text, curve tiles and capsules on the taskbar, across all four styles.",
+      "small": "Small",
+      "medium": "Medium",
+      "large": "Large"
+    },
+    "opacity": {
+      "title": "Opacity",
+      "desc": "Opacity of the monitor's text and tiles. Its window draws no background, so the taskbar always shows through."
     }
   },
   "planned": {

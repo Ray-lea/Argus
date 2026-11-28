@@ -231,6 +231,29 @@
     "panel": {
       "settings": "Configuración de componentes…",
       "hide": "Desactivar el monitor en la barra de tareas"
+    },
+    "rows": {
+      "title": "Filas",
+      "desc": "Dispone las etiquetas en dos filas o una en una barra de tareas horizontal; una barra baja siempre muestra una.",
+      "two": "Dos filas",
+      "one": "Una fila"
+    },
+    "color": {
+      "title": "Color de los valores",
+      "desc": "En Etiquetas, los valores usan el color del texto de la barra de forma predeterminada o el color de cada dispositivo; los valores altos siguen en ámbar.",
+      "ink": "Un color",
+      "tone": "Color"
+    },
+    "size": {
+      "title": "Tamaño del texto",
+      "desc": "Tamaño del texto, las tarjetas de curva y las cápsulas en la barra de tareas, en los cuatro estilos.",
+      "small": "Pequeño",
+      "medium": "Mediano",
+      "large": "Grande"
+    },
+    "opacity": {
+      "title": "Opacidad",
+      "desc": "Opacidad del texto y las tarjetas del monitor; la ventana no dibuja fondo, así que la barra de tareas siempre se ve detrás."
     }
   },
   "planned": {

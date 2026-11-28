@@ -373,27 +373,6 @@ impl Painter {
         }
         let colors = colors(light);
         let mut pixels = vec![[0f32; 4]; (width * height) as usize];
-        for pixel in &mut pixels {
-            pixel[3] = 1. / 255.;
-        }
-        if hover {
-            // Inset across the taskbar, as its buttons' fill.
-            let inset = (2. * scale).round();
-            let (w, h) = (width as f32, height as f32);
-            let (color, alpha) = colors.hover;
-            fill(
-                &mut pixels,
-                width,
-                if layout.vertical {
-                    [inset, 0., w - inset, h]
-                } else {
-                    [0., inset, w, h - inset]
-                },
-                4. * scale,
-                color,
-                alpha,
-            );
-        }
         for tile in &layout.tiles {
             fill(
                 &mut pixels,
@@ -446,10 +425,47 @@ impl Painter {
                 colors.shade(run.shade),
             );
         }
+        // The monitor's opacity scales its premultiplied text and tiles in
+        // step; the hover fill underneath keeps the taskbar's own strength,
+        // and every pixel keeps a trace of alpha for pointer hit-testing.
+        let opacity = f32::from(layout.opacity.clamp(60, 100)) / 100.;
+        if opacity < 1. {
+            for pixel in &mut pixels {
+                for channel in pixel {
+                    *channel *= opacity;
+                }
+            }
+        }
+        if hover {
+            // Inset across the taskbar, as its buttons' fill, behind the
+            // monitor's content.
+            let mut backdrop = vec![[0f32; 4]; (width * height) as usize];
+            let inset = (2. * scale).round();
+            let (w, h) = (width as f32, height as f32);
+            let (color, alpha) = colors.hover;
+            fill(
+                &mut backdrop,
+                width,
+                if layout.vertical {
+                    [inset, 0., w - inset, h]
+                } else {
+                    [0., inset, w, h - inset]
+                },
+                4. * scale,
+                color,
+                alpha,
+            );
+            for (fg, bg) in pixels.iter_mut().zip(backdrop) {
+                let clear = 1. - fg[3];
+                for channel in 0..4 {
+                    fg[channel] += bg[channel] * clear;
+                }
+            }
+        }
         let mut bytes = Vec::with_capacity(pixels.len() * 4);
         for [r, g, b, a] in pixels {
             let byte = |v: f32| (v.clamp(0., 1.) * 255. + 0.5) as u8;
-            bytes.extend([byte(b), byte(g), byte(r), byte(a)]);
+            bytes.extend([byte(b), byte(g), byte(r), byte(a).max(1)]);
         }
         Some(bytes)
     }
@@ -714,8 +730,15 @@ impl IDWriteTextRenderer_Impl for Renderer_Impl {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cell, Fonts, Group, Painter, Run, Tone, lay_out};
+    use super::{Cell, Fonts, Group, Look, Painter, Run, Tone, lay_out};
     use crate::settings::TaskbarStyle as Style;
+
+    fn look(style: Style) -> Look {
+        Look {
+            style,
+            ..Look::default()
+        }
+    }
 
     fn rates(down: &str, up: &str) -> Group {
         let rate = |label: &str, value: &str| Cell {
@@ -746,7 +769,7 @@ mod tests {
             }],
             ..Group::default()
         }];
-        let layout = lay_out(&groups, 48, 1.25, Style::Labels, &painter, None);
+        let layout = lay_out(&groups, 48, 1.25, look(Style::Labels), &painter, None);
         let pixels = painter.paint(&layout, false, false, 1.25).unwrap();
         assert_eq!(pixels.len(), (layout.width * layout.height * 4) as usize);
         let at = |x: i32, y: i32| {
@@ -774,6 +797,46 @@ mod tests {
         assert!(value[3] > 200 && value[2] > value[0], "{value:?}");
         let name = strongest(&layout.runs[0]);
         assert!(name[3] > 120 && name[0] == name[2], "{name:?}");
+        // Lower opacity dims premultiplied content while keeping both the
+        // 1/255 hit-test floor and the taskbar's native hover fill intact.
+        let dim = lay_out(
+            &groups,
+            48,
+            1.25,
+            Look {
+                opacity: 60,
+                ..look(Style::Labels)
+            },
+            &painter,
+            None,
+        );
+        let faded = painter.paint(&dim, false, false, 1.25).unwrap();
+        let faded_at = |x: i32, y: i32| {
+            let index = ((y * dim.width + x) * 4) as usize;
+            [
+                faded[index],
+                faded[index + 1],
+                faded[index + 2],
+                faded[index + 3],
+            ]
+        };
+        let bright = {
+            let right = dim.runs[1].x + painter.width(&dim.runs[1].text, dim.runs[1].size, true);
+            (dim.runs[1].baseline - dim.runs[1].size..dim.runs[1].baseline + 3)
+                .flat_map(|y| (dim.runs[1].x..right).map(move |x| (x, y)))
+                .map(|(x, y)| faded_at(x, y))
+                .max_by_key(|pixel| pixel[3])
+                .unwrap()
+        };
+        assert!(bright[3] > 60 && bright[3] < value[3], "{bright:?}");
+        assert_eq!(faded_at(0, 0), [0, 0, 0, 1]);
+        let hover_opaque = painter.paint(&layout, false, true, 1.25).unwrap();
+        let hover_dim = painter.paint(&dim, false, true, 1.25).unwrap();
+        let sample = ((10 * layout.width + 2) * 4) as usize;
+        assert_eq!(
+            &hover_opaque[sample..sample + 4],
+            &hover_dim[sample..sample + 4]
+        );
     }
 
     /// Readings as the taskbar shows them, for looking at the text and the
@@ -848,7 +911,7 @@ mod tests {
             ]
             .map(|style| (height, style))
         }) {
-            let layout = lay_out(&groups, height, 1., style, &painter, None);
+            let layout = lay_out(&groups, height, 1., look(style), &painter, None);
             for (light, background) in [(false, [28u8, 28, 30]), (true, [238, 238, 240])] {
                 let image = painter.paint(&layout, light, false, 1.).unwrap();
                 strips.push((layout.width, layout.height, image, background));

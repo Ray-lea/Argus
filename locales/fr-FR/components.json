@@ -231,6 +231,29 @@
     "panel": {
       "settings": "Paramètres des composants…",
       "hide": "Désactiver le moniteur de barre des tâches"
+    },
+    "rows": {
+      "title": "Lignes",
+      "desc": "Dispose les étiquettes sur deux lignes ou une sur une barre des tâches horizontale ; une barre basse n’en affiche qu’une.",
+      "two": "Deux lignes",
+      "one": "Une ligne"
+    },
+    "color": {
+      "title": "Couleur des valeurs",
+      "desc": "Dans Étiquettes, les valeurs prennent par défaut la couleur du texte de la barre, ou celle de l’appareil ; les valeurs élevées restent ambre.",
+      "ink": "Unie",
+      "tone": "Couleur"
+    },
+    "size": {
+      "title": "Taille du texte",
+      "desc": "Taille du texte, des tuiles de courbe et des capsules sur la barre des tâches, pour les quatre styles.",
+      "small": "Petite",
+      "medium": "Moyenne",
+      "large": "Grande"
+    },
+    "opacity": {
+      "title": "Opacité",
+      "desc": "Opacité du texte et des tuiles du moniteur ; la fenêtre ne dessine pas de fond, la barre des tâches reste donc visible."
     }
   },
   "planned": {

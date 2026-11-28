@@ -231,6 +231,29 @@
     "panel": {
       "settings": "Komponenteneinstellungen…",
       "hide": "Taskleistenanzeige ausschalten"
+    },
+    "rows": {
+      "title": "Zeilen",
+      "desc": "Ordnet Beschriftungen auf einer horizontalen Taskleiste in zwei Zeilen oder einer an; eine niedrige Taskleiste zeigt immer eine.",
+      "two": "Zwei Zeilen",
+      "one": "Eine Zeile"
+    },
+    "color": {
+      "title": "Wertefarbe",
+      "desc": "Werte bei Beschriftungen nutzen standardmäßig die Textfarbe der Taskleiste oder die Gerätefarbe; hohe Werte bleiben bernsteinfarben.",
+      "ink": "Einfarbig",
+      "tone": "Farbig"
+    },
+    "size": {
+      "title": "Textgröße",
+      "desc": "Größe von Text, Kurvenkacheln und Kapseln auf der Taskleiste für alle vier Stile.",
+      "small": "Klein",
+      "medium": "Mittel",
+      "large": "Groß"
+    },
+    "opacity": {
+      "title": "Deckkraft",
+      "desc": "Deckkraft von Text und Kacheln der Taskleistenanzeige; das Fenster zeichnet keinen Hintergrund, die Taskleiste scheint durch."
     }
   },
   "planned": {

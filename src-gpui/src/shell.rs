@@ -19,7 +19,9 @@ use std::sync::{
     atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering},
 };
 use std::time::Instant;
-pub(crate) use taskbar_draw::{Cell as TaskbarCell, Group as TaskbarGroup, Tone as TaskbarTone};
+pub(crate) use taskbar_draw::{
+    Cell as TaskbarCell, Group as TaskbarGroup, Look as TaskbarLook, Tone as TaskbarTone,
+};
 pub(crate) use tray_anchor::Anchor;
 use windows::{
     Win32::{
@@ -871,21 +873,16 @@ pub fn apply_taskbar_monitor(app: &Host, monitor: &TaskbarMonitor) {
         }
         return;
     }
+    let look = TaskbarLook::from(monitor);
     if let Some(running) = running.as_ref() {
-        running.place(monitor.place, monitor.style, monitor.display.clone());
+        running.place(monitor.place, look, monitor.display.clone());
         return;
     }
     let Some(main) = app.get_window("main").and_then(|window| window.hwnd().ok()) else {
         return;
     };
     let test = std::env::args().any(|arg| arg == "--test");
-    match taskbar::Monitor::spawn(
-        main,
-        monitor.place,
-        monitor.style,
-        monitor.display.clone(),
-        test,
-    ) {
+    match taskbar::Monitor::spawn(main, monitor.place, look, monitor.display.clone(), test) {
         Ok(started) => *running = Some(started),
         Err(error) => argus_core::diagnostics::warn(
             "taskbar monitor creation",
@@ -933,12 +930,12 @@ pub fn taskbar_monitor_anchor() -> Option<Anchor> {
 pub fn taskbar_color(light: bool) -> u32 {
     if light { 0x00f3_f3f3 } else { 0x0020_2020 }
 }
-/// The taskbar monitor's look in `style` with `groups`, as it would show
+/// The taskbar monitor's look in `look` with `groups`, as it would show
 /// on the taskbar at `scale` (light or dark, `light`): an opaque image on
 /// the taskbar's colour, straight BGRA, its width and height in pixels.
 pub fn taskbar_preview(
     groups: &[TaskbarGroup],
-    style: crate::settings::TaskbarStyle,
+    look: TaskbarLook,
     light: bool,
     scale: f32,
 ) -> Option<(u32, u32, Vec<u8>)> {
@@ -946,18 +943,24 @@ pub fn taskbar_preview(
     thread_local! {
         static PAINTER: RefCell<Option<taskbar_draw::Painter>> = const { RefCell::new(None) };
     }
-    let font = taskbar_draw::font_size(scale);
+    let font = taskbar_draw::font_size(scale * look.size.factor());
     PAINTER.with_borrow_mut(|painter| {
         if painter.as_ref().is_none_or(|painter| painter.font != font) {
             *painter = taskbar_draw::Painter::new(font);
         }
         let painter = painter.as_ref()?;
-        // Laid out as on Windows 11's 48 px taskbar, then cut to its
-        // middle 40 px, where every style's readings lie.
+        // Laid out as on Windows 11's 48 px taskbar, then cut to the middle
+        // band where every style's readings lie (44 px at Large so its 44 px
+        // curve tiles and two rows stay whole, 40 px otherwise).
         let height = (48. * scale).round() as i32;
-        let layout = taskbar_draw::lay_out(groups, height, scale, style, painter, None);
+        let layout = taskbar_draw::lay_out(groups, height, scale, look, painter, None);
         let pixels = painter.paint(&layout, light, false, scale)?;
-        let cut = (4. * scale).round() as i32;
+        let trim = if look.size == crate::settings::TaskbarSize::Large {
+            2.
+        } else {
+            4.
+        };
+        let cut = ((trim * scale).round() as i32).clamp(0, height / 2 - 1);
         let row = layout.width as usize * 4;
         let mut pixels = pixels[cut as usize * row..(height - cut) as usize * row].to_vec();
         let [red, green, blue, _] = taskbar_color(light).to_le_bytes();

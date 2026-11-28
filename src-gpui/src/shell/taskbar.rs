@@ -33,9 +33,9 @@
 //! activation (`--test`); for displays a test names (`displays::set_test`),
 //! one stand-in each, stacked in from the edge of the primary display that
 //! the test puts them on (`set_test_edge`, the bottom unless it says).
-use super::taskbar_draw::{Group, Layout, Painter, Reserve, lay_out_column, lay_out_within};
+use super::taskbar_draw::{Group, Layout, Look, Painter, Reserve, lay_out_column, lay_out_within};
 use super::tray_anchor::Edge;
-use crate::settings::{TaskbarPlace, TaskbarStyle};
+use crate::settings::TaskbarPlace;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -118,7 +118,7 @@ pub(crate) fn shown_on() -> Option<(String, bool)> {
 #[derive(Clone)]
 struct State {
     place: TaskbarPlace,
-    style: TaskbarStyle,
+    look: Look,
     /// The display chosen, by its key (`displays::Display::key`); empty
     /// for the primary display.
     display: String,
@@ -154,14 +154,14 @@ impl Monitor {
     pub fn spawn(
         main: HWND,
         place: TaskbarPlace,
-        style: TaskbarStyle,
+        look: Look,
         display: String,
         test: bool,
     ) -> std::io::Result<Self> {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
                 place,
-                style,
+                look,
                 display,
                 groups: Vec::new(),
                 closed: false,
@@ -189,10 +189,10 @@ impl Monitor {
         self.shared.post(CHANGED);
     }
 
-    pub fn place(&self, place: TaskbarPlace, style: TaskbarStyle, display: String) {
+    pub fn place(&self, place: TaskbarPlace, look: Look, display: String) {
         self.update(|state| {
             state.place = place;
-            state.style = style;
+            state.look = look;
             state.display = display;
         });
     }
@@ -865,7 +865,9 @@ impl Worker {
         };
         let scale = unsafe { GetDpiForWindow(host) }.max(96) as f32 / 96.;
         let across = if vertical { width } else { height };
-        let font = super::taskbar_draw::font_size(super::taskbar_draw::size_scale(across, scale));
+        let font = super::taskbar_draw::font_size(
+            super::taskbar_draw::size_scale(across, scale) * state.look.size.factor(),
+        );
         if self
             .painter
             .as_ref()
@@ -884,13 +886,13 @@ impl Worker {
         // The first room along the taskbar that holds a reading, with the
         // readings that fit it.
         let found = rooms(&geometry, state.place).into_iter().find_map(|room| {
-            let (groups, style) = (&state.groups, state.style);
+            let (groups, look) = (&state.groups, state.look);
             let reserve = Some((&mut self.reserve, now));
             let length = room.end - room.start;
             let layout = if vertical {
-                lay_out_column(groups, width, scale, style, painter, reserve, length)
+                lay_out_column(groups, width, scale, look, painter, reserve, length)
             } else {
-                lay_out_within(groups, height, scale, style, painter, reserve, length)
+                lay_out_within(groups, height, scale, look, painter, reserve, length)
             };
             (layout.width > 0 && layout.height > 0).then_some((layout, room))
         });
