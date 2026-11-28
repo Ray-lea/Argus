@@ -92,7 +92,11 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Tests
         run: cargo test --workspace --locked
-      # After the builds above, which download the crate sources it reads.
+      # notices.mjs reads the dependency graph of both targets offline. The
+      # builds above download the x64 crates only, and the ARM64 ones are in
+      # the restored cache only when an earlier run left them there.
+      - name: Fetch crate sources
+        run: cargo fetch --locked --target x86_64-pc-windows-msvc --target aarch64-pc-windows-msvc
       - name: Third-party notices
         run: node scripts/notices.mjs --check
       - name: Clippy (ARM64)
